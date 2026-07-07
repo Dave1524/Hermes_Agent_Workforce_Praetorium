@@ -42,6 +42,21 @@ may exist on the box; this rule decides what may egress from it, and to whom.
 - 30-day retention (e.g. Anthropic direct default) is low-retention, not zero — ZDR-tagged
   endpoints are the target for Tier A.
 
+## Third-party search egress (NUC-21)
+
+The Brave Search MCP (`@brave/brave-search-mcp-server`) adds an egress path distinct from LLM
+inference: the **search query string** itself leaves the box to Brave Software Inc. (US), not
+just the model's reasoning over box-safe context.
+
+- **Rule:** queries must stay generic — public company/entity/person names only. Never put
+  business-sensitive framing, client-identifiable strings, `_confidential/` content, or internal
+  reasoning into a query. Treat this as Tier B-class egress (zero business content) regardless of
+  which tier the surrounding LLM call uses.
+- **Usage cap:** Brave's Free tier is inherently self-capping — **2,000 queries/month, 1
+  query/sec** — no billing to run away (NUC-08b spirit: a real spend cap is only required if Dave
+  upgrades to a paid Brave plan). The agent's existing `--max-turns` bound (`AGENT_MAX_ITERATIONS`,
+  NUC-08b) also limits queries per run. Results returned are public web data.
+
 ## Rationale
 
 The box-safe repo (boundary 1) decides what data may exist on the NUC. With no local model tier,

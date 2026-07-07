@@ -13,6 +13,15 @@ echo; echo "── Timers (next runs)"
 systemctl list-timers qmd-refresh.timer agent-proposal.timer --no-pager 2>/dev/null | head -5
 echo; echo "── qmd index"
 qmd status 2>/dev/null | head -8 || echo "  qmd index not built yet (finish_boxsafe_clone.sh)"
+echo; echo "── Research MCP (Brave)"
+brave_key="MISSING"
+if grep -qE '^BRAVE_API_KEY=.+' "$HOME/.hermes/.env" 2>/dev/null || [ -n "${BRAVE_API_KEY:-}" ]; then
+  brave_key="set"
+fi
+brave_server="npx-missing"
+command -v npx >/dev/null 2>&1 && brave_server="resolvable"
+printf "  key    : %s\n" "$brave_key"
+printf "  server : %s\n" "$brave_server"
 echo; echo "── Vault clone"
 if [ -d "$HOME/vault/.git" ]; then
   echo "  $(git -C "$HOME/vault" log -1 --format='last pull: %h %cd' --date=relative 2>/dev/null)"
