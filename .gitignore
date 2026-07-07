@@ -1,0 +1,7 @@
+logs/
+backups/
+node_modules/
+__pycache__/
+*.pyc
+.env
+secrets.env
