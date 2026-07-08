@@ -34,16 +34,19 @@ source "$SECRETS"
 [ -n "${OPENROUTER_API_KEY:-}" ] || { log "BLOCKED: no API key — no run (by design)"; exit 0; }
 [ -d "$WORKTREE" ] || { log "BLOCKED: inbox worktree missing — run finish_boxsafe_clone.sh"; exit 0; }
 [ -n "${AGENT_RUNTIME_CMD:-}" ] || { log "BLOCKED: AGENT_RUNTIME_CMD not set (NUC-14 pending)"; exit 0; }
-[ -n "${AGENT_MAX_ITERATIONS:-}" ] || { log "BLOCKED: AGENT_MAX_ITERATIONS not set — no run (by design)"; exit 0; }
 
 git -C "$WORKTREE" checkout -q agents/inbox
 git -C "$WORKTREE" pull -q --ff-only origin agents/inbox 2>/dev/null || true
 
 # ── Run the profile with retry + backoff (NUC-16) ──
-# AGENT_MAX_ITERATIONS is the single enforced turn ceiling — it overrides
-# whatever agent.max_turns default is baked into the Hermes profile's own
-# config.yaml, so there's one owner for this number, not two.
-run_cmd="$AGENT_RUNTIME_CMD --max-turns $AGENT_MAX_ITERATIONS"
+# Turn ceiling is enforced by the profile's own config.yaml `agent.max_turns`,
+# which is the single owner of that number. hermes `-z` oneshot has NO
+# `--max-turns` CLI flag (verified 2026-07-08, NUC-16): passing one makes hermes
+# reject the trailing value as an invalid subcommand and every run fails at
+# arg-parse. The earlier `--max-turns $AGENT_MAX_ITERATIONS` here was a phantom
+# flag (NUC-08b) that only ever "passed" against the mocked hermes in the smoke
+# test; real hermes never accepted it. Do not reintroduce it.
+run_cmd="$AGENT_RUNTIME_CMD"
 retry_base="${AGENT_RETRY_BASE_SECONDS:-30}"
 max_attempts=3; ok=false
 while [ $attempt -lt $max_attempts ]; do

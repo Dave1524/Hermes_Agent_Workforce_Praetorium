@@ -31,7 +31,7 @@ may exist on the box; this rule decides what may egress from it, and to whom.
    `_confidential/` (absent + qmd-excluded — the NUC-10 exclusion test is the release gate).
 4. Spend: per-key hard credit limit at OpenRouter (NUC-08b) — also the runaway-loop backstop,
    because Hermes' `model.max_tokens` is broken on OpenAI-compatible endpoints (issues
-   #4404/#20741); use `--max-turns` + the key cap.
+   #4404/#20741); the runaway bound is the profile config `agent.max_turns` ceiling + the key cap.
 
 ## Residual risks accepted at ratification
 
@@ -54,8 +54,8 @@ just the model's reasoning over box-safe context.
   which tier the surrounding LLM call uses.
 - **Usage cap:** Brave's Free tier is inherently self-capping — **2,000 queries/month, 1
   query/sec** — no billing to run away (NUC-08b spirit: a real spend cap is only required if Dave
-  upgrades to a paid Brave plan). The agent's existing `--max-turns` bound (`AGENT_MAX_ITERATIONS`,
-  NUC-08b) also limits queries per run. Results returned are public web data.
+  upgrades to a paid Brave plan). The agent's turn-ceiling bound (`agent.max_turns` in the profile
+  config — NUC-16) also limits queries per run. Results returned are public web data.
 
 ## Rationale
 

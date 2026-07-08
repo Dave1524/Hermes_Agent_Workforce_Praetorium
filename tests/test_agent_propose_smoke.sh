@@ -67,7 +67,7 @@ rc=$(run_scenario "$h1" 0 0)
 assert "exits 0" "[ '$rc' = 0 ]"
 assert "logs no-proposal" "grep -q 'OK: run completed, agent produced no proposal' '$h1/agent-workforce/logs/agent_propose.log'"
 assert "cost.log written with outcome=OK" "grep -q 'outcome=OK' '$h1/agent-workforce/logs/cost.log'"
-assert "--max-turns passed through to runtime" "grep -q -- '--max-turns 8' '$h1/hermes_argv.log'"
+assert "no phantom --max-turns flag passed to runtime (NUC-16: hermes -z has none)" "! grep -q -- '--max-turns' '$h1/hermes_argv.log'"
 
 echo "--- scenario 2: all retries fail ---"
 h2=$(sandbox)
