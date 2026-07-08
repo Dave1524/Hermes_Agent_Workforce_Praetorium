@@ -1,0 +1,12 @@
+# Weekly agent-run scorecard rollup — NUC-23. Fallback path; agent_propose.sh
+# also refreshes the digest fail-soft at the end of every run.
+[Unit]
+Description=Weekly agent-run scorecard rollup — NUC-23
+
+[Timer]
+OnCalendar=Mon 07:00
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
