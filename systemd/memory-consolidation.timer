@@ -1,0 +1,15 @@
+# Nightly working-memory consolidation — NUC-21.
+# 03:30 is clear of the 30-min qmd-refresh and precedes the Mon..Fri 06:30
+# proposal run, so the morning run sees a trimmed store with add() headroom.
+# Safe to enable now (no-op on an empty store until runs accumulate):
+#   sudo systemctl enable --now memory-consolidation.timer
+[Unit]
+Description=Nightly working-memory consolidation — NUC-21
+
+[Timer]
+OnCalendar=*-*-* 03:30
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
