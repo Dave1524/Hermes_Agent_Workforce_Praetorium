@@ -48,6 +48,11 @@ The Brave Search MCP (`@brave/brave-search-mcp-server`) adds an egress path dist
 inference: the **search query string** itself leaves the box to Brave Software Inc. (US), not
 just the model's reasoning over box-safe context.
 
+As of NUC-21 the query egresses via a **local persistent daemon** (`brave-mcp.service`,
+127.0.0.1:8766) rather than a per-run `npx` subprocess; the API key is held only by that
+service (its own mode-600 `~/.config/agent-workforce/brave-mcp.env`), not injected into agent
+runs. The transport change does not change the egress destination, rule, or cap below.
+
 - **Rule:** queries must stay generic — public company/entity/person names only. Never put
   business-sensitive framing, client-identifiable strings, `_confidential/` content, or internal
   reasoning into a query. Treat this as Tier B-class egress (zero business content) regardless of
@@ -56,6 +61,29 @@ just the model's reasoning over box-safe context.
   query/sec** — no billing to run away (NUC-08b spirit: a real spend cap is only required if Dave
   upgrades to a paid Brave plan). The agent's turn-ceiling bound (`agent.max_turns` in the profile
   config — NUC-16) also limits queries per run. Results returned are public web data.
+
+## Direct web-fetch egress (NUC-22)
+
+The Research Analyst's fetch capability is the built-in Hermes `browser` toolset in **local
+headless-Chromium mode** (agent-browser; no Browserbase/Browser Use credential on the box). It
+adds an egress path distinct from Brave search and LLM inference: the box makes a **direct HTTPS
+request from its own IP** to the target URL to render JS/Cloudflare-gated pages.
+
+- **Egress surface:** the fetched **URL** (path + query) and standard browser request headers,
+  sent directly to the destination site. Unlike Browserbase, no third-party browser vendor sees
+  the URL — the only party is the site being fetched.
+- **Rule:** only **public, de-identified URLs** may be fetched. Never put client-identifiable
+  strings, `_confidential/` content, or business-sensitive framing in a URL or query param.
+  Tier B-class egress (zero business content), same discipline as the Brave query rule above.
+- **No login / paywall / ToS-restricted content** — public sources only.
+- **SSRF containment:** Hermes' built-in guard (`tools/url_safety.py`) blocks fetches to
+  loopback / link-local / private ranges (verified: `http://127.0.0.1:8765/mcp` → not safe), so
+  the fetch tool cannot be steered at the local qmd/Brave daemons or Tailscale peers.
+- **Usage / spend cap:** local Chromium is **unmetered** — no per-request billing to run away
+  (NUC-08b spirit); the per-run bound is `agent.max_turns` (NUC-16). The staged `BROWSERBASE_*`
+  flags in `~/.hermes/.env` are dormant no-ops (no `BROWSERBASE_API_KEY`, so
+  `agent/browser_registry.py` never selects the cloud backend); if Browserbase is ever keyed,
+  add a session cap here first.
 
 ## Rationale
 

@@ -1,0 +1,24 @@
+# Brave Search MCP HTTP daemon — NUC-21 (research_analyst web search).
+# Mirrors qmd-mcp.service: a persistent warm HTTP MCP the profile reaches via
+# `url: http://127.0.0.1:8766/mcp`, replacing the per-run npx stdio cold-spawn
+# that lost the `hermes -z` background-discovery race (see docs/data_boundary.md).
+# Deploy: sudo cp to /etc/systemd/system/, then `sudo systemctl daemon-reload
+# && sudo systemctl enable --now brave-mcp.service`. Key comes from brave-mcp.env.
+[Unit]
+Description=Brave Search MCP HTTP daemon (research_analyst web search) — NUC-21
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dave
+EnvironmentFile=/home/dave/.config/agent-workforce/brave-mcp.env
+ExecStart=/home/dave/.hermes/bin/brave_mcp_launch.sh --transport http --port 8766 --host 127.0.0.1
+Restart=on-failure
+RestartSec=10
+# Localhost-only bind; the box itself is Tailscale-only (no public ports).
+NoNewPrivileges=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target
