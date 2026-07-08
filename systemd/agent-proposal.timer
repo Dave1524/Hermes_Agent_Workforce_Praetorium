@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily agent proposal run, weekday early mornings — NUC-16
+# 04:30 so proposals land on agents/inbox BEFORE the Mac's 06:00 morning briefing
+# (which surfaces them). Ops tasking = box-safe 04_operations/box_brief/ (2026-07-08).
+
+[Timer]
+OnCalendar=Mon..Fri 04:30
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
