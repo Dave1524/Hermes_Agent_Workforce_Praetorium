@@ -39,9 +39,19 @@ while [ "$elapsed" -lt "$POLL_TIMEOUT_SECONDS" ]; do
       echo "kanban_run_and_wait: task=$task_id done" >&2
       exit 0
       ;;
-    blocked|archived)
-      echo "kanban_run_and_wait: task=$task_id ended status=$status" >&2
-      exit 1
+    blocked)
+      # NUC-25 fix: a blocked card is a benign decline, not a runtime failure.
+      # Hermes already exhausts its own --max-retries before ending a task
+      # blocked, so the outer runner's 3x retry only repeats the identical block
+      # and then marks the whole service failed. The old direct `hermes -z` path
+      # counted "agent produced no proposal" as success — mirror that here. The
+      # block reason is recorded on the card (hermes kanban show "$task_id").
+      echo "kanban_run_and_wait: task=$task_id ended status=blocked — benign decline, not retried (reason on card: hermes kanban show $task_id)" >&2
+      exit 0
+      ;;
+    archived)
+      echo "kanban_run_and_wait: task=$task_id ended status=archived (cancelled) — no proposal, not a failure" >&2
+      exit 0
       ;;
   esac
   sleep "$POLL_INTERVAL_SECONDS"
