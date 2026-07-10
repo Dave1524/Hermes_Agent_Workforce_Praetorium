@@ -23,14 +23,14 @@ sc() {
 # 1 legacy outcome=OK line + 1 pure-garbage line + 1 malformed run_seconds line.
 c1="$TD/cost1.log"; d1="$TD/digest1.md"
 cat > "$c1" <<'EOF'
-ts=2026-07-08T10:00:00+00:00 schema=2 profile=research_analyst model=anthropic/claude-haiku-4.5 task=standing outcome=PROPOSAL proposal=alpha run_seconds=300 attempts=1 tokens=unknown cost_usd=unknown cost_src=openrouter-dashboard memory=recorded
-ts=2026-07-08T10:05:00+00:00 schema=2 profile=research_analyst model=anthropic/claude-haiku-4.5 task=standing outcome=PROPOSAL proposal=beta run_seconds=200 attempts=1 tokens=unknown cost_usd=unknown cost_src=openrouter-dashboard memory=recorded
-ts=2026-07-08T10:10:00+00:00 schema=2 profile=research_analyst model=x task=standing outcome=NOPROPOSAL proposal=none run_seconds=100 attempts=1 tokens=unknown cost_usd=unknown cost_src=openrouter-dashboard memory=fallback
-ts=2026-07-08T10:15:00+00:00 schema=2 profile=research_analyst model=x task=standing outcome=FAIL proposal=none run_seconds=60 attempts=3 tokens=unknown cost_usd=unknown cost_src=openrouter-dashboard memory=na
-ts=2026-07-08T10:20:00+00:00 schema=2 profile=research_analyst model=x task=standing outcome=VIOLATION proposal=none run_seconds=40 attempts=1 tokens=unknown cost_usd=unknown cost_src=openrouter-dashboard memory=na
+ts=2026-07-08T10:00:00+00:00 schema=2 profile=claudius model=anthropic/claude-haiku-4.5 task=standing outcome=PROPOSAL proposal=alpha run_seconds=300 attempts=1 tokens=unknown cost_usd=unknown cost_src=openrouter-dashboard memory=recorded
+ts=2026-07-08T10:05:00+00:00 schema=2 profile=claudius model=anthropic/claude-haiku-4.5 task=standing outcome=PROPOSAL proposal=beta run_seconds=200 attempts=1 tokens=unknown cost_usd=unknown cost_src=openrouter-dashboard memory=recorded
+ts=2026-07-08T10:10:00+00:00 schema=2 profile=claudius model=x task=standing outcome=NOPROPOSAL proposal=none run_seconds=100 attempts=1 tokens=unknown cost_usd=unknown cost_src=openrouter-dashboard memory=fallback
+ts=2026-07-08T10:15:00+00:00 schema=2 profile=claudius model=x task=standing outcome=FAIL proposal=none run_seconds=60 attempts=3 tokens=unknown cost_usd=unknown cost_src=openrouter-dashboard memory=na
+ts=2026-07-08T10:20:00+00:00 schema=2 profile=claudius model=x task=standing outcome=VIOLATION proposal=none run_seconds=40 attempts=1 tokens=unknown cost_usd=unknown cost_src=openrouter-dashboard memory=na
 2026-07-06T09:00:00+00:00 run_seconds=380 attempts=1 outcome=OK model=anthropic/claude-sonnet-5
 this is pure garbage not a record at all
-ts=2026-07-08T11:00:00+00:00 schema=2 profile=research_analyst model=x task=standing outcome=PROPOSAL proposal=gamma run_seconds=notanumber attempts=1
+ts=2026-07-08T11:00:00+00:00 schema=2 profile=claudius model=x task=standing outcome=PROPOSAL proposal=gamma run_seconds=notanumber attempts=1
 EOF
 
 echo "--- scenario 1: rollup math ---"
@@ -85,9 +85,9 @@ echo "--- scenario 6: 7-day window ---"
 c6="$TD/cost6.log"; d6="$TD/digest6.md"
 now=$(date -Is); old=$(date -Is -d '30 days ago')
 {
-  echo "ts=$now schema=2 profile=research_analyst model=x task=standing outcome=PROPOSAL proposal=r1 run_seconds=100 attempts=1"
-  echo "ts=$now schema=2 profile=research_analyst model=x task=standing outcome=NOPROPOSAL proposal=none run_seconds=50 attempts=1"
-  echo "ts=$old schema=2 profile=research_analyst model=x task=standing outcome=PROPOSAL proposal=r0 run_seconds=70 attempts=1"
+  echo "ts=$now schema=2 profile=claudius model=x task=standing outcome=PROPOSAL proposal=r1 run_seconds=100 attempts=1"
+  echo "ts=$now schema=2 profile=claudius model=x task=standing outcome=NOPROPOSAL proposal=none run_seconds=50 attempts=1"
+  echo "ts=$old schema=2 profile=claudius model=x task=standing outcome=PROPOSAL proposal=r0 run_seconds=70 attempts=1"
 } > "$c6"
 rc=$(sc "$c6" "$TD/none.tsv" "$d6")
 assert "exits 0" "[ '$rc' = 0 ]"

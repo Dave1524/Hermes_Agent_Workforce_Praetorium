@@ -21,7 +21,7 @@ if command -v curl >/dev/null 2>&1 && curl -sf --max-time 2 http://127.0.0.1:876
   qmd_daemon="reachable"
 fi
 qmd_profile="unknown"
-prof="$HOME/.hermes/profiles/research_analyst/config.yaml"
+prof="$HOME/.hermes/profiles/claudius/config.yaml"
 if [ -f "$prof" ]; then
   qmd_block=$(awk '/^  qmd:/{f=1;next} f&&/^  [A-Za-z]/{f=0} f' "$prof")
   if printf '%s\n' "$qmd_block" | grep -qE '^[[:space:]]*url:'; then
@@ -31,7 +31,7 @@ if [ -f "$prof" ]; then
   fi
 fi
 printf "  endpoint : http://127.0.0.1:8765/mcp (%s)\n" "$qmd_daemon"
-printf "  profile  : research_analyst qmd = %s\n" "$qmd_profile"
+printf "  profile  : claudius qmd = %s\n" "$qmd_profile"
 echo; echo "── Research MCP (Brave)"
 brave_key="MISSING"
 if grep -qE '^BRAVE_API_KEY=.+' "$HOME/.hermes/.env" 2>/dev/null || [ -n "${BRAVE_API_KEY:-}" ]; then
@@ -77,8 +77,8 @@ fi
 printf "  mode    : %s\n" "local-headless-chromium"
 printf "  chromium: %s\n" "$fetch_chromium"
 printf "  runner  : %s\n" "$fetch_runner"
-echo; echo "── Working memory (research_analyst, NUC-21)"
-ra_mem="$HOME/.hermes/profiles/research_analyst/memories/MEMORY.md"
+echo; echo "── Working memory (claudius, NUC-21)"
+ra_mem="$HOME/.hermes/profiles/claudius/memories/MEMORY.md"
 if [ -s "$ra_mem" ]; then
   e=$(grep -c '^§$' "$ra_mem" 2>/dev/null); entries=$(( e + 1 ))
   printf "  entries: %s   bytes: %s\n" "$entries" "$(wc -c < "$ra_mem" | tr -d ' ')"

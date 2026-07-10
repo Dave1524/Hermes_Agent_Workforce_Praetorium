@@ -22,8 +22,8 @@ sandbox() {
   local home; home=$(mktemp -d)
   mkdir -p "$home/.config/agent-workforce" "$home/agent-workforce/logs" "$home/agent-worktrees"
   # Fake profile config so the runner reads the PROFILE model (NUC-23), not LLM_MODEL_BUSINESS.
-  mkdir -p "$home/.hermes/profiles/research_analyst"
-  printf 'model:\n  name: test/model-x\n' > "$home/.hermes/profiles/research_analyst/config.yaml"
+  mkdir -p "$home/.hermes/profiles/claudius"
+  printf 'model:\n  name: test/model-x\n' > "$home/.hermes/profiles/claudius/config.yaml"
 
   local mock_hermes="$home/mock_hermes.sh"
   cat > "$mock_hermes" <<EOF
@@ -39,7 +39,7 @@ EOF
   cat > "$home/.config/agent-workforce/secrets.env" <<EOF
 OPENROUTER_API_KEY=test-key-not-real
 AGENT_RUNTIME_CMD=$mock_hermes
-AGENT_PROFILE=research_analyst
+AGENT_PROFILE=claudius
 AGENT_MAX_ITERATIONS=8
 AGENT_TIMEOUT_MINUTES=1
 LLM_MODEL_BUSINESS=test-model
@@ -79,7 +79,7 @@ assert "logs no-proposal" "grep -q 'OK: run completed, agent produced no proposa
 assert "cost.log outcome=NOPROPOSAL (NUC-23 vocab)" "grep -q 'outcome=NOPROPOSAL' '$h1/agent-workforce/logs/cost.log'"
 assert "cost.log model=test/model-x (profile model, NUC-23 fix)" "grep -q 'model=test/model-x' '$h1/agent-workforce/logs/cost.log'"
 assert "cost.log NOT model=test-model (not LLM_MODEL_BUSINESS)" "! grep -q 'model=test-model' '$h1/agent-workforce/logs/cost.log'"
-assert "cost.log profile=research_analyst" "grep -q 'profile=research_analyst' '$h1/agent-workforce/logs/cost.log'"
+assert "cost.log profile=claudius" "grep -q 'profile=claudius' '$h1/agent-workforce/logs/cost.log'"
 assert "cost.log schema=2" "grep -q 'schema=2' '$h1/agent-workforce/logs/cost.log'"
 assert "cost.log cost_src=openrouter-dashboard" "grep -q 'cost_src=openrouter-dashboard' '$h1/agent-workforce/logs/cost.log'"
 assert "cost.log proposal=none" "grep -q 'proposal=none' '$h1/agent-workforce/logs/cost.log'"
@@ -120,12 +120,12 @@ assert "logs no-proposal (metrics not swept as proposal)" "grep -q 'OK: run comp
 
 echo "--- scenario 6: runner memory fallback when the agent didn't self-record (NUC-21) ---"
 h6=$(sandbox)
-mkdir -p "$h6/.hermes/profiles/research_analyst/memories"   # store dir exists, mock writes no memory
+mkdir -p "$h6/.hermes/profiles/claudius/memories"   # store dir exists, mock writes no memory
 rc=$(run_scenario "$h6" 0 0)
 assert "exits 0" "[ '$rc' = 0 ]"
 assert "cost.log memory=fallback (runner backstop wrote it)" "grep -q 'memory=fallback' '$h6/agent-workforce/logs/cost.log'"
 assert "runner logged fallback write" "grep -q 'wrote runner fallback entry' '$h6/agent-workforce/logs/agent_propose.log'"
-assert "MEMORY.md created with an entry" "[ -s '$h6/.hermes/profiles/research_analyst/memories/MEMORY.md' ]"
-assert "fallback entry carries a run tag" "grep -q '\[run:' '$h6/.hermes/profiles/research_analyst/memories/MEMORY.md'"
+assert "MEMORY.md created with an entry" "[ -s '$h6/.hermes/profiles/claudius/memories/MEMORY.md' ]"
+assert "fallback entry carries a run tag" "grep -q '\[run:' '$h6/.hermes/profiles/claudius/memories/MEMORY.md'"
 
 exit $fail

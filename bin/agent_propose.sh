@@ -137,7 +137,7 @@ elif [ "$mem_after" != "$mem_before" ]; then
   mem_status="recorded"
   log "MEMORY: agent recorded its own episodic entry"
 else
-  entry="[run:$(date -Is)] task=standing research_analyst scheduled run; proposal=${proposal_file:-none}; note=runner auto-record (agent emitted no memory entry this run); findings/decisions/gaps=see agent_run.log / proposal"
+  entry="[run:$(date -Is)] task=standing claudius scheduled run; proposal=${proposal_file:-none}; note=runner auto-record (agent emitted no memory entry this run); findings/decisions/gaps=see agent_run.log / proposal"
   if (
         exec 8>"$MEM_FILE.lock" 2>/dev/null || exit 1
         flock -w 10 8 || exit 1

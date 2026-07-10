@@ -3,7 +3,7 @@
 ## Decision (AC1)
 
 Store = **Hermes-native per-profile built-in memory** (`MEMORY.md`) for the
-`research_analyst` profile. Chosen over a custom JSONL/SQLite run-log or an
+`claudius` profile. Chosen over a custom JSONL/SQLite run-log or an
 `_inbox/agents/_memory/` markdown trail because it already exists, Hermes
 auto-injects it into the run's system prompt, and the built-in `memory` tool
 writes it — the least new machinery. The alternatives were rejected: a JSONL/
@@ -12,7 +12,7 @@ pollute the inbox branch and risk leaking run-notes to the Mac cockpit.
 
 ## Location (LIVE box state — NOT git-tracked)
 
-`~/.hermes/profiles/research_analyst/memories/MEMORY.md`. This is runtime state,
+`~/.hermes/profiles/claudius/memories/MEMORY.md`. This is runtime state,
 not repo content. **Box-safe only**: no client-identifiable strings, no
 `_confidential/` content ever — the same rule as proposal output. Distinct from
 qmd (NUC-10), which is *read-side* retrieval of the canonical vault; this is the
@@ -60,7 +60,7 @@ problem it leaves the store byte-for-byte untouched and exits 0. Snapshots
 ## Continuity verification (AC5 — costs OpenRouter; run manually)
 
 1. Ensure `MEMORY.md` is empty. Run once:
-   `cd ~/agent-worktrees/inbox && ~/.local/bin/hermes -z "$(cat ~/agent-workforce/profiles/research_analyst_task.md)" -p research_analyst`
+   `cd ~/agent-worktrees/inbox && ~/.local/bin/hermes -z "$(cat ~/agent-workforce/profiles/claudius_task.md)" -p claudius`
 2. Capture entry 1 (redacted) + proposal 1 filename.
 3. Run again (same standing task). Capture entry 2 + proposal 2.
 4. Assert: entry 2 references/advances entry 1, and proposal 2 is NOT a duplicate

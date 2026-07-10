@@ -12,10 +12,10 @@ assert() { local d=$1 c=$2; if eval "$c"; then echo "  ok: $d"; else echo "  FAI
 
 sandbox() {
   local h; h=$(mktemp -d)
-  mkdir -p "$h/.hermes/profiles/research_analyst/memories" "$h/agent-workforce/logs"
+  mkdir -p "$h/.hermes/profiles/claudius/memories" "$h/agent-workforce/logs"
   echo "$h"
 }
-memf() { echo "$1/.hermes/profiles/research_analyst/memories/MEMORY.md"; }
+memf() { echo "$1/.hermes/profiles/claudius/memories/MEMORY.md"; }
 run() { HOME="$1" MEM_MAX_ENTRIES="$2" MEM_MAX_CHARS="$3" bash "$SCRIPT" >/dev/null 2>&1; echo $?; }
 bakglob() { echo "$(dirname "$1")"/MEMORY.md.bak.consolidate.*; }
 count_entries() { local f=$1 d; [ -s "$f" ] || { echo 0; return; }; d=$(grep -c '^§$' "$f"); echo $(( d + 1 )); }

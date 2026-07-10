@@ -53,7 +53,7 @@ echo "Filesystem      Size  Used Avail Use% Mounted on"
 echo "/dev/sda1        20G    5G   15G  25% /"
 EOF
   chmod +x "$stubs"/*
-  mkdir -p "$home/.hermes/profiles/research_analyst" "$home/agent-workforce/logs"
+  mkdir -p "$home/.hermes/profiles/claudius" "$home/agent-workforce/logs"
   : > "$home/.hermes/.env"
   echo "$home:$stubs"
 }
@@ -68,7 +68,7 @@ run_scenario() {
 
 echo "--- scenario A: url (daemon) form + healthy ---"
 IFS=: read -r hA sA <<<"$(sandbox)"
-cat > "$hA/.hermes/profiles/research_analyst/config.yaml" <<'EOF'
+cat > "$hA/.hermes/profiles/claudius/config.yaml" <<'EOF'
 mcp_servers:
   qmd:
     # NUC-16: warm HTTP daemon; do not revert to a stdio command block.
@@ -81,11 +81,11 @@ IFS=: read -r rcA outA <<<"$(run_scenario "$hA" "$sA" 0)"
 assert "exits 0" "[ '$rcA' = 0 ]"
 assert "prints qmd MCP daemon section" "grep -q -- '── qmd MCP daemon (agent transport, NUC-16)' '$outA'"
 assert "endpoint reachable" "grep -q -- 'endpoint : http://127.0.0.1:8765/mcp (reachable)' '$outA'"
-assert "profile = daemon (http)" "grep -q -- 'research_analyst qmd = daemon (http)' '$outA'"
+assert "profile = daemon (http)" "grep -q -- 'claudius qmd = daemon (http)' '$outA'"
 
 echo "--- scenario B: stdio (cold-spawn) form + unreachable ---"
 IFS=: read -r hB sB <<<"$(sandbox)"
-cat > "$hB/.hermes/profiles/research_analyst/config.yaml" <<'EOF'
+cat > "$hB/.hermes/profiles/claudius/config.yaml" <<'EOF'
 mcp_servers:
   qmd:
     # legacy stdio cold-spawn (pre-NUC-16); the daemon url form is preferred.
@@ -98,12 +98,12 @@ EOF
 IFS=: read -r rcB outB <<<"$(run_scenario "$hB" "$sB" 7)"
 assert "exits 0" "[ '$rcB' = 0 ]"
 assert "endpoint unreachable" "grep -q -- 'endpoint : http://127.0.0.1:8765/mcp (unreachable)' '$outB'"
-assert "profile = cold-spawn (stdio)" "grep -q -- 'research_analyst qmd = cold-spawn (stdio)' '$outB'"
+assert "profile = cold-spawn (stdio)" "grep -q -- 'claudius qmd = cold-spawn (stdio)' '$outB'"
 
 echo "--- scenario C: no profile config ---"
 IFS=: read -r hC sC <<<"$(sandbox)"
 IFS=: read -r rcC outC <<<"$(run_scenario "$hC" "$sC" 0)"
 assert "exits 0" "[ '$rcC' = 0 ]"
-assert "profile = unknown" "grep -q -- 'research_analyst qmd = unknown' '$outC'"
+assert "profile = unknown" "grep -q -- 'claudius qmd = unknown' '$outC'"
 
 exit $fail

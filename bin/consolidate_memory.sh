@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # NUC-21 working memory: nightly, mechanical consolidation/prune of the
-# research_analyst Hermes-native episodic memory (MEMORY.md). NO LLM, NO network.
+# claudius Hermes-native episodic memory (MEMORY.md). NO LLM, NO network.
 #
 # On-disk contract (hermes tools/memory_tool.py MemoryStore): entries are
 # separated by a line that is exactly § (U+00A7, bytes C2 A7); joined by \n§\n;
@@ -11,7 +11,7 @@
 # and we still exit 0. Never empties or corrupts the store.
 set -uo pipefail   # deliberately NOT -e: every exit is controlled, for fail-soft
 
-MEM_DIR="${MEM_DIR:-$HOME/.hermes/profiles/research_analyst/memories}"
+MEM_DIR="${MEM_DIR:-$HOME/.hermes/profiles/claudius/memories}"
 MEM_FILE="${MEM_FILE:-$MEM_DIR/MEMORY.md}"
 MEM_LOCK="${MEM_LOCK:-$MEM_FILE.lock}"
 MEM_MAX_ENTRIES="${MEM_MAX_ENTRIES:-12}"
