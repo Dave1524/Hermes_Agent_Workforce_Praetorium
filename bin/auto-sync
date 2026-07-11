@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
-# Auto-sync master: small, safe updates on master get committed and pushed quickly.
-# Significant work must happen in a worktree or branch.
+# Auto-sync: small, safe updates on the default branch get committed and pushed quickly.
+# Significant development must happen in a worktree or branch.
 set -euo pipefail
+
+PRIMARY="main"
 
 cd "$(dirname "$0")/.."
 
-# Only operate on master
+# Only operate on the primary branch
 branch=$(git rev-parse --abbrev-ref HEAD)
-if [[ "$branch" != "master" ]]; then
-    echo "auto-sync: not on master (current: $branch). Refusing to sync." >&2
+if [[ "$branch" != "$PRIMARY" ]]; then
+    echo "auto-sync: not on $PRIMARY (current: $branch). Refusing to sync." >&2
     exit 1
 fi
 
 # Pull first to avoid trivial conflicts
-if ! git pull --ff-only origin master; then
+if ! git pull --ff-only origin "$PRIMARY"; then
     echo "auto-sync: could not fast-forward from origin. Manual resolution required." >&2
     exit 1
 fi
@@ -25,11 +27,11 @@ if git diff --quiet && git diff --cached --quiet; then
 fi
 
 timestamp=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
-message="Auto-sync: master updates at $timestamp"
+message="Auto-sync: $PRIMARY updates at $timestamp"
 
 git add -A
 git commit -m "$message"
-git push origin master
+git push origin "$PRIMARY"
 
 synced_to=$(git rev-parse --short HEAD)
-echo "auto-sync: pushed master at $synced_to"
+echo "auto-sync: pushed $PRIMARY at $synced_to"
