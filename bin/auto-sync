@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Auto-sync master: small, safe updates on master get committed and pushed quickly.
+# Significant work must happen in a worktree or branch.
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+# Only operate on master
+branch=$(git rev-parse --abbrev-ref HEAD)
+if [[ "$branch" != "master" ]]; then
+    echo "auto-sync: not on master (current: $branch). Refusing to sync." >&2
+    exit 1
+fi
+
+# Pull first to avoid trivial conflicts
+if ! git pull --ff-only origin master; then
+    echo "auto-sync: could not fast-forward from origin. Manual resolution required." >&2
+    exit 1
+fi
+
+# Nothing to commit?
+if git diff --quiet && git diff --cached --quiet; then
+    echo "auto-sync: working tree clean. Nothing to do."
+    exit 0
+fi
+
+timestamp=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+message="Auto-sync: master updates at $timestamp"
+
+git add -A
+git commit -m "$message"
+git push origin master
+
+synced_to=$(git rev-parse --short HEAD)
+echo "auto-sync: pushed master at $synced_to"

@@ -1,0 +1,14 @@
+# /etc/systemd/system/qmd-refresh.service
+[Unit]
+Description=qmd vault pull + re-index + embed — NUC-10
+# Explicit git pull added 2026-07-08: `qmd update --pull` was observed NOT to
+# advance the git checkout (reindex-only). The pull leg of the Mac→box sync
+# must not depend on qmd internals. Pull is fail-soft: offline => reindex only.
+After=network-online.target
+ConditionPathExists=/home/dave/vault/.git
+
+[Service]
+Type=oneshot
+User=dave
+ExecStart=/bin/bash -lc 'git -C /home/dave/vault pull --ff-only || echo "qmd-refresh: git pull failed (offline?) — reindexing current tree"; qmd update && qmd embed --timeout 20'
+TimeoutStartSec=30min

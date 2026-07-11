@@ -1,0 +1,15 @@
+# Nightly claudius working-memory consolidation/prune — NUC-21.
+# Runs bin/consolidate_memory.sh (mechanical, no LLM, no network, fail-soft).
+# Deploy: sudo cp to /etc/systemd/system/, then `sudo systemctl daemon-reload`.
+[Unit]
+Description=Nightly claudius working-memory consolidation/prune — NUC-21
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/home/dave/.hermes/profiles/claudius/memories
+
+[Service]
+Type=oneshot
+User=dave
+ExecStart=/home/dave/agent-workforce/bin/consolidate_memory.sh
+TimeoutStartSec=5min
+NoNewPrivileges=true
