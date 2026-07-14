@@ -28,7 +28,7 @@ fi
 # ── Roll up the append-only run log ──
 cutoff=$(date -d '7 days ago' +%s 2>/dev/null || echo 0)
 runs=0 runs7d=0 sum_seconds=0
-proposals=0 noproposals=0 fails=0 violations=0 legacy=0
+proposals=0 noproposals=0 fails=0 violations=0 legacy=0 blocked=0 dedup=0
 first_ts="" last_ts=""
 
 if [ -r "$COST_LOG" ]; then
@@ -47,6 +47,13 @@ if [ -r "$COST_LOG" ]; then
     rs="${kv[run_seconds]:-}"
     case "$rs" in
       ''|*[!0-9]*) unset kv; continue ;;
+    esac
+    # NUC-37/38: BLOCKED (preflight/health gate) and DEDUP (idempotent kanban hit) are
+    # NOT real agent runs — no inference happened. Count them in their own buckets and
+    # exclude from runs / proposal-rate / avg-duration / the 7-day window.
+    case "${kv[outcome]:-}" in
+      BLOCKED) blocked=$(( blocked + 1 )); unset kv; continue ;;
+      DEDUP)   dedup=$(( dedup + 1 ));     unset kv; continue ;;
     esac
     runs=$(( runs + 1 ))
     sum_seconds=$(( sum_seconds + rs ))
@@ -120,6 +127,8 @@ tmp="$(mktemp "${TMPDIR:-/tmp}/scorecard.XXXXXX")" || { echo "scorecard: mktemp 
   echo "| Proposals produced | ${proposals} |"
   echo "| Proposal rate | ${proposal_rate} |"
   echo "| No-proposal runs | ${noproposals} |"
+  echo "| Blocked runs (preflight/health gate) | ${blocked} |"
+  echo "| Deduplicated dispatches (idempotent) | ${dedup} |"
   echo "| Error runs (fail/violation) | ${errors} (${fails} fail / ${violations} violation) |"
   echo "| Approvals promoted / rejected / edited | ${approvals_cell} |"
   echo "| Approval rate | ${approval_rate} |"
