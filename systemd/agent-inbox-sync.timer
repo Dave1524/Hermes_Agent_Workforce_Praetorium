@@ -1,0 +1,15 @@
+# agent-inbox-sync.timer — run the deterministic Notion<->agent-inbox reconcile every 30 min.
+# Frequent (not daily) so Dave's Notion decisions (Reject now, Approve->Mac hand-off) are acted
+# on within ~30 min. The job is model-free and cheap (a few Notion REST calls), so this costs
+# nothing but keeps the inbox and Notion converged. To slow it down, change OnCalendar to
+# hourly (*:0) or daily (05:00); to speed it up, *:0/15.
+[Unit]
+Description=Schedule the deterministic Notion<->agent-inbox reconcile
+
+[Timer]
+OnCalendar=*:0/30
+RandomizedDelaySec=2min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
