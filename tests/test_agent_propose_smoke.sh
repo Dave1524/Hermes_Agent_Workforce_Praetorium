@@ -36,6 +36,17 @@ exit "\${MOCK_EXIT_CODE:-0}"
 EOF
   chmod +x "$mock_hermes"
 
+  # NUC-27: network-free stub for key_usage()'s read-only GET /api/v1/key. Emulates
+  # the OpenRouter response shape so the run exercises the real parse + delta math
+  # with NO network call (this smoke test is offline by contract). Prepended to PATH
+  # in run_scenario so the runner's `curl` resolves here.
+  mkdir -p "$home/mockbin"
+  cat > "$home/mockbin/curl" <<'CURL'
+#!/usr/bin/env bash
+printf '%s' '{"data":{"usage":1.5,"limit":25,"limit_remaining":23.5}}'
+CURL
+  chmod +x "$home/mockbin/curl"
+
   cat > "$home/.config/agent-workforce/secrets.env" <<EOF
 OPENROUTER_API_KEY=test-key-not-real
 AGENT_RUNTIME_CMD=$mock_hermes
@@ -64,7 +75,7 @@ EOF
 run_scenario() {
   local home=$1 exit_code=$2 write_violation=$3 write_proposal=${4:-0} write_metrics=${5:-0}
   local rc=0
-  HOME="$home" AGENT_PROPOSE_LOCK="$home/lock" AGENT_RETRY_BASE_SECONDS=0 \
+  HOME="$home" PATH="$home/mockbin:$PATH" AGENT_PROPOSE_LOCK="$home/lock" AGENT_RETRY_BASE_SECONDS=0 \
     MOCK_EXIT_CODE="$exit_code" MOCK_WRITE_FILE="$write_violation" MOCK_WRITE_PROPOSAL="$write_proposal" \
     MOCK_WRITE_METRICS="$write_metrics" \
     bash "$SCRIPT" >"$home/stdout.log" 2>&1 || rc=$?
@@ -80,8 +91,10 @@ assert "cost.log outcome=NOPROPOSAL (NUC-23 vocab)" "grep -q 'outcome=NOPROPOSAL
 assert "cost.log model=test/model-x (profile model, NUC-23 fix)" "grep -q 'model=test/model-x' '$h1/agent-workforce/logs/cost.log'"
 assert "cost.log NOT model=test-model (not LLM_MODEL_BUSINESS)" "! grep -q 'model=test-model' '$h1/agent-workforce/logs/cost.log'"
 assert "cost.log profile=claudius" "grep -q 'profile=claudius' '$h1/agent-workforce/logs/cost.log'"
-assert "cost.log schema=2" "grep -q 'schema=2' '$h1/agent-workforce/logs/cost.log'"
-assert "cost.log cost_src=openrouter-dashboard" "grep -q 'cost_src=openrouter-dashboard' '$h1/agent-workforce/logs/cost.log'"
+assert "cost.log schema=3 (NUC-27 real-spend record)" "grep -q 'schema=3' '$h1/agent-workforce/logs/cost.log'"
+assert "cost.log cost_src=openrouter-key-api (NUC-27)" "grep -q 'cost_src=openrouter-key-api' '$h1/agent-workforce/logs/cost.log'"
+assert "cost.log usage_before parsed from /key probe (NUC-27)" "grep -q 'usage_before=1.5' '$h1/agent-workforce/logs/cost.log'"
+assert "cost.log cost_usd_delta = after-before (NUC-27)" "grep -q 'cost_usd_delta=0.000000' '$h1/agent-workforce/logs/cost.log'"
 assert "cost.log proposal=none" "grep -q 'proposal=none' '$h1/agent-workforce/logs/cost.log'"
 assert "cost.log memory=no-store (NUC-21 glue ran)" "grep -q 'memory=no-store' '$h1/agent-workforce/logs/cost.log'"
 assert "logs no-store when profile memory dir absent" "grep -q 'MEMORY: no per-profile store' '$h1/agent-workforce/logs/agent_propose.log'"

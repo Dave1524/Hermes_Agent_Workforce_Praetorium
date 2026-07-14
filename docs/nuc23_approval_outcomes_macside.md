@@ -1,12 +1,16 @@
 # NUC-23 AC2 — Approval outcomes (MAC-SIDE deferral spec)
 
-**Status: not implemented on Praetorium.** AC2 targets the *canonical* vault repo
+**Status: box-side surfacing shipped (NUC-26); the Mac-side producer is the one outstanding
+hand-off.** AC2 targets the *canonical* vault repo
 (`~/dev/obsidian-ai-os`, `00_system/tools/agent_inbox.py`), which lives **only on the Mac** —
 this box has just the box-safe projection (`vault-boxsafe`, no `agent_inbox.py`). Apply this on
 the Mac; its gate is `python3 00_system/tools/agent_inbox_test.py`.
 
 The box side already ships standalone: `bin/scorecard.sh` reads the approvals feed and reports
-`pending (awaiting Mac sync)` until this lands, then flips to real counts automatically.
+`pending (awaiting Mac sync)` until this lands, then flips to real counts automatically. As of
+NUC-26 the box also surfaces the raw pending-proposal backlog (count + oldest age) in
+`praetorium-status.sh` and the overnight morning report, so the queue stays visible to Dave even
+before this outcome feed exists — but the promote/reject decision itself stays a Mac-side human gate.
 
 ## Contract (box-safe)
 

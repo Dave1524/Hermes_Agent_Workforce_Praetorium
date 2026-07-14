@@ -95,6 +95,58 @@ echo; echo "── Last agent runs"
 tail -3 "$HOME/agent-workforce/logs/agent_propose.log" 2>/dev/null || echo "  no runs yet"
 echo; echo "── Cost log"
 tail -3 "$HOME/agent-workforce/logs/cost.log" 2>/dev/null || echo "  no cost entries yet"
+# ── NUC-26: surface the pending approval backlog (surfacing ONLY — promote/reject is a
+#    Mac-side human gate via agent_inbox.py against the canonical vault; the box never decides).
+#    Counts proposal files in _inbox/agents/ (excludes the _metrics/ digest dir) + oldest age.
+echo; echo "── Agent inbox backlog (pending proposals, NUC-26)"
+inbox_dir="$HOME/agent-worktrees/inbox/_inbox/agents"
+if [ -d "$inbox_dir" ]; then
+  pend=$(find "$inbox_dir" -maxdepth 1 -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
+  if [ "${pend:-0}" -gt 0 ]; then
+    oldest_line=$(find "$inbox_dir" -maxdepth 1 -type f -name '*.md' -printf '%T@ %p\n' 2>/dev/null \
+                    | sort -n | head -1)
+    oldest_epoch=${oldest_line%% *}          # first field: mtime epoch (secs.frac)
+    oldest_secs=${oldest_epoch%.*}           # strip fractional part
+    oldest_file=$(basename "${oldest_line#* }")
+    now_secs=$(date +%s)
+    age_days=$(( (now_secs - oldest_secs) / 86400 ))
+    printf "  pending  : %s awaiting Mac-side promote/reject (agent_inbox.py)\n" "$pend"
+    printf "  oldest   : %s (%sd old)\n" "$oldest_file" "$age_days"
+  else
+    echo "  pending  : 0 (inbox clear)"
+  fi
+else
+  echo "  inbox worktree not present ($inbox_dir)"
+fi
+# ── NUC-27: shared OpenRouter budget (whole fleet shares ONE key + a ~$25 cap) ──
+# Read-only GET of /key. Runs in a SUBSHELL so the key never leaks into this
+# script's env and is never printed. Fail-soft: any error prints a soft note and
+# never breaks the status run (this script is set -uo pipefail, NOT -e). Key is
+# taken from env if present, else grepped from secrets.env (same convention this
+# script already uses for the Brave key — no full source, no side effects).
+echo; echo "── OpenRouter budget (NUC-27)"
+(
+  base="${LLM_BASE_URL:-https://openrouter.ai/api/v1}"
+  secrets="$HOME/.config/agent-workforce/secrets.env"
+  key="${OPENROUTER_API_KEY:-}"
+  if [ -z "$key" ] && [ -f "$secrets" ]; then
+    key=$(grep -E '^OPENROUTER_API_KEY=' "$secrets" | tail -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+  fi
+  if [ -z "$key" ]; then echo "  key: MISSING — cannot check budget"; exit 0; fi
+  resp=$(curl -sS --max-time 15 "$base/key" -H "Authorization: Bearer $key" 2>/dev/null) \
+    || { echo "  budget: key endpoint unreachable (GET failed)"; exit 0; }
+  printf '%s' "$resp" | python3 -c 'import json,sys
+try:
+    d=json.load(sys.stdin)["data"]
+except Exception:
+    print("  budget: unparseable response"); sys.exit(0)
+def m(x): return "$%.2f" % x if isinstance(x,(int,float)) else "n/a"
+usage=d.get("usage"); limit=d.get("limit"); rem=d.get("limit_remaining")
+lim = m(limit) if limit is not None else "none"
+print("  usage: %s   limit: %s   remaining: %s" % (m(usage), lim, m(rem)))
+if isinstance(rem,(int,float)) and rem < 2:
+    print("  WARNING: OpenRouter budget nearly exhausted (%s left of shared ~$25 cap) -- fleet may stop completing; top up / raise the cap" % m(rem))'
+) || true
 echo; echo "── System"
 uptime | sed 's/^/  /'
 df -h / | tail -1 | awk '{print "  disk / : "$3" used of "$2" ("$5")"}'

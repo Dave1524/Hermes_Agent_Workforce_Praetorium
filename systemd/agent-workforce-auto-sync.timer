@@ -1,0 +1,20 @@
+# Deterministic auto-sync cadence — NUC-25.
+# Preserves the 15-minute cadence of the retired hermes cron job (59e63d34cf2d:
+# schedule "interval, minutes:15" — the card's "every 5 minutes" title was stale)
+# but with ZERO per-tick cost now that no model runs. The efficiency win comes
+# from dropping the LLM, not from changing the interval, so this keeps behaviour
+# identical. To cut wake-ups further, change OnCalendar to *:0/30 (every 30 min);
+# bin/auto-sync is idempotent and fast (git pull --ff-only, then exit early on a
+# clean tree), so either cadence is cheap and safe.
+#
+# Deploy: sudo systemctl enable --now agent-workforce-auto-sync.timer
+[Unit]
+Description=Deterministic auto-sync of agent-workforce source repo — NUC-25
+
+[Timer]
+OnCalendar=*:0/15
+RandomizedDelaySec=2min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,24 @@
+# Generic OnFailure alert handler (template) — NUC-25.
+# No alert unit existed in this repo or deploy-staging/, so this is the new
+# convention: units add `OnFailure=agent-alert@%n.service` and systemd starts one
+# instance per failing unit, with %i = the failed unit's name.
+#
+# Deliberately deterministic and SECRET-FREE: it records the failure to the
+# journal (tag "agent-alert", priority err) and appends a timestamped line to
+# /home/dave/logs/agent-alert.log, so a failed run is visible via `journalctl -t
+# agent-alert` or that log without spending anything. To fan out to Discord later,
+# extend ExecStart (DISCORD_BOT_TOKEN already lives in
+# ~/.config/agent-workforce/secrets.env) — kept out of the default to stay
+# secret-free and side-effect-free.
+#
+# Deploy: sudo cp to /etc/systemd/system/ + daemon-reload. No enable needed — it
+# is pulled in on demand by OnFailure=. (% is escaped as %% in unit files; %i is
+# the systemd instance specifier.)
+[Unit]
+Description=OnFailure alert for %i — NUC-25
+
+[Service]
+Type=oneshot
+User=dave
+ExecStart=/bin/sh -c 'msg="agent-workforce ALERT: unit %i failed at $(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)"; printf "%%s\\n" "$msg" | systemd-cat -t agent-alert -p err; mkdir -p /home/dave/logs; printf "%%s\\n" "$msg" >> /home/dave/logs/agent-alert.log'
+NoNewPrivileges=true

@@ -29,18 +29,57 @@ run_task="standing"
 run_proposal="none"
 run_outcome="NOPROPOSAL"
 mem_status="na"
+# NUC-27 real spend: shared-key cumulative USD spend snapshotted before the run.
+usage_before="unknown"
+
+key_usage() {
+  # NUC-27: real per-run spend tracking. Read-only GET of the shared OpenRouter
+  # key's cumulative spend ('usage', USD) via /key — auth pattern reused from
+  # bin/llm_smoke_test.sh. The whole fleet shares ONE key under a single ~$25 cap,
+  # so (usage_after - usage_before) is this run's real cost. Fail-soft BY CONTRACT:
+  # any network / HTTP / parse / missing-key error echoes 'unknown' and returns 0 —
+  # a budget probe must NEVER crash or block a run. Key read from the already-sourced
+  # env (secrets.env); never logged.
+  local base resp usage
+  base="${LLM_BASE_URL:-https://openrouter.ai/api/v1}"
+  [ -n "${OPENROUTER_API_KEY:-}" ] || { echo "unknown"; return 0; }
+  resp=$(curl -sS --max-time 15 "$base/key" \
+           -H "Authorization: Bearer $OPENROUTER_API_KEY" 2>/dev/null) \
+    || { echo "unknown"; return 0; }
+  usage=$(printf '%s' "$resp" | python3 -c 'import json,sys
+try:
+    u=json.load(sys.stdin)["data"].get("usage")
+    print(u if isinstance(u,(int,float)) else "unknown")
+except Exception:
+    print("unknown")' 2>/dev/null) || usage="unknown"
+  [ -n "$usage" ] || usage="unknown"
+  echo "$usage"
+}
 
 log_cost() {
   # Structured, append-only, key=value (NUC-23). model is the PROFILE's real
   # config.yaml model.name — NOT LLM_MODEL_BUSINESS (which was stale, echoing
-  # sonnet-5 while the profile runs haiku-4.5). tokens/cost are best-effort
-  # 'unknown': hermes token accounting is broken on OpenAI-compatible endpoints
-  # (#4404/#20741) — the OpenRouter dashboard is the spend source of truth.
+  # sonnet-5 while the profile runs haiku-4.5).
+  # NUC-27: cost is now REAL, not a flat 'unknown'. usage_before (snapshotted just
+  # before the retry loop) and usage_after (read here) are the shared key's
+  # cumulative OpenRouter spend in USD; cost_usd_delta = after - before = this run's
+  # real cost. Either bound may be 'unknown' when the budget probe fails — the delta
+  # is then 'unknown' too and the run still logs cleanly. tokens stay 'unknown':
+  # hermes token accounting is broken on OpenAI-compatible endpoints (#4404/#20741).
   # Written on FAIL/VIOLATION too so failure loops stay visible.
   local outcome=$1
   local elapsed=$(( $(date +%s) - run_started ))
-  printf 'ts=%s schema=2 profile=%s model=%s task=%s outcome=%s proposal=%s run_seconds=%s attempts=%s tokens=unknown cost_usd=unknown cost_src=openrouter-dashboard memory=%s\n' \
-    "$(date -Is)" "$run_profile" "$run_model" "$run_task" "$outcome" "$run_proposal" "$elapsed" "$attempt" "${mem_status:-na}" \
+  local usage_after delta
+  usage_after=$(key_usage)
+  delta=$(python3 -c 'import sys
+a,b=sys.argv[1],sys.argv[2]
+try:
+    print(f"{float(a)-float(b):.6f}")
+except Exception:
+    print("unknown")' "$usage_after" "${usage_before:-unknown}" 2>/dev/null) || delta="unknown"
+  [ -n "$delta" ] || delta="unknown"
+  printf 'ts=%s schema=3 profile=%s model=%s task=%s outcome=%s proposal=%s run_seconds=%s attempts=%s tokens=unknown usage_before=%s usage_after=%s cost_usd_delta=%s cost_src=openrouter-key-api memory=%s\n' \
+    "$(date -Is)" "$run_profile" "$run_model" "$run_task" "$outcome" "$run_proposal" "$elapsed" "$attempt" "${usage_before:-unknown}" "$usage_after" "$delta" "${mem_status:-na}" \
     >> "$LOG_DIR/cost.log"
 }
 
@@ -97,6 +136,11 @@ git -C "$WORKTREE" pull -q --ff-only origin agents/inbox 2>/dev/null || true
 run_cmd="$AGENT_RUNTIME_CMD"
 retry_base="${AGENT_RETRY_BASE_SECONDS:-30}"
 max_attempts=3; ok=false
+# NUC-27: snapshot the shared key's cumulative spend BEFORE any inference so the
+# post-run delta in log_cost() captures exactly this run's cost (fail-soft:
+# 'unknown' on any probe error — never blocks the run).
+usage_before=$(key_usage)
+log "cost: usage_before=$usage_before (shared OpenRouter key, USD)"
 while [ $attempt -lt $max_attempts ]; do
   attempt=$((attempt + 1))
   log "run attempt $attempt/$max_attempts: $run_cmd"

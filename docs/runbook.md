@@ -100,6 +100,9 @@ repo at `_inbox/agents/_metrics/scorecard.md` (same channel/branch as proposals,
 `github-boxsafe` deploy key). It runs fail-soft at the end of every `agent_propose.sh` run and on a
 weekly `scorecard.timer`; it is idempotent (identical input → byte-identical digest). Approval
 outcomes (promoted/rejected/edited) come from `_inbox/agents/_metrics/approvals.tsv`, written
-Mac-side by `agent_inbox.py` (AC2, deferred — canonical vault is Mac-only); until it lands the
-scorecard shows approvals "pending". Infra health lives in `praetorium-status.sh` (NUC-18) — linked,
-not duplicated.
+Mac-side by `agent_inbox.py` — the box holds no canonical vault, so this producer is the one
+remaining Mac-side hand-off (tracked NUC-26; spec: `docs/nuc23_approval_outcomes_macside.md`).
+The box side now SURFACES the raw pending-proposal backlog (count + oldest age) in
+`praetorium-status.sh` and the overnight morning report (NUC-26); until the approvals feed lands,
+the scorecard's approval cells still read "pending (awaiting Mac sync)". Infra health lives in
+`praetorium-status.sh` (NUC-18) — linked, not duplicated.
