@@ -137,6 +137,17 @@ flock -n 9 || { log "SKIP: previous run still active"; exit 0; }
 [ -f "$SECRETS" ] || block_exit "secrets.env missing"
 # shellcheck disable=SC1090
 source "$SECRETS"
+# NUC-24: optional per-job override (non-secret AGENT_TASK_SLUG/AGENT_RUNTIME_CMD only)
+# so new job types (bd-stall-radar, weekly-pre-assembly, augustus-content) reuse this
+# hardened runner (locking, retry, write-boundary enforcement, metrics, memory) without
+# duplicating API keys across multiple secrets files. Sourced AFTER the canonical secrets,
+# so it can only override task wiring, never credentials. (Reconciled into git from the
+# deployed runtime; the missing-file gate now records BLOCKED via NUC-37's block_exit.)
+if [ -n "${AGENT_JOB_OVERRIDES:-}" ]; then
+  [ -f "$AGENT_JOB_OVERRIDES" ] || block_exit "AGENT_JOB_OVERRIDES set but file missing: $AGENT_JOB_OVERRIDES"
+  # shellcheck disable=SC1090
+  source "$AGENT_JOB_OVERRIDES"
+fi
 [ -n "${OPENROUTER_API_KEY:-}" ] || block_exit "no API key — no run (by design)"
 [ -d "$WORKTREE" ] || block_exit "inbox worktree missing — run finish_boxsafe_clone.sh"
 [ -n "${AGENT_RUNTIME_CMD:-}" ] || block_exit "AGENT_RUNTIME_CMD not set (NUC-14 pending)"
