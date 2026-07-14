@@ -94,4 +94,22 @@ assert "exits 0" "[ '$rc' = 0 ]"
 assert "last 7d = 2" "grep -q '| Agent runs (last 7d) | 2 |' '$d6'"
 assert "all-time = 3" "grep -q '| Agent runs (all-time) | 3 |' '$d6'"
 
+echo "--- scenario 7: BLOCKED/DEDUP excluded from runs, own rows (NUC-37/38) ---"
+c7="$TD/cost7.log"; d7="$TD/digest7.md"
+cat > "$c7" <<'EOF'
+ts=2026-07-13T10:00:00+00:00 schema=3 profile=claudius model=x task=standing outcome=PROPOSAL proposal=a run_seconds=100 attempts=1
+ts=2026-07-13T10:05:00+00:00 schema=3 profile=claudius model=x task=standing outcome=NOPROPOSAL proposal=none run_seconds=80 attempts=1
+ts=2026-07-13T10:10:00+00:00 schema=3 profile=unknown model=unknown task=standing outcome=BLOCKED proposal=none run_seconds=0 attempts=0
+ts=2026-07-13T10:11:00+00:00 schema=3 profile=claudius model=x task=standing outcome=BLOCKED proposal=none run_seconds=0 attempts=0
+ts=2026-07-13T10:12:00+00:00 schema=3 profile=claudius model=x task=standing outcome=DEDUP proposal=none run_seconds=1 attempts=1
+EOF
+rc=$(sc "$c7" "$TD/none.tsv" "$d7")
+assert "exits 0" "[ '$rc' = 0 ]"
+assert "runs = 2 (BLOCKED/DEDUP excluded)" "grep -q '| Agent runs (all-time) | 2 |' '$d7'"
+assert "proposals = 1" "grep -q '| Proposals produced | 1 |' '$d7'"
+assert "proposal rate 50% (1/2), denominator excludes blocked/dedup" "grep -q 'Proposal rate | 50% (1/2)' '$d7'"
+assert "blocked runs row = 2" "grep -q '| Blocked runs (preflight/health gate) | 2 |' '$d7'"
+assert "dedup dispatches row = 1" "grep -q '| Deduplicated dispatches (idempotent) | 1 |' '$d7'"
+assert "avg duration 90s (blocked/dedup seconds excluded)" "grep -q '| Avg run duration | 90s |' '$d7'"
+
 exit $fail

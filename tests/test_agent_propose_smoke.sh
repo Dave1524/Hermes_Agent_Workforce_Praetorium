@@ -41,8 +41,17 @@ EOF
   # with NO network call (this smoke test is offline by contract). Prepended to PATH
   # in run_scenario so the runner's `curl` resolves here.
   mkdir -p "$home/mockbin"
+  # Offline stub for BOTH probes the runner may make: the NUC-27 /key spend GET and the
+  # NUC-31 qmd /health GET. Branch on the URL: a /health request exits MOCK_QMD_HEALTH_RC
+  # (0=up, nonzero=down) so scenarios can drive the health gate; everything else returns
+  # the OpenRouter /key JSON. No network either way.
   cat > "$home/mockbin/curl" <<'CURL'
 #!/usr/bin/env bash
+for a in "$@"; do
+  case "$a" in
+    *"/health"*) exit "${MOCK_QMD_HEALTH_RC:-0}" ;;
+  esac
+done
 printf '%s' '{"data":{"usage":1.5,"limit":25,"limit_remaining":23.5}}'
 CURL
   chmod +x "$home/mockbin/curl"
@@ -74,8 +83,13 @@ EOF
 
 run_scenario() {
   local home=$1 exit_code=$2 write_violation=$3 write_proposal=${4:-0} write_metrics=${5:-0}
+  # NUC-31: default both health policies to OFF so the existing scenarios stay purely
+  # about runtime/proposal logic (and never shell out to the host's real ss/curl). The
+  # daemon-gate scenarios pass explicit policies + a qmd health rc.
+  local qmd_policy=${6:-off} brave_policy=${7:-off} qmd_rc=${8:-0}
   local rc=0
   HOME="$home" PATH="$home/mockbin:$PATH" AGENT_PROPOSE_LOCK="$home/lock" AGENT_RETRY_BASE_SECONDS=0 \
+    QMD_HEALTH_POLICY="$qmd_policy" BRAVE_HEALTH_POLICY="$brave_policy" MOCK_QMD_HEALTH_RC="$qmd_rc" \
     MOCK_EXIT_CODE="$exit_code" MOCK_WRITE_FILE="$write_violation" MOCK_WRITE_PROPOSAL="$write_proposal" \
     MOCK_WRITE_METRICS="$write_metrics" \
     bash "$SCRIPT" >"$home/stdout.log" 2>&1 || rc=$?
@@ -140,5 +154,56 @@ assert "cost.log memory=fallback (runner backstop wrote it)" "grep -q 'memory=fa
 assert "runner logged fallback write" "grep -q 'wrote runner fallback entry' '$h6/agent-workforce/logs/agent_propose.log'"
 assert "MEMORY.md created with an entry" "[ -s '$h6/.hermes/profiles/claudius/memories/MEMORY.md' ]"
 assert "fallback entry carries a run tag" "grep -q '\[run:' '$h6/.hermes/profiles/claudius/memories/MEMORY.md'"
+
+echo "--- scenario 7: preflight BLOCKED — secrets.env missing (NUC-37) ---"
+h7=$(sandbox); rm -f "$h7/.config/agent-workforce/secrets.env"
+rc=$(run_scenario "$h7" 0 0)
+assert "exits 0 (blocked is not a crash)" "[ '$rc' = 0 ]"
+assert "logs BLOCKED secrets.env missing" "grep -q 'BLOCKED: secrets.env missing' '$h7/agent-workforce/logs/agent_propose.log'"
+assert "cost.log outcome=BLOCKED (NUC-37)" "grep -q 'outcome=BLOCKED' '$h7/agent-workforce/logs/cost.log'"
+assert "cost.log profile=unknown (secrets never sourced)" "grep -q 'profile=unknown' '$h7/agent-workforce/logs/cost.log'"
+assert "cost.log usage_before=unknown (no network probe on early block)" "grep -q 'usage_before=unknown' '$h7/agent-workforce/logs/cost.log'"
+assert "agent never launched (no hermes argv)" "[ ! -s '$h7/hermes_argv.log' ]"
+
+echo "--- scenario 8: qmd down + policy=block -> BLOCKED, agent not launched (NUC-31/37) ---"
+h8=$(sandbox)
+rc=$(run_scenario "$h8" 0 0 0 0 block off 7)   # qmd_rc=7 => /health probe reports 'down'
+assert "exits 0 (blocked is not a crash)" "[ '$rc' = 0 ]"
+assert "logs BLOCKED qmd daemon down" "grep -q 'BLOCKED: qmd MCP daemon down' '$h8/agent-workforce/logs/agent_propose.log'"
+assert "cost.log outcome=BLOCKED" "grep -q 'outcome=BLOCKED' '$h8/agent-workforce/logs/cost.log'"
+assert "cost.log profile=claudius (gate runs after profile resolution, NUC-31)" "grep -q 'profile=claudius' '$h8/agent-workforce/logs/cost.log'"
+assert "agent never launched (no hermes argv)" "[ ! -s '$h8/hermes_argv.log' ]"
+
+echo "--- scenario 9: qmd down + policy=warn -> WARN, run proceeds (NUC-31) ---"
+h9=$(sandbox)
+rc=$(run_scenario "$h9" 0 0 0 0 warn off 7)
+assert "exits 0" "[ '$rc' = 0 ]"
+assert "logs WARN qmd (policy=warn)" "grep -q 'WARN: qmd MCP daemon down (policy=warn)' '$h9/agent-workforce/logs/agent_propose.log'"
+assert "run proceeded to the agent (hermes argv present)" "[ -s '$h9/hermes_argv.log' ]"
+assert "cost.log outcome=NOPROPOSAL (not BLOCKED)" "grep -q 'outcome=NOPROPOSAL' '$h9/agent-workforce/logs/cost.log'"
+assert "cost.log has no BLOCKED record" "! grep -q 'outcome=BLOCKED' '$h9/agent-workforce/logs/cost.log'"
+
+echo "--- scenario 10: DEDUP — runtime exits 3 (idempotent kanban hit) (NUC-38) ---"
+h10=$(sandbox)
+rc=$(run_scenario "$h10" 3 0)   # mock runtime exits 3 == DEDUP_EXIT
+assert "exits 0 (dedup is clean, not a failure)" "[ '$rc' = 0 ]"
+assert "logs DEDUP idempotent hit" "grep -q 'DEDUP: kanban idempotent hit' '$h10/agent-workforce/logs/agent_propose.log'"
+assert "cost.log outcome=DEDUP" "grep -q 'outcome=DEDUP' '$h10/agent-workforce/logs/cost.log'"
+assert "cost.log attempts=1 (not retried)" "grep -q 'attempts=1' '$h10/agent-workforce/logs/cost.log'"
+assert "cost.log memory=na (dedup skips the memory block)" "grep -q 'memory=na' '$h10/agent-workforce/logs/cost.log'"
+assert "no runner memory fallback written" "! grep -q 'wrote runner fallback entry' '$h10/agent-workforce/logs/agent_propose.log'"
+
+echo "--- scenario 11: kanban path de-stacks outer retry to 1 attempt (NUC-38) ---"
+h11=$(sandbox)
+# A kanban-NAMED runtime that always fails: run_cmd contains 'kanban_run_and_wait.sh',
+# so max_attempts must collapse to 1 (hermes already retries internally — no 3x outer).
+kmock="$h11/kanban_run_and_wait.sh"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$kmock"; chmod +x "$kmock"
+sed -i "s#^AGENT_RUNTIME_CMD=.*#AGENT_RUNTIME_CMD=$kmock#" "$h11/.config/agent-workforce/secrets.env"
+rc=$(run_scenario "$h11" 0 0)
+assert "exits 1 (FAIL)" "[ '$rc' = 1 ]"
+assert "FAIL after exactly 1 attempt (kanban de-stack)" "grep -q 'FAIL: runtime failed after 1 attempts' '$h11/agent-workforce/logs/agent_propose.log'"
+assert "cost.log attempts=1" "grep -q 'attempts=1' '$h11/agent-workforce/logs/cost.log'"
+assert "NOT the old 3-attempt behavior" "! grep -q 'after 3 attempts' '$h11/agent-workforce/logs/agent_propose.log'"
 
 exit $fail

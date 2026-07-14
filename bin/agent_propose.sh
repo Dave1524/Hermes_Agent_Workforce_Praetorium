@@ -70,7 +70,13 @@ log_cost() {
   local outcome=$1
   local elapsed=$(( $(date +%s) - run_started ))
   local usage_after delta
-  usage_after=$(key_usage)
+  # NUC-37: on a BLOCKED early-exit usage_before was never snapshotted (still
+  # 'unknown'), so the delta is 'unknown' regardless — skip the live OpenRouter GET.
+  if [ "${usage_before:-unknown}" = unknown ]; then
+    usage_after=unknown
+  else
+    usage_after=$(key_usage)
+  fi
   delta=$(python3 -c 'import sys
 a,b=sys.argv[1],sys.argv[2]
 try:
@@ -88,19 +94,52 @@ refresh_scorecard() {
   # blocks or fails the run). The deployed scorecard is the runtime copy.
   local sc="$HOME/agent-workforce/bin/scorecard.sh"
   [ -x "$sc" ] || return 0
+  # NUC-37: never let scorecard.sh's `mkdir -p $METRICS_DIR` recreate a MISSING inbox
+  # worktree as a plain dir — that would silently defeat the [ -d "$WORKTREE" ] gate
+  # on the next run. Skip the refresh when the worktree isn't a real git checkout.
+  [ -e "$WORKTREE/.git" ] || { log "scorecard skip: inbox worktree absent"; return 0; }
   "$sc" >>"$LOG_DIR/scorecard.log" 2>&1 || log "scorecard refresh failed (non-fatal)"
+}
+
+block_exit() {
+  # NUC-37: a preflight gate failed -> this run is BLOCKED, not "nothing to propose".
+  # Record it (visible in cost.log + the scorecard) then exit 0 — blocked is not a
+  # crash; the timer simply retries next cycle. log_cost/refresh_scorecard are
+  # fail-soft. On the earliest gate (before secrets are sourced) key_usage() short-
+  # circuits to 'unknown' with no network call and the record carries profile=unknown.
+  log "BLOCKED: $1"
+  log_cost BLOCKED
+  refresh_scorecard
+  exit 0
+}
+
+# NUC-31: fail-soft MCP daemon health probes (reuse the exact patterns in
+# praetorium-status.sh — qmd :8765/health, brave :8766). A missing probe tool returns
+# "healthy" so a box without curl/ss never blocks; curl is bounded by --max-time 2 so a
+# hung daemon can't stall the run.
+qmd_healthy() {
+  command -v curl >/dev/null 2>&1 || return 0
+  curl -sf --max-time 2 http://127.0.0.1:8765/health >/dev/null 2>&1
+}
+brave_healthy() {
+  command -v ss >/dev/null 2>&1 || return 0
+  ss -ltn 2>/dev/null | grep -q ':8766'
 }
 
 exec 9>"$LOCK"
 flock -n 9 || { log "SKIP: previous run still active"; exit 0; }
 
-# ── Preflight: every gate must hold, otherwise exit quietly with NO proposal ──
-[ -f "$SECRETS" ] || { log "BLOCKED: secrets.env missing"; exit 0; }
+# ── Preflight: every gate must hold, else BLOCKED (recorded) with NO proposal (NUC-37) ──
+# NOTE: the "previous run still active" SKIP at the flock above stays a SILENT exit —
+# the lock is NOT held there (flock just failed), it is healthy timer overlap (the
+# active run records its own outcome), and a cost.log append there is the one place it
+# could race the live run's append. Do not convert that SKIP to a BLOCKED record.
+[ -f "$SECRETS" ] || block_exit "secrets.env missing"
 # shellcheck disable=SC1090
 source "$SECRETS"
-[ -n "${OPENROUTER_API_KEY:-}" ] || { log "BLOCKED: no API key — no run (by design)"; exit 0; }
-[ -d "$WORKTREE" ] || { log "BLOCKED: inbox worktree missing — run finish_boxsafe_clone.sh"; exit 0; }
-[ -n "${AGENT_RUNTIME_CMD:-}" ] || { log "BLOCKED: AGENT_RUNTIME_CMD not set (NUC-14 pending)"; exit 0; }
+[ -n "${OPENROUTER_API_KEY:-}" ] || block_exit "no API key — no run (by design)"
+[ -d "$WORKTREE" ] || block_exit "inbox worktree missing — run finish_boxsafe_clone.sh"
+[ -n "${AGENT_RUNTIME_CMD:-}" ] || block_exit "AGENT_RUNTIME_CMD not set (NUC-14 pending)"
 
 # ── NUC-23: resolve profile / model / task for the metrics record ──
 run_profile="${AGENT_PROFILE:-}"
@@ -114,6 +153,29 @@ if [ -r "$profile_cfg" ]; then
   run_model=$(awk '/^model:/{m=1;next} /^[^[:space:]]/{m=0} m && /^[[:space:]]+name:/{sub(/#.*/,"");sub(/^[[:space:]]*name:[[:space:]]*/,"");gsub(/[[:space:]]/,"");print;exit}' "$profile_cfg")
 fi
 run_model="${run_model:-unknown}"
+
+# ── NUC-31: preflight MCP tool-health gate (advisory by default) ──
+# Placed AFTER profile/model resolution so a warn/block record carries the real
+# profile+model, and BEFORE the git checkout/run loop so the agent never launches when
+# blocked. Per-daemon policy: warn (log + proceed) | block (log BLOCKED via NUC-37 + no
+# run) | off (skip the probe). Defaults are warn-only for BOTH daemons — a daemon outage
+# is visible in the run log but never blocks a run; flip to block with a one-word change.
+QMD_HEALTH_POLICY="${QMD_HEALTH_POLICY:-warn}"     # warn | block | off
+BRAVE_HEALTH_POLICY="${BRAVE_HEALTH_POLICY:-warn}" # warn | block | off
+if [ "$QMD_HEALTH_POLICY" != off ] && ! qmd_healthy; then
+  if [ "$QMD_HEALTH_POLICY" = block ]; then
+    block_exit "qmd MCP daemon down (http://127.0.0.1:8765/health) — no vault retrieval"
+  else
+    log "WARN: qmd MCP daemon down (policy=warn) — proceeding without vault retrieval"
+  fi
+fi
+if [ "$BRAVE_HEALTH_POLICY" != off ] && ! brave_healthy; then
+  if [ "$BRAVE_HEALTH_POLICY" = block ]; then
+    block_exit "brave MCP endpoint down (127.0.0.1:8766) — no web search"
+  else
+    log "WARN: brave MCP endpoint down (policy=warn) — proceeding without web search"
+  fi
+fi
 
 # ── NUC-21 working memory: snapshot the episodic store BEFORE the run so we can
 #    tell afterward whether the agent recorded its own entry (fail-soft glue). ──
@@ -135,21 +197,50 @@ git -C "$WORKTREE" pull -q --ff-only origin agents/inbox 2>/dev/null || true
 # test; real hermes never accepted it. Do not reintroduce it.
 run_cmd="$AGENT_RUNTIME_CMD"
 retry_base="${AGENT_RETRY_BASE_SECONDS:-30}"
-max_attempts=3; ok=false
+DEDUP_EXIT=3
+# NUC-38: the kanban path already carries hermes' own --max-retries, so stacking the
+# outer 3x retry just re-blocks the identical card — the kanban path gets ONE outer
+# attempt. Other (direct hermes -z) paths keep 3x. AGENT_MAX_ATTEMPTS overrides either.
+case "$run_cmd" in
+  *kanban_run_and_wait.sh*) max_attempts="${AGENT_MAX_ATTEMPTS:-1}" ;;
+  *)                        max_attempts="${AGENT_MAX_ATTEMPTS:-3}" ;;
+esac
+ok=false; is_dedup=false; rc=0
+# NUC-29: stamp the real date once, exported so the kanban wrapper (and any future
+# direct hermes -z path) share ONE value — no midnight-rollover mismatch between the two
+# scripts. RUN_DATE feeds the proposal filename + day-count math; TODAY is the human form.
+export RUN_DATE="${RUN_DATE:-$(date +%Y-%m-%d)}"
+export TODAY="${TODAY:-$(date '+%A, %-d %B %Y')}"
+log "date: RUN_DATE=$RUN_DATE"
 # NUC-27: snapshot the shared key's cumulative spend BEFORE any inference so the
 # post-run delta in log_cost() captures exactly this run's cost (fail-soft:
 # 'unknown' on any probe error — never blocks the run).
 usage_before=$(key_usage)
 log "cost: usage_before=$usage_before (shared OpenRouter key, USD)"
-while [ $attempt -lt $max_attempts ]; do
+while [ "$attempt" -lt "$max_attempts" ]; do
   attempt=$((attempt + 1))
+  rc=0
   log "run attempt $attempt/$max_attempts: $run_cmd"
-  if timeout "${AGENT_TIMEOUT_MINUTES:-30}m" bash -lc "$run_cmd" \
-       >>"$LOG_DIR/agent_run.log" 2>&1; then
-    ok=true; break
-  fi
+  timeout "${AGENT_TIMEOUT_MINUTES:-30}m" bash -lc "$run_cmd" \
+    >>"$LOG_DIR/agent_run.log" 2>&1 || rc=$?
+  if [ "$rc" -eq 0 ]; then ok=true; break; fi
+  # NUC-38: a distinct DEDUP exit (idempotent kanban hit — the card already ran under
+  # today's key) is not a failure and must not be retried.
+  if [ "$rc" -eq "$DEDUP_EXIT" ]; then is_dedup=true; break; fi
   sleep $((retry_base * attempt * attempt))   # 30s, 120s backoff by default
 done
+
+# ── NUC-38: idempotent hit — not a real run. No proposal, no memory fallback, no retry,
+#    and no worktree reset (the wrapper only queried the API; any prior same-key run
+#    already committed its own proposal). Record outcome=DEDUP and exit clean. Must come
+#    BEFORE the FAIL branch: is_dedup sets ok=false but is not a failure. ──
+if $is_dedup; then
+  log "DEDUP: kanban idempotent hit — card already terminal for today's key; no run recorded"
+  run_outcome=DEDUP; run_proposal=none; mem_status=na
+  log_cost DEDUP
+  refresh_scorecard
+  exit 0
+fi
 
 if ! $ok; then
   log "FAIL: runtime failed after $max_attempts attempts — resetting worktree, NO proposal emitted"
