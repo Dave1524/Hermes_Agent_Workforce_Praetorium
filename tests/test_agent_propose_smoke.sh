@@ -206,4 +206,35 @@ assert "FAIL after exactly 1 attempt (kanban de-stack)" "grep -q 'FAIL: runtime 
 assert "cost.log attempts=1" "grep -q 'attempts=1' '$h11/agent-workforce/logs/cost.log'"
 assert "NOT the old 3-attempt behavior" "! grep -q 'after 3 attempts' '$h11/agent-workforce/logs/agent_propose.log'"
 
+echo "--- scenario 12: AGENT_RUN_MODE=ops success (NUC-36) ---"
+h12=$(sandbox)
+# Ops mode: no inbox required; mock writes outside inbox must NOT trip write-boundary.
+rm -rf "$h12/agent-worktrees/inbox"
+printf '\nAGENT_RUN_MODE=ops\nAGENT_TASK_SLUG=overnight-morning-report\n' \
+  >> "$h12/.config/agent-workforce/secrets.env"
+# Re-point mock to also touch a non-inbox path (would be VIOLATION in proposal mode).
+cat > "$h12/mock_hermes.sh" <<EOF
+#!/usr/bin/env bash
+echo "\$@" >> "$h12/hermes_argv.log"
+mkdir -p "$h12/logs/overnight"
+echo report > "$h12/logs/overnight/morning-report-test.md"
+exit 0
+EOF
+chmod +x "$h12/mock_hermes.sh"
+rc=$(run_scenario "$h12" 0 0)
+assert "exits 0" "[ '$rc' = 0 ]"
+assert "logs ops run completed" "grep -q 'OK: ops run completed' '$h12/agent-workforce/logs/agent_propose.log'"
+assert "cost.log outcome=OPS (ops vocab)" "grep -q 'outcome=OPS' '$h12/agent-workforce/logs/cost.log'"
+assert "cost.log task=overnight-morning-report" "grep -q 'task=overnight-morning-report' '$h12/agent-workforce/logs/cost.log'"
+assert "cost.log memory=na (ops skips memory)" "grep -q 'memory=na' '$h12/agent-workforce/logs/cost.log'"
+assert "ops report file written by runtime" "[ -f '$h12/logs/overnight/morning-report-test.md' ]"
+assert "no proposal commit path (no agents/inbox worktree)" "[ ! -d '$h12/agent-worktrees/inbox' ]"
+
+echo "--- scenario 13: AGENT_RUN_MODE=ops still enforces write-boundary only in proposal mode ---"
+h13=$(sandbox)
+# Default proposal mode + out-of-bounds write still VIOLATION (regression guard).
+rc=$(run_scenario "$h13" 0 1)
+assert "proposal mode still exits 1 on boundary violation" "[ '$rc' = 1 ]"
+assert "proposal mode still logs FATAL boundary" "grep -q 'FATAL: agent touched files outside' '$h13/agent-workforce/logs/agent_propose.log'"
+
 exit $fail

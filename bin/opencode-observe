@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+# Start mitmdump capture proxy, route OpenCode through it, then clean up.
+# Usage:  bin/opencode-observe [--port PORT] [--dir DIR] [--no-open] [--] [opencode args...]
+#
+# Environment:
+#   OPENCODE_OBSERVABILITY_DIR  — capture output root (default: $PWD/var)
+#   OPENCODE_OBSERVE_PORT      — proxy listen port (default: 9453)
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+# ── Defaults ───────────────────────────────────────────────────────────────────
+PORT="${OPENCODE_OBSERVE_PORT:-9453}"
+OBS_DIR="${OPENCODE_OBSERVABILITY_DIR:-$PWD/var}"
+FLOWS_DIR="$OBS_DIR/opencode-observability/flows"
+OPENCODE_CMD="${OPENCODE_CMD:-opencode}"
+NO_OPEN=false
+
+# ── Parse args ─────────────────────────────────────────────────────────────────
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --port) PORT="$2"; shift 2 ;;
+    --dir)  OBS_DIR="$2"; shift 2 ;;
+    --no-open) NO_OPEN=true; shift ;;
+    --)      shift; break ;;
+    *)       break ;;
+  esac
+done
+
+# ── Help ───────────────────────────────────────────────────────────────────────
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+  echo "Usage: bin/opencode-observe [--port PORT] [--dir DIR] [--no-open] [--] [opencode args...]"
+  echo ""
+  echo "Start mitmdump, route OpenCode through it, capture LLM flows."
+  echo ""
+  echo "Options:"
+  echo "  --port PORT     Proxy listen port (default: 9453)"
+  echo "  --dir DIR       Capture output directory root (default: \$PWD/var)"
+  echo "  --no-open       Only start proxy, do not launch OpenCode"
+  echo "  --help, -h      Show this help"
+  echo ""
+  echo "Environment:"
+  echo "  OPENCODE_OBSERVABILITY_DIR  override capture output root"
+  echo "  OPENCODE_OBSERVE_PORT       override proxy listen port"
+  echo "  OPENCODE_CMD                override opencode binary (default: opencode)"
+  echo ""
+  echo "Examples:"
+  echo "  bin/opencode-observe run hello"
+  echo "  bin/opencode-observe --port 9999 -- agent run @praetorium-planner hello"
+  echo "  OPENCODE_OBSERVABILITY_DIR=/tmp/obs bin/opencode-observe --no-open"
+  exit 0
+fi
+
+# ── Checks ──────────────────────────────────────────────────────────────────────
+if ! command -v mitmdump &>/dev/null; then
+  echo "ERROR: mitmdump not found. Install mitmproxy: pip3 install mitmproxy" >&2
+  exit 1
+fi
+
+CA_CERT="$HOME/.mitmproxy/mitmproxy-ca-cert.pem"
+if [[ ! -f "$CA_CERT" ]]; then
+  echo "WARNING: mitmproxy CA cert not found at $CA_CERT." >&2
+  echo "  Run 'mitmdump' once to generate it, then restart." >&2
+  echo "  Attempting to generate now with a brief listen..." >&2
+  # Start and immediately kill to trigger cert generation
+  timeout 3 mitmdump --listen-port "$PORT" -q 2>/dev/null || true
+  if [[ ! -f "$CA_CERT" ]]; then
+    echo "ERROR: Could not generate CA cert automatically." >&2
+    echo "  Run: mitmdump --listen-port $PORT -q & sleep 2 && kill %1" >&2
+    exit 1
+  fi
+  echo "  CA cert generated at $CA_CERT" >&2
+fi
+
+# Check port availability
+if command -v ss &>/dev/null; then
+  if ss -tln "sport = :$PORT" 2>/dev/null | grep -q ":$PORT"; then
+    echo "ERROR: Port $PORT is already in use." >&2
+    exit 1
+  fi
+elif command -v lsof &>/dev/null; then
+  if lsof -i ":$PORT" -sTCP:LISTEN &>/dev/null 2>&1; then
+    echo "ERROR: Port $PORT is already in use." >&2
+    exit 1
+  fi
+fi
+
+# ── Setup ──────────────────────────────────────────────────────────────────────
+mkdir -p "$FLOWS_DIR"
+chmod 700 "$FLOWS_DIR"
+
+ADDON_SCRIPT="$PWD/tools/opencode-observability/capture_addon.py"
+if [[ ! -f "$ADDON_SCRIPT" ]]; then
+  echo "ERROR: Addon script not found at $ADDON_SCRIPT" >&2
+  exit 1
+fi
+
+# Log file for mitmdump (not the captured flows — those go to FLOWS_DIR)
+PROXY_LOG=$(mktemp /tmp/opencode-observe-proxy-XXXX.log)
+trap 'rm -f "$PROXY_LOG"' EXIT
+
+# ── Start proxy ────────────────────────────────────────────────────────────────
+echo "Starting mitmdump on 127.0.0.1:$PORT ..." >&2
+echo "  Captures -> $FLOWS_DIR" >&2
+export OPENCODE_OBSERVABILITY_DIR="$OBS_DIR"
+
+mitmdump \
+  --listen-host 127.0.0.1 \
+  --listen-port "$PORT" \
+  --set block_global=false \
+  --scripts "$ADDON_SCRIPT" \
+  > "$PROXY_LOG" 2>&1 &
+PROXY_PID=$!
+
+# Give proxy time to start
+sleep 1
+if ! kill -0 "$PROXY_PID" 2>/dev/null; then
+  echo "ERROR: mitmdump failed to start. Check log:" >&2
+  cat "$PROXY_LOG" >&2
+  exit 1
+fi
+
+cleanup() {
+  echo ""
+  echo "Shutting down mitmdump (PID $PROXY_PID)..." >&2
+  kill "$PROXY_PID" 2>/dev/null || true
+  wait "$PROXY_PID" 2>/dev/null || true
+  echo "Proxy stopped." >&2
+  echo "Captures saved to: $FLOWS_DIR" >&2
+  echo "Analyze with: python3 tools/opencode-observability/analyze_flows.py" >&2
+}
+trap cleanup EXIT INT TERM
+
+echo "  Proxy PID: $PROXY_PID" >&2
+echo "  mitmdump log: $PROXY_LOG" >&2
+echo "" >&2
+
+if $NO_OPEN; then
+  echo "Proxy running in background (--no-open). Press Ctrl+C to stop." >&2
+  wait "$PROXY_PID"
+  exit 0
+fi
+
+# ── Run OpenCode through proxy ─────────────────────────────────────────────────
+echo "Starting OpenCode through proxy..." >&2
+echo "  Command: $OPENCODE_CMD $*" >&2
+echo "" >&2
+
+# Set proxy env only for the OpenCode child process
+HTTPS_PROXY="http://127.0.0.1:$PORT" \
+HTTP_PROXY="http://127.0.0.1:$PORT" \
+NODE_EXTRA_CA_CERTS="$CA_CERT" \
+NO_PROXY="localhost,127.0.0.1,::1,.local,192.168.0.0/16,10.0.0.0/8" \
+  "$OPENCODE_CMD" "$@"
+
+EXIT_CODE=$?
+echo ""
+echo "OpenCode exited with code $EXIT_CODE" >&2
+exit $EXIT_CODE

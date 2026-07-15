@@ -1,0 +1,12 @@
+# Before the 04:30 Amsterdam agent-proposal window (~02:25 UTC in CEST).
+# Box timezone is Europe/Amsterdam (NUC-24); OnCalendar is local wall clock.
+[Unit]
+Description=Schedule overnight pre-snapshot — NUC-36
+
+[Timer]
+OnCalendar=*-*-* 04:25
+RandomizedDelaySec=2min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

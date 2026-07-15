@@ -5,3 +5,7 @@ __pycache__/
 *.pyc
 .env
 secrets.env
+
+# OpenCode observability — captured LLM prompt/response data.
+# These contain full prompt and response text and MUST NOT be committed.
+var/opencode-observability/

@@ -1,0 +1,11 @@
+# ~06:15 Amsterdam morning summary for Dave.
+[Unit]
+Description=Schedule overnight morning report — NUC-36
+
+[Timer]
+OnCalendar=*-*-* 06:15
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

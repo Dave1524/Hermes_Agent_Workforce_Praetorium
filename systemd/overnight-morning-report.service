@@ -1,0 +1,16 @@
+# Overnight morning report via guarded runner (AGENT_RUN_MODE=ops) — NUC-36.
+# Replaces Hermes cron morning-report LLM job.
+[Unit]
+Description=Overnight morning report (ops mode) — NUC-36
+After=network-online.target
+Wants=network-online.target
+OnFailure=agent-alert@%n.service
+
+[Service]
+Type=oneshot
+User=dave
+Environment=AGENT_JOB_OVERRIDES=/home/dave/.config/agent-workforce/overnight_morning_report.env
+EnvironmentFile=/home/dave/.config/agent-workforce/secrets.env
+ExecStart=/home/dave/agent-workforce/bin/agent_propose.sh
+TimeoutStartSec=15min
+NoNewPrivileges=true
