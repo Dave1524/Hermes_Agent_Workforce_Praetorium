@@ -5,11 +5,16 @@ Box-side operational home for the AI agent workforce running on **Praetorium**, 
 ## What this repo holds
 
 - `bin/` – orchestration scripts, agent runners, status/verification tooling
-- `profiles/` – per-agent profile/task instructions
+- `profiles/` – per-agent profile/task instructions (incl. augustus / bd-stall / weekly-pre)
 - `docs/` – runbooks, workflow rules, data-boundary guidelines
-- `systemd/` – timers and services for automated tasks
+- `systemd/` – timers and services for automated tasks (canonical unit sources)
+- `config/job-overrides/` – non-secret per-job env templates (`AGENT_JOB_OVERRIDES`)
 - `discord-bot/` – lightweight bot for inbox/approval notifications
 - `.claude/briefs/` – current and archived NUC improvement briefs
+
+**Source of truth:** this git tree (`main`). The live box also has a deployed copy at
+`~/agent-workforce/` (what systemd runs) and secrets/overrides under
+`~/.config/agent-workforce/`. See `docs/runbook.md` § Source of truth / Job wiring (NUC-28).
 
 ## Branching model
 

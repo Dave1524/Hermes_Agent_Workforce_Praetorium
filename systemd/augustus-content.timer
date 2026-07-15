@@ -1,0 +1,10 @@
+[Unit]
+Description=Nightly Augustus content pitch+draft — 01:30 Europe/Amsterdam
+
+[Timer]
+OnCalendar=*-*-* 01:30
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

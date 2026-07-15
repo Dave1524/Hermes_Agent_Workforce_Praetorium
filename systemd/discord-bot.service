@@ -1,0 +1,18 @@
+[Unit]
+Description=Praetorium Discord test bot — NUC-13 (Phase 2)
+# DO NOT enable until a bot token exists in secrets.env and the private server is created.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dave
+EnvironmentFile=/home/dave/.config/agent-workforce/secrets.env
+WorkingDirectory=/home/dave/agent-workforce/discord-bot
+ExecStart=/usr/bin/node bot.mjs
+Restart=on-failure
+RestartSec=30
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

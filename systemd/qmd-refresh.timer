@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh qmd vault index every 30 minutes — NUC-10
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=30min
+RandomizedDelaySec=2min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

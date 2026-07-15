@@ -1,0 +1,13 @@
+[Unit]
+Description=BD pipeline stall radar, overnight Sun-Thu — NUC-24
+# Sun-Thu 23:00 Europe/Amsterdam (box timezone fixed 2026-07-09). Skips Fri/Sat
+# nights since weekly-pre-assembly.timer covers Friday and the BD tracks are
+# quiet weekends.
+
+[Timer]
+OnCalendar=Sun,Mon,Tue,Wed,Thu 23:00
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
