@@ -28,7 +28,7 @@ fi
 # ── Roll up the append-only run log ──
 cutoff=$(date -d '7 days ago' +%s 2>/dev/null || echo 0)
 runs=0 runs7d=0 sum_seconds=0
-proposals=0 noproposals=0 fails=0 violations=0 legacy=0 blocked=0 dedup=0
+proposals=0 noproposals=0 fails=0 violations=0 legacy=0 blocked=0 dedup=0 ops=0
 first_ts="" last_ts=""
 
 if [ -r "$COST_LOG" ]; then
@@ -55,6 +55,22 @@ if [ -r "$COST_LOG" ]; then
       BLOCKED) blocked=$(( blocked + 1 )); unset kv; continue ;;
       DEDUP)   dedup=$(( dedup + 1 ));     unset kv; continue ;;
     esac
+    # NUC-36: OPS (non-proposal guarded runs) are real inference but not proposal
+    # jobs — count duration/window, keep a separate bucket, exclude from proposal rate.
+    if [ "${kv[outcome]:-}" = OPS ]; then
+      ops=$(( ops + 1 ))
+      runs=$(( runs + 1 ))
+      sum_seconds=$(( sum_seconds + rs ))
+      ts="${kv[ts]:-$bare_ts}"
+      [ -z "$first_ts" ] && first_ts="$ts"
+      last_ts="$ts"
+      if [ -n "$ts" ]; then
+        ep=$(date -d "$ts" +%s 2>/dev/null || echo 0)
+        [ "$ep" -ge "$cutoff" ] && runs7d=$(( runs7d + 1 ))
+      fi
+      unset kv
+      continue
+    fi
     runs=$(( runs + 1 ))
     sum_seconds=$(( sum_seconds + rs ))
     ts="${kv[ts]:-$bare_ts}"
@@ -75,6 +91,8 @@ if [ -r "$COST_LOG" ]; then
   done < "$COST_LOG"
 fi
 errors=$(( fails + violations ))
+# Proposal rate denominator excludes OPS (and already excludes BLOCKED/DEDUP).
+proposal_denom=$(( proposals + noproposals + fails + violations + legacy ))
 
 # ── Approval outcomes (AC2 feed; Mac-written approvals.tsv, box reads it) ──
 promoted=0 rejected=0 edited=0 approvals_present=0
@@ -91,7 +109,7 @@ decisions=$(( promoted + rejected + edited ))
 pct() { if [ "${2:-0}" -le 0 ]; then echo "n/a"; else echo "$(( $1 * 100 / $2 ))%"; fi; }
 
 proposal_rate="n/a"
-[ "$runs" -gt 0 ] && proposal_rate="$(pct "$proposals" "$runs") ($proposals/$runs)"
+[ "$proposal_denom" -gt 0 ] && proposal_rate="$(pct "$proposals" "$proposal_denom") ($proposals/$proposal_denom)"
 if [ "$approvals_present" -eq 1 ] && [ "$decisions" -gt 0 ]; then
   approval_rate="$(pct "$promoted" "$decisions")"
   approvals_cell="$promoted / $rejected / $edited"
@@ -127,6 +145,7 @@ tmp="$(mktemp "${TMPDIR:-/tmp}/scorecard.XXXXXX")" || { echo "scorecard: mktemp 
   echo "| Proposals produced | ${proposals} |"
   echo "| Proposal rate | ${proposal_rate} |"
   echo "| No-proposal runs | ${noproposals} |"
+  echo "| Ops runs (non-proposal, NUC-36) | ${ops} |"
   echo "| Blocked runs (preflight/health gate) | ${blocked} |"
   echo "| Deduplicated dispatches (idempotent) | ${dedup} |"
   echo "| Error runs (fail/violation) | ${errors} (${fails} fail / ${violations} violation) |"

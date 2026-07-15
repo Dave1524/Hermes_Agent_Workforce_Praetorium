@@ -5,14 +5,16 @@ set -uo pipefail
 echo "══ Praetorium status $(date -Is) ══"
 echo; echo "── Services"
 for svc in qmd-mcp.service brave-mcp.service qmd-refresh.timer agent-proposal.timer \
+           overnight-pre-snapshot.timer overnight-morning-report.timer \
            memory-consolidation.timer scorecard.timer; do
   state=$(systemctl is-active "$svc" 2>/dev/null || true)
   enabled=$(systemctl is-enabled "$svc" 2>/dev/null || true)
-  printf "  %-28s active=%-10s enabled=%s\n" "$svc" "$state" "$enabled"
+  printf "  %-32s active=%-10s enabled=%s\n" "$svc" "$state" "$enabled"
 done
 echo; echo "── Timers (next runs)"
-systemctl list-timers qmd-refresh.timer agent-proposal.timer memory-consolidation.timer \
-  scorecard.timer --no-pager 2>/dev/null | head -7
+systemctl list-timers qmd-refresh.timer agent-proposal.timer \
+  overnight-pre-snapshot.timer overnight-morning-report.timer \
+  memory-consolidation.timer scorecard.timer --no-pager 2>/dev/null | head -10
 echo; echo "── qmd index"
 qmd status 2>/dev/null | head -8 || echo "  qmd index not built yet (finish_boxsafe_clone.sh)"
 echo; echo "── qmd MCP daemon (agent transport, NUC-16)"
@@ -153,4 +155,9 @@ df -h / | tail -1 | awk '{print "  disk / : "$3" used of "$2" ("$5")"}'
 free -h | awk 'NR==2{print "  memory : "$3" used of "$2}'
 echo; echo "── Tailscale"
 tailscale status 2>/dev/null | head -3 | sed 's/^/  /'
-echo; echo "── Log inspection: journalctl -u qmd-mcp -e | journalctl -u brave-mcp -e | journalctl -u agent-proposal -e"
+echo; echo "── Overnight logs (NUC-36)"
+ls -t "$HOME/logs/overnight"/pre-snapshot-*.log 2>/dev/null | head -1 | sed 's/^/  last pre-snapshot: /' \
+  || echo "  last pre-snapshot: none"
+ls -t "$HOME/logs/overnight"/morning-report-*.md 2>/dev/null | head -1 | sed 's/^/  last morning report: /' \
+  || echo "  last morning report: none"
+echo; echo "── Log inspection: journalctl -u qmd-mcp -e | journalctl -u brave-mcp -e | journalctl -u agent-proposal -e | journalctl -u overnight-morning-report -e"

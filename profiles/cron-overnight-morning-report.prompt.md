@@ -1,4 +1,8 @@
-MODEL REQUIREMENT: This job runs on z-ai/glm-5.2 (GLM-5.2, medium reasoning). If re-creating, pin this model explicitly.
+> **SUPERSEDED (NUC-36):** `profiles/overnight_morning_report_task.md` +
+> `AGENT_RUN_MODE=ops` via `systemd/overnight-morning-report.{service,timer}`.
+> Do not re-create as Hermes cron.
+
+MODEL REQUIREMENT (historical): This job ran on z-ai/glm-5.2 (GLM-5.2, medium reasoning).
 
 You are Marcus (Praetorium orchestrator). Compile a morning report on overnight activity. Dave reads this at ~06:00 Amsterdam as a single summary — make it tight, factual, actionable.
 

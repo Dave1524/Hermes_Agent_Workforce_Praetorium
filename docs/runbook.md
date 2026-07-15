@@ -13,7 +13,9 @@ If a reviewer only looks at git and concludes a path is "dead code", check `AGEN
 
 ## Job wiring (names only — no secret values)
 
-All scheduled agent jobs share `bin/agent_propose.sh` (lock, preflight, cost.log, write-boundary, scorecard). Per-job differences are injected via `AGENT_JOB_OVERRIDES` after `secrets.env`.
+Scheduled **proposal** agent jobs share `bin/agent_propose.sh` (lock, preflight, cost.log, write-boundary, scorecard). Per-job differences are injected via `AGENT_JOB_OVERRIDES` after `secrets.env`.
+
+**NUC-36:** the Hermes cron fleet is folded under systemd + this runner. Model-free jobs get a direct `ExecStart` script; non-proposal LLM jobs use `AGENT_RUN_MODE=ops` (same lock/preflight/cost, no inbox write-boundary/commit). Do not re-add fleet schedules to `~/.hermes/cron/jobs.json`.
 
 | Job | Timer (Europe/Amsterdam) | Unit pair | Override env (runtime path) | Task profile | Hermes profile |
 |---|---|---|---|---|---|
@@ -21,6 +23,8 @@ All scheduled agent jobs share `bin/agent_propose.sh` (lock, preflight, cost.log
 | Augustus content pitch+draft | daily **01:30** | `augustus-content.{service,timer}` | `~/.config/agent-workforce/augustus-content.env` | `profiles/augustus_content_task.md` | `augustus` |
 | BD stall radar | **Sun–Thu 23:00** | `bd-stall-radar.{service,timer}` | `~/.config/agent-workforce/bd_stall_radar.env` | `profiles/bd_stall_radar_task.md` | `claudius` |
 | Weekly pre-assembly | **Fri 22:00** | `weekly-pre-assembly.{service,timer}` | `~/.config/agent-workforce/weekly_pre_assembly.env` | `profiles/weekly_pre_assembly_task.md` | `claudius` |
+| Overnight pre-snapshot (no LLM) | daily **04:25** | `overnight-pre-snapshot.{service,timer}` | n/a | `bin/overnight_pre_snapshot.sh` | n/a |
+| Overnight morning report (ops) | daily **06:15** | `overnight-morning-report.{service,timer}` | `~/.config/agent-workforce/overnight_morning_report.env` | `profiles/overnight_morning_report_task.md` | `claudius` |
 | Agent inbox → Notion sync | `agent-inbox-sync.timer` | `agent-inbox-sync.{service,timer}` | *(service embeds the pipeline cmd)* | n/a | n/a |
 
 Override files set only non-secret keys:
@@ -28,13 +32,14 @@ Override files set only non-secret keys:
 - `AGENT_PROFILE` (optional; else parsed from `AGENT_RUNTIME_CMD -p …`)
 - `AGENT_TASK_SLUG` (metrics / cost.log label)
 - `AGENT_RUNTIME_CMD` (actual hermes / kanban invocation; paths point at the **deployed** tree `~/agent-workforce/`)
+- `AGENT_RUN_MODE` (`proposal` default, or `ops` for non-inbox LLM jobs — NUC-36)
 
 Templates (checked in): `config/job-overrides/*.env.example`. Install:
 
 ```bash
 install -m 600 config/job-overrides/augustus-content.env.example \
   ~/.config/agent-workforce/augustus-content.env
-# same for bd_stall_radar.env.example, weekly_pre_assembly.env.example
+# same for bd_stall_radar, weekly_pre_assembly, overnight_morning_report
 ```
 
 Supporting daemons (not override-driven):
@@ -48,6 +53,7 @@ Supporting daemons (not override-driven):
 | `scorecard.timer` | Weekly scorecard publish |
 | `discord-bot.service` | Phase-2 bot — **do not enable** until token + private server exist |
 | `agent-workforce-auto-sync.timer` | Shell auto-sync of this git repo (no LLM) |
+| `overnight-pre-snapshot.timer` | Model-free pre-run state capture → `~/logs/overnight/` (NUC-36) |
 
 Deploy a unit after changing `systemd/`:
 

@@ -112,4 +112,18 @@ assert "blocked runs row = 2" "grep -q '| Blocked runs (preflight/health gate) |
 assert "dedup dispatches row = 1" "grep -q '| Deduplicated dispatches (idempotent) | 1 |' '$d7'"
 assert "avg duration 90s (blocked/dedup seconds excluded)" "grep -q '| Avg run duration | 90s |' '$d7'"
 
+echo "--- scenario 8: OPS runs counted, excluded from proposal rate (NUC-36) ---"
+c8="$TD/cost8.log"; d8="$TD/digest8.md"
+cat > "$c8" <<'EOF'
+ts=2026-07-13T10:00:00+00:00 schema=3 profile=claudius model=x task=standing outcome=PROPOSAL proposal=a run_seconds=100 attempts=1
+ts=2026-07-13T10:05:00+00:00 schema=3 profile=claudius model=x task=overnight-morning-report outcome=OPS proposal=none run_seconds=50 attempts=1
+ts=2026-07-13T10:06:00+00:00 schema=3 profile=claudius model=x task=overnight-morning-report outcome=OPS proposal=none run_seconds=40 attempts=1
+EOF
+rc=$(sc "$c8" "$TD/none.tsv" "$d8")
+assert "exits 0" "[ '$rc' = 0 ]"
+assert "runs = 3 (OPS included in all-time)" "grep -q '| Agent runs (all-time) | 3 |' '$d8'"
+assert "ops runs row = 2" "grep -q '| Ops runs (non-proposal, NUC-36) | 2 |' '$d8'"
+assert "proposal rate 100% (1/1), OPS excluded from denom" "grep -q 'Proposal rate | 100% (1/1)' '$d8'"
+assert "avg duration 63s (includes OPS seconds)" "grep -q '| Avg run duration | 63s |' '$d8'"
+
 exit $fail

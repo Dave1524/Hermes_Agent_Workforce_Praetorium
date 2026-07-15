@@ -1,4 +1,7 @@
-MODEL REQUIREMENT: This job runs on z-ai/glm-5.2 (GLM-5.2, medium reasoning). If re-creating, pin this model explicitly.
+> **SUPERSEDED (NUC-36):** model-free `bin/overnight_pre_snapshot.sh` +
+> `systemd/overnight-pre-snapshot.{service,timer}`. Do not re-create as Hermes cron.
+
+MODEL REQUIREMENT (historical): This job ran on z-ai/glm-5.2 (GLM-5.2, medium reasoning).
 
 You are Marcus (Praetorium orchestrator). Capture a PRE-RUN snapshot of system state just before tonight's agent-proposal timer fires (04:30 Amsterdam). Write the snapshot to `~/logs/overnight/pre-snapshot-$(date -u +%Y-%m-%dT%H%M)Z.log` as plain text.
 

@@ -14,7 +14,11 @@ only. Never put API keys here.
 # From a checkout of this repo:
 install -m 600 config/job-overrides/augustus-content.env.example \
   ~/.config/agent-workforce/augustus-content.env
+# same for bd_stall_radar, weekly_pre_assembly, overnight_morning_report
 # edit paths if your deploy root is not ~/agent-workforce
 ```
+
+`AGENT_RUN_MODE=ops` (NUC-36) is for non-proposal LLM jobs (e.g. overnight morning
+report): same lock/preflight/cost.log, no inbox write-boundary or commit.
 
 See `docs/runbook.md` § Job wiring for the full map.

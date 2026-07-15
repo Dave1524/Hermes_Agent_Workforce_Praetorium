@@ -1,0 +1,14 @@
+# Model-free overnight pre-snapshot — NUC-36.
+# Replaces the Hermes cron LLM checklist (profiles/cron-overnight-pre-snapshot.prompt.md).
+[Unit]
+Description=Overnight pre-snapshot (model-free) — NUC-36
+After=network-online.target
+Wants=network-online.target
+OnFailure=agent-alert@%n.service
+
+[Service]
+Type=oneshot
+User=dave
+ExecStart=/home/dave/agent-workforce/bin/overnight_pre_snapshot.sh
+TimeoutStartSec=5min
+NoNewPrivileges=true

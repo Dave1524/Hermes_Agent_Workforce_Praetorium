@@ -11,6 +11,13 @@
 # and refreshes the scorecard digest (both fail-soft).
 # Working memory (NUC-21): the run records one episodic entry to the profile's
 # MEMORY.md (agent self-records; runner writes a fail-soft backstop if it didn't).
+#
+# NUC-36: AGENT_RUN_MODE=proposal|ops (default proposal).
+#   proposal — inbox worktree, write-boundary, commit/push, memory fallback.
+#   ops      — lock/preflight/cost/scorecard only; no inbox checkout, no
+#              write-boundary, no proposal commit, no memory fallback. For
+#              overnight reports and other non-proposal LLM jobs folded off
+#              Hermes cron onto this guarded runner.
 set -euo pipefail
 
 SECRETS="$HOME/.config/agent-workforce/secrets.env"
@@ -148,8 +155,16 @@ if [ -n "${AGENT_JOB_OVERRIDES:-}" ]; then
   # shellcheck disable=SC1090
   source "$AGENT_JOB_OVERRIDES"
 fi
+# NUC-36: default proposal; ops skips inbox/write-boundary/memory (see header).
+run_mode="${AGENT_RUN_MODE:-proposal}"
+case "$run_mode" in
+  proposal|ops) ;;
+  *) block_exit "AGENT_RUN_MODE must be proposal or ops (got: $run_mode)" ;;
+esac
 [ -n "${OPENROUTER_API_KEY:-}" ] || block_exit "no API key — no run (by design)"
-[ -d "$WORKTREE" ] || block_exit "inbox worktree missing — run finish_boxsafe_clone.sh"
+if [ "$run_mode" = proposal ]; then
+  [ -d "$WORKTREE" ] || block_exit "inbox worktree missing — run finish_boxsafe_clone.sh"
+fi
 [ -n "${AGENT_RUNTIME_CMD:-}" ] || block_exit "AGENT_RUNTIME_CMD not set (NUC-14 pending)"
 
 # ── NUC-23: resolve profile / model / task for the metrics record ──
@@ -164,6 +179,7 @@ if [ -r "$profile_cfg" ]; then
   run_model=$(awk '/^model:/{m=1;next} /^[^[:space:]]/{m=0} m && /^[[:space:]]+name:/{sub(/#.*/,"");sub(/^[[:space:]]*name:[[:space:]]*/,"");gsub(/[[:space:]]/,"");print;exit}' "$profile_cfg")
 fi
 run_model="${run_model:-unknown}"
+log "mode: AGENT_RUN_MODE=$run_mode task=$run_task profile=$run_profile"
 
 # ── NUC-31: preflight MCP tool-health gate (advisory by default) ──
 # Placed AFTER profile/model resolution so a warn/block record carries the real
@@ -189,14 +205,16 @@ if [ "$BRAVE_HEALTH_POLICY" != off ] && ! brave_healthy; then
 fi
 
 # ── NUC-21 working memory: snapshot the episodic store BEFORE the run so we can
-#    tell afterward whether the agent recorded its own entry (fail-soft glue). ──
+#    tell afterward whether the agent recorded its own entry (fail-soft glue).
+#    NUC-36 ops mode skips memory entirely (mem_status stays na). ──
 MEM_DIR="${RA_MEMORY_DIR:-$HOME/.hermes/profiles/$run_profile/memories}"
 MEM_FILE="$MEM_DIR/MEMORY.md"
 mem_before="absent"
-[ -f "$MEM_FILE" ] && mem_before="$(cksum "$MEM_FILE" 2>/dev/null || echo absent)"
-
-git -C "$WORKTREE" checkout -q agents/inbox
-git -C "$WORKTREE" pull -q --ff-only origin agents/inbox 2>/dev/null || true
+if [ "$run_mode" = proposal ]; then
+  [ -f "$MEM_FILE" ] && mem_before="$(cksum "$MEM_FILE" 2>/dev/null || echo absent)"
+  git -C "$WORKTREE" checkout -q agents/inbox
+  git -C "$WORKTREE" pull -q --ff-only origin agents/inbox 2>/dev/null || true
+fi
 
 # ── Run the profile with retry + backoff (NUC-16) ──
 # Turn ceiling is enforced by the profile's own config.yaml `agent.max_turns`,
@@ -254,11 +272,26 @@ if $is_dedup; then
 fi
 
 if ! $ok; then
-  log "FAIL: runtime failed after $max_attempts attempts — resetting worktree, NO proposal emitted"
-  git -C "$WORKTREE" reset --hard -q && git -C "$WORKTREE" clean -fdq
+  if [ "$run_mode" = proposal ]; then
+    log "FAIL: runtime failed after $max_attempts attempts — resetting worktree, NO proposal emitted"
+    git -C "$WORKTREE" reset --hard -q && git -C "$WORKTREE" clean -fdq
+  else
+    log "FAIL: runtime failed after $max_attempts attempts (ops mode — no worktree reset)"
+  fi
   log_cost FAIL
   refresh_scorecard
   exit 1
+fi
+
+# ── NUC-36 ops mode: runtime succeeded; no inbox write-boundary / commit / memory ──
+if [ "$run_mode" = ops ]; then
+  log "OK: ops run completed (no proposal path)"
+  run_outcome=OPS
+  run_proposal=none
+  mem_status=na
+  log_cost OPS
+  refresh_scorecard
+  exit 0
 fi
 
 # ── Write-boundary enforcement: only _inbox/agents/** may change ──
