@@ -1,0 +1,13 @@
+[Unit]
+Description=Scheduled agent inbox-proposal run — NUC-16
+After=network-online.target qmd-mcp.service brave-mcp.service
+Wants=network-online.target brave-mcp.service
+ConditionPathExists=/home/dave/agent-worktrees/inbox
+
+[Service]
+Type=oneshot
+User=dave
+EnvironmentFile=/home/dave/.config/agent-workforce/secrets.env
+ExecStart=/home/dave/agent-workforce/bin/agent_propose.sh
+TimeoutStartSec=45min
+NoNewPrivileges=true

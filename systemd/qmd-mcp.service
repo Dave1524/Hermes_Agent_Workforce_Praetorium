@@ -1,0 +1,18 @@
+[Unit]
+Description=qmd MCP HTTP daemon (vault memory for agents) — NUC-10
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/home/dave/vault/.git
+
+[Service]
+Type=simple
+User=dave
+ExecStart=/usr/local/bin/qmd mcp --http --port 8765
+Restart=on-failure
+RestartSec=10
+# Localhost-only by default; the box itself is Tailscale-only (no public ports).
+NoNewPrivileges=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

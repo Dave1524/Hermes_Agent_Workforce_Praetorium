@@ -1,11 +1,81 @@
 # Praetorium runbook — backup, restore, rebuild (NUC-19)
 
+## Source of truth (NUC-28)
+
+| Tree | Role |
+|---|---|
+| `~/dev/agent-workforce/` (git, `main`) | **Source of truth.** Edit here; open PRs for non-trivial work. |
+| `~/agent-workforce/` | **Deployed runtime** (no `.git`). What systemd `ExecStart=` runs. Update by copying from the git tree after merge — not by editing in place. |
+| `/etc/systemd/system/*.service|.timer` | Installed units. Canonical unit *sources* live in this repo under `systemd/`; install with `sudo cp` + `daemon-reload`. |
+| `~/.config/agent-workforce/` | Secrets + per-job override env files (mode 600). **Never git.** Templates: `config/job-overrides/*.env.example`. |
+
+If a reviewer only looks at git and concludes a path is "dead code", check `AGENT_RUNTIME_CMD` / `AGENT_JOB_OVERRIDES` under `~/.config/agent-workforce/` — production wiring often lives there.
+
+## Job wiring (names only — no secret values)
+
+All scheduled agent jobs share `bin/agent_propose.sh` (lock, preflight, cost.log, write-boundary, scorecard). Per-job differences are injected via `AGENT_JOB_OVERRIDES` after `secrets.env`.
+
+| Job | Timer (Europe/Amsterdam) | Unit pair | Override env (runtime path) | Task profile | Hermes profile |
+|---|---|---|---|---|---|
+| Standing / Claudius proposal | `agent-proposal.timer` (disabled by default — spend gate) | `agent-proposal.{service,timer}` | *(none — uses `AGENT_RUNTIME_CMD` from `secrets.env`)* | `profiles/claudius_task.md` | `claudius` |
+| Augustus content pitch+draft | daily **01:30** | `augustus-content.{service,timer}` | `~/.config/agent-workforce/augustus-content.env` | `profiles/augustus_content_task.md` | `augustus` |
+| BD stall radar | **Sun–Thu 23:00** | `bd-stall-radar.{service,timer}` | `~/.config/agent-workforce/bd_stall_radar.env` | `profiles/bd_stall_radar_task.md` | `claudius` |
+| Weekly pre-assembly | **Fri 22:00** | `weekly-pre-assembly.{service,timer}` | `~/.config/agent-workforce/weekly_pre_assembly.env` | `profiles/weekly_pre_assembly_task.md` | `claudius` |
+| Agent inbox → Notion sync | `agent-inbox-sync.timer` | `agent-inbox-sync.{service,timer}` | *(service embeds the pipeline cmd)* | n/a | n/a |
+
+Override files set only non-secret keys:
+
+- `AGENT_PROFILE` (optional; else parsed from `AGENT_RUNTIME_CMD -p …`)
+- `AGENT_TASK_SLUG` (metrics / cost.log label)
+- `AGENT_RUNTIME_CMD` (actual hermes / kanban invocation; paths point at the **deployed** tree `~/agent-workforce/`)
+
+Templates (checked in): `config/job-overrides/*.env.example`. Install:
+
+```bash
+install -m 600 config/job-overrides/augustus-content.env.example \
+  ~/.config/agent-workforce/augustus-content.env
+# same for bd_stall_radar.env.example, weekly_pre_assembly.env.example
+```
+
+Supporting daemons (not override-driven):
+
+| Unit | Role |
+|---|---|
+| `qmd-mcp.service` (+ `qmd-mcp.service.d/gpu.conf`) | Vault MCP on `:8765`; GPU drop-in sets `QMD_LLAMA_GPU=vulkan` |
+| `qmd-refresh.timer` | Index refresh every 30m |
+| `brave-mcp.service` | Brave search MCP on `:8766` |
+| `memory-consolidation.timer` | Nightly MEMORY.md trim |
+| `scorecard.timer` | Weekly scorecard publish |
+| `discord-bot.service` | Phase-2 bot — **do not enable** until token + private server exist |
+| `agent-workforce-auto-sync.timer` | Shell auto-sync of this git repo (no LLM) |
+
+Deploy a unit after changing `systemd/`:
+
+```bash
+sudo cp systemd/<unit> /etc/systemd/system/
+sudo systemctl daemon-reload
+# timers: sudo systemctl enable --now <name>.timer
+```
+
+Deploy scripts/profiles after merge:
+
+```bash
+# Prefer rsync of tracked trees only — never copy secrets or .bak files
+rsync -a --delete \
+  --exclude '.git' --exclude 'logs' --exclude 'backups' --exclude 'node_modules' \
+  ~/dev/agent-workforce/bin/ ~/agent-workforce/bin/
+rsync -a ~/dev/agent-workforce/profiles/ ~/agent-workforce/profiles/
+rsync -a ~/dev/agent-workforce/docs/ ~/agent-workforce/docs/
+```
+
 ## What must be backed up (inventory)
 
 | Asset | Where | Backup path |
 |---|---|---|
-| Service units | `/etc/systemd/system/{qmd-mcp,brave-mcp,qmd-refresh,agent-proposal,memory-consolidation,scorecard}*` | `backup_config.sh` tarball |
+| Service units | `/etc/systemd/system/{qmd-mcp,brave-mcp,qmd-refresh,agent-proposal,augustus-content,bd-stall-radar,weekly-pre-assembly,memory-consolidation,scorecard,discord-bot,agent-inbox-sync}*` + `qmd-mcp.service.d/` | `backup_config.sh` tarball |
 | Scripts & docs | `~/agent-workforce/{bin,docs,profiles}` | `backup_config.sh` tarball |
+| Job-override templates | this repo `config/job-overrides/` | git |
+| Job-override runtime envs | `~/.config/agent-workforce/{augustus-content,bd_stall_radar,weekly_pre_assembly}.env` | **not secrets**, but recreate from templates if lost |
 | qmd config | `~/.config/qmd/index.yml` | `backup_config.sh` tarball |
 | Secrets template | `~/.config/agent-workforce/.env.example` + README | `backup_config.sh` tarball |
 | Hermes profiles | `~/.hermes/profiles/` (SOUL.md, config.yaml — no .env) | add on first profile change |
@@ -28,12 +98,16 @@ Run `~/agent-workforce/bin/backup_config.sh`, then pull the tarball to the Mac:
      bootstrapped. Install local headless Chromium once (credential-free): `npx --yes
      agent-browser@latest install` (as `dave`) then `sudo npx --yes playwright install-deps chromium`.
 5. Restore the config tarball over `$HOME` and `/etc/systemd/system/` (or rsync from this repo of scripts).
+   Install units from `systemd/` including job timers (`augustus-content`, `bd-stall-radar`,
+   `weekly-pre-assembly`) and `qmd-mcp.service.d/gpu.conf`.
 6. Recreate secrets per `~/.config/agent-workforce/README.md` (new deploy key → register on repo,
    new OpenRouter key → re-apply spend cap, new Discord token). Then re-derive the Brave MCP env:
    `umask 077; grep -E '^BRAVE_API_KEY=' ~/.config/agent-workforce/secrets.env > ~/.config/agent-workforce/brave-mcp.env`.
+   Install job-override envs from `config/job-overrides/*.env.example` (mode 600) — see § Job wiring.
 7. `~/agent-workforce/bin/finish_boxsafe_clone.sh` (clone, index, exclusion gates, enable services).
    - Enable the added units (NUC-21/22/23): `sudo systemctl enable --now brave-mcp.service
      memory-consolidation.timer scorecard.timer`. Leave `agent-proposal.timer` per its spend gate.
+   - Job timers (`augustus-content.timer`, etc.) enable only when the matching override env exists.
 8. Verify: `~/agent-workforce/bin/praetorium-status.sh` — all green; run `llm_smoke_test.sh`.
 
 ## Restore-path test log

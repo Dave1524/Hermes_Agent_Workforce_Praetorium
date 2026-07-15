@@ -27,9 +27,12 @@ the vault holds *what they know*.
 
 ## Where things live
 - `../vault-boxsafe/` — the box-safe vault projection (branch `agents`), shared memory/context.
-- `~/.config/agent-workforce/` — secrets (deploy key). Outside git entirely.
-- This repo (`~/dev/agent-workforce/`) — orchestration config, cron definitions, agent profiles,
-  inbox/approval tooling, as they're built out.
+- `~/.config/agent-workforce/` — secrets + per-job override envs (mode 600). Outside git entirely.
+- This repo (`~/dev/agent-workforce/`) — **source of truth** for orchestration config, systemd
+  unit sources, agent task profiles, inbox/approval tooling.
+- `~/agent-workforce/` — **deployed runtime copy** (no git) that systemd actually execs. Do not
+  treat it as canonical; after merging to `main`, rsync `bin/` `profiles/` `docs/` into it.
+  Job wiring map: `docs/runbook.md` § Job wiring (NUC-28).
 
 ## Verification
 Run: `bash bin/verify.sh` from the repo root.

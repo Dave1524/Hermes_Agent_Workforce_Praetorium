@@ -1,6 +1,10 @@
 Standing task for the scheduled run (NUC-16 + NUC-21 working memory + NUC-22 fetch).
-Re-scoped 2026-07-08: tasking now comes from the published box brief
-(04_operations/box_brief/), not from Mac-only ops files (which are never on this box).
+Re-scoped 2026-07-08 (open-bubble posture): tasking comes from the published box brief
+(04_operations/box_brief/). The raw ops files (04_operations/current_priorities.md, open_loops.md)
+DO also publish to this mirror as read-only context (verify via qmd get before assuming
+absence) - box_brief remains the source for what to WORK, ops files are background context only.
+Real client/prospect names are fine everywhere on this mirror - the box is inside Dave's
+private bubble; only _confidential/ stays out.
 
 STEP 0 — Recall your own prior runs (working memory).
 Your MEMORY section (injected above this task) holds compact records of your
@@ -17,8 +21,8 @@ the gaps you flagged. Read it FIRST.
      (regenerated at Dave's EOD wrap).
    - 04_operations/box_brief/standing_missions.md — standing missions, priority
      order, acceptance bars, and the hard membrane rules.
-   Aliases (T-...) are deliberately unresolvable on this box — work the task as
-   stated; client specifics re-attach Mac-side at promotion time.
+   Names and specifics in queue.md / standing_missions.md are the real ones —
+   the T-... alias register was retired 2026-07-08 with the open-bubble posture.
 2. Pick your work in this order (standing_missions.md § Priority order):
    a. the top OPEN queue.md item you can complete at quality AND have not already
       proposed (STEP 0);

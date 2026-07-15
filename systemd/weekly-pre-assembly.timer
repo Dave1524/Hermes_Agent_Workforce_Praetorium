@@ -1,0 +1,12 @@
+[Unit]
+Description=Weekly review pre-assembly, Friday night — NUC-24
+# Friday 22:00 Europe/Amsterdam (box timezone fixed 2026-07-09) — drafts a
+# pre-read ahead of Dave's own weekly-review skill.
+
+[Timer]
+OnCalendar=Fri 22:00
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

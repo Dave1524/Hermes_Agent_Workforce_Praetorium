@@ -1,0 +1,14 @@
+[Unit]
+Description=Weekly review pre-assembly — NUC-24
+After=network-online.target qmd-mcp.service brave-mcp.service
+Wants=network-online.target brave-mcp.service
+ConditionPathExists=/home/dave/agent-worktrees/inbox
+
+[Service]
+Type=oneshot
+User=dave
+Environment=AGENT_JOB_OVERRIDES=/home/dave/.config/agent-workforce/weekly_pre_assembly.env
+EnvironmentFile=/home/dave/.config/agent-workforce/secrets.env
+ExecStart=/home/dave/agent-workforce/bin/agent_propose.sh
+TimeoutStartSec=45min
+NoNewPrivileges=true
