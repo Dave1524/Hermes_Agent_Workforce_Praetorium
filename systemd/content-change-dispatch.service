@@ -1,0 +1,21 @@
+# content-change-dispatch.service — NUC-35.
+# Change-triggered content dispatch at the shell layer. Deterministic, model-free
+# per tick: diffs Notion "Picked" IDs against a state file and dispatches the
+# existing Augustus draft run (bin/agent_propose.sh, reusing augustus-content.env)
+# ONLY when a new Picked row appears — so a quiet tick spends nothing. Shape copied
+# from augustus-content.service (same runner, same override env) + agent-inbox-sync.service
+# (OnFailure alert). TimeoutStartSec is long because a *triggered* tick can draft.
+[Unit]
+Description=Change-triggered Augustus content dispatch — poll Notion Picked, draft only on new rows (NUC-35)
+After=network-online.target qmd-mcp.service
+Wants=network-online.target qmd-mcp.service
+OnFailure=agent-alert@%n.service
+
+[Service]
+Type=oneshot
+User=dave
+Environment=AGENT_JOB_OVERRIDES=/home/dave/.config/agent-workforce/augustus-content.env
+EnvironmentFile=/home/dave/.config/agent-workforce/secrets.env
+ExecStart=/home/dave/agent-workforce/bin/content_change_dispatch.sh
+TimeoutStartSec=45min
+NoNewPrivileges=true

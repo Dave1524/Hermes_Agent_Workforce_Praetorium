@@ -33,6 +33,30 @@ git diff main...origin/agents/inbox -- _inbox/agents/   # inspect (Claude can as
 - Canonical vault stays clean: nothing on the box ever pushes to the canonical repo — promotion
   is always a human/Claude action on the Mac.
 
+## Outbound alerts (NUC-30)
+
+Two model-free Discord notifications keep Dave in the loop without any LLM spend
+(both use the `hermes send` primitive, which reuses `~/.hermes` bot-token
+credentials and needs no running gateway):
+
+- **Morning report** — `bin/deliver_report.sh` is wired as `ExecStartPost` on
+  `overnight-morning-report.service`. After the 06:15 NUC-36 run writes
+  `~/logs/overnight/morning-report-*.md`, it posts the newest file to
+  `#praetorium-main-chat`. Fail-soft: any delivery error is logged to
+  `~/logs/deliver_report.log` and the script still exits 0, so a Discord hiccup
+  never marks the report unit failed.
+- **Approvals aging** — `bin/inbox_backlog_alert.sh` (daily 06:20 via
+  `inbox-backlog-alert.timer`) reuses the NUC-26 oldest-pending computation from
+  `praetorium-status.sh`. If the oldest proposal in `_inbox/agents/` is more than
+  2 days old it posts one line naming the count and oldest age; it stays silent
+  when the inbox is clear or under threshold. Threshold is overridable via
+  `INBOX_BACKLOG_THRESHOLD_DAYS`. Surfacing only — promote/reject stays a
+  Mac-side human gate.
+
+The old Hermes-cron `overnight-morning-report` LLM job (id `1dee98c14b36`) is
+superseded by this box-side delivery path and should be retired so its stale
+`DISCORD_BOT_TOKEN is not set` warning stops recurring.
+
 ## Why not PRs?
 
 The box-safe repo is a generated mirror; merging agent branches into its `main` would be

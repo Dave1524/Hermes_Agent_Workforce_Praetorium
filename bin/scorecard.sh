@@ -27,7 +27,7 @@ fi
 
 # ── Roll up the append-only run log ──
 cutoff=$(date -d '7 days ago' +%s 2>/dev/null || echo 0)
-runs=0 runs7d=0 sum_seconds=0
+runs=0 runs7d=0 sum_seconds=0 fails7d=0 violations7d=0
 proposals=0 noproposals=0 fails=0 violations=0 legacy=0 blocked=0 dedup=0 ops=0
 first_ts="" last_ts=""
 
@@ -76,21 +76,23 @@ if [ -r "$COST_LOG" ]; then
     ts="${kv[ts]:-$bare_ts}"
     [ -z "$first_ts" ] && first_ts="$ts"
     last_ts="$ts"
+    in7d=0
     if [ -n "$ts" ]; then
       ep=$(date -d "$ts" +%s 2>/dev/null || echo 0)
-      [ "$ep" -ge "$cutoff" ] && runs7d=$(( runs7d + 1 ))
+      if [ "$ep" -ge "$cutoff" ]; then runs7d=$(( runs7d + 1 )); in7d=1; fi
     fi
     case "${kv[outcome]:-}" in
       PROPOSAL)   proposals=$(( proposals + 1 )) ;;
       NOPROPOSAL) noproposals=$(( noproposals + 1 )) ;;
-      FAIL)       fails=$(( fails + 1 )) ;;
-      VIOLATION)  violations=$(( violations + 1 )) ;;
+      FAIL)       fails=$(( fails + 1 )); [ "$in7d" = 1 ] && fails7d=$(( fails7d + 1 )) ;;
+      VIOLATION)  violations=$(( violations + 1 )); [ "$in7d" = 1 ] && violations7d=$(( violations7d + 1 )) ;;
       *)          legacy=$(( legacy + 1 )) ;;
     esac
     unset kv
   done < "$COST_LOG"
 fi
 errors=$(( fails + violations ))
+errors7d=$(( fails7d + violations7d ))
 # Proposal rate denominator excludes OPS (and already excludes BLOCKED/DEDUP).
 proposal_denom=$(( proposals + noproposals + fails + violations + legacy ))
 
@@ -149,6 +151,7 @@ tmp="$(mktemp "${TMPDIR:-/tmp}/scorecard.XXXXXX")" || { echo "scorecard: mktemp 
   echo "| Blocked runs (preflight/health gate) | ${blocked} |"
   echo "| Deduplicated dispatches (idempotent) | ${dedup} |"
   echo "| Error runs (fail/violation) | ${errors} (${fails} fail / ${violations} violation) |"
+  echo "| Error runs (last 7d) | ${errors7d} (${fails7d} fail / ${violations7d} violation) |"
   echo "| Approvals promoted / rejected / edited | ${approvals_cell} |"
   echo "| Approval rate | ${approval_rate} |"
   echo "| Inference served | 0% local / 100% remote |"

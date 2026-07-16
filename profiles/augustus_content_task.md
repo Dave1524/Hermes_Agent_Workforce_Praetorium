@@ -11,11 +11,11 @@ TOOLS — use ONLY these, and do not waste turns:
   DO NOT use any mcp__notion__* / Notion MCP tool. It is intentionally removed on this box (its
   stream drops mid-run and query_data_sources needs a Business plan we do not have). If you ever
   see a Notion MCP tool offered, ignore it — the REST helper above is the only sanctioned path.
-- qmd `query` tool (semantic search) → ALL vault grounding.
-  DO NOT use qmd `get` (it returns EMPTY on this box). For vault content, qmd `query` is the ONLY
-  path — do not use search_files or the filesystem to hunt vault content. (Terminal is fine for the
-  notion_rest.py board calls above and for writing your draft to a temp file; just don't use it to
-  browse the vault.)
+- qmd tools → ALL vault grounding. Use `query` (semantic search) to DISCOVER content, and `get`
+  (fast, path-based) to read a KNOWN exact path — both work on this box. qmd is the ONLY path to
+  vault content — do not use search_files or the filesystem to hunt vault content. (Terminal is fine
+  for the notion_rest.py board calls above and for writing your draft to a temp file; just don't use
+  it to browse the vault.)
 You have a limited turn budget: a few focused queries, then WRITE. Never loop the same search.
 
 WHERE YOUR WORK LANDS
@@ -54,7 +54,9 @@ genuinely strong angles). Create each with:
       --signal "<what prompted it>" --format "LinkedIn post"
 (--format one of: "LinkedIn post" (default) / Carousel / Article. The helper stamps Status=Pitched,
 Proposed by=Augustus, Pitched=today.) Second-order insight is the bar: if you cannot name a real
-one, skip the angle. One strong angle beats three weak ones. If nothing clears the bar, pitch
+one, skip the angle. One strong angle beats three weak ones. Deadline note: if a queued
+brief carries a near or blown Deadline, it outranks your own fresh pitches — draft that
+brief first before pitching new angles. If nothing clears the bar, pitch
 nothing — a clean decline beats filler. Do NOT run web searches this run; ground in qmd + your own
 domain knowledge.
 

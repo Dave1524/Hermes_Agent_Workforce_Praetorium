@@ -17,10 +17,13 @@ Scheduled **proposal** agent jobs share `bin/agent_propose.sh` (lock, preflight,
 
 **NUC-36:** the Hermes cron fleet is folded under systemd + this runner. Model-free jobs get a direct `ExecStart` script; non-proposal LLM jobs use `AGENT_RUN_MODE=ops` (same lock/preflight/cost, no inbox write-boundary/commit). Do not re-add fleet schedules to `~/.hermes/cron/jobs.json`.
 
+**NUC-35 — change-triggered content dispatch.** `content-change-dispatch.timer` polls every 15 min and runs `bin/content_change_dispatch.sh`: a deterministic, **model-free** tick that reads the Notion "Picked" content-board IDs (`notion_rest.py board --status Picked --json`), diffs them against `~/agent-workforce/var/content_picked.state`, and dispatches the **existing** Augustus draft run (`bin/agent_propose.sh`, reusing `augustus-content.env` via `AGENT_JOB_OVERRIDES`) **only when a Picked ID appears that is not already in the state file**. A quiet tick spends nothing — no `agent_propose.sh` call, so no `cost.log` line and no `agent_run.log` entry — it just refreshes the state file and exits 0. This cuts Picked→Drafted latency from the ~24h nightly cadence to ~15 min at zero steady-state cost. Fail-soft by contract: on any Notion API/parse error the script logs to `logs/content_change_dispatch.log` and exits 0 **without touching the state file**, so a transient outage never drops a pending row or corrupts state; the state is only advanced after a clean board read (empty diff) or after a dispatched run returns 0. The nightly `augustus-content.timer` stays as the backstop — a 01:30 poll tick that overlaps the 01:30 nightly run SKIPs safely on `agent_propose.sh`'s flock (`/tmp/agent_propose.lock`, "previous run still active"), so there is no double-draft and no new flag is needed.
+
 | Job | Timer (Europe/Amsterdam) | Unit pair | Override env (runtime path) | Task profile | Hermes profile |
 |---|---|---|---|---|---|
 | Standing / Claudius proposal | `agent-proposal.timer` (disabled by default — spend gate) | `agent-proposal.{service,timer}` | *(none — uses `AGENT_RUNTIME_CMD` from `secrets.env`)* | `profiles/claudius_task.md` | `claudius` |
-| Augustus content pitch+draft | daily **01:30** | `augustus-content.{service,timer}` | `~/.config/agent-workforce/augustus-content.env` | `profiles/augustus_content_task.md` | `augustus` |
+| Augustus content pitch+draft | daily **01:30** (backstop) | `augustus-content.{service,timer}` | `~/.config/agent-workforce/augustus-content.env` | `profiles/augustus_content_task.md` | `augustus` |
+| Content change-dispatch (poll) | every **15 min** | `content-change-dispatch.{service,timer}` | `~/.config/agent-workforce/augustus-content.env` (reused) | *(triggers the augustus run)* | `augustus` |
 | BD stall radar | **Sun–Thu 23:00** | `bd-stall-radar.{service,timer}` | `~/.config/agent-workforce/bd_stall_radar.env` | `profiles/bd_stall_radar_task.md` | `claudius` |
 | Weekly pre-assembly | **Fri 22:00** | `weekly-pre-assembly.{service,timer}` | `~/.config/agent-workforce/weekly_pre_assembly.env` | `profiles/weekly_pre_assembly_task.md` | `claudius` |
 | Overnight pre-snapshot (no LLM) | daily **04:25** | `overnight-pre-snapshot.{service,timer}` | n/a | `bin/overnight_pre_snapshot.sh` | n/a |
@@ -78,7 +81,7 @@ rsync -a ~/dev/agent-workforce/docs/ ~/agent-workforce/docs/
 
 | Asset | Where | Backup path |
 |---|---|---|
-| Service units | `/etc/systemd/system/{qmd-mcp,brave-mcp,qmd-refresh,agent-proposal,augustus-content,bd-stall-radar,weekly-pre-assembly,memory-consolidation,scorecard,discord-bot,agent-inbox-sync}*` + `qmd-mcp.service.d/` | `backup_config.sh` tarball |
+| Service units | Every deployed `.service`/`.timer` whose name matches a unit in this repo's `systemd/` (incl. `agent-workforce-auto-sync`, `overnight-*`, `agent-alert@`, `agent-inbox-sync` alongside the qmd/agent-proposal/augustus/bd-stall/brave/memory/scorecard/discord families) — enumerated automatically by `backup_config.sh` | `backup_config.sh` tarball |
 | Scripts & docs | `~/agent-workforce/{bin,docs,profiles}` | `backup_config.sh` tarball |
 | Job-override templates | this repo `config/job-overrides/` | git |
 | Job-override runtime envs | `~/.config/agent-workforce/{augustus-content,bd_stall_radar,weekly_pre_assembly}.env` | **not secrets**, but recreate from templates if lost |

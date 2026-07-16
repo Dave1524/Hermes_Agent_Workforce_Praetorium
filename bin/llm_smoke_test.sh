@@ -12,8 +12,8 @@ mkdir -p "$LOG_DIR"
 source "$SECRETS"
 [ -n "${OPENROUTER_API_KEY:-}" ] || { echo "BLOCKED: OPENROUTER_API_KEY empty in secrets.env"; exit 2; }
 
-MODEL="${1:-${LLM_MODEL_BUSINESS:-}}"
-[ -n "$MODEL" ] || { echo "BLOCKED: no model — pass as arg or set LLM_MODEL_BUSINESS"; exit 2; }
+MODEL="${1:-${LLM_MODEL_BULK:-}}"
+[ -n "$MODEL" ] || { echo "BLOCKED: no model — pass as arg or set LLM_MODEL_BULK"; exit 2; }
 BASE_URL="${LLM_BASE_URL:-https://openrouter.ai/api/v1}"
 MAX_TOKENS="${LLM_MAX_TOKENS_PER_CALL:-4096}"
 

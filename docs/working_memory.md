@@ -51,9 +51,12 @@ Single line, under ~700 chars, box-safe.
 
 `bin/consolidate_memory.sh` on `memory-consolidation.timer` (03:30 nightly,
 `Persistent=true`), mirroring `agent-proposal.timer` / `qmd-refresh.timer`.
-Mechanical, no LLM, no network. Keeps the newest `MEM_MAX_ENTRIES=12` entries
-under `MEM_MAX_CHARS=7000` bytes (headroom under the tool's own 9000-char hard
-cap). Bounded, idempotent, fail-soft: never empties or corrupts the store; on any
+Mechanical, no LLM, no network. First an **exact-dedup** pass drops byte-identical
+entries (keeping the newest occurrence) so duplicates don't consume the budget;
+then a **FIFO cap** keeps the newest `MEM_MAX_ENTRIES=12` entries under
+`MEM_MAX_CHARS=7000` bytes (headroom under the tool's own 9000-char hard cap). This
+is dedup + FIFO trim, NOT LLM summarization. Bounded, idempotent, fail-soft: never
+empties or corrupts the store; on any
 problem it leaves the store byte-for-byte untouched and exits 0. Snapshots
 `.bak.consolidate.<ts>` (keeps the last 5) before each rewrite.
 
