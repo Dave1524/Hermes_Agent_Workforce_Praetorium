@@ -24,8 +24,10 @@ the gaps you flagged. Read it FIRST.
    Names and specifics in queue.md / standing_missions.md are the real ones —
    the T-... alias register was retired 2026-07-08 with the open-bubble posture.
 2. Pick your work in this order (standing_missions.md § Priority order):
-   a. the top OPEN queue.md item you can complete at quality AND have not already
-      proposed (STEP 0);
+   a. the OPEN queue.md item with the soonest Deadline you can complete at quality
+      AND have not already proposed (STEP 0) — tie-break: the top row; if the queue
+      has no Deadline column yet, fall back to the top OPEN item you can complete at
+      quality (so ad-hoc inserts can never bury a deadline-bound item);
    b. otherwise ONE standing mission that is due (respect per-mission cadence);
    c. if nothing qualifies at quality, write NO proposal — a clean decline beats a
       filler proposal — but STILL record the run in STEP 5.

@@ -54,7 +54,9 @@ genuinely strong angles). Create each with:
       --signal "<what prompted it>" --format "LinkedIn post"
 (--format one of: "LinkedIn post" (default) / Carousel / Article. The helper stamps Status=Pitched,
 Proposed by=Augustus, Pitched=today.) Second-order insight is the bar: if you cannot name a real
-one, skip the angle. One strong angle beats three weak ones. If nothing clears the bar, pitch
+one, skip the angle. One strong angle beats three weak ones. Deadline note: if a queued
+brief carries a near or blown Deadline, it outranks your own fresh pitches — draft that
+brief first before pitching new angles. If nothing clears the bar, pitch
 nothing — a clean decline beats filler. Do NOT run web searches this run; ground in qmd + your own
 domain knowledge.
 
