@@ -33,6 +33,15 @@ assert "var/opencode-observability/ is gitignored" \
   "git -C '$REPO_ROOT' check-ignore -q var/opencode-observability/flows/x.json"
 
 # ── 3. Addon unit behaviors (stdlib + mitmproxy available) ─────────────────────
+# capture_addon.py does `from mitmproxy import http` at import time, so the addon
+# behavior checks below need mitmproxy importable. Skip them (not the syntax/gitignore
+# checks above) when it is absent — mirroring the opt-in skip in
+# test_opencode_agents_live.sh — so verify.sh stays green on boxes without the
+# optional mitmproxy dependency.
+if ! python3 -c 'import mitmproxy' 2>/dev/null; then
+  echo "  SKIP: mitmproxy not installed — addon behavior tests skipped (syntax + gitignore checks passed)"
+  exit "$fail"
+fi
 
 echo "test: opencode-observability — addon behaviors"
 
