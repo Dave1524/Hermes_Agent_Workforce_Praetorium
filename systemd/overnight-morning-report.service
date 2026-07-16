@@ -12,5 +12,9 @@ User=dave
 Environment=AGENT_JOB_OVERRIDES=/home/dave/.config/agent-workforce/overnight_morning_report.env
 EnvironmentFile=/home/dave/.config/agent-workforce/secrets.env
 ExecStart=/home/dave/agent-workforce/bin/agent_propose.sh
+# NUC-30: deliver the freshly-written report to Dave's Discord via the model-free
+# `hermes send` primitive. Fail-soft (deliver_report.sh always exits 0) so a Discord
+# hiccup never marks the report unit failed / fires the OnFailure alert.
+ExecStartPost=/home/dave/agent-workforce/bin/deliver_report.sh
 TimeoutStartSec=15min
 NoNewPrivileges=true

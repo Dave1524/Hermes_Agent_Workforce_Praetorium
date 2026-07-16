@@ -1,0 +1,16 @@
+# inbox-backlog-alert.timer — NUC-30.
+# Daily at 06:20 Amsterdam, just after the 06:15 overnight-morning-report so the
+# aging-approvals nudge lands right behind the morning summary. Persistent=true
+# catches a missed fire (box asleep) on next boot.
+#
+# Deploy: sudo systemctl enable --now inbox-backlog-alert.timer
+[Unit]
+Description=Schedule daily agent-inbox approvals-aging alert — NUC-30
+
+[Timer]
+OnCalendar=*-*-* 06:20
+RandomizedDelaySec=3min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
