@@ -6,6 +6,9 @@
 # separated by a line that is exactly § (U+00A7, bytes C2 A7); joined by \n§\n;
 # there is NO trailing newline; each entry is stored stripped.
 #
+# Policy: exact-duplicate dedup (drop byte-identical entries, keep the newest)
+# then a FIFO cap (keep the newest MEM_MAX_ENTRIES within MEM_MAX_CHARS bytes).
+# NOT summarization — that would need an LLM, which this script deliberately avoids.
 # Guarantees: bounded (<= caps), idempotent (a 2nd run is byte-identical), and
 # fail-soft — on ANY problem the ORIGINAL store is left byte-for-byte untouched
 # and we still exit 0. Never empties or corrupts the store.
@@ -55,6 +58,22 @@ for e in "${entries[@]}"; do
 done
 n=${#clean[@]}
 [ "$n" -eq 0 ] && { log "no-op: no parseable entries"; exit 0; }
+
+# ── Exact-duplicate dedup (mechanical, no-LLM/no-network): drop byte-identical
+#    stripped entries, keeping the NEWEST occurrence. Runs BEFORE the FIFO cap so
+#    duplicates don't consume the entry budget. Preserves chronological order. ──
+declare -A _seen
+dedup=()   # collected newest→oldest
+for (( i = n - 1; i >= 0; i-- )); do
+  e="${clean[$i]}"
+  [ -n "${_seen[$e]+x}" ] && continue   # already kept a newer identical entry
+  _seen["$e"]=1
+  dedup+=("$e")
+done
+clean=()   # rebuild oldest→newest
+for (( i = ${#dedup[@]} - 1; i >= 0; i-- )); do clean+=("${dedup[$i]}"); done
+[ "$n" -ne "${#clean[@]}" ] && log "dedup: $n -> ${#clean[@]} entries (exact duplicates dropped)"
+n=${#clean[@]}
 
 # ── Keep newest MEM_MAX_ENTRIES ──
 start=0

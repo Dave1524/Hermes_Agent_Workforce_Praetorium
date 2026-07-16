@@ -64,4 +64,18 @@ assert 'fail-soft exits 0' "[ '$rc' = 0 ]"
 assert 'store preserved byte-for-byte' "[ '$before' = '$after' ]"
 assert 'no backup on preserve path' "! ls $(bakglob "$f3") >/dev/null 2>&1"
 
+echo '--- scenario 4: exact duplicates -> deduped (newest kept), idempotent ---'
+h4=$(sandbox); f4=$(memf "$h4")
+# unique1, DUP, unique2, DUP, unique3 (DUP appears twice, byte-identical)
+printf 'unique-1%sdupe-entry payload%sunique-2%sdupe-entry payload%sunique-3' \
+  "$DELIM" "$DELIM" "$DELIM" "$DELIM" > "$f4"
+rc=$(run "$h4" 8 900)
+assert 'exits 0' "[ '$rc' = 0 ]"
+assert 'duplicate collapsed to one occurrence' "[ \"\$(grep -c 'dupe-entry payload' '$f4')\" = 1 ]"
+assert 'entry count is 4 (5 - 1 dupe)' "[ \"\$(count_entries '$f4')\" = 4 ]"
+assert 'all three uniques kept' "grep -q 'unique-1' '$f4' && grep -q 'unique-2' '$f4' && grep -q 'unique-3' '$f4'"
+sc=$(md5sum "$f4" | awk '{print $1}'); rc2=$(run "$h4" 8 900); sd=$(md5sum "$f4" | awk '{print $1}')
+assert 'second run exits 0' "[ '$rc2' = 0 ]"
+assert 'idempotent after dedup' "[ '$sc' = '$sd' ]"
+
 exit $fail

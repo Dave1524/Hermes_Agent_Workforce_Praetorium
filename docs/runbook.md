@@ -78,7 +78,7 @@ rsync -a ~/dev/agent-workforce/docs/ ~/agent-workforce/docs/
 
 | Asset | Where | Backup path |
 |---|---|---|
-| Service units | `/etc/systemd/system/{qmd-mcp,brave-mcp,qmd-refresh,agent-proposal,augustus-content,bd-stall-radar,weekly-pre-assembly,memory-consolidation,scorecard,discord-bot,agent-inbox-sync}*` + `qmd-mcp.service.d/` | `backup_config.sh` tarball |
+| Service units | Every deployed `.service`/`.timer` whose name matches a unit in this repo's `systemd/` (incl. `agent-workforce-auto-sync`, `overnight-*`, `agent-alert@`, `agent-inbox-sync` alongside the qmd/agent-proposal/augustus/bd-stall/brave/memory/scorecard/discord families) — enumerated automatically by `backup_config.sh` | `backup_config.sh` tarball |
 | Scripts & docs | `~/agent-workforce/{bin,docs,profiles}` | `backup_config.sh` tarball |
 | Job-override templates | this repo `config/job-overrides/` | git |
 | Job-override runtime envs | `~/.config/agent-workforce/{augustus-content,bd_stall_radar,weekly_pre_assembly}.env` | **not secrets**, but recreate from templates if lost |

@@ -256,7 +256,9 @@ while [ "$attempt" -lt "$max_attempts" ]; do
   # NUC-38: a distinct DEDUP exit (idempotent kanban hit — the card already ran under
   # today's key) is not a failure and must not be retried.
   if [ "$rc" -eq "$DEDUP_EXIT" ]; then is_dedup=true; break; fi
-  sleep $((retry_base * attempt * attempt))   # 30s, 120s backoff by default
+  # Only back off when another attempt will actually follow — never hold the
+  # flock sleeping after the FINAL failed attempt (dead 270s/30s wait).
+  [ "$attempt" -lt "$max_attempts" ] && sleep $((retry_base * attempt * attempt))   # 30s, 120s backoff by default
 done
 
 # ── NUC-38: idempotent hit — not a real run. No proposal, no memory fallback, no retry,

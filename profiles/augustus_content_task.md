@@ -11,11 +11,11 @@ TOOLS — use ONLY these, and do not waste turns:
   DO NOT use any mcp__notion__* / Notion MCP tool. It is intentionally removed on this box (its
   stream drops mid-run and query_data_sources needs a Business plan we do not have). If you ever
   see a Notion MCP tool offered, ignore it — the REST helper above is the only sanctioned path.
-- qmd `query` tool (semantic search) → ALL vault grounding.
-  DO NOT use qmd `get` (it returns EMPTY on this box). For vault content, qmd `query` is the ONLY
-  path — do not use search_files or the filesystem to hunt vault content. (Terminal is fine for the
-  notion_rest.py board calls above and for writing your draft to a temp file; just don't use it to
-  browse the vault.)
+- qmd tools → ALL vault grounding. Use `query` (semantic search) to DISCOVER content, and `get`
+  (fast, path-based) to read a KNOWN exact path — both work on this box. qmd is the ONLY path to
+  vault content — do not use search_files or the filesystem to hunt vault content. (Terminal is fine
+  for the notion_rest.py board calls above and for writing your draft to a temp file; just don't use
+  it to browse the vault.)
 You have a limited turn budget: a few focused queries, then WRITE. Never loop the same search.
 
 WHERE YOUR WORK LANDS
