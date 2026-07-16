@@ -6,7 +6,9 @@ echo "══ Praetorium status $(date -Is) ══"
 echo; echo "── Services"
 for svc in qmd-mcp.service brave-mcp.service qmd-refresh.timer agent-proposal.timer \
            overnight-pre-snapshot.timer overnight-morning-report.timer \
-           memory-consolidation.timer scorecard.timer; do
+           memory-consolidation.timer scorecard.timer \
+           agent-inbox-sync.timer augustus-content.timer weekly-pre-assembly.timer \
+           agent-workforce-auto-sync.timer bd-stall-radar.timer; do
   state=$(systemctl is-active "$svc" 2>/dev/null || true)
   enabled=$(systemctl is-enabled "$svc" 2>/dev/null || true)
   printf "  %-32s active=%-10s enabled=%s\n" "$svc" "$state" "$enabled"
@@ -14,7 +16,38 @@ done
 echo; echo "── Timers (next runs)"
 systemctl list-timers qmd-refresh.timer agent-proposal.timer \
   overnight-pre-snapshot.timer overnight-morning-report.timer \
-  memory-consolidation.timer scorecard.timer --no-pager 2>/dev/null | head -10
+  memory-consolidation.timer scorecard.timer \
+  agent-inbox-sync.timer augustus-content.timer weekly-pre-assembly.timer \
+  agent-workforce-auto-sync.timer bd-stall-radar.timer --no-pager 2>/dev/null | head -16
+# ── User services (hermes-gateway): the dispatcher + cron host runs as a --user
+#    unit, so a dead gateway (no proposals, no cron) is invisible to system-scope
+#    systemctl. Query the user manager explicitly. Fail-soft (|| true); set -uo
+#    pipefail contract preserved (no -e).
+echo; echo "── User services (hermes-gateway)"
+rt="/run/user/$(id -u)"
+hg_active=$(XDG_RUNTIME_DIR="$rt" systemctl --user is-active hermes-gateway.service 2>/dev/null || true)
+hg_enabled=$(XDG_RUNTIME_DIR="$rt" systemctl --user is-enabled hermes-gateway.service 2>/dev/null || true)
+printf "  %-32s active=%-10s enabled=%s\n" "hermes-gateway.service" "${hg_active:-unknown}" "${hg_enabled:-unknown}"
+# ── Hermes cron (last run): count scheduled jobs and flag any 'Last run:' that did
+#    NOT end 'ok', plus any job that has never run. Guarded by command -v + timeout
+#    so an absent/hung hermes never breaks the status run.
+echo; echo "── Hermes cron (last run)"
+if command -v hermes >/dev/null 2>&1; then
+  cron_out=$(XDG_RUNTIME_DIR="$rt" timeout 20 hermes cron list 2>/dev/null || true)
+  if [ -n "$cron_out" ]; then
+    printf '%s\n' "$cron_out" | awk '
+      /^[[:space:]]*Name:/     { jobs++ }
+      /^[[:space:]]*Last run:/ { seen++; if ($NF != "ok") fails++ }
+      END {
+        never = jobs - seen; if (never < 0) never = 0
+        printf "  jobs: %d  last-run failures: %d  never-run: %d\n", jobs+0, fails+0, never
+      }'
+  else
+    echo "  cron: no jobs listed / gateway unreachable"
+  fi
+else
+  echo "  hermes CLI not found — cron status unavailable"
+fi
 echo; echo "── qmd index"
 qmd status 2>/dev/null | head -8 || echo "  qmd index not built yet (finish_boxsafe_clone.sh)"
 echo; echo "── qmd MCP daemon (agent transport, NUC-16)"
@@ -120,6 +153,7 @@ if [ -d "$inbox_dir" ]; then
 else
   echo "  inbox worktree not present ($inbox_dir)"
 fi
+# ── NUC-40 verified NUC-27 key-cap/budget coverage below already exists — no re-add. ──
 # ── NUC-27: shared OpenRouter budget (whole fleet shares ONE key + a ~$25 cap) ──
 # Read-only GET of /key. Runs in a SUBSHELL so the key never leaks into this
 # script's env and is never printed. Fail-soft: any error prints a soft note and
