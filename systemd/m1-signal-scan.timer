@@ -1,0 +1,15 @@
+[Unit]
+Description=M1 market signal scan, weekly Monday — NUC-32
+# Mon 05:30 Europe/Amsterdam (box timezone fixed 2026-07-09). Weekly cadence honors
+# M1's "at most 1x/week" bar; the task's STEP 0 weekly-skip guard is the real enforcer.
+# Scheduled after the 04:30 generic agent-proposal run so the two don't collide, and
+# early Monday so a fresh scan lands before the week's work starts. This dedicated
+# timer decouples M1 from the non-deterministic agent-proposal queue-position lottery.
+
+[Timer]
+OnCalendar=Mon 05:30
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
