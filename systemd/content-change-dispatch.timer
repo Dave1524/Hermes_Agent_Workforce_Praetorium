@@ -1,0 +1,19 @@
+# content-change-dispatch.timer — NUC-35.
+# Poll every 15 min. Cheap: each tick is one Notion REST read + a set diff; the
+# LLM (agent_propose.sh) fires ONLY when a new Picked ID is seen, so the steady-state
+# cost is zero. Cadence + shape copied from agent-workforce-auto-sync.timer (*:0/15).
+# The nightly augustus-content.timer stays as the backstop; a 01:30 poll tick that
+# overlaps the 01:30 nightly run SKIPs safely on agent_propose.sh's flock — no
+# double-draft, so both timers can coexist.
+#
+# Deploy: sudo systemctl enable --now content-change-dispatch.timer
+[Unit]
+Description=Schedule change-triggered Augustus content dispatch every 15 min — NUC-35
+
+[Timer]
+OnCalendar=*:0/15
+RandomizedDelaySec=2min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
