@@ -16,6 +16,14 @@ sandbox() {
   echo "$h"
 }
 memf() { echo "$1/.hermes/profiles/claudius/memories/MEMORY.md"; }
+sandbox_profiles() {
+  local h; h=$(mktemp -d)
+  mkdir -p "$h/agent-workforce/logs"
+  local p
+  for p in "$@"; do mkdir -p "$h/.hermes/profiles/$p/memories"; done
+  echo "$h"
+}
+memf_profile() { echo "$1/.hermes/profiles/$2/memories/MEMORY.md"; }
 run() { HOME="$1" MEM_MAX_ENTRIES="$2" MEM_MAX_CHARS="$3" bash "$SCRIPT" >/dev/null 2>&1; echo $?; }
 bakglob() { echo "$(dirname "$1")"/MEMORY.md.bak.consolidate.*; }
 count_entries() { local f=$1 d; [ -s "$f" ] || { echo 0; return; }; d=$(grep -c '^§$' "$f"); echo $(( d + 1 )); }
@@ -77,5 +85,25 @@ assert 'all three uniques kept' "grep -q 'unique-1' '$f4' && grep -q 'unique-2' 
 sc=$(md5sum "$f4" | awk '{print $1}'); rc2=$(run "$h4" 8 900); sd=$(md5sum "$f4" | awk '{print $1}')
 assert 'second run exits 0' "[ '$rc2' = 0 ]"
 assert 'idempotent after dedup' "[ '$sc' = '$sd' ]"
+
+echo '--- scenario 5: multiple profiles consolidated independently in one run ---'
+h5=$(sandbox_profiles alpha beta)
+fa=$(memf_profile "$h5" alpha); mk_store "$fa" 20 150
+fb=$(memf_profile "$h5" beta)
+bigb=$(printf 'entry-99 %s' "$(head -c 2000 < /dev/zero | tr '\0' 'y')")
+printf 'entry-01 small%sentry-02 small%s%s' "$DELIM" "$DELIM" "$bigb" > "$fb"
+before_b=$(md5sum "$fb" | awk '{print $1}')
+rc=$(run "$h5" 8 900)
+assert 'multi-profile run exits 0' "[ '$rc' = 0 ]"
+assert 'profile alpha bounded <=8' "[ \"\$(count_entries '$fa')\" -le 8 ]"
+assert 'profile alpha newest kept' "grep -q 'entry-20' '$fa'"
+assert 'profile alpha backup written' "ls $(bakglob "$fa") >/dev/null 2>&1"
+assert 'profile beta preserved (fail-soft), unaffected by profile alpha' "[ '$(md5sum "$fb" | awk '{print $1}')' = '$before_b' ]"
+assert 'profile beta no backup on preserve path' "! ls $(bakglob "$fb") >/dev/null 2>&1"
+
+echo '--- scenario 6: no profile directories at all -> no-op exit 0 ---'
+h6=$(mktemp -d); mkdir -p "$h6/agent-workforce/logs"
+rc=$(run "$h6" 8 900)
+assert 'no profiles present exits 0' "[ '$rc' = 0 ]"
 
 exit $fail

@@ -1,11 +1,13 @@
-# Nightly claudius working-memory consolidation/prune — NUC-21.
-# Runs bin/consolidate_memory.sh (mechanical, no LLM, no network, fail-soft).
+# Nightly working-memory consolidation/prune, all agent profiles — NUC-21.
+# Runs bin/consolidate_memory.sh (mechanical, no LLM, no network, fail-soft),
+# which loops over every */memories dir under ~/.hermes/profiles — a new
+# profile is picked up automatically, no unit change needed.
 # Deploy: sudo cp to /etc/systemd/system/, then `sudo systemctl daemon-reload`.
 [Unit]
-Description=Nightly claudius working-memory consolidation/prune — NUC-21
+Description=Nightly working-memory consolidation/prune, all profiles — NUC-21
 After=network-online.target
 Wants=network-online.target
-ConditionPathExists=/home/dave/.hermes/profiles/claudius/memories
+ConditionPathIsDirectory=/home/dave/.hermes/profiles
 
 [Service]
 Type=oneshot
