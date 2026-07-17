@@ -2,8 +2,9 @@
 
 ## Decision (AC1)
 
-Store = **Hermes-native per-profile built-in memory** (`MEMORY.md`) for the
-`claudius` profile. Chosen over a custom JSONL/SQLite run-log or an
+Store = **Hermes-native per-profile built-in memory** (`MEMORY.md`), one per
+agent profile — first proven on `claudius`, since generalized to every
+profile's consolidation (see AC4). Chosen over a custom JSONL/SQLite run-log or an
 `_inbox/agents/_memory/` markdown trail because it already exists, Hermes
 auto-injects it into the run's system prompt, and the built-in `memory` tool
 writes it — the least new machinery. The alternatives were rejected: a JSONL/
@@ -12,7 +13,7 @@ pollute the inbox branch and risk leaking run-notes to the Mac cockpit.
 
 ## Location (LIVE box state — NOT git-tracked)
 
-`~/.hermes/profiles/claudius/memories/MEMORY.md`. This is runtime state,
+`~/.hermes/profiles/<profile>/memories/MEMORY.md` (one per agent profile). This is runtime state,
 not repo content. **Box-safe only**: no client-identifiable strings, no
 `_confidential/` content ever — the same rule as proposal output. Distinct from
 qmd (NUC-10), which is *read-side* retrieval of the canonical vault; this is the
@@ -51,14 +52,19 @@ Single line, under ~700 chars, box-safe.
 
 `bin/consolidate_memory.sh` on `memory-consolidation.timer` (03:30 nightly,
 `Persistent=true`), mirroring `agent-proposal.timer` / `qmd-refresh.timer`.
-Mechanical, no LLM, no network. First an **exact-dedup** pass drops byte-identical
-entries (keeping the newest occurrence) so duplicates don't consume the budget;
-then a **FIFO cap** keeps the newest `MEM_MAX_ENTRIES=12` entries under
-`MEM_MAX_CHARS=7000` bytes (headroom under the tool's own 9000-char hard cap). This
-is dedup + FIFO trim, NOT LLM summarization. Bounded, idempotent, fail-soft: never
-empties or corrupts the store; on any
-problem it leaves the store byte-for-byte untouched and exits 0. Snapshots
-`.bak.consolidate.<ts>` (keeps the last 5) before each rewrite.
+Mechanical, no LLM, no network. Loops over every `*/memories` directory under
+`~/.hermes/profiles` — **all agent profiles**, not just `claudius` — so a newly
+added profile is covered automatically with no script or unit change. Each
+profile is consolidated independently: one profile's fail-soft outcome never
+blocks another's run. Per profile: first an **exact-dedup** pass drops
+byte-identical entries (keeping the newest occurrence) so duplicates don't
+consume the budget; then a **FIFO cap** keeps the newest `MEM_MAX_ENTRIES=12`
+entries under `MEM_MAX_CHARS=7000` bytes (headroom under the tool's own
+9000-char hard cap). This is dedup + FIFO trim, NOT LLM summarization. Bounded,
+idempotent, fail-soft: never empties or corrupts a store; on any problem it
+leaves that store byte-for-byte untouched and moves on to the next profile.
+Snapshots `.bak.consolidate.<ts>` (keeps the last 5) before each rewrite. The
+script itself always exits 0.
 
 ## Continuity verification (AC5 — costs OpenRouter; run manually)
 

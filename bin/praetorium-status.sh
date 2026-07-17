@@ -112,13 +112,24 @@ fi
 printf "  mode    : %s\n" "local-headless-chromium"
 printf "  chromium: %s\n" "$fetch_chromium"
 printf "  runner  : %s\n" "$fetch_runner"
-echo; echo "── Working memory (claudius, NUC-21)"
-ra_mem="$HOME/.hermes/profiles/claudius/memories/MEMORY.md"
-if [ -s "$ra_mem" ]; then
-  e=$(grep -c '^§$' "$ra_mem" 2>/dev/null); entries=$(( e + 1 ))
-  printf "  entries: %s   bytes: %s\n" "$entries" "$(wc -c < "$ra_mem" | tr -d ' ')"
+echo; echo "── Working memory (all profiles, NUC-21)"
+mem_profile_dirs=()
+for d in "$HOME"/.hermes/profiles/*/memories; do
+  [ -d "$d" ] && mem_profile_dirs+=("$d")
+done
+if [ "${#mem_profile_dirs[@]}" -eq 0 ]; then
+  echo "  no profile memory directories found"
 else
-  echo "  store empty (no runs recorded yet)"
+  for d in "${mem_profile_dirs[@]}"; do
+    profile=$(basename "$(dirname "$d")")
+    mem_file="$d/MEMORY.md"
+    if [ -s "$mem_file" ]; then
+      e=$(grep -c '^§$' "$mem_file" 2>/dev/null); entries=$(( e + 1 ))
+      printf "  %-10s entries: %s   bytes: %s\n" "$profile" "$entries" "$(wc -c < "$mem_file" | tr -d ' ')"
+    else
+      printf "  %-10s store empty (no runs recorded yet)\n" "$profile"
+    fi
+  done
 fi
 echo; echo "── Vault clone"
 if [ -d "$HOME/vault/.git" ]; then

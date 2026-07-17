@@ -22,9 +22,15 @@ nothing has changed, do not re-flag it identically — note "unchanged" or skip 
    04_operations/current_priorities.md (fast, path-based — do NOT use the slow semantic
    `query` for a known exact path). It names which tracks are ACTIVELY counterparty-owned
    or deliberately parked (e.g. "parked until ~07-14", "no touch before September" — a
-   deliberately parked deal is NOT a stall, do not flag it). Flag a deal only if:
-   (a) no contact in >7 days, AND (b) current_priorities.md does not already show it as
-   parked/counterparty-owned/within-window. (Your working directory is the inbox worktree,
+   deliberately parked deal is NOT a stall, do not flag it). Flag a deal ONLY if ALL of these hold:
+   (a) Stage is an active-pipeline stage — one of Prospect / Qualified / Proposal / Active.
+       NEVER flag a deal whose Stage is Closed (the deal is done/lost) or On Hold (deliberately
+       parked). These are terminal or parked in the pipeline, so a stall flag on them is a false
+       positive — skip them regardless of how long they have been silent. This is the structured-
+       field guard (it reads the Stage you already fetched in step 1) and does not depend on
+       current_priorities.md remembering to mention them.
+   (b) no contact in >7 days, AND
+   (c) current_priorities.md does not already show it as parked/counterparty-owned/within-window. (Your working directory is the inbox worktree,
    which does NOT contain 04_operations/ directly — qmd is the only way to read it here.)
 3. For each genuine stall: note it in your run output (this becomes the Discord run
    notification — no separate posting action needed). Do NOT update any Notion page
