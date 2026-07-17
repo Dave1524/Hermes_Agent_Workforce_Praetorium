@@ -3,6 +3,7 @@ Description=Nightly Augustus content pitch+draft run — content workflow Phase 
 After=network-online.target qmd-mcp.service brave-mcp.service
 Wants=network-online.target brave-mcp.service
 ConditionPathExists=/home/dave/agent-worktrees/inbox
+OnFailure=agent-alert@%n.service
 
 [Service]
 Type=oneshot
@@ -10,5 +11,6 @@ User=dave
 Environment=AGENT_JOB_OVERRIDES=/home/dave/.config/agent-workforce/augustus-content.env
 EnvironmentFile=/home/dave/.config/agent-workforce/secrets.env
 ExecStart=/home/dave/agent-workforce/bin/agent_propose.sh
+ExecStartPost=/home/dave/agent-workforce/bin/notify.sh "[Praetorium] Augustus content run completed" "Nightly Augustus content drafting run completed."
 TimeoutStartSec=45min
 NoNewPrivileges=true
