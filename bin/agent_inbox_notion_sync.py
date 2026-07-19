@@ -209,9 +209,102 @@ def main():
                             "Processed At": {"date": {"start": today}}}})
         reflected.append("%s -> %s" % (fn, new_status))
 
-    print("agent-inbox-sync: %d proposal(s) on git, %d row(s) in Notion." % (len(files), len(rows)))
-    print("  created: %s" % (", ".join(created) if created else "none (inbox clean)"))
-    print("  reflected: %s" % (", ".join(reflected) if reflected else "none"))
+    # --- lifecycle report (read-only over files/rows; no sync side effects) ---
+    today_d = datetime.date.today()
+    d7 = today_d - datetime.timedelta(days=7)
+    d14 = today_d - datetime.timedelta(days=14)
+    files_set = set(files)
+
+    def parse_d(s):
+        if not s:
+            return None
+        try:
+            return datetime.date.fromisoformat(str(s)[:10])
+        except ValueError:
+            return None
+
+    def fmt_d(d):
+        return d.strftime("%a %d %b") if d else "?"
+
+    def row_title(fn, r):
+        path = os.path.join(INBOX_DIR, fn)
+        if os.path.isfile(path):
+            return title_and_excerpt(path)[0]
+        t = prop_text(r, "Proposal") if r else None
+        return t or fn
+
+    def proposal_date(fn, r):
+        path = os.path.join(INBOX_DIR, fn)
+        if os.path.isfile(path):
+            return parse_d(mtime_date(path))
+        return parse_d(prop_text(r, "Proposal Date")) if r else None
+
+    this_week, last_week_counts = [], {}
+    pending_review, ready_promote = [], []
+
+    seen = set(by_fn) | files_set
+    for fn in sorted(seen):
+        r = by_fn.get(fn)
+        status = prop_text(r, "Status") if r else ("New" if fn in files_set else None)
+        on_git = fn in files_set
+        pdate = proposal_date(fn, r)
+        proc = parse_d(prop_text(r, "Processed At")) if r else None
+        title = row_title(fn, r)
+
+        if status == "New" and on_git:
+            pending_review.append((title, pdate))
+            if pdate and pdate >= d7:
+                this_week.append(("[new] → review in Notion", title, pdate))
+        elif status == "Approved" and on_git and not proc:
+            ready_promote.append((title, pdate))
+            if pdate and pdate >= d7:
+                this_week.append(("[approved] → promote needed", title, pdate))
+        elif status in ("Promoted", "Rejected") and proc:
+            tag = "[promoted]" if status == "Promoted" else "[rejected]"
+            if proc >= d7:
+                this_week.append((tag, title, proc))
+            elif d14 <= proc < d7:
+                last_week_counts[tag] = last_week_counts.get(tag, 0) + 1
+
+    # also surface create/reflect activity from this run in the header context
+    pending_n = len(pending_review) + len(ready_promote)
+    print("agent-inbox-sync: %d proposal(s) pending action." % pending_n)
+    if created:
+        print("  created this run: %s" % ", ".join(created))
+    if reflected:
+        print("  reflected this run: %s" % ", ".join(reflected))
+
+    print()
+    print("THIS WEEK (last 7 days)")
+    if this_week:
+        for tag, title, d in sorted(this_week, key=lambda x: x[2] or today_d, reverse=True):
+            print("  %s  %s  (%s)" % (tag, title, fmt_d(d)))
+    else:
+        print("  (none)")
+
+    print()
+    print("LAST WEEK (7–14 days ago)")
+    if last_week_counts:
+        for tag in ("[promoted]", "[rejected]"):
+            if tag in last_week_counts:
+                print("  %s  %d" % (tag, last_week_counts[tag]))
+    else:
+        print("  (none)")
+
+    print()
+    print("ACTION NEEDED FROM YOU")
+    print("  Pending review:")
+    if pending_review:
+        for title, d in sorted(pending_review, key=lambda x: x[1] or today_d, reverse=True):
+            print("    • %s  (%s) — review in Notion" % (title, fmt_d(d)))
+    else:
+        print("    (none)")
+    print("  Ready to promote:")
+    if ready_promote:
+        for title, d in sorted(ready_promote, key=lambda x: x[1] or today_d, reverse=True):
+            print("    • %s  (%s) — promote from Mac" % (title, fmt_d(d)))
+    else:
+        print("    (none)")
 
 
 if __name__ == "__main__":
