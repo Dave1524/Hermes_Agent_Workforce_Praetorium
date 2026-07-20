@@ -266,16 +266,27 @@ def main():
             elif d14 <= proc < d7:
                 last_week_counts[tag] = last_week_counts.get(tag, 0) + 1
 
-    # also surface create/reflect activity from this run in the header context
-    pending_n = len(pending_review) + len(ready_promote)
-    print("agent-inbox-sync: %d proposal(s) pending action." % pending_n)
+    # --- headline: lifecycle summary instead of raw count ---
+    promoted_this_week = sum(1 for tag, _, _ in this_week if tag == "[promoted]")
+    rejected_this_week = sum(1 for tag, _, _ in this_week if tag == "[rejected]")
+    new_this_week = len(pending_review)
+    ready_count = len(ready_promote)
+    parts = []
+    if new_this_week:
+        parts.append("%d pending review" % new_this_week)
+    if ready_count:
+        parts.append("%d ready to promote" % ready_count)
+    if promoted_this_week:
+        parts.append("%d promoted this week" % promoted_this_week)
+    if rejected_this_week:
+        parts.append("%d rejected this week" % rejected_this_week)
+    if not parts:
+        parts.append("all clear — no pending proposals")
+    print("agent-inbox-sync: %s." % ", ".join(parts))
     if created:
         print("  created this run: %s" % ", ".join(created))
     if reflected:
         print("  reflected this run: %s" % ", ".join(reflected))
-
-    print()
-    print("THIS WEEK (last 7 days)")
     if this_week:
         for tag, title, d in sorted(this_week, key=lambda x: x[2] or today_d, reverse=True):
             print("  %s  %s  (%s)" % (tag, title, fmt_d(d)))

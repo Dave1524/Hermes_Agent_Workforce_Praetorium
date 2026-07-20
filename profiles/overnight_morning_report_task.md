@@ -32,8 +32,9 @@ scheduling is systemd (NUC-36). Mention residual Hermes cron only if still prese
 ### 3. Diff the two
 Compare:
 - **Inbox files**: new filenames since pre-snapshot (mtime newer than pre-snapshot stamp)
+- **Inbox lifecycle**: read the `## Inbox lifecycle summary` section in the pre-snapshot — this has the full THIS WEEK / LAST WEEK / ACTION NEEDED summary from the Notion sync (lifecycle-oriented, not raw counts). Report it concisely.
 - **Kanban tasks**: transitions, new, completed, timed_out, blocked
-- **Inbox sync**: did `agent-inbox-sync.timer` fire? Check timer last/next + journal
+- **Inbox sync**: did `agent-inbox-sync.timer` fire? Check timer last/next + journal for any failures (skip the raw-count output — lifecycle data is in the pre-snapshot)
 - **MCP services**: any that went down?
 - **Other jobs**: overnight-pre-snapshot, agent-proposal, augustus-content, bd-stall-radar, weekly-pre-assembly — did they fire? Any FAIL/BLOCKED in cost.log?
 
@@ -51,13 +52,15 @@ Structure:
 - Tasks blocked/failed: <list with error context>
 - New tasks queued: <list or "none">
 
-## Agent inbox
-- New proposals since last snapshot: <list with mtime + brief title from first line>
-- Proposals already present: <count>
+## Agent inbox lifecycle (from pre-snapshot)
+- **Active proposals:** <pending_review_count> pending review, <ready_promote_count> ready to promote
+- **This week:** <promoted_X> promoted, <rejected_Y> rejected, <new_Z> submitted
+- **Last week:** <summary or "none">
+- **New files since snapshot:** <list, or "none">
 
 ## Inbox sync (agent-inbox-sync)
 - Ran: yes/no at <time>
-- What it did: <from journal, or "no output found">
+- What it did: <brief lifecycle summary, skip raw git/Notion line counts>
 - If it failed: <error>
 
 ## Other scheduled jobs

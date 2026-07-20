@@ -69,6 +69,14 @@ run_or_note() {
     echo "inbox missing: $inbox"
   fi
 
+  section "Inbox lifecycle summary (agent-inbox-sync --dry-run)"
+  src="$HOME/dev/agent-workforce/bin/agent_inbox_notion_sync.py"
+  if [ -f "$src" ]; then
+    run_or_note python3 "$src" --dry-run
+  else
+    echo "sync script missing: $src"
+  fi
+
   section "Systemd timers (fleet schedule)"
   run_or_note systemctl list-timers \
     'overnight-*' 'agent-*' 'augustus-*' 'bd-*' 'weekly-*' \
