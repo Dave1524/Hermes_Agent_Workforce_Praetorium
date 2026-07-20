@@ -9,6 +9,11 @@
 # unit failed (which would fire the OnFailure alert for a non-event).
 set -uo pipefail
 
+# Maximum report age before we refuse to deliver it (seconds).
+# If the newest report file is older than this, the agent likely
+# failed to produce a fresh one — don't spam Dave with stale data.
+MAX_REPORT_AGE_SECS=$(( 26 * 3600 ))   # 26 hours — covers one skipped day
+
 log="$HOME/logs/deliver_report.log"
 mkdir -p "$HOME/logs" 2>/dev/null || true
 now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
@@ -38,6 +43,17 @@ fi
 
 if [ -z "$latest" ] || [ ! -s "$latest" ]; then
   note "no morning-report-*.md found in $report_dir — nothing to deliver"
+  exit 0
+fi
+
+# Stale-file guard: only deliver if the report was written within the freshness window.
+# This prevents the system from re-delivering the same stale file when the agent
+# failed to produce a new one (NUC-37 BLOCKED, missing overrides, etc.).
+report_mtime=$(stat -c %Y "$latest" 2>/dev/null || echo 0)
+now_epoch=$(date +%s)
+age=$(( now_epoch - report_mtime ))
+if [ "$age" -gt "$MAX_REPORT_AGE_SECS" ]; then
+  note "STALE: $(basename "$latest") is ${age}s old (>${MAX_REPORT_AGE_SECS}s max) — skipping delivery (agent likely did not produce a fresh report)"
   exit 0
 fi
 
