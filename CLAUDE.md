@@ -19,9 +19,13 @@ the vault holds *what they know*.
   the box-safe repo's `agents` branch/inbox. `main` is machine-published from the Mac — never
   hand-write or merge into it from here.
 - **Publishing is Mac-side only.** Never run `publish_boxsafe.sh` from this box.
-- **Remote APIs only for inference.** No local model runtime (Ollama, vLLM, IPEX-LLM) — under
-  the current "scope it away" posture the box never holds client-identifiable data, so remote
-  APIs (OpenRouter) are sufficient and simpler.
+- **Inference is remote-first, with a narrow local tier.** Generative agent work (Marcus,
+  Claudius, Augustus, Trajan and their synthesis) runs on remote APIs (OpenRouter). A charter-
+  scoped **local inference tier** (Ollama on the Arc iGPU) is now permitted for *mechanical*,
+  high-volume work only — classification/summarization/tagging — to cut OpenRouter cost and keep
+  those tokens on-box. Client-identifiable data still never touches this box, so the boundary is
+  unchanged. Do NOT route Tier-A judgment/synthesis to the local model. See
+  `~/vault/03_projects/active/ai_agent_workforce/local_inference_charter.md`.
 - **Secrets are a separate tree.** `~/.config/agent-workforce/` holds credentials (deploy key,
   mode 600) and is NOT this repo. Never `git add` anything from that path into this repo.
 
