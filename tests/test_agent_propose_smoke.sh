@@ -237,4 +237,70 @@ rc=$(run_scenario "$h13" 0 1)
 assert "proposal mode still exits 1 on boundary violation" "[ '$rc' = 1 ]"
 assert "proposal mode still logs FATAL boundary" "grep -q 'FATAL: agent touched files outside' '$h13/agent-workforce/logs/agent_propose.log'"
 
+# ── Silent-failure scenarios ────────────────────────────────────────────────
+# hermes exits 0 when a provider error becomes the agent's final RESPONSE, so the
+# runner used to record OK for a run that produced nothing (observed 2026-07-21:
+# HTTP 400 model-ID, and an ollama empty stream). A stale artifact then re-delivers
+# downstream for up to 26h. These pin both detectors and the no-false-positive case.
+silent_fail_sandbox() {
+  local home; home=$(sandbox)
+  cat > "$home/mock_hermes.sh" <<EOF
+#!/usr/bin/env bash
+[ -n "\${MOCK_STDOUT:-}" ] && printf '%s\n' "\${MOCK_STDOUT}"
+exit 0
+EOF
+  chmod +x "$home/mock_hermes.sh"
+  echo "$home"
+}
+
+run_silent() {
+  local home=$1 stdout=$2 verify=${3:-} rc=0
+  HOME="$home" PATH="$home/mockbin:$PATH" AGENT_PROPOSE_LOCK="$home/lock" \
+    AGENT_RETRY_BASE_SECONDS=0 AGENT_MAX_ATTEMPTS=1 AGENT_RUN_MODE=ops \
+    QMD_HEALTH_POLICY=off BRAVE_HEALTH_POLICY=off \
+    MOCK_STDOUT="$stdout" AGENT_VERIFY_CMD="$verify" \
+    bash "$SCRIPT" >"$home/stdout.log" 2>&1 || rc=$?
+  echo "$rc"
+}
+
+echo "--- scenario 14: exit 0 ending on a provider error is FAIL, not OK ---"
+h14=$(silent_fail_sandbox)
+rc=$(run_silent "$h14" 'API call failed after 3 retries: Provider returned an empty stream with no finish_reason')
+assert "exits 1 despite runtime exit 0" "[ '$rc' = 1 ]"
+assert "logs SILENT-FAIL" "grep -q 'SILENT-FAIL: exit 0 but the run ended on a provider error' '$h14/agent-workforce/logs/agent_propose.log'"
+assert "does NOT log ops OK" "! grep -q 'OK: ops run completed' '$h14/agent-workforce/logs/agent_propose.log'"
+assert "cost.log outcome=FAIL" "grep -q 'outcome=FAIL' '$h14/agent-workforce/logs/cost.log'"
+
+echo "--- scenario 15: HTTP 4xx as final response is FAIL ---"
+h15=$(silent_fail_sandbox)
+rc=$(run_silent "$h15" 'HTTP 400: local-big is not a valid model ID')
+assert "exits 1" "[ '$rc' = 1 ]"
+assert "logs SILENT-FAIL" "grep -q 'SILENT-FAIL' '$h15/agent-workforce/logs/agent_propose.log'"
+
+echo "--- scenario 16: a report QUOTING a provider error is not a false positive ---"
+h16=$(silent_fail_sandbox)
+# The error string appears in the body (as an overnight report summarising a journal
+# would), but the run ends on real content — tail-only scanning must let this pass.
+rc=$(run_silent "$h16" 'HTTP 400: local-big is not a valid model ID
+line2
+line3
+line4
+line5
+line6
+## Overnight Report — all nominal')
+assert "exits 0 (no false positive)" "[ '$rc' = 0 ]"
+assert "logs ops OK" "grep -q 'OK: ops run completed' '$h16/agent-workforce/logs/agent_propose.log'"
+
+echo "--- scenario 17: AGENT_VERIFY_CMD gates the artifact ---"
+h17=$(silent_fail_sandbox)
+rc=$(run_silent "$h17" 'looks fine to me' 'test -f /nonexistent/morning-report.md')
+assert "exits 1 when artifact missing" "[ '$rc' = 1 ]"
+assert "logs artifact SILENT-FAIL" "grep -q 'SILENT-FAIL: exit 0 but AGENT_VERIFY_CMD found no artifact' '$h17/agent-workforce/logs/agent_propose.log'"
+
+echo "--- scenario 18: AGENT_VERIFY_CMD passing leaves the run OK ---"
+h18=$(silent_fail_sandbox)
+rc=$(run_silent "$h18" 'looks fine to me' 'true')
+assert "exits 0" "[ '$rc' = 0 ]"
+assert "logs ops OK" "grep -q 'OK: ops run completed' '$h18/agent-workforce/logs/agent_propose.log'"
+
 exit $fail

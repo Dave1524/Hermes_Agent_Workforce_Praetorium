@@ -235,6 +235,25 @@ case "$run_cmd" in
   *)                        max_attempts="${AGENT_MAX_ATTEMPTS:-3}" ;;
 esac
 ok=false; is_dedup=false; rc=0
+# ── Silent-failure detection: a zero exit is NOT evidence the work happened ──
+# hermes exits 0 when the agent's FINAL RESPONSE is itself a provider error. The
+# error is caught inside the agent loop and emitted as response text, so
+# hermes_cli/oneshot.py sees "a response was produced" and returns 0. HARD failures
+# (unknown provider, context-floor rejection) do exit non-zero and were always
+# handled correctly — these are the ones that slipped through.
+# Observed 2026-07-21: an HTTP 400 model-ID error and an ollama empty-stream error
+# each logged "OK: ops run completed" having produced no report at all. Because
+# deliver_report.sh then re-posts the newest surviving artifact, one silent failure
+# re-delivers a stale report for up to 26h (see the 4x repeat of 07-17 in
+# ~/logs/deliver_report.log). Two independent checks, either of which fails the run:
+#   1. did the run END on a provider error   (catches the observed cases)
+#   2. did the job's own artifact appear     (AGENT_VERIFY_CMD — catches the class)
+PROVIDER_ERROR_RE='^(HTTP [45][0-9]{2}:|API call failed after [0-9]+ retries:|Provider returned an empty stream)'
+# Tail-only: a fatal provider error is the last thing hermes emits, whereas an agent
+# REPORT may legitimately quote such a string out of a journal it was summarising.
+run_ended_on_provider_error() {
+  tail -n "${AGENT_ERROR_TAIL_LINES:-5}" "$1" 2>/dev/null | grep -qE "$PROVIDER_ERROR_RE"
+}
 # NUC-29: stamp the real date once, exported so the kanban wrapper (and any future
 # direct hermes -z path) share ONE value — no midnight-rollover mismatch between the two
 # scripts. RUN_DATE feeds the proposal filename + day-count math; TODAY is the human form.
@@ -250,8 +269,21 @@ while [ "$attempt" -lt "$max_attempts" ]; do
   attempt=$((attempt + 1))
   rc=0
   log "run attempt $attempt/$max_attempts: $run_cmd"
+  # Captured per-attempt (then appended to the shared log as before) so the
+  # silent-failure scan sees THIS attempt's tail, not the whole history.
+  attempt_out=$(mktemp "${TMPDIR:-/tmp}/agent_propose_out.XXXXXX")
   timeout "${AGENT_TIMEOUT_MINUTES:-30}m" bash -lc "$run_cmd" \
-    >>"$LOG_DIR/agent_run.log" 2>&1 || rc=$?
+    >"$attempt_out" 2>&1 || rc=$?
+  cat "$attempt_out" >>"$LOG_DIR/agent_run.log"
+  if [ "$rc" -eq 0 ] && run_ended_on_provider_error "$attempt_out"; then
+    rc=90
+    log "SILENT-FAIL: exit 0 but the run ended on a provider error — recording FAIL"
+  fi
+  if [ "$rc" -eq 0 ] && [ -n "${AGENT_VERIFY_CMD:-}" ] && ! bash -lc "$AGENT_VERIFY_CMD"; then
+    rc=91
+    log "SILENT-FAIL: exit 0 but AGENT_VERIFY_CMD found no artifact — recording FAIL"
+  fi
+  rm -f "$attempt_out"
   if [ "$rc" -eq 0 ]; then ok=true; break; fi
   # NUC-38: a distinct DEDUP exit (idempotent kanban hit — the card already ran under
   # today's key) is not a failure and must not be retried.
