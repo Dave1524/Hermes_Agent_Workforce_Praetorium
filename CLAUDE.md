@@ -34,6 +34,12 @@ the vault holds *what they know*.
 - `~/.config/agent-workforce/` — secrets + per-job override envs (mode 600). Outside git entirely.
 - This repo (`~/dev/agent-workforce/`) — **source of truth** for orchestration config, systemd
   unit sources, agent task profiles, inbox/approval tooling.
+  **`agent-workforce-auto-sync.timer` fires every 15 min** and runs `bin/auto-sync`:
+  `git add -A` → commit → `git push origin main`. Any dirty tree here reaches `origin/main`
+  within 15 minutes under a generic `Auto-sync:` message, sweeping unrelated WIP along with
+  it. Commit your own work **immediately** after editing — before deploying, before the
+  verify gate — or the message explaining *why* is lost. For a long batch, stop the timer
+  first and restart it after.
 - `~/agent-workforce/` — **deployed runtime copy** (no git) that systemd actually execs. Do not
   treat it as canonical; after merging to `main`, rsync `bin/` `profiles/` `docs/` into it.
   Job wiring map: `docs/runbook.md` § Job wiring (NUC-28).
