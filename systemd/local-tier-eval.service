@@ -1,0 +1,14 @@
+[Unit]
+Description=Local-tier capability eval (Ollama, $0 — no OpenRouter egress)
+After=network-online.target ollama.service
+Wants=ollama.service
+
+[Service]
+Type=oneshot
+User=dave
+# No EnvironmentFile: this eval must never reach a paid provider. It runs the
+# on-box models only, so it needs no API key — and withholding one guarantees it.
+ExecStart=/home/dave/agent-workforce/bin/local_tier_eval.sh
+TimeoutStartSec=60min
+NoNewPrivileges=true
+Nice=5

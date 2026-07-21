@@ -1,0 +1,12 @@
+[Unit]
+Description=Run the local-tier capability eval nightly at 21:45
+
+[Timer]
+# 21:45 leaves a clear hour before bd-stall-radar at 23:02; the eval takes the
+# agent_propose lock anyway and skips rather than queues if a job is running.
+OnCalendar=*-*-* 21:45:00
+AccuracySec=1min
+Persistent=false
+
+[Install]
+WantedBy=timers.target
