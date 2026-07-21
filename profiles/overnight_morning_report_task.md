@@ -64,7 +64,9 @@ Structure:
 - If it failed: <error>
 
 ## Other scheduled jobs
-- <list each unit + status + any failure reason>
+```
+<unit>  <time>  <outcome>  <note if notable>
+```
 
 ## System health
 - MCP servers: all up / <list failures>
@@ -79,6 +81,30 @@ Structure:
 ### 5. Persist + deliver
 Write the report to `~/logs/overnight/morning-report-$(date -u +%Y-%m-%dT%H%M)Z.md`
 AND deliver the same content back as your main output.
+
+## Output format (Discord delivery — NOT general markdown)
+
+`deliver_report.sh` posts this report to Discord verbatim. Discord implements only
+a subset of markdown. Write for that subset:
+
+- **Never use markdown tables.** Discord does not render `|---|` tables at all —
+  they arrive as literal pipe characters, and the 2000-char splitter breaks them
+  across messages mid-row. Use the bullet structure in the template as written.
+- For genuinely columnar data (job outcomes, per-run cost), use a fenced code
+  block with space-aligned columns. Fences survive splitting and render monospace.
+- Available: `**bold**`, `*italic*`, `#`/`##`/`###` headers, `-` lists, `>` quotes,
+  `` `inline code` ``, fenced blocks, `||spoiler||`, `[text](url)`.
+- Unavailable: tables, footnotes, nested list indentation, HTML, image syntax.
+- No horizontal rules (`---`) — they render as stray dashes and waste budget.
+
+### Length
+Target **under 1800 characters total**, so the report lands as one message rather
+than numbered parts. When a section is nominal, collapse it to a single line
+(`## System health` → `- All nominal: MCP up, gateway up, TZ correct, disk 58%.`).
+Spend the budget on what changed or broke. Omit unchanged inventories (inbox
+filenames that did not move, per-run durations and memory peaks) — those stay in
+the journal and the persisted file. A clean night should be well under half the
+limit; only a genuinely bad night should approach it.
 
 ## Hard rules
 - Read-only — never mutate git, vault, or config.
