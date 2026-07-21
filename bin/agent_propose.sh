@@ -28,6 +28,10 @@ mkdir -p "$LOG_DIR"
 log() { echo "$(date -Is) $*" | tee -a "$LOG_DIR/agent_propose.log"; }
 
 run_started=$(date +%s)
+# Exported so AGENT_VERIFY_CMD can assert "the artifact is newer than THIS run"
+# exactly (-newermt "@$AGENT_RUN_STARTED_AT") instead of guessing a freshness
+# window that silently breaks the day someone changes AGENT_TIMEOUT_MINUTES.
+export AGENT_RUN_STARTED_AT="$run_started"
 attempt=0
 # NUC-23 metrics fields (resolved after secrets are sourced); NUC-21 memory field.
 run_profile="unknown"

@@ -303,4 +303,28 @@ rc=$(run_silent "$h18" 'looks fine to me' 'true')
 assert "exits 0" "[ '$rc' = 0 ]"
 assert "logs ops OK" "grep -q 'OK: ops run completed' '$h18/agent-workforce/logs/agent_propose.log'"
 
+echo "--- scenario 19: AGENT_RUN_STARTED_AT lets verify assert artifact freshness ---"
+# The live morning-report job uses -newermt "@$AGENT_RUN_STARTED_AT"; pin that the
+# var is exported and usable, so a PRE-EXISTING (stale) artifact does not pass.
+h19=$(silent_fail_sandbox)
+mkdir -p "$h19/logs/overnight"
+touch -d '2 hours ago' "$h19/logs/overnight/morning-report-stale.md"
+rc=$(run_silent "$h19" 'done' 'test -n "$AGENT_RUN_STARTED_AT" && find "$HOME/logs/overnight" -name "morning-report-*.md" -newermt "@$AGENT_RUN_STARTED_AT" | grep -q .')
+assert "stale artifact does NOT satisfy verify" "[ '$rc' = 1 ]"
+assert "logs artifact SILENT-FAIL" "grep -q 'AGENT_VERIFY_CMD found no artifact' '$h19/agent-workforce/logs/agent_propose.log'"
+
+echo "--- scenario 20: a freshly written artifact DOES satisfy verify ---"
+h20=$(silent_fail_sandbox)
+cat > "$h20/mock_hermes.sh" <<EOF
+#!/usr/bin/env bash
+mkdir -p "$h20/logs/overnight"
+touch "$h20/logs/overnight/morning-report-fresh.md"
+echo ok
+exit 0
+EOF
+chmod +x "$h20/mock_hermes.sh"
+rc=$(run_silent "$h20" '' 'find "$HOME/logs/overnight" -name "morning-report-*.md" -newermt "@$AGENT_RUN_STARTED_AT" | grep -q .')
+assert "fresh artifact passes verify" "[ '$rc' = 0 ]"
+assert "logs ops OK" "grep -q 'OK: ops run completed' '$h20/agent-workforce/logs/agent_propose.log'"
+
 exit $fail
