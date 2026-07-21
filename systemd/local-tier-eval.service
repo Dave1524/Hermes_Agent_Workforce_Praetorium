@@ -9,10 +9,6 @@ User=dave
 # No EnvironmentFile: this eval must never reach a paid provider. It runs the
 # on-box models only, so it needs no API key — and withholding one guarantees it.
 ExecStart=/home/dave/agent-workforce/bin/local_tier_eval.sh
-# One night only: disable the timer once tonight's run finishes so the eval
-# cannot recur. '+' runs as root (the unit itself runs as dave, which cannot
-# write /etc/systemd/system). Runs even if the eval fails, by design.
-ExecStopPost=+/usr/bin/systemctl disable local-tier-eval.timer
 TimeoutStartSec=60min
 NoNewPrivileges=true
 Nice=5
