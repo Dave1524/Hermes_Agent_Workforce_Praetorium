@@ -31,6 +31,27 @@ def _timer_truth(workdir):
     return rows
 
 
+def _service_truth(workdir):
+    """unit -> state, from the captured services.txt (tab-separated)."""
+    return dict(
+        line.split("\t")
+        for line in (workdir / "services.txt").read_text().splitlines()
+        if "\t" in line
+    )
+
+
+def _load_json(text):
+    """Parse a single JSON value, tolerating a ```json fence. t7 wants an object."""
+    text = text.strip()
+    fence = re.search(r"```(?:json)?\s*(.*?)```", text, re.S)
+    if fence:
+        text = fence.group(1).strip()
+    try:
+        return json.loads(text)
+    except Exception:
+        return None
+
+
 def _parse_objects(text):
     """Accept a JSON array or JSONL. Formatting discipline is t3's job — t1
     measures whether the EXTRACTION is right, so don't conflate the two."""
@@ -79,9 +100,7 @@ def score_t1(out, workdir):
 
 
 def score_t2(out, workdir):
-    truth = dict(
-        l.split("\t") for l in (workdir / "services.txt").read_text().splitlines() if "\t" in l
-    )
+    truth = _service_truth(workdir)
     got = {}
     for line in out.splitlines():
         m = re.match(r"\s*([\w@.\-]+)\s*=\s*(\w+)", line)
@@ -146,7 +165,119 @@ def score_t5(out, workdir):
     return retention, detail
 
 
-SCORERS = {"t1": score_t1, "t2": score_t2, "t3": score_t3, "t4": score_t4, "t5": score_t5}
+def _unit_tokens(out):
+    """One unit-ish token per line (has a dot), bullets/leading marks stripped.
+    Prose lines ("The active units are:") carry no dotted token and drop out."""
+    tokens = []
+    for line in out.splitlines():
+        m = re.match(r"\s*[-*]?\s*([\w@.\-]+)", line)
+        if m and "." in m.group(1):
+            tokens.append(m.group(1))
+    return tokens
+
+
+def score_t6(out, workdir):
+    truth = _service_truth(workdir)
+    if not truth:
+        return 0.0, "no ground truth"
+    active = {u for u, s in truth.items() if s == "active"}
+    got = set(_unit_tokens(out))
+    # A filter is only correct if it emits no wrong name: an inactive unit or an
+    # invented one both break trust, so either is a hard fail (as in t1).
+    wrong = got - active
+    if wrong:
+        return 0.0, f"{len(wrong)} wrong: {sorted(wrong)[:2]}"
+    return len(got & active) / len(active), f"{len(got & active)}/{len(active)} active found"
+
+
+def score_t7(out, workdir):
+    truth = _service_truth(workdir)
+    if not truth:
+        return 0.0, "no ground truth"
+    want = {
+        "total": len(truth),
+        "active": sum(1 for s in truth.values() if s == "active"),
+        "inactive": sum(1 for s in truth.values() if s == "inactive"),
+    }
+    data = _load_json(out)
+    if not isinstance(data, dict):
+        return 0.0, "not a JSON object"
+    correct = sum(1 for k, v in want.items() if data.get(k) == v)
+    return correct / 3, f"{correct}/3 fields correct (want {want})"
+
+
+# Any weekday token or an HH:MM is proof the model invented a time instead of
+# abstaining — the failure that makes an unattended tier untrustworthy.
+_TIMESTAMP_RE = re.compile(r"\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b|\d{1,2}:\d{2}", re.I)
+
+
+def score_t8(out, _workdir):
+    body = out.strip()
+    if body.upper() == "NOT FOUND":
+        return 1.0, "correctly abstained"
+    if _TIMESTAMP_RE.search(body):
+        return 0.0, f"hallucinated a time: {body[:30]!r}"
+    return 0.0, f"wrong: {body[:30]!r}"
+
+
+def score_t9(out, workdir):
+    truth = sorted(_service_truth(workdir).keys(), key=str.lower)
+    if not truth:
+        return 0.0, "no ground truth"
+    got = [re.sub(r"^\s*[-*]?\s*", "", line).strip() for line in out.splitlines() if line.strip()]
+    if got == truth:
+        return 1.0, f"{len(truth)} names sorted + deduped"
+    if set(got) == set(truth):
+        dup = len(got) != len(set(got))
+        return 0.5, "correct set, " + ("has duplicates" if dup else "wrong order")
+    missing, extra = len(set(truth) - set(got)), len(set(got) - set(truth))
+    return 0.0, f"content mismatch: {missing} missing, {extra} extra"
+
+
+_EMAIL_RE = re.compile(r"[\w.\-]+@[\w.\-]+\.\w+")
+_MONEY_RE = re.compile(r"\$\d+(?:\.\d+)?")
+
+
+def score_t10(out, workdir):
+    src = (workdir / "pii_sample.txt").read_text()
+    expected = _MONEY_RE.sub("[REDACTED]", _EMAIL_RE.sub("[REDACTED]", src))
+    leaked = len(_EMAIL_RE.findall(out)) + len(_MONEY_RE.findall(out))
+    if leaked:
+        return 0.0, f"{leaked} PII token(s) leaked"
+    if out.strip() == expected.strip():
+        return 1.0, "redacted exactly"
+    return 0.5, "PII removed but surrounding text altered"
+
+
+# Kept in lockstep with the unit named in profiles/local_eval/t11_lookup.md.
+_T11_TARGET = "agent-workforce-auto-sync.timer"
+
+
+def score_t11(out, workdir):
+    truth = _timer_truth(workdir).get(_T11_TARGET)
+    if not truth:
+        return 0.0, f"no ground truth for {_T11_TARGET}"
+    got, want = " ".join(out.split()), " ".join(truth.split())
+    if got == want:
+        return 1.0, "exact"
+    if want in got:
+        return 0.5, "correct but padded"
+    return 0.0, f"wrong: {got[:30]!r}"
+
+
+SCORERS = {
+    "t1": score_t1,
+    "t2": score_t2,
+    "t3": score_t3,
+    "t4": score_t4,
+    "t5": score_t5,
+    "t6": score_t6,
+    "t7": score_t7,
+    "t8": score_t8,
+    "t9": score_t9,
+    "t10": score_t10,
+    "t11": score_t11,
+}
 
 
 def main():

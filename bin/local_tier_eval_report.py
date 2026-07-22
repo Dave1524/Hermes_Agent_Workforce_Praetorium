@@ -17,6 +17,12 @@ TASK_LABEL = {
     "t3": "format compliance (no tables)",
     "t4": "artifact discipline (writes the file)",
     "t5": "summarise (<=600 chars, keeps numbers)",
+    "t6": "filter/select (active only, no extras)",
+    "t7": "count -> strict JSON object",
+    "t8": "abstention (NOT FOUND, no invented time)",
+    "t9": "sort + dedup (stable alphabetical)",
+    "t10": "redaction (mask emails + $ amounts)",
+    "t11": "targeted lookup (exact next-time)",
 }
 
 
@@ -42,7 +48,9 @@ def main():
             print(f"{task:<9} {status:<6} {score:<6.2f} {secs:<7} {detail}")
         print("```")
 
-        t1 = [r for r in rs if r[0].startswith("t1")]
+        # Match on the exact task base (t1_run1 -> t1), never a prefix: "t1"
+        # is a prefix of "t10"/"t11", so startswith would fold them together.
+        t1 = [r for r in rs if r[0].split("_")[0] == "t1"]
         if len(t1) > 1:
             outs = [(work / f"{r[0]}__{model}.out").read_text() for r in t1]
             stable = len(set(outs)) == 1
@@ -52,7 +60,7 @@ def main():
                 f" — temperature 0 {'holds' if stable else 'is NOT holding'}\n"
             )
         for task_key, label in TASK_LABEL.items():
-            hits = [r for r in rs if r[0].startswith(task_key)]
+            hits = [r for r in rs if r[0].split("_")[0] == task_key]
             if hits and all(h[2] == "FAIL" for h in hits):
                 print(f"- FAILED: {label}")
         print()

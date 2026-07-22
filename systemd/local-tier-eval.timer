@@ -1,10 +1,13 @@
 [Unit]
-Description=Run the local-tier capability eval nightly at 21:45
+Description=Run the local-tier capability eval 6x/day (qwen only, $0)
 
 [Timer]
-# 21:45 leaves a clear hour before bd-stall-radar at 23:02; the eval takes the
-# agent_propose lock anyway and skips rather than queues if a job is running.
-OnCalendar=*-*-* 21:45:00
+# Six runs across the day catch time-of-day / thermal / load variance in the
+# local model instead of a single nightly sample. Offset to :17 to dodge the
+# every-15m auto-sync (:00/:15/:30/:45) and every-30m inbox-sync (:00/:30); all
+# six sit >90min from the heavy agent jobs (01:30, 04:31, 06:19, 23:03). The
+# eval takes the agent_propose lock and skips rather than queues on any overlap.
+OnCalendar=*-*-* 02,08,11,14,17,20:17:00
 AccuracySec=1min
 Persistent=false
 

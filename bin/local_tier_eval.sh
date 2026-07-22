@@ -10,6 +10,12 @@
 #   t3 format       — qwen emitted a markdown table despite an explicit prohibition
 #   t4 artifact     — qwen replied as if done without writing the file
 #   t5 summarise    — constrained compression with fact retention
+#   t6 filter       — emit only the matching subset, invent nothing
+#   t7 count        — arithmetic over a list, into one strict JSON object
+#   t8 abstention   — say NOT FOUND when the answer is absent (no invented time)
+#   t9 sort/dedup   — deterministic ordering + duplicate removal
+#   t10 redaction   — mask emails and $ amounts, touch nothing else
+#   t11 lookup      — copy one unit's next-time exactly, no padding
 #
 # Read-only against the box: every write lands in the run's own workdir.
 # Takes the agent_propose lock so it can never overlap a real scheduled job.
@@ -21,15 +27,19 @@ SCORER="$REPO_BIN/local_tier_eval_score.py"
 HERMES="${HERMES_BIN:-$HOME/.local/bin/hermes}"
 LOCK="${AGENT_PROPOSE_LOCK:-/tmp/agent_propose.lock}"
 OUT_DIR="${LOCAL_EVAL_OUT:-$HOME/logs/local-tier-eval}"
-MODELS="${LOCAL_EVAL_MODELS:-local local-big}"
+MODELS="${LOCAL_EVAL_MODELS:-local}"
 TIMEOUT_MIN="${LOCAL_EVAL_TIMEOUT_MIN:-6}"
 # Small prompts, so a task needing tools is the exception (t4 only).
 TOOLSET_DEFAULT="${LOCAL_EVAL_TOOLSET:-terminal,file}"
 
-run_date=$(date +%Y-%m-%d)
-work="$OUT_DIR/$run_date"
+# Per-run dir (minute resolution): the schedule fires several times a day, so a
+# per-DAY dir would let each run overwrite the last. history.psv is the long-term
+# spine that survives across runs.
+run_stamp=$(date +%Y-%m-%dT%H%M)
+work="$OUT_DIR/$run_stamp"
 mkdir -p "$work"
 card="$work/scorecard.md"
+history="$OUT_DIR/history.psv"
 
 log() { echo "$(date -Is) $*"; }
 
@@ -58,6 +68,19 @@ capture_inputs() {
   local newest
   newest=$(ls -1 "$HOME/logs/overnight"/morning-report-*.md 2>/dev/null | sort | tail -1)
   if [ -n "$newest" ]; then cp "$newest" "$work/report.txt"; else : > "$work/report.txt"; fi
+
+  # t9 input: unit names reversed with two duplicates appended — exercises dedup
+  # and ordering. Ground truth (sorted-unique) is recomputed from services.txt.
+  awk -F'\t' '{print $1}' "$work/services.txt" | tac > "$work/names_dup.txt"
+  awk -F'\t' 'NR<=2{print $1}' "$work/services.txt" >> "$work/names_dup.txt"
+
+  # t10 input: fixed, fake, box-safe text carrying emails and $ amounts to mask.
+  cat > "$work/pii_sample.txt" <<'PII'
+Contact ops at alerts@praetorium.local about the 06:15 run.
+Overnight spend was $0.02; last week it was $1.45 total.
+Ping dave@example.com if qmd-mcp.service starts flapping again.
+No sensitive tokens on this line — just uptime 3218s and 62% disk.
+PII
 }
 
 # Substitute the captured input into a prompt template.
@@ -105,11 +128,25 @@ main() {
     rm -f "$work/t4_artifact.txt"
     run_one t4 "$model" "$(build_prompt "$PROMPTS/t4_artifact.md" - "$work/t4_artifact.txt")" "$TOOLSET_DEFAULT"
     run_one t5 "$model" "$(build_prompt "$PROMPTS/t5_summarise.md" "$work/report.txt")" "$TOOLSET_DEFAULT"
+    run_one t6 "$model" "$(build_prompt "$PROMPTS/t6_filter.md" "$work/services_raw.txt")" "$TOOLSET_DEFAULT"
+    run_one t7 "$model" "$(build_prompt "$PROMPTS/t7_count.md" "$work/services_raw.txt")" "$TOOLSET_DEFAULT"
+    run_one t8 "$model" "$(build_prompt "$PROMPTS/t8_abstain.md" "$work/timers.txt")" "$TOOLSET_DEFAULT"
+    run_one t9 "$model" "$(build_prompt "$PROMPTS/t9_sort.md" "$work/names_dup.txt")" "$TOOLSET_DEFAULT"
+    run_one t10 "$model" "$(build_prompt "$PROMPTS/t10_redact.md" "$work/pii_sample.txt")" "$TOOLSET_DEFAULT"
+    run_one t11 "$model" "$(build_prompt "$PROMPTS/t11_lookup.md" "$work/timers.txt")" "$TOOLSET_DEFAULT"
   done
 
   python3 "$REPO_BIN/local_tier_eval_report.py" "$work" > "$card"
   log "scorecard: $card"
   cat "$card"
+
+  # Append this run's per-task verdicts to the cumulative history so trend can
+  # track pass-rate over time and across the day. Columns: run_ts task model
+  # status score secs. results.psv verdict field is "STATUS score detail".
+  [ -f "$history" ] || echo "run_ts|task|model|status|score|secs" > "$history"
+  awk -F'|' -v ts="$run_stamp" '{split($3, v, " "); print ts"|"$1"|"$2"|"v[1]"|"v[2]"|"$4}' \
+    "$work/results.psv" >> "$history"
+  log "history: appended $(wc -l < "$work/results.psv") rows to $history"
 }
 
 # Serialise against real scheduled jobs; skip rather than queue if one is running.
