@@ -54,7 +54,6 @@ Supporting daemons (not override-driven):
 | `brave-mcp.service` | Brave search MCP on `:8766` |
 | `memory-consolidation.timer` | Nightly MEMORY.md trim, all agent profiles |
 | `scorecard.timer` | Weekly scorecard publish |
-| `discord-bot.service` | Phase-2 bot — **do not enable** until token + private server exist |
 | `agent-workforce-auto-sync.timer` | Shell auto-sync of this git repo (no LLM) |
 | `overnight-pre-snapshot.timer` | Model-free pre-run state capture → `~/logs/overnight/` (NUC-36) |
 
