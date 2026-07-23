@@ -9,7 +9,6 @@ Box-side operational home for the AI agent workforce running on **Praetorium**, 
 - `docs/` – runbooks, workflow rules, data-boundary guidelines
 - `systemd/` – timers and services for automated tasks (canonical unit sources)
 - `config/job-overrides/` – non-secret per-job env templates (`AGENT_JOB_OVERRIDES`)
-- `discord-bot/` – lightweight bot for inbox/approval notifications
 - `.claude/briefs/` – current and archived NUC improvement briefs
 
 **Source of truth:** this git tree (`main`). The live box also has a deployed copy at
