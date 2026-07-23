@@ -10,6 +10,15 @@
 # copy is not — so this unit must invoke the source path (same path the retired
 # cron prompt used).
 #
+# WHY IT ALERTS (OnFailure -> Discord, then retries every ~15 min): bin/auto-sync
+# does a `git pull --ff-only origin main`, so this unit fails whenever local `main`
+# has DIVERGED from origin/main. Cause is always commits made directly on local
+# main and left unpushed while origin advanced (e.g. a merged PR) — auto-sync
+# refuses to auto-merge/rebase by design. It only handles small updates it commits
+# and pushes itself; significant work belongs on a branch/worktree, never lingering
+# unpushed on main. Fix: in /home/dave/dev/agent-workforce run
+# `git rebase origin/main && git push origin main`. First hit 2026-07-23.
+#
 # Deploy: sudo cp both unit files + agent-alert@.service to /etc/systemd/system/,
 #         then `sudo systemctl daemon-reload && sudo systemctl enable --now
 #         agent-workforce-auto-sync.timer`.
