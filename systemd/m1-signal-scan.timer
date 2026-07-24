@@ -1,13 +1,15 @@
 [Unit]
-Description=M1 market signal scan, weekly Monday — NUC-32
-# Mon 05:30 Europe/Amsterdam (box timezone fixed 2026-07-09). Weekly cadence honors
-# M1's "at most 1x/week" bar; the task's STEP 0 weekly-skip guard is the real enforcer.
-# Scheduled after the 04:30 generic agent-proposal run so the two don't collide, and
-# early Monday so a fresh scan lands before the week's work starts. This dedicated
-# timer decouples M1 from the non-deterministic agent-proposal queue-position lottery.
+Description=M1 market signal scan, twice weekly (Mon+Wed) — NUC-32
+# Mon+Wed 05:30 Europe/Amsterdam (box timezone fixed 2026-07-09). Cadence raised from
+# weekly to twice-weekly 2026-07-24 by Dave's request — the scans are strong content raw
+# material. The Claude Code runtime variant (m1_signal_scan.env → run_m1_signal_scan_cc.sh)
+# drops the task's old weekly-skip guard, so the timer alone owns cadence; the task keeps
+# only a same-day idempotency check. Scheduled after the 04:30 generic agent-proposal run
+# so the two don't collide, and early enough that a fresh scan lands before the day's work.
+# This dedicated timer decouples M1 from the non-deterministic agent-proposal queue lottery.
 
 [Timer]
-OnCalendar=Mon 05:30
+OnCalendar=Mon,Wed 05:30
 RandomizedDelaySec=5min
 Persistent=true
 
