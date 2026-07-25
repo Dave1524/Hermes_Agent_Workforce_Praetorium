@@ -12,7 +12,15 @@ the vault holds *what they know*.
 - Keep the Roman-emperor convention for any additional agent profiles added here.
 
 ## Hard constraints (short form)
-- **De-identified/public content only.** Client-identifiable work happens on the Mac, never here.
+- **Vault data is in-bubble.** The box sits inside Dave's private trust zone (the same zone as
+  Notion and Discord): the whole working vault is on the mirror — client names, deals,
+  priorities, daily logs — and agents may reason over all of it. `_confidential/` is the one
+  data quarantine (never published, tripwired in the publish script). De-identification
+  applies only to what *leaves* the bubble — outward-destined drafts, Brave queries, fetched
+  URLs. See `docs/data_boundary.md`. (2026-07-08 open-bubble posture.)
+- **The one hard gate is outward action.** No email, no social, no messaging humans from this
+  box — it holds no outward credentials, ever. Anything for the outside world is a draft Dave
+  sends. Notion and Discord are inside the bubble, not outward.
 - **No canonical vault access.** This box holds no credential to the canonical `obsidian-ai-os`
   vault — only a repo-scoped deploy key to `obsidian-ai-os-boxsafe`.
 - **Vault writes go through `agents`, never `main`.** Any proposal to the vault is committed to
@@ -23,8 +31,9 @@ the vault holds *what they know*.
   Claudius, Augustus, Trajan and their synthesis) runs on remote APIs (OpenRouter). A charter-
   scoped **local inference tier** (Ollama on the Arc iGPU) is now permitted for *mechanical*,
   high-volume work only — classification/summarization/tagging — to cut OpenRouter cost and keep
-  those tokens on-box. Client-identifiable data still never touches this box, so the boundary is
-  unchanged. Do NOT route Tier-A judgment/synthesis to the local model. See
+  those tokens on-box. Local inference has zero egress, so it is the safest tier for business
+  content; the LLM egress boundary in `docs/data_boundary.md` governs the remote tiers only.
+  Do NOT route Tier-A judgment/synthesis to the local model. See
   `~/vault/03_projects/active/ai_agent_workforce/local_inference_charter.md`.
 - **Secrets are a separate tree.** `~/.config/agent-workforce/` holds credentials (deploy key,
   mode 600) and is NOT this repo. Never `git add` anything from that path into this repo.
@@ -41,7 +50,11 @@ the vault holds *what they know*.
   verify gate — or the message explaining *why* is lost. For a long batch, stop the timer
   first and restart it after.
 - `~/agent-workforce/` — **deployed runtime copy** (no git) that systemd actually execs. Do not
-  treat it as canonical; after merging to `main`, rsync `bin/` `profiles/` `docs/` into it.
+  treat it as canonical. Deploy with **`bin/deploy`** — additive by default; `--dry-run` to
+  preview, `--prune` to also drop files deleted from source. Runtime state (`logs/`, `var/`,
+  `backups/`) is never touched. **Nothing deploys automatically:** edit source without
+  running this and the runtime keeps executing the old code — that is how this tree fell 6
+  days behind and kept serving the retired de-identification posture (NUC-44).
   Job wiring map: `docs/runbook.md` § Job wiring (NUC-28).
 
 ## Verification

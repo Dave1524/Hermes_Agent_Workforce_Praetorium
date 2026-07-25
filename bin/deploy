@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# Deploy: push this source checkout into the runtime tree that systemd actually execs.
+#
+# Source   ~/dev/agent-workforce   (git, this repo)
+# Runtime  ~/agent-workforce       (no git — holds live logs/, var/, backups/)
+#
+# The split is deliberate (see CLAUDE.md § Where things live) but until NUC-44 nothing
+# propagated source -> runtime, so the runtime tree silently rotted: its CLAUDE.md sat 6 days
+# behind and still carried the de-identification posture retired on 2026-07-08.
+#
+# Additive by default: updates and adds files, never deletes. Pass --prune to also remove
+# runtime files that no longer exist in source. Runtime state (logs/, var/, backups/) is
+# excluded either way.
+set -euo pipefail
+
+SRC="$(cd "$(dirname "$0")/.." && pwd)"
+DEST="${AGENT_WORKFORCE_RUNTIME:-$HOME/agent-workforce}"
+
+# Only these trees are deployed. Anything else in the runtime dir is runtime state.
+PATHS=(bin profiles docs CLAUDE.md AGENTS.md README.md config systemd)
+
+DRY_RUN=0
+PRUNE=0
+for arg in "$@"; do
+    case "$arg" in
+        --dry-run) DRY_RUN=1 ;;
+        --prune)   PRUNE=1 ;;
+        -h|--help)
+            sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+            exit 0 ;;
+        *) echo "deploy: unknown argument '$arg'" >&2; exit 2 ;;
+    esac
+done
+
+# Guard: never deploy onto something that isn't the runtime tree.
+if [[ ! -d "$DEST" ]]; then
+    echo "deploy: runtime tree '$DEST' does not exist. Refusing." >&2
+    exit 1
+fi
+if [[ ! -x "$DEST/bin/agent_propose.sh" ]]; then
+    echo "deploy: '$DEST' does not look like the agent-workforce runtime" >&2
+    echo "        (expected bin/agent_propose.sh). Refusing." >&2
+    exit 1
+fi
+if [[ -d "$DEST/.git" || -f "$DEST/.git" ]]; then
+    echo "deploy: '$DEST' is a git tree — that is the source, not the runtime. Refusing." >&2
+    exit 1
+fi
+
+# Deploying a dirty tree ships uncommitted work that auto-sync will then push under a
+# generic message. Warn loudly; do not block (a hotfix may legitimately want this).
+if [[ -n "$(git -C "$SRC" status --porcelain 2>/dev/null)" ]]; then
+    echo "deploy: WARNING — source tree is dirty. Commit first (see CLAUDE.md) or the" >&2
+    echo "        auto-sync timer will sweep this into a generic 'Auto-sync:' commit." >&2
+fi
+
+RSYNC_ARGS=(-a --itemize-changes --human-readable
+            --exclude='.git' --exclude='__pycache__' --exclude='*.pyc'
+            --exclude='*.bak' --exclude='*.bak-*'
+            --exclude='logs/' --exclude='var/' --exclude='backups/')
+
+[[ $DRY_RUN -eq 1 ]] && RSYNC_ARGS+=(--dry-run)
+[[ $PRUNE   -eq 1 ]] && RSYNC_ARGS+=(--delete)
+
+echo "deploy: $SRC -> $DEST"
+echo "deploy: source at $(git -C "$SRC" rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+[[ $DRY_RUN -eq 1 ]] && echo "deploy: DRY RUN — no changes written"
+[[ $PRUNE   -eq 1 ]] && echo "deploy: PRUNE — runtime files absent from source will be deleted"
+
+changed=0
+for p in "${PATHS[@]}"; do
+    [[ -e "$SRC/$p" ]] || continue
+    if [[ -d "$SRC/$p" ]]; then
+        out="$(rsync "${RSYNC_ARGS[@]}" "$SRC/$p/" "$DEST/$p/")"
+    else
+        out="$(rsync "${RSYNC_ARGS[@]}" "$SRC/$p" "$DEST/$p")"
+    fi
+    if [[ -n "$out" ]]; then
+        echo "$out" | sed "s|^|  [$p] |"
+        changed=$((changed + 1))
+    fi
+done
+
+if [[ $changed -eq 0 ]]; then
+    echo "deploy: runtime already current. Nothing to do."
+else
+    echo "deploy: $changed path(s) updated."
+fi
+
+if [[ $DRY_RUN -eq 0 ]]; then
+    echo "deploy: note — systemd services exec from the runtime tree; long-running units"
+    echo "        pick this up on their next timer fire, not immediately."
+fi

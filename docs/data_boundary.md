@@ -1,52 +1,40 @@
-# Remote-LLM data boundary & provider routing (NUC-07b)
+# Box-side egress paths (NUC-21 / NUC-22)
 
-**Status: RATIFIED by Dave (2026-07-06).** This rule is the confidentiality firewall that replaced
-the dropped local-model tier. It sits alongside the `_confidential/` rule: that rule decides what
-may exist on the box; this rule decides what may egress from it, and to whom.
+**The LLM data boundary and provider routing are NOT defined here.** Canonical source:
+`03_projects/active/ai_agent_workforce/data_boundary.md` in the vault — readable from this box
+through the box-safe mirror (query it via qmd). That doc is the ratified one:
 
-## The routing rule
+> **RATIFIED 2026-07-06 · AMENDED 2026-07-08 (open-bubble posture) · RE-RATIFIED 2026-07-23
+> (NUC-33 — enforceability audit + model-tier map).**
 
-**Tier A — business-sensitive (the default for anything using vault context):**
-- Path: OpenRouter, strict pin — all four flags on every request:
-  `provider.zdr: true` + `provider.data_collection: "deny"` + `provider.only: [<approved list>]`
-  + `provider.allow_fallbacks: false`. Any one omitted reopens a silent fallback leak.
-- Model pin (set 2026-07-06 against the live ZDR list): `anthropic/claude-sonnet-5`, ZDR-served
-  via Amazon Bedrock and Azure (`provider.only: ["amazon-bedrock", "azure"]`). Anthropic-direct
-  is not ZDR-listed on OpenRouter. Re-check the live list if the pin ever changes.
-- Account backstop: enable the account-level ZDR toggles at openrouter.ai/settings/privacy.
+It carries the Tier 0/A/B routing rule, the ZDR provider pins, the enforced-vs-aspirational
+audit, the per-job model-tier map, and the residual risks. **Do not restate any of it here.**
 
-**Tier B — generic bulk only (zero business content, zero vault context):**
-- Model pin (set 2026-07-06): `deepseek/deepseek-v4-flash` via OpenRouter with `zdr: true` +
-  `data_collection: "deny"` — it has 11 Western ZDR hosts (DeepInfra, Fireworks, …), so bulk
-  traffic never routes to China at all. China-direct APIs remain acceptable only for content Dave
-  would post publicly (PRC storage, no fixed retention period, opt-out training).
+This file used to hold a full copy of that doc, frozen at the 2026-07-06 ratification. It missed
+both later ratifications and went 19 days stale — still asserting that the box holds no
+client-identifiable data, which the 2026-07-08 open-bubble decision retired. A second copy of a
+policy is a copy that rots; the pointer above replaces it.
 
-**Hard rules (both tiers):**
-1. OpenRouter prompt-logging and the "1% discount" data-sharing opt-ins are **never enabled** —
-   opting in grants OpenRouter a perpetual, irrevocable commercial license (ToS §6.2).
-2. What may egress = content retrievable via qmd from the box-safe mirror (de-identified by
-   construction) for the task at hand. Agents query qmd per task; they never bulk-dump folders
-   into prompts.
-3. What may never egress: client-identifiable material (not on the box at all), secrets, and
-   `_confidential/` (absent + qmd-excluded — the NUC-10 exclusion test is the release gate).
-4. Spend: per-key hard credit limit at OpenRouter (NUC-08b) — also the runaway-loop backstop,
-   because Hermes' `model.max_tokens` is broken on OpenAI-compatible endpoints (issues
-   #4404/#20741); the runaway bound is the profile config `agent.max_turns` ceiling + the key cap.
+What remains below is the part canon does **not** cover: the two egress paths specific to this
+box's own hardware and network position.
 
-## Residual risks accepted at ratification
+## Current posture in one line
 
-- OpenRouter remains a US-based transit intermediary (ToS §6.1 processing license, metadata,
-  legal-process exposure) even with all flags set.
-- OpenRouter's ZDR/data-policy tags are "best knowledge", not warranties; the sub-processor
-  behind a ZDR-tagged frontier model may be Azure/Vertex — verify on the model page when keying.
-- 30-day retention (e.g. Anthropic direct default) is low-retention, not zero — ZDR-tagged
-  endpoints are the target for Tier A.
+The box is **inside Dave's private bubble** — the whole working vault (client names, priorities,
+daily logs) is on the mirror and agents may reason over it freely. `_confidential/` is the one
+data quarantine (never published, tripwired in the publish script). The one hard gate is
+**no outward actions, ever** — no email, social, or messaging humans; the box holds no outward
+credentials. Notion and Discord are *inside* the bubble, not outward.
+
+**The de-identification rule survives only for what leaves the bubble** — the two egress paths
+below, and any draft written for an audience outside Dave. It is a property of the outgoing
+string, not of what the agent is allowed to know.
 
 ## Third-party search egress (NUC-21)
 
 The Brave Search MCP (`@brave/brave-search-mcp-server`) adds an egress path distinct from LLM
 inference: the **search query string** itself leaves the box to Brave Software Inc. (US), not
-just the model's reasoning over box-safe context.
+just the model's reasoning over box context.
 
 As of NUC-21 the query egresses via a **local persistent daemon** (`brave-mcp.service`,
 127.0.0.1:8766) rather than a per-run `npx` subprocess; the API key is held only by that
@@ -56,7 +44,8 @@ runs. The transport change does not change the egress destination, rule, or cap 
 - **Rule:** queries must stay generic — public company/entity/person names only. Never put
   business-sensitive framing, client-identifiable strings, `_confidential/` content, or internal
   reasoning into a query. Treat this as Tier B-class egress (zero business content) regardless of
-  which tier the surrounding LLM call uses.
+  which tier the surrounding LLM call uses. **This rule is unchanged by the open-bubble posture:**
+  the box may *know* client specifics, but a Brave query is an outward string and carries none.
 - **Usage cap:** Brave's Free tier is inherently self-capping — **2,000 queries/month, 1
   query/sec** — no billing to run away (NUC-08b spirit: a real spend cap is only required if Dave
   upgrades to a paid Brave plan). The agent's turn-ceiling bound (`agent.max_turns` in the profile
@@ -75,6 +64,7 @@ request from its own IP** to the target URL to render JS/Cloudflare-gated pages.
 - **Rule:** only **public, de-identified URLs** may be fetched. Never put client-identifiable
   strings, `_confidential/` content, or business-sensitive framing in a URL or query param.
   Tier B-class egress (zero business content), same discipline as the Brave query rule above.
+  Also unchanged by the open-bubble posture, for the same reason.
 - **No login / paywall / ToS-restricted content** — public sources only.
 - **SSRF containment:** Hermes' built-in guard (`tools/url_safety.py`) blocks fetches to
   loopback / link-local / private ranges (verified: `http://127.0.0.1:8765/mcp` → not safe), so
@@ -85,9 +75,8 @@ request from its own IP** to the target URL to render JS/Cloudflare-gated pages.
   `agent/browser_registry.py` never selects the cloud backend); if Browserbase is ever keyed,
   add a session cap here first.
 
-## Rationale
+## Open follow-up
 
-The box-safe repo (boundary 1) decides what data may exist on the NUC. With no local model tier,
-everything an agent reasons over egresses to an API (boundary 2). Ratified position: box-safe
-business content may go to Western zero-retention/no-train endpoints — consistent with existing
-Claude/OpenAI practice — while China-direct models are reserved for public-grade bulk work.
+NUC-21 and NUC-22 are genuine parts of the data boundary and arguably belong in the canonical
+vault doc rather than box-side. They are kept here for now because both describe *this box's*
+hardware and network position. If they move to canon, this file becomes a pure pointer.
