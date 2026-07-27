@@ -7,7 +7,16 @@
 # report delivers its own file. FAIL-SOFT BY DESIGN: any delivery/lookup error is
 # logged and this script still exits 0, so a Discord hiccup never marks the report
 # unit failed (which would fire the OnFailure alert for a non-event).
+#
+# NUC-45: the report to deliver is now a parameter (REPORT_DIR / REPORT_GLOB /
+# REPORT_SUBJECT, set per-unit in the Environment= lines) so praetorium-daily-plan and
+# praetorium-eod-summary reuse this delivery path instead of each growing a copy of it.
+# The defaults are the NUC-30 morning report, so the existing unit is unchanged.
 set -uo pipefail
+
+REPORT_DIR="${REPORT_DIR:-$HOME/logs/overnight}"
+REPORT_GLOB="${REPORT_GLOB:-morning-report-*.md}"
+REPORT_SUBJECT="${REPORT_SUBJECT:-[Praetorium] Morning report}"
 
 # Maximum report age before we refuse to deliver it (seconds).
 # If the newest report file is older than this, the agent likely
@@ -34,15 +43,16 @@ hsend() {
   fi
 }
 
-report_dir="$HOME/logs/overnight"
-# Newest report by filename (timestamped morning-report-*.md sort lexically = chronologically).
+# Newest report by filename (the timestamped names sort lexically = chronologically).
 latest=""
-if [ -d "$report_dir" ]; then
-  latest=$(ls -1 "$report_dir"/morning-report-*.md 2>/dev/null | sort | tail -1)
+if [ -d "$REPORT_DIR" ]; then
+  # REPORT_GLOB must stay unquoted here — quoting it would defeat the glob.
+  # shellcheck disable=SC2086
+  latest=$(ls -1 $REPORT_DIR/$REPORT_GLOB 2>/dev/null | sort | tail -1)
 fi
 
 if [ -z "$latest" ] || [ ! -s "$latest" ]; then
-  note "no morning-report-*.md found in $report_dir — nothing to deliver"
+  note "no $REPORT_GLOB found in $REPORT_DIR — nothing to deliver"
   exit 0
 fi
 
@@ -57,7 +67,7 @@ if [ "$age" -gt "$MAX_REPORT_AGE_SECS" ]; then
   exit 0
 fi
 
-if hsend --to discord --subject '[Praetorium] Morning report' --file "$latest" --quiet; then
+if hsend --to discord --subject "$REPORT_SUBJECT" --file "$latest" --quiet; then
   note "delivered $(basename "$latest") to discord"
 else
   note "delivery failed for $(basename "$latest") (non-fatal)"

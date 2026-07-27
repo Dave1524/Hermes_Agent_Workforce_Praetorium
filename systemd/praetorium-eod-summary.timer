@@ -1,0 +1,14 @@
+[Unit]
+Description=Schedule Praetorium EOD summary, daily 22:15 — NUC-45
+# 22:15 Europe/Amsterdam, daily (matching the Mac job's cadence, which ran every day).
+# Deliberately BEFORE bd-stall-radar at 23:00 so the radar reads a day that is already
+# closed out, and late enough that the day's Notion task moves have actually happened.
+
+[Timer]
+OnCalendar=*-*-* 22:15
+RandomizedDelaySec=5min
+# A reboot spanning the slot must still produce the day's summary.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

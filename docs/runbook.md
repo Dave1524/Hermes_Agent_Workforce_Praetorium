@@ -28,6 +28,8 @@ Scheduled **proposal** agent jobs share `bin/agent_propose.sh` (lock, preflight,
 | Weekly pre-assembly | **Fri 22:00** | `weekly-pre-assembly.{service,timer}` | `~/.config/agent-workforce/weekly_pre_assembly.env` | `profiles/weekly_pre_assembly_task.md` | `claudius` |
 | Overnight pre-snapshot (no LLM) | daily **04:25** | `overnight-pre-snapshot.{service,timer}` | n/a | `bin/overnight_pre_snapshot.sh` | n/a |
 | Overnight morning report (ops) | daily **06:15** | `overnight-morning-report.{service,timer}` | `~/.config/agent-workforce/overnight_morning_report.env` | `profiles/overnight_morning_report_task.md` | `claudius` |
+| Daily plan (ops) | **Mon–Fri 06:00** | `praetorium-daily-plan.{service,timer}` | `~/.config/agent-workforce/daily_plan.env` | `profiles/daily_plan_task.md` | *(headless Claude Code)* |
+| EOD summary (ops) | daily **22:15** | `praetorium-eod-summary.{service,timer}` | `~/.config/agent-workforce/eod_summary.env` | `profiles/eod_summary_task.md` | *(headless Claude Code)* |
 | Agent inbox → Notion sync | `agent-inbox-sync.timer` | `agent-inbox-sync.{service,timer}` | *(service embeds the pipeline cmd)* | n/a | n/a |
 
 Override files set only non-secret keys:
@@ -50,7 +52,7 @@ Supporting daemons (not override-driven):
 | Unit | Role |
 |---|---|
 | `qmd-mcp.service` (+ `qmd-mcp.service.d/gpu.conf`) | Vault MCP on `:8765`; GPU drop-in sets `QMD_LLAMA_GPU=vulkan` |
-| `qmd-refresh.timer` | Index refresh every 30m |
+| `qmd-refresh.timer` | Index refresh every 30m; the pull leg is `bin/vault_sync_guard.sh sync` (NUC-45) |
 | `brave-mcp.service` | Brave search MCP on `:8766` |
 | `memory-consolidation.timer` | Nightly MEMORY.md trim, all agent profiles |
 | `scorecard.timer` | Weekly scorecard publish |
@@ -75,6 +77,75 @@ rsync -a --delete \
 rsync -a ~/dev/agent-workforce/profiles/ ~/agent-workforce/profiles/
 rsync -a ~/dev/agent-workforce/docs/ ~/agent-workforce/docs/
 ```
+
+## Daily rhythm jobs — daily plan + EOD summary (NUC-45)
+
+Both jobs moved off Mac launchd, where they silently no-opped whenever the laptop was
+asleep (3 of the 7 weekdays before 2026-07-27 had no morning plan at all, and nothing was
+written to either Notion DB after 07-24). **Notion is the durable artifact; the canonical
+vault write stays Mac-side** — the box never writes `07_daily/logs/`, on any branch.
+
+| | Daily plan | EOD summary |
+|---|---|---|
+| Timer | `praetorium-daily-plan.timer`, Mon–Fri 06:00 | `praetorium-eod-summary.timer`, daily 22:15 |
+| Runtime | `bin/run_daily_plan_cc.sh` | `bin/run_eod_summary_cc.sh` |
+| Notion row | `<date> — Daily Plan` in Daily Plans | `<date> — EOD Summary` in Daily Plans **and** `<date>` in Daily Log |
+| Local artifact | `~/logs/daily-plan/daily-plan-<ts>.md` + `receipt-<date>.json` | `~/logs/eod-summary/eod-summary-<ts>.md` + `receipt-<date>.json` |
+| Discord | `ExecStartPost=deliver_report.sh` (`REPORT_DIR`/`REPORT_GLOB`/`REPORT_SUBJECT` per unit) | same |
+
+Both entrypoints are thin wrappers over `bin/run_daily_rhythm_cc.sh`, which owns the
+vault freshness gate and the headless Claude Code invocation (box subscription, `$0`
+OpenRouter spend, `--strict-mcp-config` with an empty MCP config, no web tools).
+
+**The idempotency key is the row title**, owned by `bin/notion_daily.py`. Re-running a job
+for the same date updates that row and *replaces* its block body — it never stacks a
+second row. That is also what lets Dave's interactive `eod-wrap` overwrite the box's row
+later the same day instead of duplicating it.
+
+**Verify command.** Exit code is not evidence: the runtime exits 0 when a provider error
+becomes the agent's final response (observed 2026-07-21). `notion_daily.py` writes its
+receipt only after Notion accepts the upsert, and `AGENT_VERIFY_CMD` asserts a receipt
+newer than `$AGENT_RUN_STARTED_AT`, so yesterday's receipt cannot satisfy today's run.
+
+**What a failure looks like.**
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Unit failed, journal says `REFUSING to run` | `vault_sync_guard.sh check` refused: `~/vault` is dirty or lagging `origin/main` by >24h | Route the named drift (see below), then re-run by hand |
+| Unit failed, log says `AGENT_VERIFY_CMD found no artifact` | the agent produced no Notion write | Read `logs/agent_run.log` for the real error; do **not** trust the exit code |
+| No Discord message, unit green | `deliver_report.sh` is fail-soft | `~/logs/deliver_report.log` |
+| Two rows for one date | something wrote Notion outside `notion_daily.py` | Archive the duplicate; keep the title-keyed path |
+
+Re-run either job by hand (same guarded path as the timer):
+
+```bash
+systemctl start praetorium-daily-plan.service
+journalctl -u praetorium-daily-plan.service -n 50 --no-pager
+```
+
+### Vault freshness gate — `bin/vault_sync_guard.sh`
+
+The mirror froze silently for four days (2026-07-23 → 07-27) because `qmd-refresh`'s
+inline `git pull --ff-only || echo "... (offline?)"` treated a **rejected** pull like an
+offline blip: the unit exited 0, systemd logged `Finished`, no `OnFailure` fired, and qmd
+happily re-indexed a stale tree while every health check read green. A local edit to
+`00_system/tools/agent_inbox.py` had been blocking the fast-forward on every single run.
+
+The guard splits those two events apart:
+
+- `sync` (used by `qmd-refresh.service`) — fetch + fast-forward. Genuine offline stays
+  **soft** (exit 0, reindex what we have). A **rejected** fast-forward is a hard failure
+  that names the blocking files and fires `OnFailure=agent-alert@`. It discards nothing.
+- `check` (used by both daily jobs, before the agent launches) — refuses on a dirty tree,
+  or when the mirror lags `origin/main` by more than `--max-lag-hours` (default 24), or
+  when origin is unreachable *and* the last confirmed sync is older than that. A stale
+  mirror must produce a loud absence, never a confident wrong plan.
+
+Untracked files are reported but never block: they cannot make a briefing wrong and cannot
+stop a fast-forward. Tracked modifications do both.
+
+Because git rewrites `FETCH_HEAD` even when a fetch fails, the guard keeps its own
+`.git/vault_sync_guard_last_fetch` stamp as the witness for "origin was last reachable".
 
 ## What must be backed up (inventory)
 

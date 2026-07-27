@@ -1,0 +1,23 @@
+# Daily plan via the guarded runner (AGENT_RUN_MODE=ops) — NUC-45.
+# Replaces the Mac launchd morning-startup job, which silently no-ops whenever the
+# laptop is asleep (3 of the last 7 weekdays had no plan at all).
+[Unit]
+Description=Praetorium daily plan (ops mode) — NUC-45
+After=network-online.target qmd-refresh.service
+Wants=network-online.target
+OnFailure=agent-alert@%n.service
+
+[Service]
+Type=oneshot
+User=dave
+Environment=AGENT_JOB_OVERRIDES=/home/dave/.config/agent-workforce/daily_plan.env
+# NUC-45: deliver THIS job's artifact, not the overnight report's (deliver_report.sh
+# defaults to ~/logs/overnight/morning-report-*.md).
+Environment=REPORT_DIR=/home/dave/logs/daily-plan
+Environment=REPORT_GLOB=daily-plan-*.md
+Environment=REPORT_SUBJECT=[Praetorium] Daily plan
+EnvironmentFile=/home/dave/.config/agent-workforce/secrets.env
+ExecStart=/home/dave/agent-workforce/bin/agent_propose.sh
+ExecStartPost=/home/dave/agent-workforce/bin/deliver_report.sh
+TimeoutStartSec=20min
+NoNewPrivileges=true

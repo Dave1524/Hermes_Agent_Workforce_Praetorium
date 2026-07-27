@@ -3,14 +3,24 @@
 Description=qmd vault pull + re-index + embed — NUC-10
 # Explicit git pull added 2026-07-08: `qmd update --pull` was observed NOT to
 # advance the git checkout (reindex-only). The pull leg of the Mac→box sync
-# must not depend on qmd internals. Pull is fail-soft: offline => reindex only.
+# must not depend on qmd internals.
+#
+# NUC-45 (2026-07-27): the pull moved into bin/vault_sync_guard.sh. The old inline
+#   git pull --ff-only || echo "qmd-refresh: git pull failed (offline?) — reindexing current tree"
+# masked a REJECTED pull as an offline blip: a local change to
+# 00_system/tools/agent_inbox.py aborted every single run, the unit still exited 0,
+# systemd logged Finished, no OnFailure fired, and qmd re-indexed a frozen tree for four
+# days while every health check read green. The guard keeps genuine offline soft (exit 0,
+# reindex what we have) and makes a rejected fast-forward a hard failure that alerts.
 After=network-online.target
 ConditionPathExists=/home/dave/vault/.git
+OnFailure=agent-alert@%n.service
 
 [Service]
 Type=oneshot
 User=dave
-ExecStart=/bin/bash -lc 'git -C /home/dave/vault pull --ff-only || echo "qmd-refresh: git pull failed (offline?) — reindexing current tree"; qmd update && qmd embed --timeout 20'
+ExecStart=/home/dave/agent-workforce/bin/vault_sync_guard.sh sync
+ExecStart=/bin/bash -lc 'qmd update && qmd embed --timeout 20'
 TimeoutStartSec=30min
 NoNewPrivileges=true
 ProtectSystem=full

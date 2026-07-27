@@ -1,0 +1,15 @@
+[Unit]
+Description=Schedule Praetorium daily plan, weekdays 06:00 — NUC-45
+# Mon-Fri 06:00 Europe/Amsterdam (box timezone). Weekend mornings are deliberately out of
+# scope, matching the Mac job this replaces; EOD stays daily.
+# RandomizedDelaySec is deliberately small: 06:00 is a user-visible slot Dave plans around,
+# unlike the overnight jobs where jitter only spreads load.
+
+[Timer]
+OnCalendar=Mon..Fri 06:00
+RandomizedDelaySec=2min
+# A reboot spanning the slot must still produce the day's plan.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

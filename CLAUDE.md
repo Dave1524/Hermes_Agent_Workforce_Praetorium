@@ -57,6 +57,25 @@ the vault holds *what they know*.
   days behind and kept serving the retired de-identification posture (NUC-44).
   Job wiring map: `docs/runbook.md` § Job wiring (NUC-28).
 
+## Daily rhythm jobs (NUC-45)
+Two jobs own Dave's day and run unattended on this box, both under `agent_propose.sh`
+with `AGENT_RUN_MODE=ops`:
+- **`praetorium-daily-plan.timer`** — Mon-Fri 06:00 → `<date> — Daily Plan` row in Notion.
+- **`praetorium-eod-summary.timer`** — daily 22:15 → `<date> — EOD Summary` (Daily Plans)
+  + `<date>` (Daily Log).
+
+Rules that are easy to get wrong:
+- **Notion is the artifact; the vault write stays Mac-side.** These jobs never write
+  `07_daily/logs/`, on any branch. The Mac's `morning-startup` / `eod-wrap` skills remain
+  canonical for interactive runs — the box profiles are a port, not a replacement.
+- **All Notion I/O goes through `bin/notion_daily.py`**, which owns the date-keyed
+  idempotency: a re-run updates the row and replaces its body instead of stacking a
+  second one. Never hand-roll HTTP against the Notion API in a task profile.
+- **`bin/vault_sync_guard.sh` is the single owner of "is the mirror current?"** —
+  `sync` for `qmd-refresh.service`, `check` as the pre-flight for both jobs. A stale or
+  dirty mirror must produce a loud refusal, never a confident wrong briefing. Details and
+  the failure table: `docs/runbook.md` § Daily rhythm jobs.
+
 ## Verification
 Run: `bash bin/verify.sh` from the repo root.
 Gate = bash syntax check + shellcheck (error-severity, must be clean) over every script in
