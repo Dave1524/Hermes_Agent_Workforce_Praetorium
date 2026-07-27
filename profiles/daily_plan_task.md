@@ -116,12 +116,20 @@ Rules for the content:
 - Every claim traces to something you read. Where you inferred rather than read, say so.
 - If an input was unreadable, add one line under the relevant section: `UNCONFIRMED: <what>`.
 
-## 7. Write it to Notion
+## 7. Write it to Notion — unconditionally
 
 ```bash
 python3 ~/agent-workforce/bin/notion_daily.py plan \
   --date "$DATE" --body-file "$BODY" --events <N> --tasks <N>
 ```
+
+**Run this every time, including when a row for today already exists.** The helper updates
+that row in place and replaces its body — that is the designed path for a re-run, a manual
+run, and the reboot catch-up (a `Persistent=true` timer firing late *always* finds a row
+already there). Never end the run by concluding "the plan is already live, no action
+needed": a run that writes nothing has failed, `AGENT_VERIFY_CMD` will catch it, and the
+job will burn its retry and then alert Dave for no reason.
+
 The command prints a receipt path. If it exits non-zero, the run has failed — report the
 error as your final output rather than pretending the plan landed.
 

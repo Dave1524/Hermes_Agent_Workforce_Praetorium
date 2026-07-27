@@ -47,4 +47,7 @@ for unit in praetorium-daily-plan praetorium-eod-summary; do
   assert "$unit.service has no unquoted multi-word Environment=" "[ -z '$unquoted' ]"
 done
 
+assert "the Notion write is unconditional (a catch-up run always finds a row already there)" \
+  "grep -q 'Run this every time, including when' '$TASK' && grep -q 'already live, no action' '$TASK'"
+
 exit $fail

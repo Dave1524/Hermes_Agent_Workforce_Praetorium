@@ -25,4 +25,7 @@ assert "forbids writing the vault (canonical write stays Mac-side)" \
   "grep -q 'Never write, commit, or push' '$TASK'"
 assert "counts feed Events Count / Tasks Count" "grep -q 'Events Count' '$TASK'"
 
+assert "the Notion write is unconditional (a catch-up run always finds a row already there)" \
+  "grep -q 'Run this every time, including when' '$TASK' && grep -q 'already live, no action' '$TASK'"
+
 exit $fail

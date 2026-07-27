@@ -105,8 +105,15 @@ python3 ~/agent-workforce/bin/notion_daily.py eod \
 ```
 
 That writes both the `<date> — EOD Summary` row in Daily Plans (body as blocks) and the
-`<date>` row in Daily Log (structured fields). Re-running updates both in place. If it
-exits non-zero the run has failed — report the error rather than claiming the row landed.
+`<date>` row in Daily Log (structured fields).
+
+**Run this every time, including when rows for today already exist.** Re-running updates
+both in place — that is the designed path for a manual re-run and for the reboot catch-up
+(a `Persistent=true` timer firing late *always* finds rows already there). Never end the
+run by concluding "the summary is already live, no action needed": a run that writes
+nothing has failed, `AGENT_VERIFY_CMD` will catch it, and the job will burn its retry and
+then alert Dave for no reason. If it exits non-zero the run has failed — report the error
+rather than claiming the row landed.
 
 ## 5. Output
 
