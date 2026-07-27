@@ -108,14 +108,26 @@ def now_iso():
 
 
 def query(api, data_source, payload=None):
+    """Every page of the result. Notion caps a page at 100 rows and the Task Inbox is well
+    past that (225 open on 2026-07-27) — one unpaginated call would put a wrong Tasks Count
+    on the row and hide two thirds of the backlog from the briefing."""
     body = {"page_size": 100}
     body.update(payload or {})
-    return api.call("POST", "/data_sources/{}/query".format(data_source), body).get("results", [])
+    results, cursor = [], None
+    while True:
+        page_body = dict(body, start_cursor=cursor) if cursor else body
+        page = api.call("POST", "/data_sources/{}/query".format(data_source), page_body)
+        results += page.get("results", [])
+        if not page.get("has_more"):
+            return results
+        cursor = page["next_cursor"]
 
 
 def find_page(api, data_source, title_prop, title):
-    rows = query(api, data_source,
-                 {"page_size": 1, "filter": {"property": title_prop, "title": {"equals": title}}})
+    page = api.call("POST", "/data_sources/{}/query".format(data_source),
+                    {"page_size": 1,
+                     "filter": {"property": title_prop, "title": {"equals": title}}})
+    rows = page.get("results", [])
     return rows[0]["id"] if rows else None
 
 

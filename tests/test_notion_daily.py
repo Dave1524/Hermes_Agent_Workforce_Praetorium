@@ -75,11 +75,25 @@ class FakeNotion:
 
     def _query(self, dsid, payload):
         rows = [p for p in self.pages.values() if p["_ds"] == dsid]
-        flt = (payload or {}).get("filter") or {}
+        payload = payload or {}
+        flt = payload.get("filter") or {}
         if "title" in flt:
             rows = [p for p in rows
                     if self._title(p, flt["property"]) == flt["title"]["equals"]]
-        return {"results": [{"id": p["id"], "properties": p["properties"]} for p in rows]}
+        size = payload.get("page_size", 100)
+        start = int(payload.get("start_cursor") or 0)
+        window = rows[start:start + size]
+        has_more = start + size < len(rows)
+        return {"results": [{"id": p["id"], "properties": p["properties"]} for p in window],
+                "has_more": has_more,
+                "next_cursor": str(start + size) if has_more else None}
+
+    def seed_tasks(self, dsid, count):
+        for i in range(count):
+            self._create({"parent": {"data_source_id": dsid},
+                          "properties": {"Task Title": {"title": [
+                              {"type": "text", "text": {"content": "task %d" % i},
+                               "plain_text": "task %d" % i}]}}})
 
     @staticmethod
     def _title(page, prop):
@@ -214,6 +228,21 @@ with tempfile.TemporaryDirectory() as tmp:
                         if c[1].startswith("/data_sources/" + nd.TASK_INBOX_DS))
     check("with --since the EOD job gets the day's deltas, closed rows included",
           task_payload["filter"]["last_edited_time"]["on_or_after"] == DATE + "T00:00:00+02:00")
+
+print("--- inputs: pages past the 100-row cap ---")
+with tempfile.TemporaryDirectory() as tmp:
+    # The live Task Inbox held 225 open rows on 2026-07-27; a single unpaginated query
+    # reported 100 of them, which would have put a wrong Tasks Count on the Notion row
+    # and silently hidden two thirds of the backlog from the briefing.
+    api = FakeNotion()
+    api.seed_tasks(nd.TASK_INBOX_DS, 225)
+    out = nd.main(["inputs", "--date", DATE], api=api)
+    check("returns every open task, not just the first page", len(out["tasks"]) == 225)
+    task_queries = [c for c in api.calls if c[1].startswith("/data_sources/" + nd.TASK_INBOX_DS)]
+    check("followed the cursor across 3 pages", len(task_queries) == 3)
+    check("later pages carry start_cursor", task_queries[1][2].get("start_cursor") == "100")
+    check("no truncation is silent — titles survive paging",
+          out["tasks"][-1]["title"] == "task 224")
 
 print("--- markdown rendering ---")
 check("chunks rich_text over Notion's 2000-char object limit",
