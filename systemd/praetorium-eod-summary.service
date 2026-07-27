@@ -13,7 +13,7 @@ User=dave
 Environment=AGENT_JOB_OVERRIDES=/home/dave/.config/agent-workforce/eod_summary.env
 Environment=REPORT_DIR=/home/dave/logs/eod-summary
 Environment=REPORT_GLOB=eod-summary-*.md
-Environment=REPORT_SUBJECT=[Praetorium] EOD summary
+Environment="REPORT_SUBJECT=[Praetorium] EOD summary"
 EnvironmentFile=/home/dave/.config/agent-workforce/secrets.env
 ExecStart=/home/dave/agent-workforce/bin/agent_propose.sh
 ExecStartPost=/home/dave/agent-workforce/bin/deliver_report.sh

@@ -38,4 +38,13 @@ assert "EOD ($eod_at) runs before bd-stall-radar ($radar_at) so the radar sees a
 assert "both new timers are Persistent (a reboot spanning the slot still catches up)" \
   "grep -q '^Persistent=true' '$EOD_TIMER' && grep -q '^Persistent=true' '$REPO_ROOT/systemd/praetorium-daily-plan.timer'"
 
+echo "--- both units: multi-word Environment= values must be quoted ---"
+# systemd splits an unquoted Environment= line on whitespace, so
+# `Environment=REPORT_SUBJECT=[Praetorium] Daily plan` silently becomes `[Praetorium]`
+# and drops the rest (caught by systemd-analyze verify at install time, 2026-07-27).
+for unit in praetorium-daily-plan praetorium-eod-summary; do
+  unquoted=$(grep -E '^Environment=[^"]*=[^"]* ' "$REPO_ROOT/systemd/$unit.service" || true)
+  assert "$unit.service has no unquoted multi-word Environment=" "[ -z '$unquoted' ]"
+done
+
 exit $fail

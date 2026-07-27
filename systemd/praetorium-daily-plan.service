@@ -15,7 +15,7 @@ Environment=AGENT_JOB_OVERRIDES=/home/dave/.config/agent-workforce/daily_plan.en
 # defaults to ~/logs/overnight/morning-report-*.md).
 Environment=REPORT_DIR=/home/dave/logs/daily-plan
 Environment=REPORT_GLOB=daily-plan-*.md
-Environment=REPORT_SUBJECT=[Praetorium] Daily plan
+Environment="REPORT_SUBJECT=[Praetorium] Daily plan"
 EnvironmentFile=/home/dave/.config/agent-workforce/secrets.env
 ExecStart=/home/dave/agent-workforce/bin/agent_propose.sh
 ExecStartPost=/home/dave/agent-workforce/bin/deliver_report.sh
