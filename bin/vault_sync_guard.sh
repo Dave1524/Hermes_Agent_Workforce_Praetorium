@@ -11,6 +11,12 @@
 #   sync   fetch + fast-forward. Offline => soft (exit 0, tree untouched).
 #          Local tracked edits => HARD FAIL (exit 1) naming the files that block it.
 #          Rewritten upstream => resync (exit 0), see below.
+#   check  read-only freshness gate for the daily-rhythm jobs. Refuses (exit 1)
+#          on a dirty tree or a mirror lagging origin by more than the max, so a
+#          06:00 briefing is never generated from stale content.
+#
+# Untracked files are reported but never block: they cannot make a briefing wrong
+# and cannot stop a fast-forward. Tracked modifications do both.
 #
 # The mirror is a GENERATED ARTIFACT and the box authors none of it: the Mac's
 # publish_boxsafe.sh rebuilds it and pushes with --force-with-lease by design ("rebuild
@@ -21,12 +27,6 @@
 # A rewritten upstream is therefore a RESYNC (hard reset to origin), not a failure —
 # but only from a clean tree. Local tracked changes still hard-fail, because those are
 # the one thing on this box that upstream does not already have.
-#   check  read-only freshness gate for the daily-rhythm jobs. Refuses (exit 1)
-#          on a dirty tree or a mirror lagging origin by more than the max, so a
-#          06:00 briefing is never generated from stale content.
-#
-# Untracked files are reported but never block: they cannot make a briefing wrong
-# and cannot stop a fast-forward. Tracked modifications do both.
 set -euo pipefail
 
 VAULT_DIR="${VAULT_DIR:-$HOME/vault}"
