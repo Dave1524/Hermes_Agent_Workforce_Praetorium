@@ -65,6 +65,12 @@ make_vault_fixture() {
 
   case "$state" in
     dirty_behind)  printf 'box-side edit that never went through the membrane\n' >> "$work/shared.md" ;;
+    # A rewritten upstream: the box still holds commits from the history the Mac's
+    # publish_boxsafe.sh --force-with-lease replaced, so origin/main is no longer a
+    # fast-forward from HEAD. This is the 2026-07-27 wedge.
+    diverged_clean) commit_at "$work" "$(date -Is)" boxhist.md "tip of the pre-rewrite history" ;;
+    diverged_dirty) commit_at "$work" "$(date -Is)" boxhist.md "tip of the pre-rewrite history"
+                    printf 'box-side edit that never went through the membrane\n' >> "$work/shared.md" ;;
     untracked)     printf 'stray\n' > "$work/local_inference_charter.md" ;;
     offline)       git -C "$work" remote set-url origin "$root/gone.git"
                    touch "$work/$STAMP" ;;

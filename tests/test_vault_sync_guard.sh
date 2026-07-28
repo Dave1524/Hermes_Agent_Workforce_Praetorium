@@ -17,11 +17,14 @@ CASES=(
   "sync|dirty_behind|1|REJECTED"
   "sync|clean_current|0|already current"
   "sync|offline|0|SOFT: cannot reach origin"
+  "sync|diverged_clean|0|RESYNC"
+  "sync|diverged_dirty|1|REJECTED"
   "check|clean_current|0|in sync with"
   "check|clean_behind|0|within 24h"
   "check|stale_behind|1|REFUSE"
   "check|dirty_behind|1|REFUSE"
   "check|untracked|0|not blocking"
+  "check|diverged_clean|0|diverged"
   "check|offline|0|WARN: cannot reach origin"
   "check|offline_stale|1|REFUSE"
 )
@@ -49,6 +52,25 @@ assert "rejected pull discards nothing (local edit survives)" \
   "grep -q 'box-side edit' '$r/vault/shared.md'"
 assert "rejected pull leaves the tree unmoved (still behind)" \
   "[ \"\$(git -C '$r/vault' rev-list --count HEAD..origin/main)\" = 1 ]"
+
+r=${ROOT["sync/diverged_clean"]}
+assert "rewritten upstream converges (worktree now has upstream content)" \
+  "grep -q 'published from the Mac' '$r/vault/shared.md'"
+assert "and the mirror actually equals origin/main afterwards" \
+  "[ \"\$(git -C '$r/vault' rev-parse HEAD)\" = \"\$(git -C '$r/vault' rev-parse origin/main)\" ]"
+assert "the discarded tip is recoverable, not silently dropped" \
+  "git -C '$r/vault' rev-parse --verify refs/vault-sync-guard/pre-resync >/dev/null 2>&1"
+assert "pre-rewrite file is gone from the worktree (true mirror, not a merge)" \
+  "[ ! -f '$r/vault/boxhist.md' ]"
+
+# Divergence must not become a licence to steamroll box-side edits: the NUC-45 contract is
+# that a tracked local change is the one thing upstream does not already have.
+r=${ROOT["sync/diverged_dirty"]}
+assert "diverged+dirty names the blocking file" "grep -q 'shared.md' '$r/out.log'"
+assert "diverged+dirty discards nothing (local edit survives)" \
+  "grep -q 'box-side edit' '$r/vault/shared.md'"
+assert "diverged+dirty parks no recovery ref (nothing was reset)" \
+  "! git -C '$r/vault' rev-parse --verify refs/vault-sync-guard/pre-resync >/dev/null 2>&1"
 
 r=${ROOT["check/dirty_behind"]}
 assert "check names the dirty file rather than swallowing it" "grep -q 'shared.md' '$r/out.log'"

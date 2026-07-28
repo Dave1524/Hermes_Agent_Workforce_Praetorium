@@ -9,7 +9,18 @@
 # events and must exit differently.
 #
 #   sync   fetch + fast-forward. Offline => soft (exit 0, tree untouched).
-#          Rejected merge => HARD FAIL (exit 1) naming the files that block it.
+#          Local tracked edits => HARD FAIL (exit 1) naming the files that block it.
+#          Rewritten upstream => resync (exit 0), see below.
+#
+# The mirror is a GENERATED ARTIFACT and the box authors none of it: the Mac's
+# publish_boxsafe.sh rebuilds it and pushes with --force-with-lease by design ("rebuild
+# overwrites stray main", 2026-07-08 open-bubble design). So origin/main legitimately
+# rewrites history, and --ff-only alone can never converge afterwards: it rejects every
+# run forever. That is the 2026-07-27 wedge — origin/main took a forced-update at 18:43,
+# and qmd-refresh then failed every 30 minutes while qmd re-indexed a 2026-07-25 tree.
+# A rewritten upstream is therefore a RESYNC (hard reset to origin), not a failure —
+# but only from a clean tree. Local tracked changes still hard-fail, because those are
+# the one thing on this box that upstream does not already have.
 #   check  read-only freshness gate for the daily-rhythm jobs. Refuses (exit 1)
 #          on a dirty tree or a mirror lagging origin by more than the max, so a
 #          06:00 briefing is never generated from stale content.
@@ -20,6 +31,8 @@ set -euo pipefail
 
 VAULT_DIR="${VAULT_DIR:-$HOME/vault}"
 MAX_LAG_HOURS="${VAULT_MAX_LAG_HOURS:-24}"
+# Where the pre-resync tip is parked so a discard is recoverable, not silent.
+RECOVERY_REF="refs/vault-sync-guard/pre-resync"
 
 note() { printf '%s vault_sync_guard[%s]: %s\n' "$(date -Is)" "$mode" "$*"; }
 git_v() { git -C "$VAULT_DIR" "$@"; }
@@ -61,25 +74,50 @@ report_untracked() {
   printf '  %s\n' "$stray"
 }
 
+is_fast_forward() { git_v merge-base --is-ancestor HEAD "$1"; }
+
+reject_dirty() {
+  note "FAIL: sync onto $1 REJECTED — local tracked changes, the mirror is frozen until this is routed"
+  printf '  %s\n' "$(tracked_changes)"
+}
+
+fast_forward_to() {
+  git_v merge --ff-only --quiet "$1" 2>/dev/null || {
+    note "FAIL: fast-forward onto $1 was REJECTED from a clean tree — an untracked file is in the way:"
+    printf '  %s\n' "$(untracked_files)"
+    return 1
+  }
+  note "OK: fast-forwarded to $(git_v rev-parse --short HEAD) ($1)"
+}
+
+resync_to() {
+  local was; was=$(git_v rev-parse --short HEAD)
+  git_v update-ref "$RECOVERY_REF" HEAD
+  git_v reset --hard --quiet "$1"
+  note "RESYNC: $1 was rewritten and no longer contains $was — mirror reset to $(git_v rev-parse --short HEAD)"
+  note "  the old tip is parked at $RECOVERY_REF (git -C $VAULT_DIR reset --hard $RECOVERY_REF to undo)"
+}
+
 cmd_sync() {
-  local up head
+  local up
   if ! fetch_origin; then
     note "SOFT: cannot reach origin (offline?) — tree left at $(git_v rev-parse --short HEAD)"
     return 0
   fi
   up=$(upstream_ref)
-  head=$(git_v rev-parse HEAD)
-  if [ "$head" = "$(git_v rev-parse "$up")" ]; then
+  if [ "$(git_v rev-parse HEAD)" = "$(git_v rev-parse "$up")" ]; then
     note "OK: already current with $up — nothing to pull"
     return 0
   fi
-  if git_v merge --ff-only --quiet "$up" 2>/dev/null; then
-    note "OK: fast-forwarded to $(git_v rev-parse --short HEAD) ($up)"
-    return 0
+  if [ -n "$(tracked_changes)" ]; then
+    reject_dirty "$up"
+    return 1
   fi
-  note "FAIL: fast-forward onto $up was REJECTED — the mirror is frozen until this is routed"
-  printf '  %s\n' "$(tracked_changes)"
-  return 1
+  if is_fast_forward "$up"; then
+    fast_forward_to "$up"
+    return
+  fi
+  resync_to "$up"
 }
 
 lag_verdict() {
@@ -99,6 +137,7 @@ check_against_origin() {
     note "OK: in sync with $up at $(git_v rev-parse --short HEAD)"
     return 0
   fi
+  is_fast_forward "$up" || note "note: $up has diverged (rewritten upstream) — the next sync resyncs the mirror"
   head_ts=$(commit_epoch HEAD)
   up_ts=$(commit_epoch "$up")
   lag_verdict "$(( up_ts - head_ts ))" "mirror is behind $up"
