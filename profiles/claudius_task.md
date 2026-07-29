@@ -31,6 +31,18 @@ the gaps you flagged. Read it FIRST.
    b. otherwise ONE standing mission that is due (respect per-mission cadence);
    c. if nothing qualifies at quality, write NO proposal — a clean decline beats a
       filler proposal — but STILL record the run in STEP 5.
+2b. If the item you picked produces WEBSITE / BLOG content, gate it against what is already
+   published BEFORE researching or drafting:
+       python3 ~/agent-workforce/bin/published_corpus.py list
+       python3 ~/agent-workforce/bin/published_corpus.py check "<the title the brief names>"
+   This is a local git read of the site's own blog.ts (origin/main), not a web fetch, so the
+   optional-web-research latitude in step 3 does not excuse skipping it. Exit 2 = the article
+   already exists. A brief that names an already-published title is a FAULTY BRIEF, not a
+   drafting task: write the proposal as a short collision report naming the live slug and
+   recommending either a distinct angle or an update to the existing article — do not write the
+   duplicate. This outranks the brief's own wording, including any "web research is optional,
+   do not block" instruction. (2026-07-27: Q-2026-07-09-1 named a title live since 2026-07-08
+   and a full 924-word duplicate was produced because nothing here could see the site.)
 3. Research it primarily using qmd-retrieved vault context. For public-domain facts you MAY also
    use web_search (Brave) and the browser fetch tools, but ONLY on public, de-identified URLs
    (see docs/data_boundary.md). If a web source cannot be fetched (Cloudflare/JS/paywall), skip it

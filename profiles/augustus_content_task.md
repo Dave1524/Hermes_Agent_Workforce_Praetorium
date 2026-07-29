@@ -11,6 +11,12 @@ TOOLS — use ONLY these, and do not waste turns:
   DO NOT use any mcp__notion__* / Notion MCP tool. It is intentionally removed on this box (its
   stream drops mid-run and query_data_sources needs a Business plan we do not have). If you ever
   see a Notion MCP tool offered, ignore it — the REST helper above is the only sanctioned path.
+- Published-site corpus over REST-free terminal:
+    * List:  python3 ~/agent-workforce/bin/published_corpus.py list
+    * Check: python3 ~/agent-workforce/bin/published_corpus.py check "<candidate title>"
+  This reads vantagepointconsulting.nl's own `blog.ts` from the site repo's origin/main on this
+  box. It is a LOCAL git read, NOT a web search — the "do NOT run web searches" rule in STEP 3
+  does not apply to it, and you must not skip it on those grounds.
 - qmd tools → ALL vault grounding. Use `query` (semantic search) to DISCOVER content, and `get`
   (fast, path-based) to read a KNOWN exact path — both work on this box. qmd is the ONLY path to
   vault content — do not use search_files or the filesystem to hunt vault content. (Terminal is fine
@@ -27,7 +33,21 @@ for Dave to judge.
 STEP 0 — Recall prior runs. Read your MEMORY section: angles you already pitched. Do not
 re-pitch the same angle (advance it or pick another). If MEMORY is empty, start fresh.
 
-STEP 1 — Ground yourself via qmd `query` (2-3 focused queries MAX, then move on):
+STEP 1 — Know what is ALREADY PUBLISHED, then ground yourself.
+FIRST, exactly once, run:
+    python3 ~/agent-workforce/bin/published_corpus.py list
+That is the live article corpus of vantagepointconsulting.nl. Read it before you pick anything.
+Nothing you pitch or draft may restate an article already on that list. If a queued brief names
+a title that is already there, the brief is wrong: do NOT write a second post on the same query
+— say so in your proposal and either sharpen to a genuinely distinct angle or propose it as an
+UPDATE to the existing article. On any candidate WEBSITE-article title, confirm with:
+    python3 ~/agent-workforce/bin/published_corpus.py check "<candidate title>"
+Exit 2 means collision. The check is lexical: it catches title reuse, not an adjacent angle
+under a different title — that judgment is yours, off the `list` output.
+(2026-07-27: a queued brief asked for "Waarom lopen WMS-implementaties uit?", already live since
+2026-07-08. Nothing in this profile could see the site, so the duplicate was written in full.)
+
+THEN ground yourself via qmd `query` (2-3 focused queries MAX, then move on):
 - qmd query "Dave Hamelink voice writing style tone beliefs taboos" → write only in his voice.
 - qmd query <your candidate topic, e.g. "cold chain automation warehouse implementation"> → real facts.
 - qmd query "box_brief queue content brief augustus" → if Dave queued a brief for augustus, it
