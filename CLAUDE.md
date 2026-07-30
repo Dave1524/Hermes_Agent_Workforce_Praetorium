@@ -76,6 +76,32 @@ Rules that are easy to get wrong:
   dirty mirror must produce a loud refusal, never a confident wrong briefing. Details and
   the failure table: `docs/runbook.md` § Daily rhythm jobs.
 
+## Research pipeline jobs (2026-07-30 Opus 5 migration)
+Three research/knowledge jobs run unattended on headless Claude Code, pinned to **Opus 5**
+(the full model name, not the `opus` alias — an alias silently rolls forward on the next
+model release):
+- **`agent-proposal.timer`** — Mon-Fri 04:30 → standing research (`AGENT_JOB_OVERRIDES` →
+  `standing_research.env` → `bin/run_standing_research_cc.sh`). Replaces the
+  hermes/claudius-on-OpenRouter path, which was hard-down for ten days on HTTP 402
+  "Insufficient credits" while reading as a clean decline.
+- **`raw-ingest.timer`** — Tue-Sat 03:00 → diffs `05_knowledge/raw/` against
+  `00_system/ingest_log.md` and proposes one distillation per unprocessed source (ahead of
+  the 04:30 standing research run, so research sees freshly-ingested knowledge same day).
+- **`knowledge-digest.timer`** — Sun 09:00 → reports what `05_knowledge/` / `11_entities/`
+  learned in the last 7 days (git-log delta), distinct from `weekly-pre-assembly`'s
+  activity pre-read.
+
+Rules that are easy to get wrong:
+- **These jobs write only `_inbox/agents/**`; every vault change they describe is a
+  proposal for Mac-side promotion, never a direct write to `main`.** The box holds no
+  canonical vault credential — see "No canonical vault access" above.
+- **A run must produce either a dated proposal or an explicit `DECLINE:` sentinel.**
+  `bin/proposal_or_decline.sh <slug>` (wired as `AGENT_VERIFY_CMD`) fails any run that
+  produces neither, so a dead run can never again log as a clean NOPROPOSAL.
+- **Contradiction flagging (Mechanism A)** is a standing instruction across all three
+  profiles: a source that contradicts an existing `05_knowledge/` claim gets named, both
+  sides cited, under `## Contradictions` — never silently superseded.
+
 ## Verification
 Run: `bash bin/verify.sh` from the repo root.
 Gate = bash syntax check + shellcheck (error-severity, must be clean) over every script in

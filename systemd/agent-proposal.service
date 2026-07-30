@@ -1,5 +1,5 @@
 [Unit]
-Description=Scheduled agent inbox-proposal run — NUC-16
+Description=Scheduled standing research run (headless Claude Code, Opus 5) — NUC-16
 After=network-online.target qmd-mcp.service brave-mcp.service
 Wants=network-online.target brave-mcp.service
 ConditionPathExists=/home/dave/agent-worktrees/inbox
@@ -8,6 +8,7 @@ OnFailure=agent-alert@%n.service
 [Service]
 Type=oneshot
 User=dave
+Environment=AGENT_JOB_OVERRIDES=/home/dave/.config/agent-workforce/standing_research.env
 EnvironmentFile=/home/dave/.config/agent-workforce/secrets.env
 ExecStart=/home/dave/agent-workforce/bin/agent_propose.sh
 ExecStartPost=/home/dave/agent-workforce/bin/notify.sh "[Praetorium] Agent proposal completed" "Agent proposal service completed. Check inbox for results."

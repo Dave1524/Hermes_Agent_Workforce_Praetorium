@@ -1,0 +1,13 @@
+[Unit]
+Description=Weekly knowledge digest (05_knowledge/ + 11_entities/ 7-day git-log delta)
+ConditionPathExists=/home/dave/agent-worktrees/inbox
+OnFailure=agent-alert@%n.service
+
+[Service]
+Type=oneshot
+User=dave
+Environment=AGENT_JOB_OVERRIDES=/home/dave/.config/agent-workforce/knowledge_digest.env
+EnvironmentFile=/home/dave/.config/agent-workforce/secrets.env
+ExecStart=/home/dave/agent-workforce/bin/agent_propose.sh
+TimeoutStartSec=45min
+NoNewPrivileges=true

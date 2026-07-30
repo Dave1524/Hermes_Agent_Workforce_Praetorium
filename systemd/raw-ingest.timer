@@ -1,0 +1,10 @@
+[Unit]
+Description=Raw source ingestion, Tue-Sat 03:00 (ahead of the 04:30 standing research run)
+
+[Timer]
+OnCalendar=Tue..Sat 03:00
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,10 @@
+[Unit]
+Description=Weekly knowledge digest, Sunday morning (clear of Fri 22:00 weekly-pre-assembly)
+
+[Timer]
+OnCalendar=Sun 09:00
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

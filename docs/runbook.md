@@ -21,7 +21,9 @@ Scheduled **proposal** agent jobs share `bin/agent_propose.sh` (lock, preflight,
 
 | Job | Timer (Europe/Amsterdam) | Unit pair | Override env (runtime path) | Task profile | Hermes profile |
 |---|---|---|---|---|---|
-| Standing / Claudius proposal | `agent-proposal.timer` (disabled by default — spend gate) | `agent-proposal.{service,timer}` | *(none — uses `AGENT_RUNTIME_CMD` from `secrets.env`)* | `profiles/claudius_task.md` | `claudius` |
+| Standing research (Opus 5, NUC research pipeline brief 2026-07-30) | `agent-proposal.timer` Mon–Fri 04:30 | `agent-proposal.{service,timer}` | `~/.config/agent-workforce/standing_research.env` | `profiles/standing_research_cc_task.md` | *(headless Claude Code)* |
+| Raw source ingestion (Mechanism B) | **Tue–Sat 03:00** | `raw-ingest.{service,timer}` | `~/.config/agent-workforce/raw_ingest.env` | `profiles/raw_ingest_cc_task.md` | *(headless Claude Code)* |
+| Knowledge digest (Mechanism C) | **Sun 09:00** | `knowledge-digest.{service,timer}` | `~/.config/agent-workforce/knowledge_digest.env` | `profiles/knowledge_digest_cc_task.md` | *(headless Claude Code)* |
 | Augustus content pitch+draft | daily **01:30** (backstop) | `augustus-content.{service,timer}` | `~/.config/agent-workforce/augustus-content.env` | `profiles/augustus_content_task.md` | `augustus` |
 | Content change-dispatch (poll) | every **15 min** | `content-change-dispatch.{service,timer}` | `~/.config/agent-workforce/augustus-content.env` (reused) | *(triggers the augustus run)* | `augustus` |
 | BD stall radar | **Sun–Thu 23:00** | `bd-stall-radar.{service,timer}` | `~/.config/agent-workforce/bd_stall_radar.env` | `profiles/bd_stall_radar_task.md` | `claudius` |
@@ -31,6 +33,20 @@ Scheduled **proposal** agent jobs share `bin/agent_propose.sh` (lock, preflight,
 | Daily plan (ops) | **Mon–Fri 06:00** | `praetorium-daily-plan.{service,timer}` | `~/.config/agent-workforce/daily_plan.env` | `profiles/daily_plan_task.md` | *(headless Claude Code)* |
 | EOD summary (ops) | daily **22:15** | `praetorium-eod-summary.{service,timer}` | `~/.config/agent-workforce/eod_summary.env` | `profiles/eod_summary_task.md` | *(headless Claude Code)* |
 | Agent inbox → Notion sync | `agent-inbox-sync.timer` | `agent-inbox-sync.{service,timer}` | *(service embeds the pipeline cmd)* | n/a | n/a |
+
+**Research pipeline brief (2026-07-30).** The standing research run was hard-down for ten
+days on hermes/claudius via OpenRouter (HTTP 402 "Insufficient credits" landing in the
+hermes profile's own `errors.log`, never in the attempt's stdout `agent_propose.sh`
+scans) while reading as a clean `NOPROPOSAL`. All three rows above run headless Claude
+Code pinned to `claude-opus-5` (the full model name, not the `opus` alias) and set
+`AGENT_VERIFY_CMD='bin/proposal_or_decline.sh <slug>'`, which fails any run that produces
+neither a dated proposal nor an explicit `DECLINE:` sentinel — the class of failure this
+migration closes, not just the one instance. All three write only `_inbox/agents/**`;
+every vault change they describe is a proposal for Mac-side promotion, never a direct
+write to `main`. **Follow-up (Mac-side, not attempted here):** promote the Mechanism A
+contradiction-flagging rule (baked into all three task profiles) into
+`00_system/update_protocol.md` § Source Ingestion itself — the box has no canonical vault
+write access to do this from here.
 
 Override files set only non-secret keys:
 
