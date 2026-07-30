@@ -89,6 +89,12 @@ assert "every draft closes on a concrete ask — a named next step with a date a
 assert "and 'stay in touch' is explicitly rejected" "grep -q 'stay in touch' '$TASK'"
 assert "the Locale switch drafts nl rows in Dutch" \
   "grep -q 'Locale' '$TASK' && grep -q 'Dutch' '$TASK'"
+# Locale is populated on 1 of 80 pipeline rows (verified 2026-07-30), so the empty case is
+# the normal case — an unspecified fallback means English DMs to Dutch operators.
+assert "an empty Locale infers from evidence rather than defaulting silently" \
+  "grep -qi 'when it is EMPTY' '$TASK' && grep -qi 'never silently default to English' '$TASK'"
+assert "and the inference basis is named in the draft block, so Dave can overrule it" \
+  "grep -qi 'name the basis' '$TASK'"
 assert "channel selection: Email present -> email with a subject line, otherwise LinkedIn" \
   "grep -q 'subject line' '$TASK' && grep -q 'LinkedIn' '$TASK'"
 assert "a LinkedIn connection note is budgeted at 300 characters" "grep -q '300 character' '$TASK'"

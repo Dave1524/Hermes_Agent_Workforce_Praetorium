@@ -95,7 +95,13 @@ Run `date +%F` for today's date, then `ls -1 _inbox/agents/ | grep bd-followup-d
      Conversion` is still open.
    - Locale-correct: draft in the language of the row's `Locale` field. `nl` gets a Dutch
      draft, `en` gets English. Do not draft a Dutch counterparty in English because the
-     vault notes are in English.
+     vault notes are in English. `Locale` is populated on almost no rows (1 of 80 on
+     2026-07-30), so the empty case is the normal one: when it is EMPTY, infer the language
+     from evidence — the language of the row's own `Notes` / `Trigger event`, the
+     counterparty's country and site, the language of any logged exchange. Then
+     name the basis on the `Locale` line of the block
+     (`nl — Locale field empty; Dutch because …`) so Dave can overrule it at a glance. Never silently default to English: an unmarked
+     English draft to a Dutch operator is the failure this rule exists to stop.
    - Channel-correct: if the row has an `Email`, write an email draft WITH a subject line.
      Otherwise write a LinkedIn message. A LinkedIn connection note (to someone not yet
      connected) must be at most 300 characters — state the count you measured. A DM to an
