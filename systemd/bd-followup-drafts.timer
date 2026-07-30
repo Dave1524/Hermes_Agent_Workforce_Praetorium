@@ -1,0 +1,16 @@
+[Unit]
+Description=BD follow-up draft pack, overnight Sun-Thu — one slot after the stall radar
+# 23:30 for two reasons:
+#  1. It mirrors bd-stall-radar's Sun-Thu cadence one slot later, so each pack consumes
+#     that night's fresh radar output and lands for a Mon-Fri morning.
+#  2. It clears the 04:30 / 05:30 / 06:00 morning jobs that share agent_propose.sh's
+#     global flock on /tmp/agent_propose.lock — a collision there is a SILENT
+#     "SKIP: previous run still active", not a failure anyone would see.
+
+[Timer]
+OnCalendar=Sun,Mon,Tue,Wed,Thu 23:30
+RandomizedDelaySec=3min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

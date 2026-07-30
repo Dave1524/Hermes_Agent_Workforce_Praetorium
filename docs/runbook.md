@@ -27,6 +27,7 @@ Scheduled **proposal** agent jobs share `bin/agent_propose.sh` (lock, preflight,
 | Augustus content pitch+draft | daily **01:30** (backstop) | `augustus-content.{service,timer}` | `~/.config/agent-workforce/augustus-content.env` | `profiles/augustus_content_task.md` | `augustus` |
 | Content change-dispatch (poll) | every **15 min** | `content-change-dispatch.{service,timer}` | `~/.config/agent-workforce/augustus-content.env` (reused) | *(triggers the augustus run)* | `augustus` |
 | BD stall radar | **Sun–Thu 23:00** | `bd-stall-radar.{service,timer}` | `~/.config/agent-workforce/bd_stall_radar.env` | `profiles/bd_stall_radar_task.md` | `claudius` |
+| BD follow-up drafts | **Sun–Thu 23:30** | `bd-followup-drafts.{service,timer}` | `~/.config/agent-workforce/bd_followup_drafts.env` | `profiles/bd_followup_drafts_cc_task.md` | *(headless Claude Code)* |
 | Weekly pre-assembly | **Fri 22:00** | `weekly-pre-assembly.{service,timer}` | `~/.config/agent-workforce/weekly_pre_assembly.env` | `profiles/weekly_pre_assembly_task.md` | `claudius` |
 | Overnight pre-snapshot (no LLM) | daily **04:25** | `overnight-pre-snapshot.{service,timer}` | n/a | `bin/overnight_pre_snapshot.sh` | n/a |
 | Overnight morning report (ops) | daily **06:15** | `overnight-morning-report.{service,timer}` | `~/.config/agent-workforce/overnight_morning_report.env` | `profiles/overnight_morning_report_task.md` | `claudius` |
@@ -47,6 +48,15 @@ write to `main`. **Follow-up (Mac-side, not attempted here):** promote the Mecha
 contradiction-flagging rule (baked into all three task profiles) into
 `00_system/update_protocol.md` § Source Ingestion itself — the box has no canonical vault
 write access to do this from here.
+
+**BD follow-up drafts is chained after the radar, deliberately.** `bd-stall-radar` (23:00)
+decides *which* deals are owed a touch and stops at flagging; `bd-followup-drafts` (23:30)
+reads that night's pack as one of its three inputs and writes the actual text, so the 30-min
+offset is a data dependency, not cosmetic — and both slots clear the 04:30/05:30/06:00
+morning jobs that share `agent_propose.sh`'s global `flock` on `/tmp/agent_propose.lock`,
+where a collision is a **silent** `SKIP: previous run still active`. The pack is send
+material, not a vault proposal: it carries `target: none`, is never promoted, and the job
+never writes Notion pipeline state.
 
 Override files set only non-secret keys:
 

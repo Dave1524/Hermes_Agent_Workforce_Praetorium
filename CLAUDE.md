@@ -102,6 +102,28 @@ Rules that are easy to get wrong:
   profiles: a source that contradicts an existing `05_knowledge/` claim gets named, both
   sides cited, under `## Contradictions` — never silently superseded.
 
+## BD follow-up drafts (2026-07-30)
+**`bd-followup-drafts.timer`** — Sun-Thu 23:30, headless Claude Code pinned to
+`claude-opus-5`, one slot after `bd-stall-radar` so each pack consumes that night's fresh
+radar output. It writes up to 5 copy-paste-ready drafts for every **Dave-owed** BD next
+action — the union of radar stalls, Client Pipeline rows past their `Next action date`, and
+due BD-scoped Task Inbox rows — into
+`_inbox/agents/YYYY-MM-DD_bd-followup-drafts.md`, delivered to Discord by
+`bin/deliver_report.sh`. The radar flags and stops; this job writes the text. It exists
+because three overdue sends sat `Planned` in the Task Inbox for five straight days — the
+missing artifact was the message, not the task row.
+
+Rules that are easy to get wrong:
+- **No draft asserts elapsed time or silence.** No "I haven't heard back", no "it's been
+  three weeks". Pipeline `Last contact` is known-unreliable — outbound email and LinkedIn
+  leave no trace on this box (ProActive read 82d when the real touch was 6d). Every draft
+  grounds in the last *substantive, evidenced* exchange from the vault, and anything that
+  cannot be confirmed surfaces as an `⚠ Unverified:` line rather than a confident opener.
+- **Drafts are send material, not vault changes.** The pack carries
+  `target: none`, so it is never promoted into the vault by the inbox tooling, and the job
+  never writes Notion pipeline state — `Stage` / `Last contact` / `Next action date` stay
+  Dave's call from the Mac, identical to the stall radar's boundary.
+
 ## Verification
 Run: `bash bin/verify.sh` from the repo root.
 Gate = bash syntax check + shellcheck (error-severity, must be clean) over every script in

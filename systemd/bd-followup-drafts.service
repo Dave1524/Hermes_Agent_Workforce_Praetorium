@@ -1,0 +1,21 @@
+[Unit]
+Description=BD follow-up draft pack (up to 5 ready-to-send drafts for Dave-owed BD next actions)
+After=network-online.target qmd-mcp.service bd-stall-radar.service
+Wants=network-online.target
+ConditionPathExists=/home/dave/agent-worktrees/inbox
+OnFailure=agent-alert@%n.service
+
+[Service]
+Type=oneshot
+User=dave
+Environment=AGENT_JOB_OVERRIDES=/home/dave/.config/agent-workforce/bd_followup_drafts.env
+# Deliver THIS job's pack, not the overnight report's (deliver_report.sh defaults to
+# ~/logs/overnight/morning-report-*.md).
+Environment=REPORT_DIR=/home/dave/agent-worktrees/inbox/_inbox/agents
+Environment=REPORT_GLOB=*_bd-followup-drafts.md
+Environment="REPORT_SUBJECT=[Praetorium] BD follow-up drafts"
+EnvironmentFile=/home/dave/.config/agent-workforce/secrets.env
+ExecStart=/home/dave/agent-workforce/bin/agent_propose.sh
+ExecStartPost=/home/dave/agent-workforce/bin/deliver_report.sh
+TimeoutStartSec=45min
+NoNewPrivileges=true
