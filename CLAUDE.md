@@ -6,10 +6,31 @@ orchestration config, cron/scheduling, inbox/approval tooling, agent profiles.
 This is a separate repo from `../vault-boxsafe/` — this one holds *how the agents run*,
 the vault holds *what they know*.
 
-## Roster naming
-- Box name: **Praetorium**
-- Lead orchestrator: **Marcus**
-- Keep the Roman-emperor convention for any additional agent profiles added here.
+## Roster
+- Box name: **Praetorium**. Keep the Roman-emperor convention for any additional agent profiles.
+- Four live Hermes profiles under `~/.hermes/profiles/`, each with its own `SOUL.md` (role charter
+  + guardrails), `config.yaml` (model/MCP/skills), isolated memory, and skills allowlist (NUC-42):
+
+  | Persona | Role | Model | Tier | Scheduled jobs |
+  |---|---|---|---|---|
+  | **Marcus** | Chief of Staff / orchestrator | `deepseek/deepseek-v4-flash` | B | none — interactive + kanban owner |
+  | **Claudius** | Head of Research | `anthropic/claude-sonnet-5` | A (ZDR-pinned) | bd-stall-radar, weekly-pre-assembly, overnight-morning-report |
+  | **Augustus** | Editor-in-Chief | `openai/gpt-5.5` | A (**unpinned — open gap**) | augustus-content + content-change-dispatch |
+  | **Trajan** | Head of Engineering | `deepseek/deepseek-v4-flash` | B | none |
+
+  Plus `base0` / `leantest` — `qwen3-64k` on Ollama, Tier 0 (zero egress), used by `local-tier-eval`.
+- **Most scheduled work no longer runs on these personas.** The 2026-07-30 migration moved standing
+  research, raw ingest, knowledge digest, BD follow-up drafts, daily plan, EOD summary and M1 signal
+  scan onto headless Claude Code (`AGENT_PROFILE=claude-opus|claude-sonnet`). Read the runbook's Job
+  wiring table, not the persona list, to answer "what runs tonight".
+- **Augustus has no ZDR provider pin.** He reads Tier-A vault context on `openai/gpt-5.5` with
+  `provider_routing` unset — the fix is `only: ["azure"]` in his `config.yaml`. Tracked as an open
+  gap in the vault's `data_boundary.md`; still unset as of 2026-07-31.
+- **Vespasianus / `trading_researcher` was never built** — treat that roster row as lapsed, not
+  pending. PolyScalper research is not staffed on the box.
+- Per-profile Discord identities were never built: `discord-bot.service` is staged in
+  `~/deploy-staging/` only, not installed or enabled. The live chat surface is **Buzz** (see the
+  machine-level `~/CLAUDE.md`), not Discord — Discord is delivery-only via `bin/deliver_report.sh`.
 
 ## Hard constraints (short form)
 - **Vault data is in-bubble.** The box sits inside Dave's private trust zone (the same zone as
