@@ -18,6 +18,10 @@
 # invocation is preserved there verbatim).
 set -euo pipefail
 
+# Every report written under the hermes path was mode 600; Claude Code writes with the
+# inherited umask (0002 under systemd here), which would silently widen them to 664.
+umask 077
+
 CLAUDE_BIN="${CLAUDE_BIN:-/home/linuxbrew/.linuxbrew/bin/claude}"
 WORKDIR="${MORNING_REPORT_WORKDIR:-$HOME/agent-workforce}"
 MODEL="${MORNING_REPORT_MODEL:-sonnet}"
