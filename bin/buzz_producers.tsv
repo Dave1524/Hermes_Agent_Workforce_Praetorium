@@ -1,0 +1,37 @@
+# Producer matrix — the single source of truth for "which unit delivers where".
+# Read by tests/test_buzz_unit_wiring.sh and bin/audit_buzz_dual_run.sh.
+#
+# Columns (tab-separated):
+#   unit     systemd unit name; the matching systemd/<unit> must exist in this repo
+#   route    route key; must be present in bin/buzz_routes.env
+#   payload  file    — an artifact is attached and must be anchored to the invocation
+#            status  — proposal-or-decline receipt, one short line
+#            summary — completion summary composed by the caller
+#   status   wired   — the unit source carries DELIVERY_ROUTE and a delivery hook
+#            pending — not yet ported; the unit source must carry NEITHER
+#
+# The expected-fire calendar is NOT duplicated here — audit_buzz_dual_run.sh derives it
+# from each unit's own systemd/<stem>.timer OnCalendar, so the two cannot drift.
+#
+# scorecard.service was silent and unrouted before this migration. Decision (2026-08-04):
+# it joins `ops`. It is a weekly rollup of agent-run outcomes — the same operational feed
+# as the morning report — and a rollup nobody reads is a rollup that stops being written.
+#
+# unit	route	payload	status
+overnight-pre-snapshot.service	ops	file	pending
+overnight-morning-report.service	ops	file	wired
+praetorium-daily-plan.service	ops	file	wired
+praetorium-eod-summary.service	ops	file	wired
+scorecard.service	ops	summary	pending
+agent-alert@.service	ops	summary	wired
+agent-proposal.service	research	status	pending
+raw-ingest.service	research	status	pending
+knowledge-digest.service	research	status	pending
+weekly-pre-assembly.service	research	status	pending
+augustus-content.service	content	summary	pending
+content-change-dispatch.service	content	summary	pending
+bd-stall-radar.service	bd	status	pending
+bd-followup-drafts.service	bd	file	wired
+m1-signal-scan.service	signals	status	pending
+agent-inbox-sync.service	approvals	summary	pending
+inbox-backlog-alert.service	approvals	summary	wired
