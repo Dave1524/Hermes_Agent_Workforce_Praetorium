@@ -8,30 +8,39 @@
 #            status  — proposal-or-decline receipt, one short line
 #            summary — completion summary composed by the caller
 #   status   wired   — the unit source carries DELIVERY_ROUTE and a delivery hook
-#            pending — not yet ported; the unit source must carry NEITHER
+#            pending — not yet ported; the unit source must carry no route
+#   silence  never   — every expected fire must produce a receipt; none is a gap
+#            allowed — the job speaks only when it has something to say, so a fire
+#                      with no receipt is a correct outcome, not a missed delivery
 #
 # The expected-fire calendar is NOT duplicated here — audit_buzz_dual_run.sh derives it
-# from each unit's own systemd/<stem>.timer OnCalendar, so the two cannot drift.
+# from each unit's own systemd/<stem>.timer OnCalendar, so the two cannot drift. A unit
+# with no timer (agent-alert@) is on-demand: it has no expected fires at all, and the
+# audit only checks the receipts it did write.
+#
+# `silence` cannot be derived, which is why it is stated. "No receipt" is the same
+# observation for a job that correctly had nothing to report and for a job whose
+# delivery vanished; only the producer's own contract distinguishes them.
 #
 # scorecard.service was silent and unrouted before this migration. Decision (2026-08-04):
 # it joins `ops`. It is a weekly rollup of agent-run outcomes — the same operational feed
 # as the morning report — and a rollup nobody reads is a rollup that stops being written.
 #
-# unit	route	payload	status
-overnight-pre-snapshot.service	ops	file	pending
-overnight-morning-report.service	ops	file	wired
-praetorium-daily-plan.service	ops	file	wired
-praetorium-eod-summary.service	ops	file	wired
-scorecard.service	ops	summary	pending
-agent-alert@.service	ops	summary	wired
-agent-proposal.service	research	status	pending
-raw-ingest.service	research	status	pending
-knowledge-digest.service	research	status	pending
-weekly-pre-assembly.service	research	status	pending
-augustus-content.service	content	summary	pending
-content-change-dispatch.service	content	summary	pending
-bd-stall-radar.service	bd	status	pending
-bd-followup-drafts.service	bd	file	wired
-m1-signal-scan.service	signals	status	pending
-agent-inbox-sync.service	approvals	summary	pending
-inbox-backlog-alert.service	approvals	summary	wired
+# unit	route	payload	status	silence
+overnight-pre-snapshot.service	ops	file	pending	never
+overnight-morning-report.service	ops	file	wired	never
+praetorium-daily-plan.service	ops	file	wired	never
+praetorium-eod-summary.service	ops	file	wired	never
+scorecard.service	ops	summary	pending	never
+agent-alert@.service	ops	summary	wired	allowed
+agent-proposal.service	research	status	pending	never
+raw-ingest.service	research	status	pending	never
+knowledge-digest.service	research	status	pending	never
+weekly-pre-assembly.service	research	status	pending	never
+augustus-content.service	content	summary	pending	never
+content-change-dispatch.service	content	summary	pending	allowed
+bd-stall-radar.service	bd	status	pending	never
+bd-followup-drafts.service	bd	file	wired	allowed
+m1-signal-scan.service	signals	status	pending	never
+agent-inbox-sync.service	approvals	summary	pending	allowed
+inbox-backlog-alert.service	approvals	summary	wired	allowed

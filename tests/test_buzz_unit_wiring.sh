@@ -29,13 +29,13 @@ code() { grep -v '^[[:space:]]*#' "$1"; }
 echo '--- the manifest itself is well-formed ---'
 assert 'manifest exists' "[ -f '$MANIFEST' ]"
 assert 'route table exists' "[ -f '$ROUTES' ]"
-assert 'every row has four tab-separated columns' \
-  "[ \"\$(rows | awk -F'\t' 'NF!=4' | wc -l)\" -eq 0 ]"
+assert 'every row has five tab-separated columns' \
+  "[ \"\$(rows | awk -F'\t' 'NF!=5' | wc -l)\" -eq 0 ]"
 assert 'no duplicate units' \
   "[ \"\$(rows | cut -f1 | sort | uniq -d | wc -l)\" -eq 0 ]"
 
 echo '--- every declared route resolves to a key in the route table ---'
-while IFS=$'\t' read -r unit route payload status; do
+while IFS=$'\t' read -r unit route payload status silence; do
   assert "route '$route' is declared for $unit" "grep -q '^ROUTE_${route}=' '$ROUTES'"
   case "$payload" in
     file|status|summary) ;;
@@ -44,6 +44,10 @@ while IFS=$'\t' read -r unit route payload status; do
   case "$status" in
     wired|pending) ;;
     *) assert "status '$status' for $unit is known" "false" ;;
+  esac
+  case "$silence" in
+    never|allowed) ;;
+    *) assert "silence policy '$silence' for $unit is known" "false" ;;
   esac
 done < <(rows)
 
@@ -54,7 +58,7 @@ assert 'every non-comment line is a ROUTE_ assignment' \
   "[ \"\$(grep -v '^#' '$ROUTES' | grep -v '^[[:space:]]*\$' | grep -cv '^ROUTE_[a-z][a-z0-9_-]*=')\" -eq 0 ]"
 
 echo '--- wired units carry their route and a delivery hook ---'
-while IFS=$'\t' read -r unit route payload status; do
+while IFS=$'\t' read -r unit route payload status silence; do
   f="$REPO_ROOT/systemd/$unit"
   assert "$unit has a unit source in this repo" "[ -f '$f' ]"
   [ -f "$f" ] || continue
@@ -83,7 +87,7 @@ echo '--- wired file-payload units anchor their artifact to THIS run ---'
 # A 26-hour age budget cannot tell "produced by tonight's run" from "left over from
 # last night's". The marker is stamped by ExecStartPre before ExecStart writes
 # anything, so deliver.sh can require artifact-newer-than-marker exactly.
-while IFS=$'\t' read -r unit route payload status; do
+while IFS=$'\t' read -r unit route payload status silence; do
   [ "$status" = wired ] && [ "$payload" = file ] || continue
   f="$REPO_ROOT/systemd/$unit"
   [ -f "$f" ] || continue
