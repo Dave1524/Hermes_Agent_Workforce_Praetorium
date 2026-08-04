@@ -1,33 +1,31 @@
 #!/usr/bin/env bash
-# NUC-30: alert Dave on Discord when the agent-inbox approval backlog ages out.
+# NUC-30: alert Dave when the agent-inbox approval backlog ages out.
 # Proposals accumulate in ~/agent-worktrees/inbox/_inbox/agents/ awaiting a
 # Mac-side promote/reject (the box never decides — see docs/inbox_workflow.md).
-# If the OLDEST pending proposal is > 2 days old, post a single model-free line
-# via `hermes send`; stay SILENT when the inbox is clear or under threshold.
+# If the OLDEST pending proposal is > 2 days old, hand one line to bin/deliver.sh;
+# stay SILENT when the inbox is clear or under threshold.
+#
+# Silence is the product here. An approvals channel that posts every morning
+# whether or not anything is waiting is one nobody reads by the second week, so
+# the threshold check stays in this adapter and deliver.sh is only reached on the
+# days it has something to say.
 #
 # Backlog computation mirrors bin/praetorium-status.sh (NUC-26 block): count
 # *.md files at depth 1 (the _metrics/ digest dir is excluded by -maxdepth 1)
 # and take the oldest mtime. Fail-soft: exits 0 even on delivery error.
 set -uo pipefail
 
+BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DELIVER_BIN="${DELIVER_BIN:-$BIN_DIR/deliver.sh}"
+
 THRESHOLD_DAYS="${INBOX_BACKLOG_THRESHOLD_DAYS:-2}"
+ROUTE="${DELIVERY_ROUTE:-unrouted}"
 
 log="$HOME/logs/inbox_backlog_alert.log"
 mkdir -p "$HOME/logs" 2>/dev/null || true
-now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
-note() { printf '%s inbox_backlog_alert: %s\n' "$(now)" "$*" >> "$log" 2>/dev/null || true; }
-
-hsend() {
-  if [ -x "$HOME/.hermes/hermes-agent/venv/bin/hermes" ]; then
-    "$HOME/.hermes/hermes-agent/venv/bin/hermes" send "$@"
-  elif [ -x "$HOME/.local/bin/hermes" ]; then
-    "$HOME/.local/bin/hermes" send "$@"
-  elif [ -x "$HOME/.hermes/hermes-agent/venv/bin/python" ]; then
-    "$HOME/.hermes/hermes-agent/venv/bin/python" -m hermes_cli.main send "$@"
-  else
-    note "no hermes entrypoint found — skipping alert"
-    return 1
-  fi
+note() {
+  printf '%s inbox_backlog_alert: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" \
+    >> "$log" 2>/dev/null || true
 }
 
 inbox_dir="$HOME/agent-worktrees/inbox/_inbox/agents"
@@ -55,7 +53,11 @@ if [ "$age_days" -le "$THRESHOLD_DAYS" ]; then
 fi
 
 msg="${pend} proposals pending, oldest ${age_days}d (awaiting Mac-side promote/reject)"
-if hsend --to discord --subject '[Praetorium] Approvals aging' "$msg" --quiet; then
+if "$DELIVER_BIN" \
+     --job "${DELIVERY_JOB:-inbox-backlog-alert.service}" \
+     --route "$ROUTE" \
+     --subject '[Praetorium] Approvals aging' \
+     --message "$msg"; then
   note "alerted: ${msg}"
 else
   note "alert delivery failed (non-fatal): ${msg}"

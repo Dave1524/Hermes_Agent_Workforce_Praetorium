@@ -1,46 +1,33 @@
 #!/usr/bin/env bash
-# notify.sh — model-free notification dispatch to Discord via hermes send.
+# notify.sh — text/file notification adapter over bin/deliver.sh.
 #
-# A single, tested entrypoint for all box-side notifications (alert
-# handlers, service completion notices, ad-hoc messages). Wraps the
-# `hermes send --to discord` pattern duplicated in deliver_report.sh
-# and inbox_backlog_alert.sh.
+# The positional interface is unchanged from the Discord-only version, because
+# agent-alert@.service and the ExecStartPost hooks call it that way:
 #
-# Usage:
-#   notify.sh <subject> <message>              # text-mode notification
-#   notify.sh <subject> --file <path>          # file-content notification
+#   notify.sh <subject> <message>               # text-mode notification
+#   notify.sh <subject> <message> --file <path> # attach a file instead
 #
-# Behaviour:
-#   - Resolves the hermes CLI entrypoint (venv → .local → python -m)
-#   - Calls `hermes send --to discord --subject <subject>` with the
-#     provided message text or file content
-#   - Logs outcome to $HOME/logs/notify.log
-#   - FAIL-SOFT: always exits 0 so a Discord hiccup never causes a
-#     caller (systemd ExecStartPost, OnFailure handler, etc.) to fail
+# The destination is NOT decided here. There is deliberately no default route: a
+# caller that has not been given DELIVERY_ROUTE (or --route) delivers to Discord
+# exactly as before and leaves a config_error receipt behind. Hardcoding a fallback
+# would quietly file research and content output into the ops channel, and the audit
+# would still show a clean dual-run.
+#
+# FAIL-SOFT: always exits 0, so an OnFailure handler or ExecStartPost can never
+# itself fail the unit it is reporting on.
 set -uo pipefail
 
-readonly log="$HOME/logs/notify.log"
-mkdir -p "$HOME/logs" 2>/dev/null || true
-now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
-note() { printf '%s notify: %s\n' "$(now)" "$*" >> "$log" 2>/dev/null || true; }
+BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DELIVER_BIN="${DELIVER_BIN:-$BIN_DIR/deliver.sh}"
 
-# Resolve a model-free hermes send entrypoint (same resolution as
-# deliver_report.sh and inbox_backlog_alert.sh).
-hsend() {
-  if [ -x "$HOME/.hermes/hermes-agent/venv/bin/hermes" ]; then
-    "$HOME/.hermes/hermes-agent/venv/bin/hermes" send "$@"
-  elif [ -x "$HOME/.local/bin/hermes" ]; then
-    "$HOME/.local/bin/hermes" send "$@"
-  elif [ -x "$HOME/.hermes/hermes-agent/venv/bin/python" ]; then
-    "$HOME/.hermes/hermes-agent/venv/bin/python" -m hermes_cli.main send "$@"
-  else
-    note "no hermes entrypoint found — skipping delivery"
-    return 1
-  fi
+log="$HOME/logs/notify.log"
+mkdir -p "$HOME/logs" 2>/dev/null || true
+note() {
+  printf '%s notify: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >> "$log" 2>/dev/null || true
 }
 
 usage() {
-  note "usage: notify.sh <subject> <message> [--file <path>]"
+  note "usage: notify.sh <subject> <message> [--file <path>] [--route <key>]"
   exit 0
 }
 
@@ -50,12 +37,20 @@ subject="$1"
 message="$2"
 shift 2
 
+route="${DELIVERY_ROUTE:-unrouted}"
 file_arg=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --file)
       shift
-      [ -n "${1:-}" ] && file_arg=(--file "$1") || usage
+      [ -n "${1:-}" ] || usage
+      file_arg=(--file "$1")
+      shift
+      ;;
+    --route)
+      shift
+      [ -n "${1:-}" ] || usage
+      route="$1"
       shift
       ;;
     *)
@@ -65,20 +60,18 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+args=(--job "${DELIVERY_JOB:-notify.sh}" --route "$route" --subject "$subject"
+      --runtime "${DELIVERY_RUNTIME:-${AGENT_PROFILE:-unknown}}")
 if [ ${#file_arg[@]} -gt 0 ]; then
-  # File mode — send file content, ignore message text
-  if hsend --to discord --subject "$subject" "${file_arg[@]}" --quiet; then
-    note "delivered (file): $subject"
-  else
-    note "delivery failed (non-fatal): $subject"
-  fi
+  args+=("${file_arg[@]}")   # file mode: the artifact is the payload; message text is not sent
 else
-  # Text mode — send subject + message body
-  if hsend --to discord --subject "$subject" "$message" --quiet; then
-    note "delivered: $subject — $message"
-  else
-    note "delivery failed (non-fatal): $subject — $message"
-  fi
+  args+=(--message "$message")
+fi
+
+if "$DELIVER_BIN" "${args[@]}"; then
+  note "handed to deliver.sh (route=$route): $subject"
+else
+  note "deliver.sh returned non-zero (non-fatal): $subject"
 fi
 
 exit 0

@@ -1,46 +1,41 @@
 #!/usr/bin/env bash
-# NUC-30: deliver the newest overnight morning report to Dave's Discord channel
-# via the model-free `hermes send` primitive (no LLM, no OpenRouter spend, no
-# running gateway required for bot-token platforms like Discord).
+# Artifact-lookup adapter: find the report this unit just produced and hand it to
+# bin/deliver.sh. Wired as ExecStartPost on the report-producing units.
 #
-# Wired as ExecStartPost on overnight-morning-report.service so the 06:15 NUC-36
-# report delivers its own file. FAIL-SOFT BY DESIGN: any delivery/lookup error is
-# logged and this script still exits 0, so a Discord hiccup never marks the report
-# unit failed (which would fire the OnFailure alert for a non-event).
+# NUC-30 introduced this as a Discord sender; the 2026-08-04 Buzz migration took the
+# transport out. What remains here is the only part that is genuinely per-unit — which
+# directory, which glob, which subject (REPORT_DIR / REPORT_GLOB / REPORT_SUBJECT, set
+# in each unit's Environment= lines). Delivery, freshness enforcement and the receipt
+# belong to deliver.sh, the single owner of both surfaces.
 #
-# NUC-45: the report to deliver is now a parameter (REPORT_DIR / REPORT_GLOB /
-# REPORT_SUBJECT, set per-unit in the Environment= lines) so praetorium-daily-plan and
-# praetorium-eod-summary reuse this delivery path instead of each growing a copy of it.
-# The defaults are the NUC-30 morning report, so the existing unit is unchanged.
+# FAIL-SOFT BY DESIGN: exits 0 on every path, so a delivery problem never marks the
+# report unit failed (which would fire OnFailure=agent-alert@ for a non-event).
 set -uo pipefail
+
+BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DELIVER_BIN="${DELIVER_BIN:-$BIN_DIR/deliver.sh}"
 
 REPORT_DIR="${REPORT_DIR:-$HOME/logs/overnight}"
 REPORT_GLOB="${REPORT_GLOB:-morning-report-*.md}"
 REPORT_SUBJECT="${REPORT_SUBJECT:-[Praetorium] Morning report}"
 
-# Maximum report age before we refuse to deliver it (seconds).
-# If the newest report file is older than this, the agent likely
-# failed to produce a fresh one — don't spam Dave with stale data.
-MAX_REPORT_AGE_SECS=$(( 26 * 3600 ))   # 26 hours — covers one skipped day
+# A caller with no route configured keeps exactly its pre-migration behaviour —
+# Discord only — and deliver.sh records a config_error receipt, so an unported
+# producer surfaces in the dual-run audit instead of defaulting into someone
+# else's channel.
+ROUTE="${DELIVERY_ROUTE:-unrouted}"
+JOB="${DELIVERY_JOB:-deliver_report.sh}"
+RUNTIME="${DELIVERY_RUNTIME:-${AGENT_PROFILE:-unknown}}"
+
+# The weaker of the two freshness anchors, kept for units that have no run marker yet:
+# 26 hours covers one skipped day. DELIVERY_RUN_MARKER supersedes it when present.
+MAX_REPORT_AGE_SECS=$(( 26 * 3600 ))
 
 log="$HOME/logs/deliver_report.log"
 mkdir -p "$HOME/logs" 2>/dev/null || true
-now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
-note() { printf '%s deliver_report: %s\n' "$(now)" "$*" >> "$log" 2>/dev/null || true; }
-
-# Resolve a model-free hermes send entrypoint. Prefer the venv binary (no PATH
-# dependency under systemd), then the user shim, then the python module.
-hsend() {
-  if [ -x "$HOME/.hermes/hermes-agent/venv/bin/hermes" ]; then
-    "$HOME/.hermes/hermes-agent/venv/bin/hermes" send "$@"
-  elif [ -x "$HOME/.local/bin/hermes" ]; then
-    "$HOME/.local/bin/hermes" send "$@"
-  elif [ -x "$HOME/.hermes/hermes-agent/venv/bin/python" ]; then
-    "$HOME/.hermes/hermes-agent/venv/bin/python" -m hermes_cli.main send "$@"
-  else
-    note "no hermes entrypoint found — skipping delivery"
-    return 1
-  fi
+note() {
+  printf '%s deliver_report: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" \
+    >> "$log" 2>/dev/null || true
 }
 
 # Newest report by filename (the timestamped names sort lexically = chronologically).
@@ -56,21 +51,14 @@ if [ -z "$latest" ] || [ ! -s "$latest" ]; then
   exit 0
 fi
 
-# Stale-file guard: only deliver if the report was written within the freshness window.
-# This prevents the system from re-delivering the same stale file when the agent
-# failed to produce a new one (NUC-37 BLOCKED, missing overrides, etc.).
-report_mtime=$(stat -c %Y "$latest" 2>/dev/null || echo 0)
-now_epoch=$(date +%s)
-age=$(( now_epoch - report_mtime ))
-if [ "$age" -gt "$MAX_REPORT_AGE_SECS" ]; then
-  note "STALE: $(basename "$latest") is ${age}s old (>${MAX_REPORT_AGE_SECS}s max) — skipping delivery (agent likely did not produce a fresh report)"
-  exit 0
-fi
+args=(--job "$JOB" --route "$ROUTE" --subject "$REPORT_SUBJECT" --file "$latest"
+      --runtime "$RUNTIME" --max-age-secs "$MAX_REPORT_AGE_SECS")
+[ -n "${DELIVERY_RUN_MARKER:-}" ] && args+=(--run-marker "$DELIVERY_RUN_MARKER")
 
-if hsend --to discord --subject "$REPORT_SUBJECT" --file "$latest" --quiet; then
-  note "delivered $(basename "$latest") to discord"
+if "$DELIVER_BIN" "${args[@]}"; then
+  note "handed $(basename "$latest") to deliver.sh (route=$ROUTE)"
 else
-  note "delivery failed for $(basename "$latest") (non-fatal)"
+  note "deliver.sh returned non-zero for $(basename "$latest") (non-fatal)"
 fi
 
 exit 0
