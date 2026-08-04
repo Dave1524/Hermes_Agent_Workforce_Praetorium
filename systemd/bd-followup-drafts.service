@@ -14,6 +14,15 @@ Environment=AGENT_JOB_OVERRIDES=/home/dave/.config/agent-workforce/bd_followup_d
 Environment=REPORT_DIR=/home/dave/agent-worktrees/inbox/_inbox/agents
 Environment=REPORT_GLOB=*_bd-followup-drafts.md
 Environment="REPORT_SUBJECT=[Praetorium] BD follow-up drafts"
+Environment=DELIVERY_ROUTE=bd
+Environment=DELIVERY_JOB=%n
+# The pack lands in the shared inbox directory alongside every other proposal, so
+# "newest match" is not enough on a night this job produces nothing — the marker
+# makes the glob's newest hit prove it belongs to this run. See
+# overnight-morning-report.service.
+Environment=DELIVERY_RUN_MARKER=/home/dave/logs/run-markers/%n
+ExecStartPre=/usr/bin/mkdir -p /home/dave/logs/run-markers
+ExecStartPre=/usr/bin/touch /home/dave/logs/run-markers/%n
 EnvironmentFile=/home/dave/.config/agent-workforce/secrets.env
 ExecStart=/home/dave/agent-workforce/bin/agent_propose.sh
 ExecStartPost=/home/dave/agent-workforce/bin/deliver_report.sh

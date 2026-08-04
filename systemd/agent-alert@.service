@@ -2,11 +2,14 @@
 # Convention: units add `OnFailure=agent-alert@%n.service` and systemd starts one
 # instance per failing unit, with %i = the failed unit's name.
 #
-# Delivers to TWO places — local journal/log AND Discord via notify.sh:
+# Delivers to THREE places — local journal, local log file, and notify.sh:
 #   1. Journal (tag "agent-alert", priority err) — secret-free, always works.
 #   2. Log file at /home/dave/logs/agent-alert.log.
-#   3. Discord via notify.sh (NUC-30) — fail-soft, uses hermes send with the
-#      DISCORD_BOT_TOKEN from secrets.env.
+#   3. notify.sh (NUC-30) — fail-soft; since 2026-08-04 it hands off to
+#      bin/deliver.sh, which posts to Discord AND the Buzz ops channel.
+#
+# The local journal and log paths are deliberately first and independent: they are
+# the only two that still work when the failure being reported IS the transport.
 #
 # Deploy: sudo cp to /etc/systemd/system/ + daemon-reload. No enable needed — it
 # is pulled in on demand by OnFailure=. (% is escaped as %% in unit files; %i is
@@ -17,6 +20,11 @@ Description=OnFailure alert for %i — NUC-25 / NUC-30
 [Service]
 Type=oneshot
 User=dave
+# Every failure is operational news regardless of which job failed, so this template
+# is the one caller with a fixed route. %i (the failed unit) is carried in the
+# subject, not the route.
+Environment=DELIVERY_ROUTE=ops
+Environment=DELIVERY_JOB=%n
 EnvironmentFile=/home/dave/.config/agent-workforce/secrets.env
 ExecStart=/bin/sh -c 'msg="agent-workforce ALERT: unit %i failed at $(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)"; printf "%%s\\n" "$msg" | systemd-cat -t agent-alert -p err; mkdir -p /home/dave/logs; printf "%%s\\n" "$msg" >> /home/dave/logs/agent-alert.log; /home/dave/agent-workforce/bin/notify.sh "[Praetorium] Unit failed: %i" "$msg" || true'
 NoNewPrivileges=true

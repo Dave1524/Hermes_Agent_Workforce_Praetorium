@@ -10,11 +10,24 @@ OnFailure=agent-alert@%n.service
 Type=oneshot
 User=dave
 Environment=AGENT_JOB_OVERRIDES=/home/dave/.config/agent-workforce/overnight_morning_report.env
+Environment=REPORT_DIR=/home/dave/logs/overnight
+Environment=REPORT_GLOB=morning-report-*.md
+Environment="REPORT_SUBJECT=[Praetorium] Morning report"
+Environment=DELIVERY_ROUTE=ops
+Environment=DELIVERY_JOB=%n
+# The artifact this run produced must be newer than THIS invocation, not merely
+# newer than 26 hours: a stale report re-delivered on a night the agent failed is
+# indistinguishable from a fresh one at the reading end. ExecStartPost cannot see
+# agent_propose.sh's AGENT_RUN_STARTED_AT (that export lives inside its own
+# process), so the anchor is a marker file stamped here, before ExecStart runs.
+Environment=DELIVERY_RUN_MARKER=/home/dave/logs/run-markers/%n
+ExecStartPre=/usr/bin/mkdir -p /home/dave/logs/run-markers
+ExecStartPre=/usr/bin/touch /home/dave/logs/run-markers/%n
 EnvironmentFile=/home/dave/.config/agent-workforce/secrets.env
 ExecStart=/home/dave/agent-workforce/bin/agent_propose.sh
-# NUC-30: deliver the freshly-written report to Dave's Discord via the model-free
-# `hermes send` primitive. Fail-soft (deliver_report.sh always exits 0) so a Discord
-# hiccup never marks the report unit failed / fires the OnFailure alert.
+# Deliver the freshly-written report to both surfaces (NUC-30 Discord, plus the Buzz
+# ops channel from 2026-08-04). Fail-soft — deliver_report.sh always exits 0 — so a
+# transport hiccup never marks the report unit failed / fires the OnFailure alert.
 ExecStartPost=/home/dave/agent-workforce/bin/deliver_report.sh
 TimeoutStartSec=15min
 NoNewPrivileges=true

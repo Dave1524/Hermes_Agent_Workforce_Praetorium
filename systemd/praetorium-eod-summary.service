@@ -14,6 +14,12 @@ Environment=AGENT_JOB_OVERRIDES=/home/dave/.config/agent-workforce/eod_summary.e
 Environment=REPORT_DIR=/home/dave/logs/eod-summary
 Environment=REPORT_GLOB=eod-summary-*.md
 Environment="REPORT_SUBJECT=[Praetorium] EOD summary"
+Environment=DELIVERY_ROUTE=ops
+Environment=DELIVERY_JOB=%n
+# Anchor the summary to THIS invocation — see overnight-morning-report.service.
+Environment=DELIVERY_RUN_MARKER=/home/dave/logs/run-markers/%n
+ExecStartPre=/usr/bin/mkdir -p /home/dave/logs/run-markers
+ExecStartPre=/usr/bin/touch /home/dave/logs/run-markers/%n
 EnvironmentFile=/home/dave/.config/agent-workforce/secrets.env
 ExecStart=/home/dave/agent-workforce/bin/agent_propose.sh
 ExecStartPost=/home/dave/agent-workforce/bin/deliver_report.sh
