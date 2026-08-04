@@ -25,6 +25,49 @@ A Buzz workflow cannot currently wake an `--respond-to owner-only` agent:
 Pin these claims to the deployed Buzz CLI/relay build during Phase 0. Upstream `main`
 and the hosted relay may differ; source reading alone is not a deployment-version check.
 
+## Blocking preconditions — two live failures
+
+Verified against the box on 2026-08-04. Both predate this migration, both sit in
+`#ops-praetorium`, and neither can be audited as delivering until fixed. **Phase 3 cannot
+start while they stand** — a producer that cannot produce cannot be audited.
+
+**1. `overnight-pre-snapshot`: the model-free replacement was built, deployed, never switched
+on.** The NUC-36 replacement exists at `systemd/overnight-pre-snapshot.{service,timer}` and its
+script has been deployed and executable at `~/agent-workforce/bin/overnight_pre_snapshot.sh`
+since 20 July. The unit was never installed — `systemctl cat overnight-pre-snapshot.timer`
+returns "No files found", and it is the only one of 20 repo timers absent from
+`/etc/systemd/system`. The retired Hermes cron job therefore still fires at 04:25 on
+`deepseek-v4-flash` and has failed every night on HTTP 402. Last artifact: 30 July.
+
+Fix (Dave, sudo):
+
+```bash
+sudo cp ~/dev/agent-workforce/systemd/overnight-pre-snapshot.{service,timer} /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now overnight-pre-snapshot.timer
+hermes cron disable 32413ebc3c20   # retire the LLM job so both do not fire
+```
+
+**2. `overnight-morning-report`: the Claude Code migration was committed but never installed.**
+`a83637d` (31 July) moved this job off hermes/OpenRouter, `bin/run_overnight_morning_report_cc.sh`
+is deployed, and the installed unit already reads
+`AGENT_JOB_OVERRIDES=~/.config/agent-workforce/overnight_morning_report.env`. That override file
+was never updated from the shipped template, so the job still execs `~/.local/bin/hermes … -p
+marcus`. It exits 0 having produced nothing, `AGENT_VERIFY_CMD` records SILENT-FAIL, and the
+unit fails all three attempts — including today's 06:15 run. Last artifact: 31 July.
+
+Fix (**Dave only** — `~/.config/agent-workforce/**` is deny-listed to every agent session):
+install `profiles/overnight_morning_report.env.example` to
+`~/.config/agent-workforce/overnight_morning_report.env`, mode 600. No code change is required.
+The template is the finished article, and its `AGENT_VERIFY_CMD`
+(`-newermt "@$AGENT_RUN_STARTED_AT"`) already implements the current-invocation artifact
+assertion this brief specifies below — copy that pattern rather than inventing a second one.
+
+Shared root cause is the OpenRouter cap: this morning's run logged `usage_before=42.11` USD
+against $50/month. OpenRouter reserves worst-case `max_tokens` cost up front, so large-output
+jobs 402 at roughly $8 remaining while cheap calls still pass. Both fixes remove a job from
+that path rather than raising the cap.
+
 ## Scope inventory
 
 There are **15 scheduled output producers**, not 13:
@@ -38,6 +81,10 @@ There are **15 scheduled output producers**, not 13:
 - **2 deterministic approval units:** `agent-inbox-sync` and
   `inbox-backlog-alert`.
 - **1 on-demand failure producer:** `agent-alert@.service`.
+- **1 silent producer needing an explicit in/out decision:** `scorecard.timer` (Mon 07:00,
+  NUC-23 weekly agent-run rollup) is installed and active, writes a report, and calls no
+  transport. It appears in no earlier draft of this brief. Decide whether it joins `ops`
+  or stays silent — being overlooked is not a decision.
 
 All 13 work-producing units execute scripts from `/home/dave/agent-workforce`.
 `agent-inbox-sync` is the one in-scope unit that executes from the source checkout.
@@ -110,8 +157,8 @@ create a delivery hook.
 | `raw-ingest` | research | proposal or verified decline | dated `raw-ingest` proposal; otherwise concise decline status |
 | `knowledge-digest` | research | proposal or verified decline | dated `knowledge-digest` proposal; otherwise concise decline status |
 | `weekly-pre-assembly` | research | proposal or clean decline | dated pre-assembly proposal; otherwise concise decline status |
-| `augustus-content` | content | run changed content state | completion summary with affected Notion rows; no fake file artifact |
-| `content-change-dispatch` | content | a new Picked row triggered work | completion summary only; a quiet poll stays silent |
+| `augustus-content` | content | run changed content state, or a brief was refused on collision | completion summary with affected Notion rows and corpus state; no fake file artifact |
+| `content-change-dispatch` | content | a new Picked row triggered work, or a brief was refused on collision | completion summary with corpus state; a quiet poll stays silent |
 | `bd-stall-radar` | bd | proposal or clean decline | dated radar proposal; otherwise concise decline status |
 | `bd-followup-drafts` | bd | fresh pack or verified decline | dated follow-up pack; otherwise concise decline status |
 | `m1-signal-scan` | signals | proposal or clean decline | dated signal proposal; otherwise concise decline status |
@@ -126,6 +173,28 @@ proposal/decline outcome. A stale artifact must never certify or represent a new
 
 No Pulse note or channel message is emitted for a quiet deterministic poll, dedup, or
 no-change result unless the table explicitly requires a decline/status receipt.
+
+### Content corpus gate (`7c022e3`) — changes the `content` route contract
+
+`bin/published_corpus.py` and `bin/brief_collision_check.py` (29 July, deployed) make both
+`profiles/augustus_content_task.md` and `profiles/claudius_task.md` read the published site
+corpus from `~/dev/Vantage_Consulting_Website` at `origin/main` before picking work, after a
+924-word duplicate article shipped on 27 July. Verified healthy 2026-08-04: repo present,
+`git fetch origin main` succeeds, corpus parses. Three consequences here:
+
+- **Delivery must carry corpus state.** `_fetch()` is deliberately soft — offline falls back to
+  the last known ref and only warns past `VP_CORPUS_MAX_LAG_HOURS` (default 72). Augustus can
+  therefore produce a confident draft against a stale corpus with the duplicate check silently
+  degraded. Every `content`-route message and receipt carries `corpus: fetched|stale` and
+  `ref_age_hours`. A successful delivery is not evidence the gate ran.
+- **A collision refusal is a delivering outcome.** A brief naming an already-published title is
+  "a faulty brief, not a drafting task", so the profile is expected to refuse. That is neither
+  "changed content state" nor a quiet poll. It must deliver: `queue.md` is regenerated Mac-side
+  by `eod-wrap` and agents never edit it, so an unreported refusal leaves the faulty brief in
+  the queue to be picked again the next night.
+- **A new external dependency for an in-scope producer.** The site repo plus a working
+  `git fetch` is now a precondition for the `content` route, and `published_corpus.py` hard-exits
+  if the repo is absent. Add both to the Phase 0 checks and the operational preconditions.
 
 ## Transport seam
 
@@ -311,8 +380,9 @@ window.
 - No job scheduling in Buzz.
 - No changes to `agent_propose.sh` semantics, `AGENT_RUNTIME_CMD`, or model/profile
   selection.
-- No Hermes kanban-dispatch changes. `overnight-pre-snapshot` is already a systemd timer;
-  its retired Hermes prompt explicitly says not to recreate it.
+- No Hermes kanban-dispatch changes. `overnight-pre-snapshot`'s systemd replacement exists in
+  the repo but is **not installed**, so the retired Hermes cron job is still what fires — see
+  Blocking preconditions. Installing it is a precondition of this migration, not part of it.
 - No reads or edits under `~/.config/buzz-agents/**` by an implementation session. Every
   real identity, membership, and credential-helper step is a Dave action.
 - No reads or edits to `~/vault` or `~/agent-worktrees/inbox` outside their governed
@@ -333,5 +403,12 @@ window.
   60-second floor. Re-check scheduled nudges at DST transitions.
 - `hermes send` and the Buzz CLI path must remain model-free and independent of a running
   LLM gateway.
+- The `content` route depends on `~/dev/Vantage_Consulting_Website` and a working
+  `git fetch origin main`. A stale corpus degrades the duplicate gate silently rather than
+  failing, so corpus freshness travels with the message, never inferred from a green run.
+- A repo unit source is not an installed unit, and an installed unit is not the runtime the job
+  actually execs — runtime selection lives in the deny-listed `AGENT_JOB_OVERRIDES` file. Both
+  blocking preconditions above are instances of that gap. Before asserting what a job runs,
+  read its journal line, not the repo.
 
 -> /clear then /implement
