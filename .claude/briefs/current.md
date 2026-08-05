@@ -25,11 +25,28 @@ A Buzz workflow cannot currently wake an `--respond-to owner-only` agent:
 Pin these claims to the deployed Buzz CLI/relay build during Phase 0. Upstream `main`
 and the hosted relay may differ; source reading alone is not a deployment-version check.
 
-## Blocking preconditions — two live failures
+## Blocking preconditions — both RESOLVED 2026-08-05
 
-Verified against the box on 2026-08-04. Both predate this migration, both sit in
-`#ops-praetorium`, and neither can be audited as delivering until fixed. **Phase 3 cannot
-start while they stand** — a producer that cannot produce cannot be audited.
+Found 2026-08-04, cleared manually 2026-08-05, re-verified from the box during the Phase 0
+spike. **These no longer gate Phase 3.** The original findings are kept below because the
+failure mode — a repo unit source that is not an installed unit, and an installed unit that
+is not the runtime the job actually execs — recurs, and the resolution evidence is only
+legible next to what it fixed.
+
+Resolution evidence, verified 2026-08-05:
+
+- **`overnight-pre-snapshot`** — `overnight-pre-snapshot.timer` is now `enabled` and
+  `active`, next fire Thu 2026-08-06 04:25:44 CEST. The retired Hermes job is gone
+  entirely: `hermes cron list` returns "No scheduled jobs", so it was removed rather than
+  paused. Both halves of the fix landed.
+- **`overnight-morning-report`** — the override now resolves to
+  `~/agent-workforce/bin/run_overnight_morning_report_cc.sh`. A manual run at 08:28 on
+  2026-08-05 completed `OK: ops run completed (no proposal path)` in 5m01s on
+  `profile=claude-sonnet`, off the OpenRouter path.
+  **Caveat:** that morning's *scheduled* 06:15 fire still ran `hermes … -p marcus` and still
+  failed all three attempts — the override was installed between 06:19 and 08:28. The first
+  scheduled run to exercise the fix is 2026-08-06 06:15; until it lands, the fix is proven
+  manually but not on the timer.
 
 **1. `overnight-pre-snapshot`: the model-free replacement was built, deployed, never switched
 on.** The NUC-36 replacement exists at `systemd/overnight-pre-snapshot.{service,timer}` and its
@@ -45,8 +62,14 @@ Fix (Dave, sudo):
 sudo cp ~/dev/agent-workforce/systemd/overnight-pre-snapshot.{service,timer} /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now overnight-pre-snapshot.timer
-hermes cron disable 32413ebc3c20   # retire the LLM job so both do not fire
+hermes cron pause 32413ebc3c20   # retire the LLM job so both do not fire
 ```
+
+`pause` is the valid verb — `hermes cron` accepts
+`list|create|add|edit|pause|resume|run|remove|rm|delete|status|runs|history|tick` and has no
+`disable`. This block originally said `disable`, which exits non-zero at the tail of an `&&`
+chain and leaves the retired job armed while the command reads as having succeeded. In the
+event the job was `remove`d rather than paused, so `hermes cron list` is now empty.
 
 **2. `overnight-morning-report`: the Claude Code migration was committed but never installed.**
 `a83637d` (31 July) moved this job off hermes/OpenRouter, `bin/run_overnight_morning_report_cc.sh`
@@ -380,9 +403,9 @@ window.
 - No job scheduling in Buzz.
 - No changes to `agent_propose.sh` semantics, `AGENT_RUNTIME_CMD`, or model/profile
   selection.
-- No Hermes kanban-dispatch changes. `overnight-pre-snapshot`'s systemd replacement exists in
-  the repo but is **not installed**, so the retired Hermes cron job is still what fires — see
-  Blocking preconditions. Installing it is a precondition of this migration, not part of it.
+- No Hermes kanban-dispatch changes. `overnight-pre-snapshot`'s systemd replacement is now
+  installed and armed, and the retired Hermes cron job has been removed — see Blocking
+  preconditions. Installing it was a precondition of this migration, not part of it.
 - No reads or edits under `~/.config/buzz-agents/**` by an implementation session. Every
   real identity, membership, and credential-helper step is a Dave action.
 - No reads or edits to `~/vault` or `~/agent-worktrees/inbox` outside their governed
