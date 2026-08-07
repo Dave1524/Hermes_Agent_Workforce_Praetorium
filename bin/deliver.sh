@@ -102,6 +102,9 @@ emit_receipt() {  # emit_receipt <outcome>
     "buzz_event_id=$buzz_event_id"
     "pulse_attempted=$pulse_attempted" "pulse_result=$pulse_result"
     "pulse_event_id=$pulse_event_id"
+    # The slug, not the pubkey: `buzz messages send` answers
+    # {accepted, event_id, message} and never echoes the author back. Resolve the
+    # author from the relay via buzz_event_id when an audit needs it.
     "identity=$IDENTITY"
     "outcome=$1" "error=$error" "detail=$detail"
   )

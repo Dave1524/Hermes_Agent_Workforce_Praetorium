@@ -160,10 +160,21 @@ the end of the string. Fixed in `4244cb1`, with new assertions anchored on exact
 
 ## Corrections to the migration plan
 
-- **Channel creation needs no owner key.** Any relay member can create a channel, add members to
-  it, and delete it, and becomes its owner. §5's claim that channel creation and membership are
-  owner-authority actions is wrong. The one step that genuinely requires the Mac is admitting a
-  **new identity** to the relay, because the NIP-OA auth tag must be signed by the owner.
+- **Channel creation needs no owner key.** Any relay member can create a channel, add members to a
+  channel **it owns**, and delete it. §5's claim that channel creation and membership are
+  owner-authority actions is wrong. Verified 2026-08-07 with the non-owner `spike0` identity:
+  create, `add-member --role member`, delete, all `accepted:true`. Note the scope — this does *not*
+  establish that a non-owner can add members to a channel someone **else** owns; that path has only
+  ever been exercised with the owner key loaded. `channels create` also requires `--type` and
+  `--visibility`, and `--type` is immutable after creation.
+- **A new identity still needs the Mac, but an existing one's auth tag does not.** Admitting a
+  brand-new identity to the relay requires the owner to sign its NIP-OA auth tag, so minting stays
+  Mac-side. Once that identity has published *any* event, its tag is recoverable from the event's
+  `tags` — `["auth",<owner-pubkey>,"",<sig>]`, a fixed attestation, not a per-event signature.
+  `buzz social event --event <id>` (the flag is `--event`, not `--id`) requires channel membership;
+  a non-member gets `events: 0` rather than an error. This is how `praetorium.env` was repaired on
+  2026-08-07 after the tag was found empty. Do not confuse the tag with the event's top-level `sig`
+  field — both are 128 hex chars, only the tag is a credential.
 - **§6's file-attachment payload contract is void.** See proof 2 — artifacts become NIP-23 notes,
   and the channel message carries the pointer.
 - **§8's 300-second activity grouping does not exist.** See proof 3 — a per-day thread root
