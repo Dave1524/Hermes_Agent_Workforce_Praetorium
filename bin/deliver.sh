@@ -17,17 +17,19 @@
 # categorized receipt, and bin/audit_buzz_dual_run.sh reads those, not the journal.
 #
 # CREDENTIAL BOUNDARY. This script never reads, receives, logs or forwards a private
-# key. It knows only an identity slug and the Buzz CLI arguments; the deny-listed
-# helper under ~/.config/buzz-agents/ loads the matching key and execs the absolute
-# buzz binary. BUZZ_PRIVATE_KEY / BUZZ_AUTH_TAG are stripped from the helper's
-# environment here so a leaked service-level variable cannot ride along.
+# key. It knows only an identity slug and the Buzz CLI arguments; bin/buzz_publish.sh
+# resolves that slug to a credential file under the deny-listed ~/.config/buzz-agents/
+# and execs the absolute buzz binary. The helper itself carries no secret, which is why
+# it lives in the repo and is version-controlled — only the .env files it reads are
+# withheld. BUZZ_PRIVATE_KEY / BUZZ_AUTH_TAG are stripped from the helper's environment
+# here so a leaked service-level variable cannot ride along.
 set -uo pipefail
 
 BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROUTES_FILE="${BUZZ_ROUTES_FILE:-$BIN_DIR/buzz_routes.env}"
 NOTE_BIN="${BUZZ_NOTE_BIN:-$BIN_DIR/buzz_note.py}"
 RECEIPT_BIN="${DELIVERY_RECEIPT_BIN:-$BIN_DIR/delivery_receipt.py}"
-HELPER="${BUZZ_DELIVER_HELPER:-$HOME/.config/buzz-agents/buzz-publish.sh}"
+HELPER="${BUZZ_DELIVER_HELPER:-$BIN_DIR/buzz_publish.sh}"
 IDENTITY="${BUZZ_SERVICE_IDENTITY:-praetorium}"
 NOTE_MAX_BYTES="${BUZZ_NOTE_MAX_BYTES:-800}"
 # Desktop's copy-link form; the CLI neither emits nor parses it. Verified 2026-08-07.
