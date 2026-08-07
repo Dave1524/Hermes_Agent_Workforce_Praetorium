@@ -39,8 +39,8 @@ knowledge-digest.service	research	status	wired	never
 weekly-pre-assembly.service	research	status	wired	never
 augustus-content.service	content	summary	pending	never
 content-change-dispatch.service	content	summary	pending	allowed
-bd-stall-radar.service	bd	status	pending	never
+bd-stall-radar.service	bd	status	wired	never
 bd-followup-drafts.service	bd	file	wired	allowed
-m1-signal-scan.service	signals	status	pending	never
+m1-signal-scan.service	signals	status	wired	never
 agent-inbox-sync.service	approvals	summary	pending	allowed
 inbox-backlog-alert.service	approvals	summary	wired	allowed

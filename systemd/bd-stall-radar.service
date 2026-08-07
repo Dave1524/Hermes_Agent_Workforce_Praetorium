@@ -8,7 +8,15 @@ ConditionPathExists=/home/dave/agent-worktrees/inbox
 Type=oneshot
 User=dave
 Environment=AGENT_JOB_OVERRIDES=/home/dave/.config/agent-workforce/bd_stall_radar.env
+Environment="REPORT_SUBJECT=[Praetorium] BD stall radar"
+Environment=DELIVERY_ROUTE=bd
+Environment=DELIVERY_JOB=%n
+Environment=DELIVERY_TASK=bd-stall-radar
+Environment=DELIVERY_RUN_MARKER=/home/dave/logs/run-markers/%n
 EnvironmentFile=/home/dave/.config/agent-workforce/secrets.env
+ExecStartPre=/usr/bin/mkdir -p /home/dave/logs/run-markers
+ExecStartPre=/usr/bin/touch /home/dave/logs/run-markers/%n
 ExecStart=/home/dave/agent-workforce/bin/agent_propose.sh
+ExecStartPost=/home/dave/agent-workforce/bin/deliver_proposal.sh
 TimeoutStartSec=45min
 NoNewPrivileges=true
