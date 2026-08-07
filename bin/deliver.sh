@@ -32,6 +32,9 @@ RECEIPT_BIN="${DELIVERY_RECEIPT_BIN:-$BIN_DIR/delivery_receipt.py}"
 HELPER="${BUZZ_DELIVER_HELPER:-$BIN_DIR/buzz_publish.sh}"
 IDENTITY="${BUZZ_SERVICE_IDENTITY:-praetorium}"
 NOTE_MAX_BYTES="${BUZZ_NOTE_MAX_BYTES:-800}"
+# Ceiling for an artifact carried as message body. Raising it past ~128 KiB cannot work:
+# the content is one argv string and the kernel caps a single argument at MAX_ARG_STRLEN.
+INLINE_MAX_BYTES="${BUZZ_INLINE_MAX_BYTES:-16384}"
 # Both defaults are assigned on their own line, never as a ${VAR:-default}: bash ends that
 # expansion at the first unescaped `}`, so a literal {placeholder} in the default loses its
 # closing brace and appends a stray `}` — to the caller's value too, not just the default.
@@ -82,7 +85,7 @@ done
 
 error=""; detail=""; anchor="none"; channel=""
 discord_attempted=false; discord_result="skipped"
-buzz_attempted=false;    buzz_result="skipped";  buzz_event_id=""
+buzz_attempted=false;    buzz_result="skipped";  buzz_event_id=""; buzz_payload="none"
 pulse_attempted=false;   pulse_result="skipped"; pulse_event_id=""
 
 fault() {  # fault <category> <detail> — first fault wins; it is the root cause
@@ -99,7 +102,7 @@ emit_receipt() {  # emit_receipt <outcome>
     "anchor=$anchor" "run_marker=$run_marker"
     "discord_attempted=$discord_attempted" "discord_result=$discord_result"
     "buzz_attempted=$buzz_attempted" "buzz_result=$buzz_result"
-    "buzz_event_id=$buzz_event_id"
+    "buzz_event_id=$buzz_event_id" "buzz_payload=$buzz_payload"
     "pulse_attempted=$pulse_attempted" "pulse_result=$pulse_result"
     "pulse_event_id=$pulse_event_id"
     # The slug, not the pubkey: `buzz messages send` answers
@@ -248,6 +251,9 @@ categorize() {  # map the Buzz CLI's documented exit codes + error body to a cat
     *"not a member"*|*"not a relay member"*|*membership*|*forbidden*)
       echo membership_error; return ;;
   esac
+  case "$body" in
+    *"unsupported file type"*) echo artifact_error; return ;;
+  esac
   case "$rc" in
     2) echo network_error ;;
     3) echo auth_error ;;
@@ -293,12 +299,52 @@ resolve_pulse_root() {  # today's thread root, published once a day; empty outpu
   printf '%s' "$root"
 }
 
+# The relay's Blossom store accepts media only. The CLI declares every other file as
+# application/octet-stream, which the upload endpoint refuses outright, so a text
+# artifact reaches a Buzz channel as message body or it does not reach it at all.
+# Discord still gets the attachment, and the receipt still carries the sha256.
+is_media_artifact() {
+  case "$(file -b --mime-type "$artifact" 2>/dev/null)" in
+    image/*|video/*|audio/*) return 0 ;;
+  esac
+  return 1
+}
+
+inline_artifact() {  # artifact text, cut at a line boundary inside the byte ceiling
+  python3 - "$artifact" "$INLINE_MAX_BYTES" <<'PY'
+import sys
+
+path, ceiling = sys.argv[1], int(sys.argv[2])
+raw = open(path, "rb").read()
+if len(raw) <= ceiling:
+    sys.stdout.write(raw.decode("utf-8", "replace"))
+    raise SystemExit
+head = raw[:ceiling]
+cut = head.rfind(b"\n")
+if cut > 0:
+    head = head[:cut]
+sys.stdout.write(head.decode("utf-8", "replace"))
+sys.stdout.write("\n\n[truncated at %d of %d bytes — full artifact: %s]\n"
+                 % (len(head), len(raw), path))
+PY
+}
+
+body="$message"
+if [ -n "$artifact" ]; then
+  if is_media_artifact; then
+    buzz_payload="attached"
+  else
+    buzz_payload="inline"
+    body=$(inline_artifact)
+  fi
+fi
+
 content="$subject"
-[ -n "$message" ] && content="$subject"$'\n\n'"$message"
+[ -n "$body" ] && content="$subject"$'\n\n'"$body"
 
 buzz_attempted=true
 send_args=(messages send --channel "$channel" --content "$content")
-[ -n "$artifact" ] && send_args+=(--file "$artifact")
+[ "$buzz_payload" = attached ] && send_args+=(--file "$artifact")
 if buzz_call "${send_args[@]}"; then
   buzz_result="ok"
   buzz_event_id=$(read_event_id)

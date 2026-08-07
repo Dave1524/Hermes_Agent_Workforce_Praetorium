@@ -121,8 +121,51 @@ assert 'exactly one receipt per invocation' "[ \"\$(nreceipts '$h')\" -eq 1 ]"
 assert 'three helper calls: channel, day-root, pulse' "[ \"\$(ncalls '$h')\" -eq 3 ]"
 assert 'helper called with the praetorium identity first' \
   "head -1 '$h/mock/argv.log' | grep -q '^praetorium messages send '"
-assert 'file attached to the channel message' "grep -q -- '--file $h/artifacts/morning-report-1.md' '$h/mock/argv.log'"
+assert 'the report reaches the channel as message body' "grep -q '^body$' '$h/mock/content.messages'"
 assert 'nothing resolved via PATH' "[ ! -e '$h/mock/PATH_LEAK' ]"
+
+echo '--- a text artifact is carried as body, because the store refuses non-media ---'
+# The relay's Blossom store accepted an image/png and refused a text/plain as
+# application/octet-stream (probed 2026-08-07). `--file` therefore cannot carry a report:
+# every payload=file producer would post nothing while Discord quietly kept working.
+h=$(sandbox)
+printf '# Report\n\nline one\nline two\n' > "$h/artifacts/report.md"
+rc=$(run_deliver "$h" --job x.service --route ops --subject s --file "$h/artifacts/report.md")
+assert 'delivered' "[ \"\$(field '$h' outcome)\" = delivered ]"
+assert 'no attachment offered to the relay' "! grep -q -- '--file' '$h/mock/argv.log'"
+assert 'receipt records how the artifact was carried' "[ \"\$(field '$h' buzz_payload)\" = inline ]"
+assert 'the artifact body is in the channel content' "grep -q '^line two$' '$h/mock/content.messages'"
+assert 'the subject still leads the message' "head -1 '$h/mock/content.messages' | grep -q '^s$'"
+assert 'discord still receives the attachment' "grep -q -- '--file $h/artifacts/report.md' '$h/mock/hermes.log'"
+assert 'artifact provenance still recorded' "[ -n \"\$(field '$h' artifact_sha256)\" ]"
+
+echo '--- a media artifact is still attached, and an oversized body is cut cleanly ---'
+h=$(sandbox)
+PNG_1X1=iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg==
+printf '%s' "$PNG_1X1" | base64 -d > "$h/artifacts/chart.png"
+rc=$(run_deliver "$h" --job x.service --route ops --subject s --file "$h/artifacts/chart.png")
+assert 'media is attached, not inlined' "grep -q -- '--file $h/artifacts/chart.png' '$h/mock/argv.log'"
+assert 'receipt says attached' "[ \"\$(field '$h' buzz_payload)\" = attached ]"
+
+h=$(sandbox)
+python3 -c "open('$h/artifacts/big.md','w').write('héllo wörld — padding line\n' * 400)"
+rc=$(BUZZ_INLINE_MAX_BYTES=500 run_deliver "$h" --job x.service --route ops \
+       --subject s --file "$h/artifacts/big.md")
+assert 'delivered despite the artifact exceeding the ceiling' "[ \"\$(field '$h' outcome)\" = delivered ]"
+assert 'body is valid UTF-8 after the cut' \
+  "python3 -c \"open('$h/mock/content.messages','rb').read().decode('utf-8')\""
+assert 'the cut lands on a line boundary' \
+  "! grep -q 'héllo wörld — paddi\$' '$h/mock/content.messages'"
+assert 'truncation is stated, with the full artifact named' \
+  "grep -q 'truncated at .* of .* bytes — full artifact: $h/artifacts/big.md' '$h/mock/content.messages'"
+
+echo '--- an upload the store refuses is an artifact_error, not a vague transport_error ---'
+h=$(sandbox)
+printf 'x\n' > "$h/artifacts/chart.png"
+rc=$(MOCK_CHANNEL_RC=1 MOCK_ERROR='unsupported file type: application/octet-stream' \
+     run_deliver "$h" --job x.service --route ops --subject s --message m)
+assert 'exits 0' "[ '$rc' = 0 ]"
+assert 'categorized artifact_error' "[ \"\$(field '$h' error)\" = artifact_error ]"
 
 echo '--- unknown route: Buzz skipped, Discord still attempted ---'
 h=$(sandbox)
