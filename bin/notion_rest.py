@@ -94,7 +94,8 @@ def cmd_board(args, token):
         payload["filter"] = {"property": "Status", "select": {"equals": args.status}}
     res = api("POST", "/data_sources/{}/query".format(DATA_SOURCE_ID), token, payload)
     rows = [{"id": p["id"], "angle": title_of(p), "status": status_of(p),
-             "url": p.get("url")} for p in res.get("results", [])]
+             "url": p.get("url"), "last_edited": p.get("last_edited_time")}
+            for p in res.get("results", [])]
     if args.json:
         print(json.dumps(rows, indent=2))
     else:

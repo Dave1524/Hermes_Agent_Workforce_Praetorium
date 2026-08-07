@@ -4,41 +4,23 @@
 # The answer comes from the run's own cost.log record, never from the agent's prose.
 # agent_run.log is a raw concatenation of attempt stdout with no run boundary in it, so
 # nothing there can be attributed to a particular run; the structured record that
-# agent_propose.sh appends when a run ends can. A run that produced no record at all
-# died before it could write one, which is itself the thing most worth reporting —
-# the ten-day OpenRouter 402 outage read as a clean NOPROPOSAL precisely because
-# nobody was watching for the absence.
+# agent_propose.sh appends when a run ends can.
 #
 # The decline REASON is the one thing only agent_run.log holds, and it is quoted only
 # when that log was written during this run.
 set -uo pipefail
 
+BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=bin/delivery_common.sh
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/delivery_common.sh"
+. "$BIN_DIR/delivery_common.sh"
 
 TASK="${DELIVERY_TASK:-}"
-COST_LOG="${AGENT_COST_LOG:-$HOME/agent-workforce/logs/cost.log}"
 RUN_LOG="${AGENT_RUN_LOG:-$HOME/agent-workforce/logs/agent_run.log}"
 MARKER="${DELIVERY_RUN_MARKER:-}"
 SUBJECT="${REPORT_SUBJECT:-[Praetorium] ${TASK:-agent run}}"
 
-run_record() {  # last cost.log record for this task; fields are space-separated
-  [ -n "$TASK" ] || return 1
-  [ -r "$COST_LOG" ] || return 1
-  grep " task=$TASK " "$COST_LOG" | tail -1
-}
-
-field() {  # field <record> <key>
-  printf '%s' "$1" | tr ' ' '\n' | sed -n "s/^$2=//p" | tail -1
-}
-
-is_this_run() {  # the record must post-date the marker stamped before ExecStart
-  [ -n "$MARKER" ] || return 0
-  [ -f "$MARKER" ] || return 1
-  local ts; ts=$(field "$1" ts)
-  [ -n "$ts" ] || return 1
-  [ "$(date -d "$ts" +%s 2>/dev/null || echo 0)" -ge "$(stat -c %Y "$MARKER" 2>/dev/null || echo 0)" ]
-}
+# shellcheck source=bin/run_record.sh
+. "$BIN_DIR/run_record.sh"
 
 decline_reason() {
   [ -r "$RUN_LOG" ] || return 0

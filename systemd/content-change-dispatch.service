@@ -15,7 +15,14 @@ OnFailure=agent-alert@%n.service
 Type=oneshot
 User=dave
 Environment=AGENT_JOB_OVERRIDES=/home/dave/.config/agent-workforce/augustus-content.env
+Environment="REPORT_SUBJECT=[Praetorium] Content dispatch"
+Environment=DELIVERY_ROUTE=content
+Environment=DELIVERY_JOB=%n
+Environment=DELIVERY_RUN_MARKER=/home/dave/logs/run-markers/%n
 EnvironmentFile=/home/dave/.config/agent-workforce/secrets.env
+ExecStartPre=/usr/bin/mkdir -p /home/dave/logs/run-markers
+ExecStartPre=/usr/bin/touch /home/dave/logs/run-markers/%n
 ExecStart=/home/dave/agent-workforce/bin/content_change_dispatch.sh
+ExecStartPost=/home/dave/agent-workforce/bin/deliver_dispatch.sh
 TimeoutStartSec=45min
 NoNewPrivileges=true

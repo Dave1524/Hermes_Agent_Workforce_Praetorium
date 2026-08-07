@@ -247,6 +247,119 @@ rc=$(run_proposal "$h")
 assert "another job's record is never claimed as this task's" \
   "argv '$h' | grep -q 'no run record for task raw-ingest'"
 
+echo '--- the content route always states what the duplicate-title gate was reading ---'
+# published_corpus.py falls back to the last known ref when origin is unreachable, so a
+# delivered draft proves nothing about whether the collision check could see the site.
+# Both content adapters are stubbed off the network here; what is pinned is that the
+# corpus and board lines reach the message at all.
+probes() {  # probes <sandbox> <fetched:true|false> <board-json>
+  local h=$1 d="$1/probes"
+  mkdir -p "$d"
+  cat > "$d/published_corpus.py" <<PY
+print('{"freshness": {"fetched": $2, "ref_age_hours": 12.5}, "articles": []}')
+PY
+  printf '%s' "$3" > "$d/board.json"
+  cat > "$d/notion_rest.py" <<'PY'
+import os, sys
+sys.stdout.write(open(os.path.join(os.path.dirname(__file__), "board.json")).read())
+PY
+  echo "$d"
+}
+board_rows() {  # board_rows <iso-stamp>
+  printf '[{"id":"p1","angle":"Why cold-store grid capacity is the constraint","status":"Drafted","last_edited":"%s"}]' "$1"
+}
+run_content() {  # run_content <sandbox> <probe-dir>
+  local h=$1 d=$2
+  DELIVERY_TASK=augustus-content DELIVERY_ROUTE=content \
+  DELIVERY_JOB=augustus-content.service DELIVERY_RUN_MARKER="$h/marker" \
+  AGENT_COST_LOG="$h/cost.log" CONTENT_PROBE_DIR="$d" run_adapter "$h" deliver_content.sh
+}
+
+h=$(sandbox); d=$(probes "$h" true "$(board_rows "$(date -u -Is -d '10 minutes ago' | sed 's/+00:00/Z/')")")
+printf 'ts=%s schema=3 task=augustus-content outcome=NOPROPOSAL proposal=none run_seconds=231 attempts=1\n' \
+  "$(date -Is)" > "$h/cost.log"
+touch -d '1 hour ago' "$h/marker"
+rc=$(run_content "$h" "$d")
+assert 'exits 0' "[ '$rc' = 0 ]"
+assert 'exactly one call' "[ \"\$(calls '$h')\" -eq 1 ]"
+assert 'routed to content' "argv '$h' | grep -q -- '--route content'"
+assert 'corpus freshness is stated' "argv '$h' | grep -q 'corpus: fetched, tip age 12.5h'"
+assert 'the changed board row is named' "argv '$h' | grep -q 'board: 1 row(s) changed'"
+assert 'the run outcome rides along' "argv '$h' | grep -q 'run: NOPROPOSAL in 231s'"
+assert 'no artifact is invented for a board-only job' "! argv '$h' | grep -q -- '--file'"
+
+h=$(sandbox); d=$(probes "$h" false '[]')
+printf 'ts=%s schema=3 task=augustus-content outcome=NOPROPOSAL proposal=none run_seconds=200 attempts=1\n' \
+  "$(date -Is)" > "$h/cost.log"
+touch -d '1 hour ago' "$h/marker"
+rc=$(run_content "$h" "$d")
+assert 'an offline corpus is reported as stale, never as fetched' \
+  "argv '$h' | grep -q 'corpus: stale'"
+assert 'a run that changed nothing says so' "argv '$h' | grep -q 'board: no rows changed'"
+
+h=$(sandbox); d=$(probes "$h" true '[]')
+printf 'ts=%s schema=3 task=augustus-content outcome=NOPROPOSAL proposal=none run_seconds=200 attempts=1\n' \
+  "$(date -Is -d '3 hours ago')" > "$h/cost.log"
+touch -d '1 hour ago' "$h/marker"
+rc=$(run_content "$h" "$d")
+assert 'a record predating the marker is reported as no record' "argv '$h' | grep -q 'run: NO RECORD'"
+assert 'and the board and corpus are still reported' \
+  "argv '$h' | grep -q 'board:' && argv '$h' | grep -q 'corpus:'"
+
+h=$(sandbox); d=$(probes "$h" true '[]')
+rm -f "$d/published_corpus.py"
+: > "$h/cost.log"; touch -d '1 hour ago' "$h/marker"
+rc=$(run_content "$h" "$d")
+assert 'exits 0 when a probe itself is broken' "[ '$rc' = 0 ]"
+assert 'a broken corpus probe is named, not silently omitted' \
+  "argv '$h' | grep -q 'corpus: UNAVAILABLE'"
+
+echo '--- content-change-dispatch: a quiet poll stays silent, every decision delivers ---'
+# 96 ticks a day, almost all no-ops. A channel that reports each one stops being read,
+# and the two ticks that mattered go with it.
+run_dispatch() {  # run_dispatch <sandbox> <probe-dir>
+  local h=$1 d=$2
+  DELIVERY_ROUTE=content DELIVERY_JOB=content-change-dispatch.service \
+  DELIVERY_RUN_MARKER="$h/marker" DISPATCH_LOG="$h/dispatch.log" \
+  CONTENT_PROBE_DIR="$d" run_adapter "$h" deliver_dispatch.sh
+}
+dispatch_log() {  # dispatch_log <sandbox> <message>
+  printf '%s content_change_dispatch: %s\n' "$(date -Is)" "$2" >> "$1/dispatch.log"
+}
+
+h=$(sandbox); d=$(probes "$h" true '[]')
+touch -d '1 minute ago' "$h/marker"
+dispatch_log "$h" 'no new Picked rows (0 currently Picked) — refreshing state, no dispatch'
+rc=$(run_dispatch "$h" "$d")
+assert 'exits 0' "[ '$rc' = 0 ]"
+assert 'a quiet tick sends nothing' "[ \"\$(calls '$h')\" -eq 0 ]"
+
+h=$(sandbox); d=$(probes "$h" true "$(board_rows "$(date -u -Is | sed 's/+00:00/Z/')")")
+touch -d '1 minute ago' "$h/marker"
+dispatch_log "$h" 'detected 1 new Picked row(s) — dispatching Augustus draft run via agent_propose.sh'
+dispatch_log "$h" 'dispatch complete — state advanced to current Picked set (1 rows)'
+rc=$(run_dispatch "$h" "$d")
+assert 'a dispatch delivers exactly once' "[ \"\$(calls '$h')\" -eq 1 ]"
+assert 'the decision is quoted' "argv '$h' | grep -q 'dispatch complete'"
+assert 'the affected board row is named' "argv '$h' | grep -q 'board: 1 row(s) changed'"
+assert 'corpus state rides along' "argv '$h' | grep -q 'corpus: fetched'"
+
+h=$(sandbox); d=$(probes "$h" true '[]')
+touch -d '1 minute ago' "$h/marker"
+dispatch_log "$h" 'FAIL-SOFT: could not read/parse Picked rows from Notion — exiting 0, state unchanged'
+rc=$(run_dispatch "$h" "$d")
+assert 'a fail-soft Notion read is never mistaken for a quiet tick' "[ \"\$(calls '$h')\" -eq 1 ]"
+assert 'and it says what failed' "argv '$h' | grep -q 'FAIL-SOFT'"
+
+h=$(sandbox); d=$(probes "$h" true '[]')
+touch -d '1 minute ago' "$h/marker"
+printf '%s content_change_dispatch: no new Picked rows (0 currently Picked) — refreshing state, no dispatch\n' \
+  "$(date -Is -d '20 minutes ago')" > "$h/dispatch.log"
+rc=$(run_dispatch "$h" "$d")
+assert 'a previous tick line is not read as this run' "[ \"\$(calls '$h')\" -eq 1 ]"
+assert 'a poll that reached no decision is delivered, not swallowed' \
+  "argv '$h' | grep -q 'never reached a decision'"
+
 echo '--- the threshold is still configurable ---'
 h=$(sandbox)
 mkdir -p "$h/agent-worktrees/inbox/_inbox/agents"
