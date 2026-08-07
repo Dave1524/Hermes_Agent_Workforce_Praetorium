@@ -15,18 +15,11 @@
 # and take the oldest mtime. Fail-soft: exits 0 even on delivery error.
 set -uo pipefail
 
-BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DELIVER_BIN="${DELIVER_BIN:-$BIN_DIR/deliver.sh}"
+DELIVERY_JOB="${DELIVERY_JOB:-inbox-backlog-alert.service}"
+# shellcheck source=bin/delivery_common.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/delivery_common.sh"
 
 THRESHOLD_DAYS="${INBOX_BACKLOG_THRESHOLD_DAYS:-2}"
-ROUTE="${DELIVERY_ROUTE:-unrouted}"
-
-log="$HOME/logs/inbox_backlog_alert.log"
-mkdir -p "$HOME/logs" 2>/dev/null || true
-note() {
-  printf '%s inbox_backlog_alert: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" \
-    >> "$log" 2>/dev/null || true
-}
 
 inbox_dir="$HOME/agent-worktrees/inbox/_inbox/agents"
 if [ ! -d "$inbox_dir" ]; then
@@ -53,14 +46,7 @@ if [ "$age_days" -le "$THRESHOLD_DAYS" ]; then
 fi
 
 msg="${pend} proposals pending, oldest ${age_days}d (awaiting Mac-side promote/reject)"
-if "$DELIVER_BIN" \
-     --job "${DELIVERY_JOB:-inbox-backlog-alert.service}" \
-     --route "$ROUTE" \
-     --subject '[Praetorium] Approvals aging' \
-     --message "$msg"; then
-  note "alerted: ${msg}"
-else
-  note "alert delivery failed (non-fatal): ${msg}"
-fi
+note "alerting: ${msg}"
+delivery_handoff --subject '[Praetorium] Approvals aging' --message "$msg"
 
 exit 0

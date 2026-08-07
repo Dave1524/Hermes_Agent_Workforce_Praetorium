@@ -17,14 +17,8 @@
 # itself fail the unit it is reporting on.
 set -uo pipefail
 
-BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DELIVER_BIN="${DELIVER_BIN:-$BIN_DIR/deliver.sh}"
-
-log="$HOME/logs/notify.log"
-mkdir -p "$HOME/logs" 2>/dev/null || true
-note() {
-  printf '%s notify: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >> "$log" 2>/dev/null || true
-}
+# shellcheck source=bin/delivery_common.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/delivery_common.sh"
 
 usage() {
   note "usage: notify.sh <subject> <message> [--file <path>] [--route <key>]"
@@ -37,7 +31,6 @@ subject="$1"
 message="$2"
 shift 2
 
-route="${DELIVERY_ROUTE:-unrouted}"
 file_arg=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -50,7 +43,7 @@ while [ $# -gt 0 ]; do
     --route)
       shift
       [ -n "${1:-}" ] || usage
-      route="$1"
+      DELIVERY_ROUTE="$1"
       shift
       ;;
     *)
@@ -60,18 +53,14 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-args=(--job "${DELIVERY_JOB:-notify.sh}" --route "$route" --subject "$subject"
-      --runtime "${DELIVERY_RUNTIME:-${AGENT_PROFILE:-unknown}}")
+args=(--subject "$subject")
 if [ ${#file_arg[@]} -gt 0 ]; then
   args+=("${file_arg[@]}")   # file mode: the artifact is the payload; message text is not sent
 else
   args+=(--message "$message")
 fi
 
-if "$DELIVER_BIN" "${args[@]}"; then
-  note "handed to deliver.sh (route=$route): $subject"
-else
-  note "deliver.sh returned non-zero (non-fatal): $subject"
-fi
+note "handing: $subject"
+delivery_handoff "${args[@]}"
 
 exit 0

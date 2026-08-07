@@ -12,31 +12,16 @@
 # report unit failed (which would fire OnFailure=agent-alert@ for a non-event).
 set -uo pipefail
 
-BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DELIVER_BIN="${DELIVER_BIN:-$BIN_DIR/deliver.sh}"
+# shellcheck source=bin/delivery_common.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/delivery_common.sh"
 
 REPORT_DIR="${REPORT_DIR:-$HOME/logs/overnight}"
 REPORT_GLOB="${REPORT_GLOB:-morning-report-*.md}"
 REPORT_SUBJECT="${REPORT_SUBJECT:-[Praetorium] Morning report}"
 
-# A caller with no route configured keeps exactly its pre-migration behaviour —
-# Discord only — and deliver.sh records a config_error receipt, so an unported
-# producer surfaces in the dual-run audit instead of defaulting into someone
-# else's channel.
-ROUTE="${DELIVERY_ROUTE:-unrouted}"
-JOB="${DELIVERY_JOB:-deliver_report.sh}"
-RUNTIME="${DELIVERY_RUNTIME:-${AGENT_PROFILE:-unknown}}"
-
 # The weaker of the two freshness anchors, kept for units that have no run marker yet:
 # 26 hours covers one skipped day. DELIVERY_RUN_MARKER supersedes it when present.
 MAX_REPORT_AGE_SECS=$(( 26 * 3600 ))
-
-log="$HOME/logs/deliver_report.log"
-mkdir -p "$HOME/logs" 2>/dev/null || true
-note() {
-  printf '%s deliver_report: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" \
-    >> "$log" 2>/dev/null || true
-}
 
 # Newest report by filename (the timestamped names sort lexically = chronologically).
 latest=""
@@ -51,14 +36,10 @@ if [ -z "$latest" ] || [ ! -s "$latest" ]; then
   exit 0
 fi
 
-args=(--job "$JOB" --route "$ROUTE" --subject "$REPORT_SUBJECT" --file "$latest"
-      --runtime "$RUNTIME" --max-age-secs "$MAX_REPORT_AGE_SECS")
+args=(--subject "$REPORT_SUBJECT" --file "$latest" --max-age-secs "$MAX_REPORT_AGE_SECS")
 [ -n "${DELIVERY_RUN_MARKER:-}" ] && args+=(--run-marker "$DELIVERY_RUN_MARKER")
 
-if "$DELIVER_BIN" "${args[@]}"; then
-  note "handed $(basename "$latest") to deliver.sh (route=$ROUTE)"
-else
-  note "deliver.sh returned non-zero for $(basename "$latest") (non-fatal)"
-fi
+note "handing $(basename "$latest")"
+delivery_handoff "${args[@]}"
 
 exit 0
