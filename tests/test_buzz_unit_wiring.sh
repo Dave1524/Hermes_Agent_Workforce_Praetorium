@@ -71,6 +71,12 @@ while IFS=$'\t' read -r unit route payload status silence; do
     assert "$unit invokes a delivery adapter" "[ '$has_hook' -ge 1 ]"
     assert "$unit passes its own name as the job" \
       "code '$f' | grep -q '^Environment=DELIVERY_JOB=%n\$'"
+    # A hook without its exec bit is 203/EXEC: the run itself succeeded, the report
+    # never left the box, and nothing in the receipt trail records the attempt.
+    for hook in $(code "$f" | sed -n 's|^ExecStartPost=\([^ ]*\).*|\1|p'); do
+      assert "$unit's hook ${hook##*/} is executable in this repo" \
+        "[ -x '$REPO_ROOT/bin/${hook##*/}' ]"
+    done
   else
     # A pending unit may keep its pre-migration Discord hook — that path IS the
     # dual-run baseline, and the adapters route it to `unrouted`, which delivers
