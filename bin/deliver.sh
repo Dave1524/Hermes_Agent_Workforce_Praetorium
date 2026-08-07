@@ -32,6 +32,11 @@ IDENTITY="${BUZZ_SERVICE_IDENTITY:-praetorium}"
 NOTE_MAX_BYTES="${BUZZ_NOTE_MAX_BYTES:-800}"
 # Desktop's copy-link form; the CLI neither emits nor parses it. Verified 2026-08-07.
 POINTER_TEMPLATE="${BUZZ_POINTER_TEMPLATE:-buzz://message?channel={channel}&id={event}}"
+# Pulse's "everyone" view has no time-based grouping — it renders one card per note.
+# A reply nests under its root there, so threading is the only way a night of deliveries
+# reads as one card instead of N. Verified 2026-08-07.
+PULSE_ROOT_FILE="${BUZZ_PULSE_ROOT_FILE:-$HOME/var/buzz-pulse-root}"
+PULSE_ROOT_TEMPLATE="${BUZZ_PULSE_ROOT_TEMPLATE:-Praetorium — {date}}"
 RECEIPTS="${DELIVERY_RECEIPTS:-$HOME/logs/delivery-receipts.jsonl}"
 DELIVER_DISCORD="${DELIVER_DISCORD:-1}"
 LOG="${DELIVERY_LOG:-$HOME/logs/deliver.log}"
@@ -262,6 +267,21 @@ print("{}\t{}".format(pick("id", "event_id", "eventId"), pick("pubkey", "author"
 PY
 }
 
+resolve_pulse_root() {  # today's thread root, published once a day; empty output on failure
+  local today stored_date stored_id root
+  today=$(date +%F)
+  IFS=$'\t' read -r stored_date stored_id < "$PULSE_ROOT_FILE" 2>/dev/null
+  if [ "$stored_date" = "$today" ] && [ -n "$stored_id" ]; then
+    printf '%s' "$stored_id"; return 0
+  fi
+  buzz_call social publish --content "${PULSE_ROOT_TEMPLATE//\{date\}/$today}" || return 0
+  IFS=$'\t' read -r root _ < <(read_ids)
+  [ -n "$root" ] || return 0
+  mkdir -p "$(dirname "$PULSE_ROOT_FILE")" 2>/dev/null || true
+  printf '%s\t%s\n' "$today" "$root" > "$PULSE_ROOT_FILE"
+  printf '%s' "$root"
+}
+
 content="$subject"
 [ -n "$message" ] && content="$subject"$'\n\n'"$message"
 
@@ -292,7 +312,11 @@ done <<< "$digest_source"
 
 pulse_attempted=true
 note_text=$(python3 "$NOTE_BIN" "${note_args[@]}" 2>/dev/null)
-if [ -n "$note_text" ] && buzz_call social publish --content "$note_text"; then
+publish_args=(social publish --content "$note_text")
+pulse_root=""
+[ -n "$note_text" ] && pulse_root=$(resolve_pulse_root)
+[ -n "$pulse_root" ] && publish_args+=(--reply-to "$pulse_root")
+if [ -n "$note_text" ] && buzz_call "${publish_args[@]}"; then
   pulse_result="ok"
   IFS=$'\t' read -r pulse_event_id _ < <(read_ids)
 else
