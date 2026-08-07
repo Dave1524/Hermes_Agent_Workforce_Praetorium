@@ -69,6 +69,15 @@ the marker mtime from the artifact itself:
 touch -d "@$(( $(stat -c %Y "$artifact") - 60 ))" "/home/dave/logs/run-markers/$unit"
 ```
 
+A `status` adapter anchors on its cost.log record instead, so derive the marker from
+that record's `ts=` rather than from any file:
+
+```bash
+rec=$(grep " task=$slug " ~/agent-workforce/logs/cost.log | tail -1)
+touch -d "@$(( $(date -d "$(tr ' ' '\n' <<<"$rec" | sed -n 's/^ts=//p')" +%s) - 60 ))" \
+  "/home/dave/logs/run-markers/$unit"
+```
+
 **Do not hand-write a wall-clock timestamp** — the agent shell runs `TZ=UTC` while the box
 is CEST, so `touch -d '2026-08-05 05:30'` lands two hours late and the adapter takes the
 "this run wrote no record" branch. To force the *refusal* branch instead, `touch` the
