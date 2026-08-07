@@ -16,7 +16,6 @@ SCRIPT="$REPO_ROOT/bin/deliver.sh"
 
 CH_ID=1111111111111111111111111111111111111111111111111111111111111111
 NOTE_ID=2222222222222222222222222222222222222222222222222222222222222222
-PUBKEY=3333333333333333333333333333333333333333333333333333333333333333
 FAKE_NSEC=nsec1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq
 
 fail=0
@@ -51,7 +50,7 @@ if [ "$rc" -ne 0 ]; then
   printf '{"error":"%s","message":"mock failure"}\n' "${MOCK_ERROR:-other}" >&2
   exit "$rc"
 fi
-printf '{"id":"%s","pubkey":"%s"}\n' "$id" "$MOCK_PUBKEY"
+printf '{"accepted":true,"event_id":"%s","message":"published"}\n' "$id"
 SH
 
   cat > "$h/hermes" <<'SH'
@@ -81,7 +80,6 @@ run_deliver() {
   MOCK_DIR="$h/mock" \
   MOCK_CHANNEL_ID="$CH_ID" \
   MOCK_SOCIAL_ID="$NOTE_ID" \
-  MOCK_PUBKEY="$PUBKEY" \
   BUZZ_ROUTES_FILE="$h/routes.env" \
   BUZZ_DELIVER_HELPER="${HELPER:-$h/helper.sh}" \
   HERMES_BIN="${HERMES:-$h/hermes}" \
@@ -115,7 +113,7 @@ assert 'route resolved to the channel UUID' "[ \"\$(field '$h' channel)\" = '$CH
 assert 'outcome delivered' "[ \"\$(field '$h' outcome)\" = delivered ]"
 assert 'channel event id captured' "[ \"\$(field '$h' buzz_event_id)\" = '$CH_ID' ]"
 assert 'pulse event id captured' "[ \"\$(field '$h' pulse_event_id)\" = '$NOTE_ID' ]"
-assert 'service author pubkey recorded' "[ \"\$(field '$h' author_pubkey)\" = '$PUBKEY' ]"
+assert 'publishing identity recorded' "[ \"\$(field '$h' identity)\" = praetorium ]"
 assert 'discord attempted and ok' "[ \"\$(field '$h' discord_result)\" = ok ]"
 assert 'artifact sha256 recorded' "[ -n \"\$(field '$h' artifact_sha256)\" ]"
 assert 'artifact basename recorded' "[ \"\$(field '$h' artifact)\" = morning-report-1.md ]"
@@ -324,7 +322,7 @@ cat > "$h/helper-noid.sh" <<'SH'
 mkdir -p "$MOCK_DIR"
 printf '%s\n' "$(printf '%s' "$*" | tr '\n' ' ')" >> "$MOCK_DIR/argv.log"
 case "$2" in
-  messages) printf '{"id":"%s","pubkey":"%s"}\n' "$MOCK_CHANNEL_ID" "$MOCK_PUBKEY" ;;
+  messages) printf '{"accepted":true,"event_id":"%s"}\n' "$MOCK_CHANNEL_ID" ;;
   *)        printf '{}\n' ;;
 esac
 SH

@@ -80,7 +80,7 @@ while [ $# -gt 0 ]; do
   shift 2 2>/dev/null || shift
 done
 
-error=""; detail=""; anchor="none"; channel=""; author_pubkey=""
+error=""; detail=""; anchor="none"; channel=""
 discord_attempted=false; discord_result="skipped"
 buzz_attempted=false;    buzz_result="skipped";  buzz_event_id=""
 pulse_attempted=false;   pulse_result="skipped"; pulse_event_id=""
@@ -102,7 +102,7 @@ emit_receipt() {  # emit_receipt <outcome>
     "buzz_event_id=$buzz_event_id"
     "pulse_attempted=$pulse_attempted" "pulse_result=$pulse_result"
     "pulse_event_id=$pulse_event_id"
-    "author_pubkey=$author_pubkey"
+    "identity=$IDENTITY"
     "outcome=$1" "error=$error" "detail=$detail"
   )
   if [ -n "$artifact" ] && [ -f "$artifact" ]; then
@@ -252,7 +252,7 @@ categorize() {  # map the Buzz CLI's documented exit codes + error body to a cat
   esac
 }
 
-read_ids() {  # <event-id>\t<author-pubkey> from the helper's JSON stdout
+read_event_id() {  # event id from the helper's JSON stdout
   python3 - "$helper_out" <<'PY'
 import json, sys
 try:
@@ -264,13 +264,12 @@ if not isinstance(doc, dict):
 nested = doc.get("event") or doc.get("data") or {}
 if not isinstance(nested, dict):
     nested = {}
-def pick(*keys):
-    for source in (doc, nested):
-        for key in keys:
-            if isinstance(source.get(key), str):
-                return source[key]
-    return ""
-print("{}\t{}".format(pick("id", "event_id", "eventId"), pick("pubkey", "author")))
+for source in (doc, nested):
+    for key in ("event_id", "id", "eventId"):
+        if isinstance(source.get(key), str):
+            print(source[key])
+            raise SystemExit
+print("")
 PY
 }
 
@@ -284,7 +283,7 @@ resolve_pulse_root() {  # today's thread root, published once a day; empty outpu
     printf '%s' "$stored_id"; return 0
   fi
   buzz_call social publish --content "${PULSE_ROOT_TEMPLATE//\{date\}/$today}" || return 0
-  IFS=$'\t' read -r root _ < <(read_ids) || true
+  root=$(read_event_id) || true
   [ -n "$root" ] || return 0
   mkdir -p "$(dirname "$PULSE_ROOT_FILE")" 2>/dev/null || true
   printf '%s\t%s\n' "$today" "$root" > "$PULSE_ROOT_FILE"
@@ -299,7 +298,7 @@ send_args=(messages send --channel "$channel" --content "$content")
 [ -n "$artifact" ] && send_args+=(--file "$artifact")
 if buzz_call "${send_args[@]}"; then
   buzz_result="ok"
-  IFS=$'\t' read -r buzz_event_id author_pubkey < <(read_ids)
+  buzz_event_id=$(read_event_id)
 else
   rc=$?  # must be the first statement: any assignment would overwrite it with 0
   buzz_result="failed"
@@ -327,7 +326,7 @@ pulse_root=""
 [ -n "$pulse_root" ] && publish_args+=(--reply-to "$pulse_root")
 if [ -n "$note_text" ] && buzz_call "${publish_args[@]}"; then
   pulse_result="ok"
-  IFS=$'\t' read -r pulse_event_id _ < <(read_ids)
+  pulse_event_id=$(read_event_id)
 else
   rc=$?
   pulse_result="failed"
