@@ -120,7 +120,7 @@ assert 'discord attempted and ok' "[ \"\$(field '$h' discord_result)\" = ok ]"
 assert 'artifact sha256 recorded' "[ -n \"\$(field '$h' artifact_sha256)\" ]"
 assert 'artifact basename recorded' "[ \"\$(field '$h' artifact)\" = morning-report-1.md ]"
 assert 'exactly one receipt per invocation' "[ \"\$(nreceipts '$h')\" -eq 1 ]"
-assert 'two helper calls: channel then pulse' "[ \"\$(ncalls '$h')\" -eq 2 ]"
+assert 'three helper calls: channel, day-root, pulse' "[ \"\$(ncalls '$h')\" -eq 3 ]"
 assert 'helper called with the praetorium identity first' \
   "head -1 '$h/mock/argv.log' | grep -q '^praetorium messages send '"
 assert 'file attached to the channel message' "grep -q -- '--file $h/artifacts/morning-report-1.md' '$h/mock/argv.log'"
@@ -290,6 +290,51 @@ h=$(sandbox)
 rc=$(run_deliver "$h" --job x.service --route ops --subject s)
 assert 'no payload at all exits 0' "[ '$rc' = 0 ]"
 assert 'no payload is a config_error receipt' "[ \"\$(field '$h' error)\" = config_error ]"
+
+echo '--- Pulse day-root threading ---'
+# Pulse has no time-based grouping: only a reply nests under a root. A night of
+# deliveries must therefore share one root, published on the first delivery of the day.
+h=$(sandbox)
+today=$(date +%F)
+run_deliver "$h" --job a.service --route ops --subject s1 --message m >/dev/null
+assert 'day-root published on the first delivery' \
+  "grep -q 'social publish --content Praetorium — $today' '$h/mock/argv.log'"
+assert 'the note replies to the root' "grep -q -- '--reply-to $NOTE_ID' '$h/mock/argv.log'"
+assert 'root id persisted with its date' "[ \"\$(cat '$h/var/buzz-pulse-root')\" = \"\$(printf '%s\t%s' '$today' '$NOTE_ID')\" ]"
+
+run_deliver "$h" --job b.service --route ops --subject s2 --message m >/dev/null
+assert 'second delivery reuses the root instead of publishing a new one' \
+  "[ \"\$(grep -c 'social publish --content Praetorium' '$h/mock/argv.log')\" -eq 1 ]"
+assert 'second delivery adds only channel + pulse calls' "[ \"\$(ncalls '$h')\" -eq 5 ]"
+assert 'second note also replies to the root' \
+  "[ \"\$(grep -c -- '--reply-to $NOTE_ID' '$h/mock/argv.log')\" -eq 2 ]"
+
+h=$(sandbox)
+mkdir -p "$h/var"
+printf '2000-01-01\t%s\n' "$NOTE_ID" > "$h/var/buzz-pulse-root"
+run_deliver "$h" --job c.service --route ops --subject s --message m >/dev/null
+assert 'a stale root date is replaced, not reused' \
+  "grep -q 'social publish --content Praetorium — $today' '$h/mock/argv.log'"
+assert 'the stale date is overwritten' "grep -q \"^$today\" '$h/var/buzz-pulse-root'"
+
+# Threading is an enhancement, never a reason to lose a delivery.
+h=$(sandbox)
+cat > "$h/helper-noid.sh" <<'SH'
+#!/usr/bin/env bash
+mkdir -p "$MOCK_DIR"
+printf '%s\n' "$(printf '%s' "$*" | tr '\n' ' ')" >> "$MOCK_DIR/argv.log"
+case "$2" in
+  messages) printf '{"id":"%s","pubkey":"%s"}\n' "$MOCK_CHANNEL_ID" "$MOCK_PUBKEY" ;;
+  *)        printf '{}\n' ;;
+esac
+SH
+chmod +x "$h/helper-noid.sh"
+rc=$(HELPER="$h/helper-noid.sh" run_deliver "$h" --job d.service --route ops \
+       --subject s --message m)
+assert 'an unusable root still exits 0' "[ '$rc' = 0 ]"
+assert 'no root file written when the root id came back empty' "[ ! -f '$h/var/buzz-pulse-root' ]"
+assert 'the note is published standalone, without --reply-to' \
+  "! grep -q -- '--reply-to' '$h/mock/argv.log'"
 
 echo '--- receipt shape ---'
 h=$(sandbox)

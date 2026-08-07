@@ -268,14 +268,16 @@ PY
 }
 
 resolve_pulse_root() {  # today's thread root, published once a day; empty output on failure
-  local today stored_date stored_id root
+  local today root="" stored_date="" stored_id=""
   today=$(date +%F)
-  IFS=$'\t' read -r stored_date stored_id < "$PULSE_ROOT_FILE" 2>/dev/null
+  if [ -f "$PULSE_ROOT_FILE" ]; then
+    IFS=$'\t' read -r stored_date stored_id < "$PULSE_ROOT_FILE" || true
+  fi
   if [ "$stored_date" = "$today" ] && [ -n "$stored_id" ]; then
     printf '%s' "$stored_id"; return 0
   fi
   buzz_call social publish --content "${PULSE_ROOT_TEMPLATE//\{date\}/$today}" || return 0
-  IFS=$'\t' read -r root _ < <(read_ids)
+  IFS=$'\t' read -r root _ < <(read_ids) || true
   [ -n "$root" ] || return 0
   mkdir -p "$(dirname "$PULSE_ROOT_FILE")" 2>/dev/null || true
   printf '%s\t%s\n' "$today" "$root" > "$PULSE_ROOT_FILE"
