@@ -179,6 +179,74 @@ assert 'exits 0' "[ '$rc' = 0 ]"
 assert 'still delivers one line' "[ \"\$(calls '$h')\" -eq 1 ]"
 assert 'says the rollup produced nothing' "argv '$h' | grep -q 'no digest'"
 
+echo '--- deliver_proposal.sh reports the run record, not the agent prose ---'
+# agent_run.log is a raw concatenation of attempt stdout with no run boundary in it, so
+# only cost.log can say what THIS run did. The ten-day OpenRouter outage logged as a
+# clean NOPROPOSAL, which is why an absent record has to be louder than a decline.
+proposal_sandbox() {  # <sandbox> <ts> <outcome> <proposal>
+  local h=$1
+  printf 'ts=%s schema=3 profile=claude-opus model=unknown task=raw-ingest outcome=%s proposal=%s run_seconds=23 attempts=1\n' \
+    "$2" "$3" "$4" > "$h/cost.log"
+  touch -d '1 hour ago' "$h/marker"
+}
+run_proposal() {  # <sandbox> [extra env assignments are the caller's]
+  local h=$1
+  DELIVERY_TASK=raw-ingest DELIVERY_ROUTE=research DELIVERY_JOB=raw-ingest.service \
+  DELIVERY_RUN_MARKER="$h/marker" AGENT_COST_LOG="$h/cost.log" \
+  AGENT_RUN_LOG="$h/agent_run.log" run_adapter "$h" deliver_proposal.sh
+}
+
+h=$(sandbox)
+proposal_sandbox "$h" "$(date -Is)" PROPOSAL raw-ingest
+rc=$(run_proposal "$h")
+assert 'exits 0' "[ '$rc' = 0 ]"
+assert 'exactly one call' "[ \"\$(calls '$h')\" -eq 1 ]"
+assert 'routed to research' "argv '$h' | grep -q -- '--route research'"
+assert 'the proposal path is named' \
+  "argv '$h' | grep -q \"proposed _inbox/agents/\$(date +%F)_raw-ingest.md\""
+assert 'a status payload attaches nothing' "! argv '$h' | grep -q -- '--file'"
+
+h=$(sandbox)
+proposal_sandbox "$h" "$(date -Is)" NOPROPOSAL none
+printf 'noise\nDECLINE: no unprocessed sources in 05_knowledge/raw/\n' > "$h/agent_run.log"
+rc=$(run_proposal "$h")
+assert 'a decline still delivers' "[ \"\$(calls '$h')\" -eq 1 ]"
+assert 'the decline reason is quoted' "argv '$h' | grep -q 'NOPROPOSAL — no unprocessed sources'"
+
+h=$(sandbox)
+proposal_sandbox "$h" "$(date -Is)" NOPROPOSAL none
+printf 'DECLINE: from a run that ended before this one started\n' > "$h/agent_run.log"
+touch -d '2 hours ago' "$h/agent_run.log"
+rc=$(run_proposal "$h")
+assert 'a decline reason older than the marker is not attributed to this run' \
+  "! argv '$h' | grep -q 'before this one started'"
+assert 'and the outcome is still reported' "argv '$h' | grep -q 'NOPROPOSAL'"
+
+echo '--- deliver_proposal.sh is loudest when the run wrote no record at all ---'
+h=$(sandbox)
+proposal_sandbox "$h" "$(date -Is -d '3 hours ago')" PROPOSAL raw-ingest
+rc=$(run_proposal "$h")
+assert 'exits 0' "[ '$rc' = 0 ]"
+assert 'a record predating the marker is not read as this run' \
+  "! argv '$h' | grep -q 'proposed _inbox'"
+assert 'the gap is delivered, never swallowed' "argv '$h' | grep -q 'this run wrote no record'"
+
+h=$(sandbox)
+: > "$h/cost.log"
+touch -d '1 hour ago' "$h/marker"
+rc=$(run_proposal "$h")
+assert 'exits 0' "[ '$rc' = 0 ]"
+assert 'an absent record still delivers' "[ \"\$(calls '$h')\" -eq 1 ]"
+assert 'it says the run ended before writing one' "argv '$h' | grep -q 'no run record for task raw-ingest'"
+
+h=$(sandbox)
+printf 'ts=%s schema=3 task=standing-research outcome=PROPOSAL proposal=standing-research run_seconds=9 attempts=1\n' \
+  "$(date -Is)" > "$h/cost.log"
+touch -d '1 hour ago' "$h/marker"
+rc=$(run_proposal "$h")
+assert "another job's record is never claimed as this task's" \
+  "argv '$h' | grep -q 'no run record for task raw-ingest'"
+
 echo '--- the threshold is still configurable ---'
 h=$(sandbox)
 mkdir -p "$h/agent-worktrees/inbox/_inbox/agents"

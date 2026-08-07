@@ -33,10 +33,10 @@ praetorium-daily-plan.service	ops	file	wired	never
 praetorium-eod-summary.service	ops	file	wired	never
 scorecard.service	ops	summary	wired	never
 agent-alert@.service	ops	summary	wired	allowed
-agent-proposal.service	research	status	pending	never
-raw-ingest.service	research	status	pending	never
-knowledge-digest.service	research	status	pending	never
-weekly-pre-assembly.service	research	status	pending	never
+agent-proposal.service	research	status	wired	never
+raw-ingest.service	research	status	wired	never
+knowledge-digest.service	research	status	wired	never
+weekly-pre-assembly.service	research	status	wired	never
 augustus-content.service	content	summary	pending	never
 content-change-dispatch.service	content	summary	pending	allowed
 bd-stall-radar.service	bd	status	pending	never

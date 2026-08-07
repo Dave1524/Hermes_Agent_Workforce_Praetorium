@@ -9,8 +9,15 @@ OnFailure=agent-alert@%n.service
 Type=oneshot
 User=dave
 Environment=AGENT_JOB_OVERRIDES=/home/dave/.config/agent-workforce/standing_research.env
+Environment="REPORT_SUBJECT=[Praetorium] Standing research"
+Environment=DELIVERY_ROUTE=research
+Environment=DELIVERY_JOB=%n
+Environment=DELIVERY_TASK=standing-research
+Environment=DELIVERY_RUN_MARKER=/home/dave/logs/run-markers/%n
 EnvironmentFile=/home/dave/.config/agent-workforce/secrets.env
+ExecStartPre=/usr/bin/mkdir -p /home/dave/logs/run-markers
+ExecStartPre=/usr/bin/touch /home/dave/logs/run-markers/%n
 ExecStart=/home/dave/agent-workforce/bin/agent_propose.sh
-ExecStartPost=/home/dave/agent-workforce/bin/notify.sh "[Praetorium] Agent proposal completed" "Agent proposal service completed. Check inbox for results."
+ExecStartPost=/home/dave/agent-workforce/bin/deliver_proposal.sh
 TimeoutStartSec=45min
 NoNewPrivileges=true
