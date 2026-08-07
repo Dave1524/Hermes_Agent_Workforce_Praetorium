@@ -26,9 +26,20 @@ envf="$CRED_DIR/${identity}.env"
 [ -r "$envf" ] || die "no credential file for identity ${identity}"
 [ -x "$BUZZ_BIN" ] || die "buzz binary not executable: ${BUZZ_BIN}"
 
-set -a
-# shellcheck source=/dev/null
-. "$envf"
-set +a
+# Deliberately NOT `. "$envf"`. These files are systemd EnvironmentFile format, where an
+# unquoted value keeps its inner double quotes; shell sourcing strips them, which turns
+# the JSON auth tag ["auth",...] into [auth,...] and the relay rejects it at column 2.
+# Assigning through `export "$k=$v"` never re-parses quotes inside the value.
+while IFS= read -r line || [ -n "$line" ]; do
+  case "$line" in ''|'#'*) continue ;; esac
+  key=${line%%=*}
+  val=${line#*=}
+  case "$key" in ''|*[!A-Za-z0-9_]*) continue ;; esac
+  case "$val" in
+    \'*\') val=${val#\'}; val=${val%\'} ;;
+    \"*\") val=${val#\"}; val=${val%\"} ;;
+  esac
+  export "$key=$val"
+done < "$envf"
 
 exec "$BUZZ_BIN" "$@"
