@@ -25,6 +25,7 @@ User=dave
 # subject, not the route.
 Environment=DELIVERY_ROUTE=ops
 Environment=DELIVERY_JOB=%n
+Environment=DELIVERY_RUNTIME=none
 EnvironmentFile=/home/dave/.config/agent-workforce/secrets.env
 ExecStart=/bin/sh -c 'msg="agent-workforce ALERT: unit %i failed at $(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)"; printf "%%s\\n" "$msg" | systemd-cat -t agent-alert -p err; mkdir -p /home/dave/logs; printf "%%s\\n" "$msg" >> /home/dave/logs/agent-alert.log; /home/dave/agent-workforce/bin/notify.sh "[Praetorium] Unit failed: %i" "$msg" || true'
 NoNewPrivileges=true

@@ -17,6 +17,7 @@ Type=oneshot
 User=dave
 Environment=DELIVERY_ROUTE=approvals
 Environment=DELIVERY_JOB=%n
+Environment=DELIVERY_RUNTIME=none
 ExecStart=/home/dave/agent-workforce/bin/inbox_backlog_alert.sh
 TimeoutStartSec=5min
 NoNewPrivileges=true

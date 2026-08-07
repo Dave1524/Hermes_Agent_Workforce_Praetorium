@@ -14,6 +14,7 @@ Environment=REPORT_GLOB=pre-snapshot-*.log
 Environment="REPORT_SUBJECT=[Praetorium] Overnight pre-snapshot"
 Environment=DELIVERY_ROUTE=ops
 Environment=DELIVERY_JOB=%n
+Environment=DELIVERY_RUNTIME=none
 # The snapshot shares ~/logs/overnight with the morning report, and its own name is
 # stamped per run — so "newest pre-snapshot-*.log" is only this run's on a night the
 # snapshot actually wrote one. Anchor it. See overnight-morning-report.service.

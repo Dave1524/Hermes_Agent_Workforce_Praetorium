@@ -20,6 +20,8 @@ SUBJECT="${REPORT_SUBJECT:-[Praetorium] Augustus content}"
 # shellcheck source=bin/content_state.sh
 . "$BIN_DIR/content_state.sh"
 
+DELIVERY_RUNTIME=$(run_runtime "$DELIVERY_RUNTIME")
+
 content_summary() {  # content_summary <run-line>
   printf '%s\n%s\n%s' "$(board_delta "$(marker_epoch)")" "$(corpus_line)" "$1"
 }

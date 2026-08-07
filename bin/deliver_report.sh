@@ -12,12 +12,21 @@
 # report unit failed (which would fire OnFailure=agent-alert@ for a non-event).
 set -uo pipefail
 
+BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=bin/delivery_common.sh
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/delivery_common.sh"
+. "$BIN_DIR/delivery_common.sh"
 
 REPORT_DIR="${REPORT_DIR:-$HOME/logs/overnight}"
 REPORT_GLOB="${REPORT_GLOB:-morning-report-*.md}"
 REPORT_SUBJECT="${REPORT_SUBJECT:-[Praetorium] Morning report}"
+
+TASK="${DELIVERY_TASK:-}"
+MARKER="${DELIVERY_RUN_MARKER:-}"
+
+# shellcheck source=bin/run_record.sh
+. "$BIN_DIR/run_record.sh"
+
+DELIVERY_RUNTIME=$(run_runtime "$DELIVERY_RUNTIME")
 
 # The weaker of the two freshness anchors, kept for units that have no run marker yet:
 # 26 hours covers one skipped day. DELIVERY_RUN_MARKER supersedes it when present.

@@ -16,6 +16,7 @@ Environment=REPORT_GLOB=eod-summary-*.md
 Environment="REPORT_SUBJECT=[Praetorium] EOD summary"
 Environment=DELIVERY_ROUTE=ops
 Environment=DELIVERY_JOB=%n
+Environment=DELIVERY_TASK=eod-summary
 # Anchor the summary to THIS invocation — see overnight-morning-report.service.
 Environment=DELIVERY_RUN_MARKER=/home/dave/logs/run-markers/%n
 ExecStartPre=/usr/bin/mkdir -p /home/dave/logs/run-markers

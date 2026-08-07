@@ -15,6 +15,7 @@ User=dave
 Environment="REPORT_SUBJECT=[Praetorium] Weekly scorecard"
 Environment=DELIVERY_ROUTE=ops
 Environment=DELIVERY_JOB=%n
+Environment=DELIVERY_RUNTIME=none
 ExecStart=/home/dave/agent-workforce/bin/scorecard.sh
 # No DELIVERY_RUN_MARKER: the digest is idempotent and is NOT rewritten on a week
 # with nothing new, so a newer-than-marker test would silence the rollup exactly

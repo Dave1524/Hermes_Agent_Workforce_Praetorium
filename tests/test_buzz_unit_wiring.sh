@@ -129,6 +129,25 @@ while IFS=$'\t' read -r unit route payload status silence; do
   esac
 done < <(rows)
 
+echo '--- every wired unit states where its receipt runtime comes from ---'
+# The receipt's `runtime` answers "which profile produced this". A unit either runs no
+# model (DELIVERY_RUNTIME=none) or names the agent_propose.sh task whose cost.log record
+# the adapter reads it back from. Declaring neither is how the field silently read
+# `unknown` on every hook-fired receipt, while the one unit with an EnvironmentFile
+# inherited a box-wide AGENT_PROFILE and named a persona that had not run.
+while IFS=$'\t' read -r unit route payload status silence; do
+  [ "$status" = wired ] || continue
+  f="$REPO_ROOT/systemd/$unit"
+  [ -f "$f" ] || continue
+  assert "$unit declares DELIVERY_RUNTIME=none or a DELIVERY_TASK to resolve it from" \
+    "code '$f' | grep -qE '^Environment=(DELIVERY_RUNTIME=none|DELIVERY_TASK=[a-z0-9-]+)\$'"
+  # A profile pinned in a unit is a claim about a model choice made elsewhere: the
+  # 2026-07-30 migration re-pointed seven jobs at headless Claude Code and any such
+  # pin would still be naming the persona they left behind.
+  assert "$unit pins no profile name in DELIVERY_RUNTIME" \
+    "! code '$f' | grep -E '^Environment=DELIVERY_RUNTIME=' | grep -qv '=none\$'"
+done < <(rows)
+
 echo '--- exactly one script may invoke a transport ---'
 offenders=$(
   for f in "$REPO_ROOT"/bin/* "$REPO_ROOT"/systemd/*; do

@@ -17,6 +17,7 @@ WorkingDirectory=/home/dave/dev/agent-workforce
 Environment="REPORT_SUBJECT=[Praetorium] Agent inbox reconcile"
 Environment=DELIVERY_ROUTE=approvals
 Environment=DELIVERY_JOB=%n
+Environment=DELIVERY_RUNTIME=none
 Environment=DELIVERY_RUN_MARKER=/home/dave/logs/run-markers/%n
 ExecStartPre=/usr/bin/mkdir -p /home/dave/logs/run-markers
 ExecStartPre=/usr/bin/touch /home/dave/logs/run-markers/%n

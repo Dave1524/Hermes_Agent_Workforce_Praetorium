@@ -17,6 +17,7 @@ BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$BIN_DIR/delivery_common.sh"
 
 MARKER="${DELIVERY_RUN_MARKER:-}"
+TASK="${DELIVERY_TASK:-augustus-content}"
 DISPATCH_LOG="${DISPATCH_LOG:-$HOME/agent-workforce/logs/content_change_dispatch.log}"
 SUBJECT="${REPORT_SUBJECT:-[Praetorium] Content dispatch}"
 
@@ -24,6 +25,10 @@ SUBJECT="${REPORT_SUBJECT:-[Praetorium] Content dispatch}"
 . "$BIN_DIR/run_record.sh"
 # shellcheck source=bin/content_state.sh
 . "$BIN_DIR/content_state.sh"
+
+# A quiet tick spends nothing, so the unit's `none` stands; the ticks that dispatch a
+# draft run are attributed to whatever profile that run recorded.
+DELIVERY_RUNTIME=$(run_runtime "$DELIVERY_RUNTIME")
 
 run_lines() {  # the log lines this invocation wrote, stripped of timestamp and prefix
   local since line stamp

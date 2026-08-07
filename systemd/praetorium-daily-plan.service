@@ -18,6 +18,7 @@ Environment=REPORT_GLOB=daily-plan-*.md
 Environment="REPORT_SUBJECT=[Praetorium] Daily plan"
 Environment=DELIVERY_ROUTE=ops
 Environment=DELIVERY_JOB=%n
+Environment=DELIVERY_TASK=daily-plan
 # Anchor the plan to THIS invocation — see overnight-morning-report.service for why
 # an age budget alone cannot distinguish a fresh artifact from yesterday's.
 Environment=DELIVERY_RUN_MARKER=/home/dave/logs/run-markers/%n

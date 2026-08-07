@@ -31,6 +31,13 @@ is_this_run() {  # the record must post-date the marker stamped before ExecStart
   [ "$(date -d "$ts" +%s 2>/dev/null || echo 0)" -ge "$(stat -c %Y "$MARKER" 2>/dev/null || echo 0)" ]
 }
 
+run_runtime() {  # run_runtime [fallback] — the profile this run actually used
+  local rec profile
+  rec=$(run_record)
+  if [ -n "$rec" ] && is_this_run "$rec"; then profile=$(field "$rec" profile); fi
+  printf '%s' "${profile:-${1:-unknown}}"
+}
+
 marker_epoch() {
   stat -c %Y "${MARKER:-/nonexistent}" 2>/dev/null || echo 0
 }

@@ -16,6 +16,7 @@ Environment=REPORT_GLOB=*_bd-followup-drafts.md
 Environment="REPORT_SUBJECT=[Praetorium] BD follow-up drafts"
 Environment=DELIVERY_ROUTE=bd
 Environment=DELIVERY_JOB=%n
+Environment=DELIVERY_TASK=bd-followup-drafts
 # The pack lands in the shared inbox directory alongside every other proposal, so
 # "newest match" is not enough on a night this job produces nothing — the marker
 # makes the glob's newest hit prove it belongs to this run. See

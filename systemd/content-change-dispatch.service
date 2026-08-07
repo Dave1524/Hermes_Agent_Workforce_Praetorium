@@ -18,6 +18,8 @@ Environment=AGENT_JOB_OVERRIDES=/home/dave/.config/agent-workforce/augustus-cont
 Environment="REPORT_SUBJECT=[Praetorium] Content dispatch"
 Environment=DELIVERY_ROUTE=content
 Environment=DELIVERY_JOB=%n
+Environment=DELIVERY_RUNTIME=none
+Environment=DELIVERY_TASK=augustus-content
 Environment=DELIVERY_RUN_MARKER=/home/dave/logs/run-markers/%n
 EnvironmentFile=/home/dave/.config/agent-workforce/secrets.env
 ExecStartPre=/usr/bin/mkdir -p /home/dave/logs/run-markers

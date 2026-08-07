@@ -18,7 +18,14 @@ DELIVER_BIN="${DELIVER_BIN:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/delive
 # instead of defaulting into someone else's channel.
 DELIVERY_ROUTE="${DELIVERY_ROUTE:-unrouted}"
 DELIVERY_JOB="${DELIVERY_JOB:-$DELIVERY_ADAPTER}"
-DELIVERY_RUNTIME="${DELIVERY_RUNTIME:-${AGENT_PROFILE:-unknown}}"
+
+# What the unit declares here is what is true when no model ran — `none` for the
+# producers that are pure shell. An adapter with a cost.log record overrides it with
+# run_runtime(). It must never be inherited from the ambient AGENT_PROFILE: that lives
+# in the job's override env, which ExecStart loads and ExecStartPost does not, so it
+# reads empty everywhere except the one unit pulling in secrets.env — where it reports
+# that file's box-wide default as if the unit had run it.
+DELIVERY_RUNTIME="${DELIVERY_RUNTIME:-unknown}"
 
 mkdir -p "$HOME/logs" 2>/dev/null || true
 

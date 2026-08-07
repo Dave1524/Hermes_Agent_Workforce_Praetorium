@@ -15,6 +15,7 @@ Environment=REPORT_GLOB=morning-report-*.md
 Environment="REPORT_SUBJECT=[Praetorium] Morning report"
 Environment=DELIVERY_ROUTE=ops
 Environment=DELIVERY_JOB=%n
+Environment=DELIVERY_TASK=overnight-morning-report
 # The artifact this run produced must be newer than THIS invocation, not merely
 # newer than 26 hours: a stale report re-delivered on a night the agent failed is
 # indistinguishable from a fresh one at the reading end. ExecStartPost cannot see

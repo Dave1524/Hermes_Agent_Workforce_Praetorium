@@ -22,6 +22,8 @@ SUBJECT="${REPORT_SUBJECT:-[Praetorium] ${TASK:-agent run}}"
 # shellcheck source=bin/run_record.sh
 . "$BIN_DIR/run_record.sh"
 
+DELIVERY_RUNTIME=$(run_runtime "$DELIVERY_RUNTIME")
+
 decline_reason() {
   [ -r "$RUN_LOG" ] || return 0
   [ -n "$MARKER" ] && [ ! "$RUN_LOG" -nt "$MARKER" ] && return 0
