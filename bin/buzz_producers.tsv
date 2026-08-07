@@ -42,5 +42,5 @@ content-change-dispatch.service	content	summary	wired	allowed
 bd-stall-radar.service	bd	status	wired	never
 bd-followup-drafts.service	bd	file	wired	allowed
 m1-signal-scan.service	signals	status	wired	never
-agent-inbox-sync.service	approvals	summary	pending	allowed
+agent-inbox-sync.service	approvals	summary	wired	allowed
 inbox-backlog-alert.service	approvals	summary	wired	allowed

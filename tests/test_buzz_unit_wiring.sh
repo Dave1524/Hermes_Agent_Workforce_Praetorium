@@ -73,7 +73,7 @@ while IFS=$'\t' read -r unit route payload status silence; do
       "code '$f' | grep -q '^Environment=DELIVERY_JOB=%n\$'"
     # A hook without its exec bit is 203/EXEC: the run itself succeeded, the report
     # never left the box, and nothing in the receipt trail records the attempt.
-    for hook in $(code "$f" | sed -n 's|^ExecStartPost=\([^ ]*\).*|\1|p'); do
+    for hook in $(code "$f" | grep -E '^ExecSt(art|op)Post=' | sed 's/^[^=]*=//' | awk '{print $1}'); do
       assert "$unit's hook ${hook##*/} is executable in this repo" \
         "[ -x '$REPO_ROOT/bin/${hook##*/}' ]"
     done

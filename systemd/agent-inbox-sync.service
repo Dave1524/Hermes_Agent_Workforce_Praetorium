@@ -14,6 +14,15 @@ OnFailure=agent-alert@%n.service
 Type=oneshot
 User=dave
 WorkingDirectory=/home/dave/dev/agent-workforce
+Environment="REPORT_SUBJECT=[Praetorium] Agent inbox reconcile"
+Environment=DELIVERY_ROUTE=approvals
+Environment=DELIVERY_JOB=%n
+Environment=DELIVERY_RUN_MARKER=/home/dave/logs/run-markers/%n
+ExecStartPre=/usr/bin/mkdir -p /home/dave/logs/run-markers
+ExecStartPre=/usr/bin/touch /home/dave/logs/run-markers/%n
 ExecStart=/home/dave/dev/agent-workforce/bin/agent_inbox_pipeline.sh
+# ExecStopPost, not ExecStartPost: a reconcile that FAILED is the outcome most worth
+# reporting, and systemd skips ExecStartPost when ExecStart fails.
+ExecStopPost=/home/dave/agent-workforce/bin/deliver_inbox_sync.sh
 TimeoutStartSec=5min
 NoNewPrivileges=true

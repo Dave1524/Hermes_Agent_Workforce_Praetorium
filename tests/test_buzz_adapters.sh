@@ -360,6 +360,85 @@ assert 'a previous tick line is not read as this run' "[ \"\$(calls '$h')\" -eq 
 assert 'a poll that reached no decision is delivered, not swallowed' \
   "argv '$h' | grep -q 'never reached a decision'"
 
+echo '--- agent-inbox-sync speaks only when it moved something, or failed ---'
+# Two systems that usually already agree, reconciled every 30 minutes. An unchanged
+# poll says nothing; a tick that moved a proposal, or one that failed, always does.
+run_inbox() {  # run_inbox <sandbox>
+  local h=$1
+  DELIVERY_ROUTE=approvals DELIVERY_JOB=agent-inbox-sync.service \
+  DELIVERY_RUN_MARKER="$h/marker" AGENT_INBOX_OUTPUT="$h/pipeline.last" \
+  run_adapter "$h" deliver_inbox_sync.sh
+}
+inbox_output() {  # inbox_output <sandbox> <body>
+  touch -d '1 minute ago' "$1/marker"
+  printf '%s\n' "$2" > "$1/pipeline.last"
+}
+
+h=$(sandbox)
+inbox_output "$h" 'agent-inbox-sync: all clear — no pending proposals.
+  (none)
+
+=== agent-inbox-apply (APPLY) ===
+Rejected to action: 0   Approved awaiting Mac: 0'
+rc=$(run_inbox "$h")
+assert 'exits 0' "[ '$rc' = 0 ]"
+assert 'an unchanged reconcile stays silent' "[ \"\$(calls '$h')\" -eq 0 ]"
+
+h=$(sandbox)
+inbox_output "$h" 'agent-inbox-sync: 2 pending review.
+  created this run: 2026-08-07_raw-ingest.md
+=== agent-inbox-apply (APPLY) ===
+Rejected to action: 0   Approved awaiting Mac: 1'
+rc=$(run_inbox "$h")
+assert 'a created row delivers' "[ \"\$(calls '$h')\" -eq 1 ]"
+assert 'routed to approvals' "argv '$h' | grep -q -- '--route approvals'"
+assert 'the created proposal is named' "argv '$h' | grep -q 'created this run: 2026-08-07_raw-ingest.md'"
+assert 'no artifact attached to a summary' "! argv '$h' | grep -q -- '--file'"
+
+h=$(sandbox)
+inbox_output "$h" '=== agent-inbox-apply (APPLY) ===
+Rejected to action: 2   Approved awaiting Mac: 0
+  REJECT 2026-08-05_bd-followup-drafts.md
+  REJECT 2026-08-06_raw-ingest.md'
+rc=$(run_inbox "$h")
+assert 'actioned rejects deliver' "[ \"\$(calls '$h')\" -eq 1 ]"
+assert 'each rejected file is named' \
+  "argv '$h' | grep -q '2026-08-05_bd-followup' && argv '$h' | grep -q '2026-08-06_raw-ingest'"
+
+h=$(sandbox)
+inbox_output "$h" '=== agent-inbox-apply (APPLY) ===
+Rejected to action: 1   Approved awaiting Mac: 0
+  REJECT 2026-08-06_raw-ingest.md
+  ! push failed (rejects are committed locally): permission denied'
+rc=$(run_inbox "$h")
+assert 'a partial failure inside a successful run still delivers' "[ \"\$(calls '$h')\" -eq 1 ]"
+assert 'the push failure is quoted' "argv '$h' | grep -q 'push failed'"
+
+echo '--- agent-inbox-sync reports the failure ExecStartPost could never see ---'
+h=$(sandbox)
+inbox_output "$h" 'agent-inbox-sync: all clear — no pending proposals.
+sync failed'
+rc=$(SERVICE_RESULT=exit-code EXIT_STATUS=1 run_inbox "$h")
+assert 'exits 0' "[ '$rc' = 0 ]"
+assert 'a failed reconcile delivers' "[ \"\$(calls '$h')\" -eq 1 ]"
+assert 'it names the systemd result' "argv '$h' | grep -q 'RECONCILE FAILED — exit-code (exit 1)'"
+assert 'and quotes what the pipeline managed to say' "argv '$h' | grep -q 'sync failed'"
+
+h=$(sandbox)
+touch -d '1 minute ago' "$h/marker"
+rc=$(run_inbox "$h")
+assert 'a run that wrote no output is reported, never read as unchanged' \
+  "[ \"\$(calls '$h')\" -eq 1 ] && argv '$h' | grep -q 'wrote no output'"
+
+h=$(sandbox)
+printf 'agent-inbox-sync: 1 pending review.\n  created this run: stale.md\n' > "$h/pipeline.last"
+touch -d '2 hours ago' "$h/pipeline.last"
+touch -d '1 minute ago' "$h/marker"
+rc=$(run_inbox "$h")
+assert "a previous run's output is never claimed as this one's" \
+  "! argv '$h' | grep -q 'stale.md'"
+assert 'and the gap is delivered' "argv '$h' | grep -q 'wrote no output'"
+
 echo '--- the threshold is still configurable ---'
 h=$(sandbox)
 mkdir -p "$h/agent-worktrees/inbox/_inbox/agents"

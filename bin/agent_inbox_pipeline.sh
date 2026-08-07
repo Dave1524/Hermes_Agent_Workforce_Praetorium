@@ -9,10 +9,23 @@
 #   2. apply (Notion -> box): auto-execute REJECTED within the box-safe membrane
 #            (archive + remove + push agents/inbox); surface APPROVED as a Mac hand-off
 #            (canonical promotion stays a Mac judgment write, by the vault boundary).
+#
+# The run's output is also written to the runtime log tree, because ExecStopPost cannot
+# see ExecStart's stdout and the journal is not a delivery surface. It goes to
+# ~/agent-workforce/logs and never beside this script: the source checkout is swept into
+# git by the auto-sync timer every 15 minutes.
 set -uo pipefail
 BIN="$(cd "$(dirname "$0")" && pwd)"
-echo "== agent-inbox pipeline $(date -u +%FT%TZ) =="
-rc=0
-python3 "$BIN/agent_inbox_notion_sync.py"      || { echo "sync failed"; rc=1; }
-python3 "$BIN/agent_inbox_apply.py" --apply    || { echo "apply failed"; rc=1; }
-exit "$rc"
+OUT="${AGENT_INBOX_OUTPUT:-$HOME/agent-workforce/logs/agent_inbox_pipeline.last}"
+
+reconcile() {
+  echo "== agent-inbox pipeline $(date -u +%FT%TZ) =="
+  local rc=0
+  python3 "$BIN/agent_inbox_notion_sync.py"      || { echo "sync failed"; rc=1; }
+  python3 "$BIN/agent_inbox_apply.py" --apply    || { echo "apply failed"; rc=1; }
+  return "$rc"
+}
+
+mkdir -p "$(dirname "$OUT")"
+reconcile 2>&1 | tee "$OUT"
+exit "${PIPESTATUS[0]}"
