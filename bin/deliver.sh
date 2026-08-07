@@ -32,13 +32,18 @@ RECEIPT_BIN="${DELIVERY_RECEIPT_BIN:-$BIN_DIR/delivery_receipt.py}"
 HELPER="${BUZZ_DELIVER_HELPER:-$BIN_DIR/buzz_publish.sh}"
 IDENTITY="${BUZZ_SERVICE_IDENTITY:-praetorium}"
 NOTE_MAX_BYTES="${BUZZ_NOTE_MAX_BYTES:-800}"
+# Both defaults are assigned on their own line, never as a ${VAR:-default}: bash ends that
+# expansion at the first unescaped `}`, so a literal {placeholder} in the default loses its
+# closing brace and appends a stray `}` — to the caller's value too, not just the default.
 # Desktop's copy-link form; the CLI neither emits nor parses it. Verified 2026-08-07.
-POINTER_TEMPLATE="${BUZZ_POINTER_TEMPLATE:-buzz://message?channel={channel}&id={event}}"
+POINTER_TEMPLATE="${BUZZ_POINTER_TEMPLATE:-}"
+[ -n "$POINTER_TEMPLATE" ] || POINTER_TEMPLATE='buzz://message?channel={channel}&id={event}'
 # Pulse's "everyone" view has no time-based grouping — it renders one card per note.
 # A reply nests under its root there, so threading is the only way a night of deliveries
 # reads as one card instead of N. Verified 2026-08-07.
 PULSE_ROOT_FILE="${BUZZ_PULSE_ROOT_FILE:-$HOME/var/buzz-pulse-root}"
-PULSE_ROOT_TEMPLATE="${BUZZ_PULSE_ROOT_TEMPLATE:-Praetorium — {date}}"
+PULSE_ROOT_TEMPLATE="${BUZZ_PULSE_ROOT_TEMPLATE:-}"
+[ -n "$PULSE_ROOT_TEMPLATE" ] || PULSE_ROOT_TEMPLATE='Praetorium — {date}'
 RECEIPTS="${DELIVERY_RECEIPTS:-$HOME/logs/delivery-receipts.jsonl}"
 DELIVER_DISCORD="${DELIVER_DISCORD:-1}"
 LOG="${DELIVERY_LOG:-$HOME/logs/deliver.log}"

@@ -336,6 +336,30 @@ assert 'no root file written when the root id came back empty' "[ ! -f '$h/var/b
 assert 'the note is published standalone, without --reply-to' \
   "! grep -q -- '--reply-to' '$h/mock/argv.log'"
 
+echo '--- {placeholder} templates survive shell defaulting ---'
+# bash ends ${VAR:-default} at the first unescaped `}`, so a literal {date} or {channel}
+# in a default value loses its closing brace and appends a stray `}` to the result — and
+# it does so even when the variable IS set, corrupting a caller-supplied template too.
+# Substring greps miss this entirely because the stray brace lands at the end.
+h=$(sandbox)
+run_deliver "$h" --job p.service --route ops --subject s --message m --note n >/dev/null
+assert 'the default day-root is exactly the template with the date substituted' \
+  "grep -qE 'social publish --content Praetorium — ${today}\$' '$h/mock/argv.log'"
+assert 'the default pointer resolves both placeholders' \
+  "grep -qF 'buzz://message?channel=$CH_ID&id=$CH_ID' '$h/mock/content.social'"
+assert 'no unsubstituted placeholder survives into the note' \
+  "! grep -q '[{}]' '$h/mock/content.social'"
+
+h=$(sandbox)
+rc=$(BUZZ_PULSE_ROOT_TEMPLATE='Root {date}' BUZZ_POINTER_TEMPLATE='p/{channel}/{event}' \
+     run_deliver "$h" --job p.service --route ops --subject s --message m --note n)
+assert 'an overridden day-root template is not corrupted' \
+  "grep -qE 'social publish --content Root ${today}\$' '$h/mock/argv.log'"
+assert 'an overridden pointer template is not corrupted' \
+  "grep -qF 'p/$CH_ID/$CH_ID' '$h/mock/content.social'"
+assert 'an overridden template leaves no stray brace' \
+  "! grep -q '[{}]' '$h/mock/content.social'"
+
 echo '--- receipt shape ---'
 h=$(sandbox)
 rc=$(run_deliver "$h" --job z.service --route ops --subject s --message m --runtime rt)
