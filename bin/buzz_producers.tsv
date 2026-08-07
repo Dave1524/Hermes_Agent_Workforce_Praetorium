@@ -27,11 +27,11 @@
 # as the morning report — and a rollup nobody reads is a rollup that stops being written.
 #
 # unit	route	payload	status	silence
-overnight-pre-snapshot.service	ops	file	pending	never
+overnight-pre-snapshot.service	ops	file	wired	never
 overnight-morning-report.service	ops	file	wired	never
 praetorium-daily-plan.service	ops	file	wired	never
 praetorium-eod-summary.service	ops	file	wired	never
-scorecard.service	ops	summary	pending	never
+scorecard.service	ops	summary	wired	never
 agent-alert@.service	ops	summary	wired	allowed
 agent-proposal.service	research	status	pending	never
 raw-ingest.service	research	status	pending	never

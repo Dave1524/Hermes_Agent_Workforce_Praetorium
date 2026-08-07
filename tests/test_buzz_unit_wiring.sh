@@ -64,7 +64,7 @@ while IFS=$'\t' read -r unit route payload status silence; do
   [ -f "$f" ] || continue
 
   has_route=$(code "$f" | grep -c "^Environment=DELIVERY_ROUTE=$route\$" || true)
-  has_hook=$(code "$f" | grep -cE 'deliver_report\.sh|notify\.sh|inbox_backlog_alert\.sh|deliver\.sh' || true)
+  has_hook=$(code "$f" | grep -cE '/bin/(deliver[a-z_]*|notify|inbox_backlog_alert)\.sh' || true)
 
   if [ "$status" = wired ]; then
     assert "$unit declares DELIVERY_ROUTE=$route" "[ '$has_route' -ge 1 ]"
@@ -83,12 +83,21 @@ while IFS=$'\t' read -r unit route payload status silence; do
   fi
 done < <(rows)
 
-echo '--- wired file-payload units anchor their artifact to THIS run ---'
-# A 26-hour age budget cannot tell "produced by tonight's run" from "left over from
-# last night's". The marker is stamped by ExecStartPre before ExecStart writes
-# anything, so deliver.sh can require artifact-newer-than-marker exactly.
+echo '--- wired artifact-lookup units anchor to THIS run ---'
+# `file` and `status` both answer "did this run produce something?" by looking up a
+# dated artifact in a directory shared with every other producer. A 26-hour age budget
+# cannot tell "produced by tonight's run" from "left over from last night's", and the
+# newest glob hit belongs to another job on any night this one wrote nothing. The
+# marker is stamped by ExecStartPre before ExecStart writes anything, so the lookup
+# can require newer-than-marker exactly.
+#
+# `summary` is exempt by construction: it is composed from current state at delivery
+# time, so there is no prior run's artifact to be confused with. Where a summary
+# adapter does read run-scoped state, that is the adapter's contract and is pinned in
+# tests/test_buzz_adapters.sh, not here.
 while IFS=$'\t' read -r unit route payload status silence; do
-  [ "$status" = wired ] && [ "$payload" = file ] || continue
+  [ "$status" = wired ] || continue
+  case "$payload" in file|status) ;; *) continue ;; esac
   f="$REPO_ROOT/systemd/$unit"
   [ -f "$f" ] || continue
   assert "$unit declares DELIVERY_RUN_MARKER" \
@@ -97,10 +106,21 @@ while IFS=$'\t' read -r unit route payload status silence; do
     "code '$f' | grep -q '^ExecStartPre=/usr/bin/mkdir -p /home/dave/logs/run-markers\$'"
   assert "$unit stamps its marker before ExecStart" \
     "code '$f' | grep -q '^ExecStartPre=/usr/bin/touch /home/dave/logs/run-markers/%n\$'"
-  assert "$unit names its own artifact directory explicitly" \
-    "code '$f' | grep -q '^Environment=REPORT_DIR='"
-  assert "$unit names its own artifact glob explicitly" \
-    "code '$f' | grep -q '^Environment=REPORT_GLOB='"
+
+  # Whichever way the artifact is named, it must be named HERE. Inheriting an
+  # adapter default means delivering whatever that default happens to point at.
+  case "$payload" in
+    file)
+      assert "$unit names its own artifact directory explicitly" \
+        "code '$f' | grep -q '^Environment=REPORT_DIR='"
+      assert "$unit names its own artifact glob explicitly" \
+        "code '$f' | grep -q '^Environment=REPORT_GLOB='"
+      ;;
+    status)
+      assert "$unit names the agent_propose.sh task whose proposal it reports" \
+        "code '$f' | grep -q '^Environment=DELIVERY_TASK=[a-z0-9-]\\+\$'"
+      ;;
+  esac
 done < <(rows)
 
 echo '--- exactly one script may invoke a transport ---'

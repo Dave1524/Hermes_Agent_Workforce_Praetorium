@@ -17,9 +17,11 @@ assert() { local d=$1 c=$2; if eval "$c"; then echo "  ok: $d"; else echo "  FAI
 sandbox() {
   local h; h=$(mktemp -d)
   mkdir -p "$h/logs" "$h/overnight"
+  # A payload argument may itself be multi-line, so invocations are counted by the
+  # CALL marker rather than by line — otherwise a two-line summary reads as two calls.
   cat > "$h/deliver-stub.sh" <<'SH'
 #!/usr/bin/env bash
-printf '%s\n' "$*" >> "$HOME/deliver-calls.log"
+printf 'CALL %s\n' "$*" >> "$HOME/deliver-calls.log"
 exit "${STUB_RC:-0}"
 SH
   chmod +x "$h/deliver-stub.sh"
@@ -32,7 +34,11 @@ run_adapter() {  # run_adapter <sandbox> <script> [args...]
     >/dev/null 2>&1
   echo $?
 }
-calls() { [ -f "$1/deliver-calls.log" ] && grep -c . "$1/deliver-calls.log" || echo 0; }
+calls() {
+  local n
+  n=$(grep -c '^CALL ' "$1/deliver-calls.log" 2>/dev/null)
+  echo "${n:-0}"
+}
 argv()  { cat "$1/deliver-calls.log" 2>/dev/null; }
 
 echo '--- deliver_report.sh: artifact lookup stays here, transport does not ---'
@@ -141,6 +147,37 @@ assert 'exactly one alert' "[ \"\$(calls '$h')\" -eq 1 ]"
 assert 'routed to approvals' "argv '$h' | grep -q -- '--route approvals'"
 assert 'counts reported' "argv '$h' | grep -q '2 proposals pending, oldest 5d'"
 assert 'no artifact attached to a status alert' "! argv '$h' | grep -q -- '--file'"
+
+echo '--- deliver_scorecard.sh: an unchanged week still reports ---'
+# scorecard.sh does not rewrite a byte-identical digest, so mtime says nothing about
+# whether the rollup ran. Silence policy for this producer is `never`.
+h=$(sandbox)
+cat > "$h/scorecard.md" <<'MD'
+# Scorecard
+| Metric | Value |
+| --- | --- |
+| Agent runs (all-time) | 129 |
+| Proposal rate | 46% |
+| Error runs (last 7d) | 0 (0 fail / 0 violation) |
+| Approval rate | 71% |
+| Record window | 2026-06-01 → 2026-08-07 |
+MD
+touch -d '30 days ago' "$h/scorecard.md"
+rc=$(SCORECARD_DIGEST="$h/scorecard.md" DELIVERY_ROUTE=ops DELIVERY_JOB=scorecard.service \
+     run_adapter "$h" deliver_scorecard.sh)
+assert 'exits 0' "[ '$rc' = 0 ]"
+assert 'a month-old digest still delivers' "[ \"\$(calls '$h')\" -eq 1 ]"
+assert 'routed to ops' "argv '$h' | grep -q -- '--route ops'"
+assert 'headline rows summarised' "argv '$h' | grep -q 'Proposal rate: 46%'"
+assert 'the record window is carried' "argv '$h' | grep -q 'Record window: 2026-06-01'"
+assert 'the digest itself is never attached' "! argv '$h' | grep -q -- '--file'"
+
+echo '--- deliver_scorecard.sh: a missing digest is reported, not swallowed ---'
+h=$(sandbox)
+rc=$(SCORECARD_DIGEST="$h/absent.md" DELIVERY_ROUTE=ops run_adapter "$h" deliver_scorecard.sh)
+assert 'exits 0' "[ '$rc' = 0 ]"
+assert 'still delivers one line' "[ \"\$(calls '$h')\" -eq 1 ]"
+assert 'says the rollup produced nothing' "argv '$h' | grep -q 'no digest'"
 
 echo '--- the threshold is still configurable ---'
 h=$(sandbox)

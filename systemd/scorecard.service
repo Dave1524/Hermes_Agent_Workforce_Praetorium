@@ -12,6 +12,13 @@ ConditionPathExists=/home/dave/agent-worktrees/inbox/.git
 [Service]
 Type=oneshot
 User=dave
+Environment="REPORT_SUBJECT=[Praetorium] Weekly scorecard"
+Environment=DELIVERY_ROUTE=ops
+Environment=DELIVERY_JOB=%n
 ExecStart=/home/dave/agent-workforce/bin/scorecard.sh
+# No DELIVERY_RUN_MARKER: the digest is idempotent and is NOT rewritten on a week
+# with nothing new, so a newer-than-marker test would silence the rollup exactly
+# when it is most worth reading. deliver_scorecard.sh composes from current state.
+ExecStartPost=/home/dave/agent-workforce/bin/deliver_scorecard.sh
 TimeoutStartSec=10min
 NoNewPrivileges=true
