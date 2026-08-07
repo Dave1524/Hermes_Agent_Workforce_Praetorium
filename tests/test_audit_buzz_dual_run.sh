@@ -139,10 +139,30 @@ assert 'exits non-zero' "[ '$rc' -ne 0 ]"
 assert 'says why' "grep -qi 'no receipt' <<<'$out'"
 
 echo '--- unported producers are reported, never counted as clean ---'
+# Against a fixture manifest, not the live one. The live manifest carries no pending row
+# now that the producer matrix is complete, and a case that reads its migration state
+# would have silently stopped exercising this branch the moment the last row flipped.
+m=$(mktemp)
+printf 'overnight-morning-report.service\tops\tfile\twired\tnever\n' >> "$m"
+printf 'not-yet-ported.service\tops\tfile\tpending\tnever\n' >> "$m"
 r=$(mktemp); seed_clean "$r"
-out=$("$SCRIPT" --receipts "$r" 2>&1) || true
+out=$(BUZZ_PRODUCERS="$m" "$SCRIPT" --receipts "$r" 2>&1) || true
 assert 'pending units are listed as not yet ported' "grep -qi 'pending' <<<'$out'"
+assert 'the unported unit is named' "grep -q 'not-yet-ported.service' <<<'$out'"
 assert 'a full-fleet audit does not pass while producers are unported' \
-  "! \"$SCRIPT\" --receipts '$r' >/dev/null 2>&1"
+  "! BUZZ_PRODUCERS='$m' \"$SCRIPT\" --receipts '$r' >/dev/null 2>&1"
+assert 'the wired producer alongside it still audits clean on its own' \
+  "BUZZ_PRODUCERS='$m' \"$SCRIPT\" --receipts '$r' --unit overnight-morning-report.service >/dev/null 2>&1"
+
+echo '--- with every row wired, a clean fleet is reported as clean ---'
+# The exit criterion of the producer-matrix phase, stated where it can fail: once the
+# manifest carries no pending row, nothing else may keep a gapless fleet from passing.
+m=$(mktemp)
+printf 'overnight-morning-report.service\tops\tfile\twired\tnever\n' >> "$m"
+printf 'inbox-backlog-alert.service\tapprovals\tstatus\twired\tallowed\n' >> "$m"
+out=$(BUZZ_PRODUCERS="$m" "$SCRIPT" --receipts "$r" 2>&1); rc=$?
+assert 'exits 0' "[ '$rc' -eq 0 ]"
+assert 'no pending section is printed' "! grep -qi 'pending' <<<'$out'"
+assert 'and it says so' "grep -q 'RESULT: clean' <<<'$out'"
 
 exit $fail
