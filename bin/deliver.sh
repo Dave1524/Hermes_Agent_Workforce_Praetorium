@@ -30,8 +30,8 @@ RECEIPT_BIN="${DELIVERY_RECEIPT_BIN:-$BIN_DIR/delivery_receipt.py}"
 HELPER="${BUZZ_DELIVER_HELPER:-$HOME/.config/buzz-agents/buzz-publish.sh}"
 IDENTITY="${BUZZ_SERVICE_IDENTITY:-praetorium}"
 NOTE_MAX_BYTES="${BUZZ_NOTE_MAX_BYTES:-800}"
-# Phase 0 must confirm the real Desktop deep-link form before this default is frozen.
-POINTER_TEMPLATE="${BUZZ_POINTER_TEMPLATE:-buzz://channel/{channel}/message/{event}}"
+# Desktop's copy-link form; the CLI neither emits nor parses it. Verified 2026-08-07.
+POINTER_TEMPLATE="${BUZZ_POINTER_TEMPLATE:-buzz://message?channel={channel}&id={event}}"
 RECEIPTS="${DELIVERY_RECEIPTS:-$HOME/logs/delivery-receipts.jsonl}"
 DELIVER_DISCORD="${DELIVER_DISCORD:-1}"
 LOG="${DELIVERY_LOG:-$HOME/logs/deliver.log}"
