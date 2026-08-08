@@ -193,7 +193,19 @@ the end of the string. Fixed in `4244cb1`, with new assertions anchored on exact
   `request_approval → approve → resume → send_message` cycle. Item 6 is expected to fail on the
   documented upstream implementation; record the result and keep approval workflows out of scope
   until it passes.
-- Nothing is deployed. `deliver.sh`, `buzz_publish.sh` and `buzz_routes.env` exist only in the
-  source tree — `~/agent-workforce/bin/` has none of them, and `~/logs/delivery-receipts.jsonl`
-  does not exist, so no producer has yet delivered through the real path.
-- Phase 2a remains gated on that deploy plus the unit installs.
+- ~~Nothing is deployed.~~ **Superseded 2026-08-08.** All three ship in `~/agent-workforce/bin/`
+  and `~/logs/delivery-receipts.jsonl` carries 20 receipts from 12 distinct producers, 19 of them
+  `delivered` with `buzz_result: ok`. The real path works end to end.
+- **What is deployed is now behind source.** `~/agent-workforce/bin/deliver.sh` is the 2026-08-07
+  15:17 build: argv-based (16 KiB ceiling), no `--kind`, no artifact envelope. Every claim about
+  route kinds, stdin bodies or the envelope describes code that is not running until `bin/deploy`
+  is run. Until then the four forum routes are still published as kind 9 — accepted, receipted
+  `ok`, and invisible in Desktop, which queries `kinds:[45001]` exclusively.
+- **A delivery still wakes no agent.** `deliver.sh` publishes as `praetorium`
+  (`b0a6d15f…06fcd`) and every `~/.config/buzz-team/*.toml` `filter` admits only Dave
+  (`82cfc202…616f`) and, for the three workers, marcus (`abbc19dd…916b`). praetorium clears the
+  NIP-OA sibling author gate and is then dropped by the rules, so no route, kind or `p` tag can
+  make a scheduled delivery dispatch a turn. Admitting it is a `[[rules]]` edit, and a malformed
+  evalexpr filter crash-loops the unit — so edit, restart and verify must be one step, one agent
+  first, proven by `CPUUsageNSec` against an idle sibling rather than by log lines.
+- Phase 2a remains gated on the deploy plus the unit installs.
