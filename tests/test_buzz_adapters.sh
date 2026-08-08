@@ -196,15 +196,40 @@ run_proposal() {  # <sandbox> [extra env assignments are the caller's]
   AGENT_RUN_LOG="$h/agent_run.log" run_adapter "$h" deliver_proposal.sh
 }
 
+# A message that only names the file is not a review surface: for these producers the
+# proposal WAS the delivery, and Buzz received a pointer to a path no reader can open.
+inbox_proposal() {  # inbox_proposal <sandbox> <slug> — the artifact the run committed
+  local d="$1/agent-worktrees/inbox/_inbox/agents"
+  mkdir -p "$d"
+  printf '# Proposal\n\nthe body a reviewer has to read\n' > "$d/$(date +%F)_$2.md"
+}
+
 h=$(sandbox)
 proposal_sandbox "$h" "$(date -Is)" PROPOSAL raw-ingest
+inbox_proposal "$h" raw-ingest
 rc=$(run_proposal "$h")
 assert 'exits 0' "[ '$rc' = 0 ]"
 assert 'exactly one call' "[ \"\$(calls '$h')\" -eq 1 ]"
 assert 'routed to research' "argv '$h' | grep -q -- '--route research'"
 assert 'the proposal path is named' \
   "argv '$h' | grep -q \"proposed _inbox/agents/\$(date +%F)_raw-ingest.md\""
-assert 'a status payload attaches nothing' "! argv '$h' | grep -q -- '--file'"
+assert 'the proposal itself is carried, not just named' \
+  "argv '$h' | grep -q -- \"--file $h/agent-worktrees/inbox/_inbox/agents/\$(date +%F)_raw-ingest.md\""
+assert 'typed as a proposal for the envelope' "argv '$h' | grep -q -- '--artifact-type proposal'"
+assert 'the vault target is stated' \
+  "argv '$h' | grep -q -- \"--target _inbox/agents/\$(date +%F)_raw-ingest.md\""
+assert 'the status line survives as the note digest' "argv '$h' | grep -q -- '--note PROPOSAL'"
+
+echo '--- deliver_proposal.sh: a named proposal that is not on disk still delivers ---'
+# The record is written before the push, and the worktree is reset on a boundary
+# violation — so "cost.log names a proposal" does not guarantee a readable file.
+h=$(sandbox)
+proposal_sandbox "$h" "$(date -Is)" PROPOSAL raw-ingest
+rc=$(run_proposal "$h")
+assert 'exits 0' "[ '$rc' = 0 ]"
+assert 'still exactly one call' "[ \"\$(calls '$h')\" -eq 1 ]"
+assert 'nothing is attached' "! argv '$h' | grep -q -- '--file'"
+assert 'and the outcome is still reported' "argv '$h' | grep -q 'PROPOSAL — proposed'"
 
 h=$(sandbox)
 proposal_sandbox "$h" "$(date -Is)" NOPROPOSAL none

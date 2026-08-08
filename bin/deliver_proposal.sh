@@ -18,6 +18,7 @@ TASK="${DELIVERY_TASK:-}"
 RUN_LOG="${AGENT_RUN_LOG:-$HOME/agent-workforce/logs/agent_run.log}"
 MARKER="${DELIVERY_RUN_MARKER:-}"
 SUBJECT="${REPORT_SUBJECT:-[Praetorium] ${TASK:-agent run}}"
+INBOX_DIR="${AGENT_INBOX_DIR:-$HOME/agent-worktrees/inbox/_inbox/agents}"
 
 # shellcheck source=bin/run_record.sh
 . "$BIN_DIR/run_record.sh"
@@ -62,8 +63,21 @@ if ! is_this_run "$record"; then
   exit 0
 fi
 
+artifact_args() {  # artifact_args <record> — the proposal itself, when this run wrote one
+  local ts proposal name path
+  proposal=$(field "$1" proposal); [ -n "$proposal" ] || return 0
+  ts=$(field "$1" ts); name="${ts%%T*}_${proposal}.md"; path="$INBOX_DIR/$name"
+  [ -r "$path" ] || { note "proposal named but not readable at $path"; return 0; }
+  printf '%s\n' --file "$path" --artifact-type proposal \
+    --target "_inbox/agents/$name" --operation create
+}
+
 line=$(status_line "$record")
 note "$line"
-delivery_handoff --subject "$SUBJECT" --message "$line"
+
+payload=()
+while IFS= read -r arg; do payload+=("$arg"); done < <(artifact_args "$record")
+delivery_handoff --subject "$SUBJECT" --message "$line" --note "$line" \
+  ${payload[@]+"${payload[@]}"}
 
 exit 0
