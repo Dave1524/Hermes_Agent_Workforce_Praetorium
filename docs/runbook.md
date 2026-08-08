@@ -288,3 +288,37 @@ The box side now SURFACES the raw pending-proposal backlog (count + oldest age) 
 `praetorium-status.sh` and the overnight morning report (NUC-26); until the approvals feed lands,
 the scorecard's approval cells still read "pending (awaiting Mac sync)". Infra health lives in
 `praetorium-status.sh` (NUC-18) — linked, not duplicated.
+
+## Buzz delivery surface
+
+Every scheduled unit's output reaches Buzz through **one** script, `bin/deliver.sh`. Each other
+`bin/deliver_*.sh` is an input adapter: it decides what this run produced and calls the transport
+once. `tests/test_buzz_unit_wiring.sh` enforces that nothing else invokes `buzz messages send`,
+`buzz social publish`, `buzz canvas set` or `hermes send`, so "did it actually send?" has exactly
+one answer and exactly one receipt (`~/logs/delivery-receipts.jsonl`).
+
+**Where each unit delivers** is `bin/buzz_producers.tsv` — unit, route, payload kind, wired/pending,
+and whether silence is allowed. `bin/audit_buzz_dual_run.sh` reads it, not the journal.
+
+**Where a route points, and what kind it publishes**, is `bin/buzz_routes.env`:
+`ROUTE_<key>=<channel-uuid>` plus `ROUTE_<key>_kind=<9|45001>`. The kind is a property of the
+destination, never of the producer — `ops` and `signals` are streams (kind 9), `research`,
+`content`, `bd` and `approvals` are forums (kind 45001). This matters because Desktop's forum view
+queries `kinds:[45001]` exclusively: a kind-9 post into a forum channel is accepted by the relay
+and receipted `ok` while no reader ever sees it. 45003 (forum comment) is not a legal route kind —
+the CLI requires `--reply-to` for it and no producer replies to a thread.
+
+**What an artifact-carrying message looks like** is `docs/buzz-artifact-envelope.md` — a nine-field
+typed block above the body, so a reviewer or a Mac-side broker can identify, hash-check and
+supersede a delivery without parsing prose. Read that before changing any envelope field; the
+consumer is not in this repo and will not fail loudly.
+
+**Canvas** (living documents) is one designated writer per route, declared in the manifest's
+`canvas` column and enforced by the wiring test. `--canvas mirror` writes the canvas *and* posts
+the message; `--canvas only` writes the canvas and posts nothing. An unchanged canvas is skipped
+rather than rewritten, so a digest that has not moved does not churn the document.
+
+**The delivery boundary is fail-soft by contract:** a config or transport error exits 0 and files a
+categorized receipt. A work-producing unit is never marked failed by a delivery hiccup — that
+would fire `OnFailure=agent-alert@`, which would try to deliver the alert down the same broken
+path. Silence is not the failure signal; the receipts are.

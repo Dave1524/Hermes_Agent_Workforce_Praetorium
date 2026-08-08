@@ -12,6 +12,14 @@
 #   silence  never   — every expected fire must produce a receipt; none is a gap
 #            allowed — the job speaks only when it has something to say, so a fire
 #                      with no receipt is a correct outcome, not a missed delivery
+#   canvas   none    — posts messages only
+#            mirror  — also rewrites the route's canvas (living document)
+#            only    — rewrites the canvas and posts nothing
+#
+# A canvas is ONE document per channel, so it needs one writer: two producers mirroring
+# into the same route would each overwrite the other's document on every fire, and
+# `buzz canvas set` is a blind replace with no base-hash and no history to recover from.
+# The wiring test enforces at most one `mirror`/`only` per route.
 #
 # The expected-fire calendar is NOT duplicated here — audit_buzz_dual_run.sh derives it
 # from each unit's own systemd/<stem>.timer OnCalendar, so the two cannot drift. A unit
@@ -26,21 +34,21 @@
 # it joins `ops`. It is a weekly rollup of agent-run outcomes — the same operational feed
 # as the morning report — and a rollup nobody reads is a rollup that stops being written.
 #
-# unit	route	payload	status	silence
-overnight-pre-snapshot.service	ops	file	wired	never
-overnight-morning-report.service	ops	file	wired	never
-praetorium-daily-plan.service	ops	file	wired	never
-praetorium-eod-summary.service	ops	file	wired	never
-scorecard.service	ops	summary	wired	never
-agent-alert@.service	ops	summary	wired	allowed
-agent-proposal.service	research	status	wired	never
-raw-ingest.service	research	status	wired	never
-knowledge-digest.service	research	status	wired	never
-weekly-pre-assembly.service	research	status	wired	never
-augustus-content.service	content	summary	wired	never
-content-change-dispatch.service	content	summary	wired	allowed
-bd-stall-radar.service	bd	status	wired	never
-bd-followup-drafts.service	bd	file	wired	allowed
-m1-signal-scan.service	signals	status	wired	never
-agent-inbox-sync.service	approvals	summary	wired	allowed
-inbox-backlog-alert.service	approvals	summary	wired	allowed
+# unit	route	payload	status	silence	canvas
+overnight-pre-snapshot.service	ops	file	wired	never	none
+overnight-morning-report.service	ops	file	wired	never	none
+praetorium-daily-plan.service	ops	file	wired	never	none
+praetorium-eod-summary.service	ops	file	wired	never	none
+scorecard.service	ops	summary	wired	never	mirror
+agent-alert@.service	ops	summary	wired	allowed	none
+agent-proposal.service	research	status	wired	never	none
+raw-ingest.service	research	status	wired	never	none
+knowledge-digest.service	research	status	wired	never	none
+weekly-pre-assembly.service	research	status	wired	never	none
+augustus-content.service	content	summary	wired	never	none
+content-change-dispatch.service	content	summary	wired	allowed	none
+bd-stall-radar.service	bd	status	wired	never	none
+bd-followup-drafts.service	bd	file	wired	allowed	none
+m1-signal-scan.service	signals	status	wired	never	none
+agent-inbox-sync.service	approvals	summary	wired	allowed	none
+inbox-backlog-alert.service	approvals	summary	wired	allowed	none

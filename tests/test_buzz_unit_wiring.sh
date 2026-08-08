@@ -29,13 +29,13 @@ code() { grep -v '^[[:space:]]*#' "$1"; }
 echo '--- the manifest itself is well-formed ---'
 assert 'manifest exists' "[ -f '$MANIFEST' ]"
 assert 'route table exists' "[ -f '$ROUTES' ]"
-assert 'every row has five tab-separated columns' \
-  "[ \"\$(rows | awk -F'\t' 'NF!=5' | wc -l)\" -eq 0 ]"
+assert 'every row has six tab-separated columns' \
+  "[ \"\$(rows | awk -F'\t' 'NF!=6' | wc -l)\" -eq 0 ]"
 assert 'no duplicate units' \
   "[ \"\$(rows | cut -f1 | sort | uniq -d | wc -l)\" -eq 0 ]"
 
 echo '--- every declared route resolves to a key in the route table ---'
-while IFS=$'\t' read -r unit route payload status silence; do
+while IFS=$'\t' read -r unit route payload status silence canvas; do
   assert "route '$route' is declared for $unit" "grep -q '^ROUTE_${route}=' '$ROUTES'"
   case "$payload" in
     file|status|summary) ;;
@@ -49,7 +49,19 @@ while IFS=$'\t' read -r unit route payload status silence; do
     never|allowed) ;;
     *) assert "silence policy '$silence' for $unit is known" "false" ;;
   esac
+  case "$canvas" in
+    none|mirror|only) ;;
+    *) assert "canvas mode '$canvas' for $unit is known" "false" ;;
+  esac
 done < <(rows)
+
+echo '--- at most one producer per route writes that route canvas ---'
+# `buzz canvas set` is a blind replace: no base hash, no conflict, no history. Two
+# writers on one route do not merge, they alternate, and the loser's document is gone
+# with nothing in either receipt to say so — both report canvas_result=ok.
+doubled=$(rows | awk -F'\t' '$6!="none" {print $2}' | sort | uniq -d)
+assert 'no route has two canvas writers' "[ -z '$doubled' ]"
+[ -n "$doubled" ] && echo "      doubled routes: $doubled"
 
 echo '--- the route table carries routes only, never credentials or identities ---'
 assert 'route table has no npub/nsec/pubkey material' \
@@ -78,7 +90,7 @@ while IFS= read -r route; do
 done < <(rows | cut -f2 | sort -u)
 
 echo '--- wired units carry their route and a delivery hook ---'
-while IFS=$'\t' read -r unit route payload status silence; do
+while IFS=$'\t' read -r unit route payload status silence canvas; do
   f="$REPO_ROOT/systemd/$unit"
   assert "$unit has a unit source in this repo" "[ -f '$f' ]"
   [ -f "$f" ] || continue
@@ -121,7 +133,7 @@ echo '--- wired artifact-lookup units anchor to THIS run ---'
 # time, so there is no prior run's artifact to be confused with. Where a summary
 # adapter does read run-scoped state, that is the adapter's contract and is pinned in
 # tests/test_buzz_adapters.sh, not here.
-while IFS=$'\t' read -r unit route payload status silence; do
+while IFS=$'\t' read -r unit route payload status silence canvas; do
   [ "$status" = wired ] || continue
   case "$payload" in file|status) ;; *) continue ;; esac
   f="$REPO_ROOT/systemd/$unit"
@@ -149,13 +161,31 @@ while IFS=$'\t' read -r unit route payload status silence; do
   esac
 done < <(rows)
 
+echo '--- the manifest canvas column matches what the adapter actually passes ---'
+# The manifest is what the one-writer-per-route rule is enforced against, so a row that
+# says `none` while its adapter passes `--canvas mirror` makes that rule decorative.
+while IFS=$'\t' read -r unit route payload status silence canvas; do
+  [ "$status" = wired ] || continue
+  f="$REPO_ROOT/systemd/$unit"
+  [ -f "$f" ] || continue
+  declared=none
+  for hook in $(code "$f" | grep -E '^ExecSt(art|op)Post=' | sed 's/^[^=]*=//' | awk '{print $1}'); do
+    s="$REPO_ROOT/bin/${hook##*/}"
+    [ -f "$s" ] || continue
+    mode=$(grep -v '^[[:space:]]*#' "$s" | sed -n 's/.*--canvas \([a-z][a-z]*\).*/\1/p' | tail -1)
+    [ -n "$mode" ] && declared="$mode"
+  done
+  assert "$unit's adapter passes canvas '$canvas' as the manifest declares" \
+    "[ '$declared' = '$canvas' ]"
+done < <(rows)
+
 echo '--- every wired unit states where its receipt runtime comes from ---'
 # The receipt's `runtime` answers "which profile produced this". A unit either runs no
 # model (DELIVERY_RUNTIME=none) or names the agent_propose.sh task whose cost.log record
 # the adapter reads it back from. Declaring neither is how the field silently read
 # `unknown` on every hook-fired receipt, while the one unit with an EnvironmentFile
 # inherited a box-wide AGENT_PROFILE and named a persona that had not run.
-while IFS=$'\t' read -r unit route payload status silence; do
+while IFS=$'\t' read -r unit route payload status silence canvas; do
   [ "$status" = wired ] || continue
   f="$REPO_ROOT/systemd/$unit"
   [ -f "$f" ] || continue
@@ -174,7 +204,7 @@ offenders=$(
     [ -f "$f" ] || continue
     case "$f" in */deliver.sh) continue ;; esac
     if grep -v '^[[:space:]]*#' "$f" \
-         | grep -qE 'hermes(_cli\.main)? send|buzz messages send|buzz social publish'; then
+         | grep -qE 'hermes(_cli\.main)? send|buzz messages send|buzz social publish|buzz canvas set'; then
       basename "$f"
     fi
   done

@@ -63,12 +63,15 @@ DAY_NAMES = {"Mon": 0, "Tue": 1, "Wed": 2, "Thu": 3, "Fri": 4, "Sat": 5, "Sun": 
 ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 
+# Reads only the columns it consumes. The manifest's column count is asserted once, in
+# tests/test_buzz_unit_wiring.sh; unpacking a fixed arity here would make every future
+# column a second place to update and would break this audit from a change it ignores.
 def load_manifest():
     rows = []
     for line in open(manifest_path, encoding="utf-8"):
         if line.startswith("#") or not line.strip():
             continue
-        unit, route, payload, status, silence = line.rstrip("\n").split("\t")
+        unit, route, payload, status, silence = line.rstrip("\n").split("\t")[:5]
         rows.append(dict(unit=unit, route=route, payload=payload,
                          status=status, silence=silence))
     return rows
