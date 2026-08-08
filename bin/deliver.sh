@@ -39,6 +39,7 @@ set -uo pipefail
 
 BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROUTES_FILE="${BUZZ_ROUTES_FILE:-$BIN_DIR/buzz_routes.env}"
+AGENTS_FILE="${BUZZ_AGENTS_FILE:-$BIN_DIR/buzz_agents.env}"
 NOTE_BIN="${BUZZ_NOTE_BIN:-$BIN_DIR/buzz_note.py}"
 RECEIPT_BIN="${DELIVERY_RECEIPT_BIN:-$BIN_DIR/delivery_receipt.py}"
 HELPER="${BUZZ_DELIVER_HELPER:-$BIN_DIR/buzz_publish.sh}"
@@ -118,6 +119,7 @@ while [ $# -gt 0 ]; do
 done
 
 error=""; detail=""; anchor="none"; channel=""; kind=9
+notify=""; notify_pubkey=""
 artifact_id=""; content_sha256=""; supersedes="none"
 discord_attempted=false; discord_result="skipped"
 buzz_attempted=false;    buzz_result="skipped";  buzz_event_id=""; buzz_payload="none"
@@ -146,7 +148,7 @@ emit_receipt() {  # emit_receipt <outcome>
     # The slug, not the pubkey: `buzz messages send` answers
     # {accepted, event_id, message} and never echoes the author back. Resolve the
     # author from the relay via buzz_event_id when an audit needs it.
-    "identity=$IDENTITY"
+    "identity=$IDENTITY" "notify=$notify"
     "outcome=$1" "error=$error" "detail=$detail"
   )
   if [ -n "$artifact" ] && [ -f "$artifact" ]; then
@@ -305,6 +307,24 @@ resolve_route_kind() {
   esac
 }
 
+# Every ~/.config/buzz-team/*.toml runs `require_mention = true`, so an event with no `p`
+# tag is dropped by every agent whatever its author. An unmentioned delivery therefore
+# reaches the channel and wakes nobody — receipted `delivered`, and silent. Who reads a
+# route is one decision per destination, like the kind, and the slug is resolved against a
+# sibling table so the route file keeps its property of naming no identity.
+resolve_route_mention() {
+  local slug
+  slug=$(sed -n "s/^ROUTE_${route}_notify=//p" "$ROUTES_FILE" | tail -1 | tr -d "\"' \\r")
+  { [ -z "$slug" ] || [ "$slug" = none ]; } && return 0
+  notify_pubkey=$(sed -n "s/^AGENT_${slug}=//p" "$AGENTS_FILE" 2>/dev/null \
+                    | tail -1 | tr -d "\"' \\r")
+  if [ -z "$notify_pubkey" ]; then
+    fault config_error "route '$route' notifies '$slug', which has no pubkey in $AGENTS_FILE"
+    return 1
+  fi
+  notify="$slug"
+}
+
 if ! resolve_route; then
   fault config_error "route '$route' has no channel UUID in $ROUTES_FILE"
   settle
@@ -312,6 +332,9 @@ fi
 if ! resolve_route_kind; then
   settle
 fi
+# An unresolvable owner costs the mention, never the delivery: an unread message in the
+# channel still reaches Dave, whereas a dropped one reaches nobody at all.
+resolve_route_mention
 if [ ! -x "$HELPER" ]; then
   fault config_error "credential helper not executable: $HELPER"
   settle
@@ -330,7 +353,9 @@ buzz_call() {
 categorize() {  # map the Buzz CLI's documented exit codes + error body to a category
   local rc=$1 body; body=$(cat "$helper_err" 2>/dev/null)
   case "$body" in
-    *"not a member"*|*"not a relay member"*|*membership*|*forbidden*)
+    # `--mention` of a non-member is fatal, not a dropped tag: buzz-cli rejects the whole
+    # send with a usage error (crates/buzz-cli/src/commands/messages.rs:601).
+    *"not a member"*|*"not a relay member"*|*"not channel members"*|*membership*|*forbidden*)
       echo membership_error; return ;;
   esac
   case "$body" in
@@ -508,6 +533,7 @@ send_message() {
   local send_args=(messages send --channel "$channel" --content -)
   [ "$kind" != 9 ] && send_args+=(--kind "$kind")
   [ "$buzz_payload" = attached ] && send_args+=(--file "$artifact")
+  [ -n "$notify_pubkey" ] && send_args+=(--mention "$notify_pubkey")
   call_stdin="$content_file"
   buzz_call "${send_args[@]}"
   local rc=$?

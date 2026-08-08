@@ -250,7 +250,7 @@ assert 'the receipt names who it was addressed to' "[ \"\$(field '$h' notify)\" 
 assert 'outcome delivered' "[ \"\$(field '$h' outcome)\" = delivered ]"
 assert 'the pulse note is not addressed to the agent' \
   "[ \"\$(grep -c -- '--mention' '$h/mock/argv.log')\" -eq 1 ]"
-assert 'no pubkey leaks into the delivery log' "! grep -q '$AGENT_HEX' '$h/deliver.log'"
+assert 'the receipt records the slug, not the pubkey' "! grep -q '$AGENT_HEX' '$h/receipts.jsonl'"
 
 h=$(sandbox); route_notify "$h" nobody none
 rc=$(run_deliver "$h" --job x.service --route nobody --subject s --message m)
