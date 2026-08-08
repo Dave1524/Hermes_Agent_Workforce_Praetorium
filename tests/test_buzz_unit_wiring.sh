@@ -57,6 +57,26 @@ assert 'route table has no npub/nsec/pubkey material' \
 assert 'every non-comment line is a ROUTE_ assignment' \
   "[ \"\$(grep -v '^#' '$ROUTES' | grep -v '^[[:space:]]*\$' | grep -cv '^ROUTE_[a-z][a-z0-9_-]*=')\" -eq 0 ]"
 
+echo '--- every route declares an event kind deliver.sh will accept ---'
+# A kind deliver.sh rejects is a config_error receipt on every run of every producer on
+# that route — the route goes quiet while each unit still exits 0. Catch it here, where
+# the table is edited, not on the next scheduled fire.
+kind_lines() { grep '^ROUTE_[a-z][a-z0-9_-]*_kind=' "$ROUTES"; }
+while IFS= read -r line; do
+  [ -n "$line" ] || continue
+  key=${line%%=*}; key=${key#ROUTE_}; key=${key%_kind}
+  assert "kind for '$key' names a route that exists" "grep -q '^ROUTE_${key}=' '$ROUTES'"
+  case "${line#*=}" in
+    9|45001) assert "kind for '$key' is a value deliver.sh sends" "true" ;;
+    *) assert "kind for '$key' is 9 or 45001, not '${line#*=}'" "false" ;;
+  esac
+done < <(kind_lines)
+
+while IFS= read -r route; do
+  assert "route '$route' states its kind rather than defaulting" \
+    "grep -q '^ROUTE_${route}_kind=' '$ROUTES'"
+done < <(rows | cut -f2 | sort -u)
+
 echo '--- wired units carry their route and a delivery hook ---'
 while IFS=$'\t' read -r unit route payload status silence; do
   f="$REPO_ROOT/systemd/$unit"

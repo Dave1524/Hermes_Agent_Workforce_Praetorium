@@ -190,6 +190,46 @@ assert 'exits 0' "[ '$rc' = 0 ]"
 assert 'empty ROUTE_ value is a config_error' "[ \"\$(field '$h' error)\" = config_error ]"
 assert 'discord still attempted' "[ \"\$(field '$h' discord_result)\" = ok ]"
 
+echo '--- the route table decides the event kind, and only 9 or 45001 are sendable ---'
+# A forum channel renders kinds:[45001] only, so a kind-9 post into one is accepted by
+# the relay, receipted `ok`, and invisible to every reader — the failure mode that looks
+# exactly like success. The kind therefore has to be pinned per destination and asserted.
+sent_args() { grep 'messages send' "$1/mock/argv.log"; }
+route_kind() { printf 'ROUTE_%s=%s\nROUTE_%s_kind=%s\n' "$2" "$CH_ID" "$2" "$3" >> "$1/routes.env"; }
+
+h=$(sandbox); route_kind "$h" forum 45001
+rc=$(run_deliver "$h" --job x.service --route forum --subject s --message m)
+assert 'exits 0' "[ '$rc' = 0 ]"
+assert 'a forum route sends --kind 45001' "sent_args '$h' | grep -q -- '--kind 45001'"
+assert 'and the receipt records the kind that was sent' "[ \"\$(field '$h' kind)\" = 45001 ]"
+assert 'outcome delivered' "[ \"\$(field '$h' outcome)\" = delivered ]"
+
+h=$(sandbox); printf 'ROUTE_ops_kind=9\n' >> "$h/routes.env"
+rc=$(run_deliver "$h" --job x.service --route ops --subject s --message m)
+assert 'a stream route sends no --kind at all' "! sent_args '$h' | grep -q -- '--kind'"
+assert 'and still receipts kind 9' "[ \"\$(field '$h' kind)\" = 9 ]"
+
+h=$(sandbox)
+rc=$(run_deliver "$h" --job x.service --route ops --subject s --message m)
+assert 'a route with no kind line defaults to 9, unchanged' \
+  "! sent_args '$h' | grep -q -- '--kind'"
+assert 'and delivers exactly as before' "[ \"\$(field '$h' outcome)\" = delivered ]"
+
+# 45003 is a forum COMMENT: buzz-cli refuses it without --reply-to, and no producer here
+# replies to an existing thread. Rejecting it in our own config keeps the receipt honest
+# instead of surfacing a CLI usage error as transport_error.
+h=$(sandbox); route_kind "$h" comment 45003
+rc=$(run_deliver "$h" --job x.service --route comment --subject s --message m)
+assert 'exits 0' "[ '$rc' = 0 ]"
+assert '45003 is a config_error, not a send' "[ \"\$(field '$h' error)\" = config_error ]"
+assert 'the helper is never invoked for it' "[ \"\$(ncalls '$h')\" -eq 0 ]"
+assert 'discord still attempted' "[ \"\$(field '$h' discord_result)\" = ok ]"
+
+h=$(sandbox); route_kind "$h" bogus 1234
+rc=$(run_deliver "$h" --job x.service --route bogus --subject s --message m)
+assert 'an unsupported kind is a config_error' "[ \"\$(field '$h' error)\" = config_error ]"
+assert 'and nothing is sent under it' "[ \"\$(ncalls '$h')\" -eq 0 ]"
+
 echo '--- missing credential helper ---'
 h=$(sandbox)
 rc=$(HELPER="$h/nope.sh" run_deliver "$h" --job x.service --route ops --subject s --message m)
