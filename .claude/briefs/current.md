@@ -18,6 +18,14 @@ commit `02f640bc4559c48ac0c2ec595ef34dd2c294b0db` ("feat(desktop): unify add age
 `a3688e512e8df7f547086620a0daa39ebbd4d522` per `docs/buzz-phase0-spike.md`). Neither binary answers
 `--version`; upstream agreement is confirmed per-claim with `strings`, never assumed.
 
+> **Clone note (2026-08-08).** That clone is gone; the one on disk at `/home/dave/REPOS/buzz` is
+> `c71f658` ("Polish advanced agent setup and Welcome composer (#4926)", 2026-08-07) — *older*
+> than the commit cited above. Every claim in the table was re-checked against it and every one
+> holds; only line numbers shift (G3's `MAX_EVENT_CONTENT_BYTES` is at `ingest.rs:1919`, not
+> `:1985`). **Locate these by symbol, not by line** — the line numbers are the perishable half of
+> each citation, and a reader who greps the line and finds something else will wrongly conclude
+> the claim was refuted.
+
 | # | Claim | Upstream citation | Deployed confirmation |
 |---|---|---|---|
 | G1 | `--content -` reads the body from **stdin** | `crates/buzz-cli/src/validate.rs:168-179` (`read_or_stdin`), called at `crates/buzz-cli/src/commands/messages.rs:582` **before** size validation | `buzz messages send --help` → `Use '-' to read from stdin` |
