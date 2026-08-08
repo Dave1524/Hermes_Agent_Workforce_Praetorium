@@ -38,7 +38,12 @@ env >> "$MOCK_DIR/env.log"
 sub=$2
 prev=""
 for a in "$@"; do
-  [ "$prev" = "--content" ] && printf '%s' "$a" > "$MOCK_DIR/content.$sub"
+  if [ "$prev" = "--content" ]; then
+    # `--content -` is the CLI's documented stdin form; the body never appears in argv.
+    if [ "$a" = "-" ]; then cat > "$MOCK_DIR/content.$sub"
+    else printf '%s' "$a" > "$MOCK_DIR/content.$sub"
+    fi
+  fi
   prev="$a"
 done
 case "$sub" in

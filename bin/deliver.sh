@@ -447,8 +447,9 @@ if [ -n "$artifact" ]; then
 fi
 
 # ── 5b. compose the content inside the CLI's byte ceiling ───────────────────────
-fit_body() {  # fit_body <budget> — body on stdin, cut at a line boundary if oversized
-  python3 - "$1" "${artifact:-}" <<'PY'
+# The program is passed with -c rather than on stdin: `python3 -` would consume the
+# body, since the interpreter reads its own source from the same stream.
+FIT_BODY_PY=$(cat <<'PY'
 import sys
 
 budget, origin = int(sys.argv[1]), sys.argv[2]
@@ -468,6 +469,10 @@ if cut > 0:
 sys.stdout.write(head.decode("utf-8", "replace"))
 sys.stdout.write(notice.format(n=len(head)))
 PY
+)
+
+fit_body() {  # fit_body <budget> — body on stdin, cut at a line boundary if oversized
+  python3 -c "$FIT_BODY_PY" "$1" "${artifact:-}"
 }
 
 header="$subject"
@@ -504,18 +509,18 @@ send_message() {
   [ "$kind" != 9 ] && send_args+=(--kind "$kind")
   [ "$buzz_payload" = attached ] && send_args+=(--file "$artifact")
   call_stdin="$content_file"
-  if buzz_call "${send_args[@]}"; then
-    call_stdin="/dev/null"
-    buzz_result="ok"
-    buzz_event_id=$(read_event_id)
-    [ -n "$artifact_id" ] && record_artifact_event "$artifact_id" "$buzz_event_id"
-    return 0
-  fi
-  local rc=$?  # must be the first statement: any assignment would overwrite it with 0
+  buzz_call "${send_args[@]}"
+  local rc=$?
   call_stdin="/dev/null"
-  buzz_result="failed"
-  fault "$(categorize "$rc")" "buzz messages send failed for route $route"
-  return 1
+  if [ "$rc" -ne 0 ]; then
+    buzz_result="failed"
+    fault "$(categorize "$rc")" "buzz messages send failed for route $route"
+    return 1
+  fi
+  buzz_result="ok"
+  buzz_event_id=$(read_event_id)
+  [ -n "$artifact_id" ] && record_artifact_event "$artifact_id" "$buzz_event_id"
+  return 0
 }
 
 if [ "$canvas_mode" != only ] && ! send_message; then
