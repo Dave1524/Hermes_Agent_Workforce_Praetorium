@@ -4,11 +4,23 @@
 # usage: deliver.sh --job <unit> --route <key> --subject <text>
 #                   [--message <text>] [--file <exact-path>] [--note <digest>]
 #                   [--runtime <name>] [--run-marker <path>] [--max-age-secs <n>]
+#                   [--canvas off|mirror|only]
+#                   [--artifact-type <t>] [--target <path>] [--operation <op>]
+#                   [--base-revision <rev>] [--risk-tier auto|review|strict]
+#                   [--acceptance-check <text>]...
 #
 # Every other script in bin/ is an INPUT adapter: it parses its own caller interface,
 # selects a payload, and invokes this once. Nothing else may call `hermes send`,
-# `buzz messages send` or `buzz social publish` — tests/test_buzz_unit_wiring.sh
-# enforces that.
+# `buzz messages send`, `buzz social publish` or `buzz canvas set` —
+# tests/test_buzz_unit_wiring.sh enforces that.
+#
+# THE ARTIFACT IS THE REVIEW SURFACE. A message that only names what a run produced is
+# not reviewable in Buzz, and for the proposal producers it was the whole delivery. The
+# body therefore travels on stdin (`--content -`), which removes the kernel's
+# MAX_ARG_STRLEN ceiling on a single argument, and the only remaining limit is the Buzz
+# CLI's own MAX_CONTENT_BYTES. An artifact-carrying message leads with a typed envelope
+# so a downstream broker can identify, hash-check and supersede it without parsing prose;
+# docs/buzz-artifact-envelope.md is the normative spec.
 #
 # FAIL-SOFT BY CONTRACT. Configuration errors and transport errors both exit 0, because
 # a work-producing unit that is marked failed by a delivery hiccup fires
@@ -32,9 +44,22 @@ RECEIPT_BIN="${DELIVERY_RECEIPT_BIN:-$BIN_DIR/delivery_receipt.py}"
 HELPER="${BUZZ_DELIVER_HELPER:-$BIN_DIR/buzz_publish.sh}"
 IDENTITY="${BUZZ_SERVICE_IDENTITY:-praetorium}"
 NOTE_MAX_BYTES="${BUZZ_NOTE_MAX_BYTES:-800}"
-# Ceiling for an artifact carried as message body. Raising it past ~128 KiB cannot work:
-# the content is one argv string and the kernel caps a single argument at MAX_ARG_STRLEN.
-INLINE_MAX_BYTES="${BUZZ_INLINE_MAX_BYTES:-16384}"
+# buzz-cli refuses a larger --content outright (crates/buzz-cli/src/validate.rs:4,
+# MAX_CONTENT_BYTES = 65_536; the relay itself allows 256 KiB, so the CLI is the binding
+# constraint). It is a ceiling on the WHOLE content — subject and envelope included — so
+# the artifact's share is computed by subtraction rather than assumed.
+CONTENT_CEILING=65536
+CONTENT_MAX_BYTES="${BUZZ_CONTENT_MAX_BYTES:-$CONTENT_CEILING}"
+case "$CONTENT_MAX_BYTES" in ''|*[!0-9]*) CONTENT_MAX_BYTES=$CONTENT_CEILING ;; esac
+# Legacy knob: it bounded the artifact when the body was one argv string. Honoured only
+# downwards, so a caller that pinned it still gets a smaller message, never a larger one.
+case "${BUZZ_INLINE_MAX_BYTES:-}" in
+  ''|*[!0-9]*) ;;
+  *) [ "$BUZZ_INLINE_MAX_BYTES" -lt "$CONTENT_MAX_BYTES" ] \
+       && CONTENT_MAX_BYTES="$BUZZ_INLINE_MAX_BYTES" ;;
+esac
+ARTIFACT_STATE="${BUZZ_ARTIFACT_STATE:-$HOME/var/buzz-artifact-ids}"
+CANVAS_STATE="${BUZZ_CANVAS_STATE:-$HOME/var/buzz-canvas-hashes}"
 # Both defaults are assigned on their own line, never as a ${VAR:-default}: bash ends that
 # expansion at the first unescaped `}`, so a literal {placeholder} in the default loses its
 # closing brace and appends a stray `}` — to the caller's value too, not just the default.
@@ -66,27 +91,38 @@ log_line() {
 }
 
 job=""; route=""; subject=""; message=""; artifact=""; digest=""; runtime="unknown"
-run_marker=""; max_age=0
+run_marker=""; max_age=0; canvas_mode="off"
+artifact_type="report"; target="none"; operation="none"; base_revision="unknown"
+risk_tier="review"; acceptance_checks=()
 while [ $# -gt 0 ]; do
   case "$1" in
-    --job)          job="${2:-}" ;;
-    --route)        route="${2:-}" ;;
-    --subject)      subject="${2:-}" ;;
-    --message)      message="${2:-}" ;;
-    --file)         artifact="${2:-}" ;;
-    --note)         digest="${2:-}" ;;
-    --runtime)      runtime="${2:-}" ;;
-    --run-marker)   run_marker="${2:-}" ;;
-    --max-age-secs) max_age="${2:-0}" ;;
+    --job)              job="${2:-}" ;;
+    --route)            route="${2:-}" ;;
+    --subject)          subject="${2:-}" ;;
+    --message)          message="${2:-}" ;;
+    --file)             artifact="${2:-}" ;;
+    --note)             digest="${2:-}" ;;
+    --runtime)          runtime="${2:-}" ;;
+    --run-marker)       run_marker="${2:-}" ;;
+    --max-age-secs)     max_age="${2:-0}" ;;
+    --canvas)           canvas_mode="${2:-off}" ;;
+    --artifact-type)    artifact_type="${2:-report}" ;;
+    --target)           target="${2:-none}" ;;
+    --operation)        operation="${2:-none}" ;;
+    --base-revision)    base_revision="${2:-unknown}" ;;
+    --risk-tier)        risk_tier="${2:-review}" ;;
+    --acceptance-check) acceptance_checks+=("${2:-}") ;;
     *) log_line "unrecognized argument: $1"; shift; continue ;;
   esac
   shift 2 2>/dev/null || shift
 done
 
-error=""; detail=""; anchor="none"; channel=""
+error=""; detail=""; anchor="none"; channel=""; kind=9
+artifact_id=""; content_sha256=""; supersedes="none"
 discord_attempted=false; discord_result="skipped"
 buzz_attempted=false;    buzz_result="skipped";  buzz_event_id=""; buzz_payload="none"
 pulse_attempted=false;   pulse_result="skipped"; pulse_event_id=""
+canvas_attempted=false;  canvas_result="skipped"
 
 fault() {  # fault <category> <detail> — first fault wins; it is the root cause
   [ -n "$error" ] && return 0
@@ -102,7 +138,9 @@ emit_receipt() {  # emit_receipt <outcome>
     "anchor=$anchor" "run_marker=$run_marker"
     "discord_attempted=$discord_attempted" "discord_result=$discord_result"
     "buzz_attempted=$buzz_attempted" "buzz_result=$buzz_result"
-    "buzz_event_id=$buzz_event_id" "buzz_payload=$buzz_payload"
+    "buzz_event_id=$buzz_event_id" "buzz_payload=$buzz_payload" "kind=$kind"
+    "artifact_id=$artifact_id" "supersedes=$supersedes"
+    "canvas_attempted=$canvas_attempted" "canvas_result=$canvas_result"
     "pulse_attempted=$pulse_attempted" "pulse_result=$pulse_result"
     "pulse_event_id=$pulse_event_id"
     # The slug, not the pubkey: `buzz messages send` answers
@@ -129,8 +167,11 @@ finish() {  # finish <outcome> — one receipt, always exit 0
 
 settle() {
   local ok=0 bad=0 r
-  for r in "$discord_result" "$buzz_result" "$pulse_result"; do
-    [ "$r" = ok ] && ok=$((ok + 1))
+  # `unchanged` is a canvas that already holds exactly this content. Nothing failed and
+  # the intended state is present, so it settles as a success — otherwise a `--canvas
+  # only` producer would report failed on every quiet week, which is most weeks.
+  for r in "$discord_result" "$buzz_result" "$canvas_result" "$pulse_result"; do
+    { [ "$r" = ok ] || [ "$r" = unchanged ]; } && ok=$((ok + 1))
     [ "$r" = failed ] && bad=$((bad + 1))
   done
   [ "$buzz_attempted" = false ] && [ -n "$error" ] && bad=$((bad + 1))
@@ -146,6 +187,20 @@ if [ -z "$job" ] || [ -z "$route" ] || [ -z "$subject" ]; then
 fi
 if [ -z "$message" ] && [ -z "$artifact" ]; then
   fault config_error "no payload: one of --message or --file is required"
+  finish skipped
+fi
+case "$canvas_mode" in
+  off|mirror|only) ;;
+  *) fault config_error "--canvas '$canvas_mode' is not off, mirror or only"; finish skipped ;;
+esac
+# The default leans toward asking Dave. A caller that wants an artifact auto-applied has
+# to say so; nothing may arrive at `auto` by omission, and no confidence score upgrades it.
+case "$risk_tier" in
+  auto|review|strict) ;;
+  *) fault config_error "--risk-tier '$risk_tier' is not auto, review or strict"; finish skipped ;;
+esac
+if [ "$CONTENT_MAX_BYTES" -gt "$CONTENT_CEILING" ]; then
+  fault config_error "content ceiling ${CONTENT_MAX_BYTES}B exceeds the Buzz CLI limit of ${CONTENT_CEILING}B"
   finish skipped
 fi
 
@@ -229,8 +284,32 @@ resolve_route() {
   [ -n "$channel" ]
 }
 
+# The event kind is a property of the DESTINATION, not of the producer: whether a channel
+# is read as a running feed or as reviewable threads is one decision per channel, and
+# scattering it across the units is how half of them would end up disagreeing. 45003 is
+# excluded on purpose — it is a forum COMMENT and buzz-cli requires --reply-to for it
+# (crates/buzz-cli/src/commands/messages.rs:652), and no scheduled producer replies to an
+# existing thread. Rejecting it here keeps the fault on our side of the boundary instead
+# of surfacing as an opaque CLI usage error categorized as a transport failure.
+resolve_route_kind() {
+  kind=$(sed -n "s/^ROUTE_${route}_kind=//p" "$ROUTES_FILE" | tail -1 | tr -d "\"' \\r")
+  [ -n "$kind" ] || kind=9
+  case "$kind" in
+    9|45001) return 0 ;;
+    45003)
+      fault config_error "route '$route' declares kind 45003; a forum comment needs --reply-to and no producer replies"
+      return 1 ;;
+    *)
+      fault config_error "route '$route' declares unsupported kind '$kind' (use 9 or 45001)"
+      return 1 ;;
+  esac
+}
+
 if ! resolve_route; then
   fault config_error "route '$route' has no channel UUID in $ROUTES_FILE"
+  settle
+fi
+if ! resolve_route_kind; then
   settle
 fi
 if [ ! -x "$HELPER" ]; then
@@ -240,9 +319,12 @@ fi
 
 # ── 5. Buzz channel message ─────────────────────────────────────────────────────
 helper_out="$workdir/out"; helper_err="$workdir/err"
+# Set to a file for the calls that pass `--content -`; every other call is given
+# /dev/null so the helper can never inherit and block on the caller's stdin.
+call_stdin="/dev/null"
 buzz_call() {
   env -u BUZZ_PRIVATE_KEY -u BUZZ_AUTH_TAG "$HELPER" "$IDENTITY" "$@" \
-    >"$helper_out" 2>"$helper_err"
+    <"$call_stdin" >"$helper_out" 2>"$helper_err"
 }
 
 categorize() {  # map the Buzz CLI's documented exit codes + error body to a category
@@ -310,50 +392,173 @@ is_media_artifact() {
   return 1
 }
 
-inline_artifact() {  # artifact text, cut at a line boundary inside the byte ceiling
-  python3 - "$artifact" "$INLINE_MAX_BYTES" <<'PY'
+# ── 5a. typed envelope ──────────────────────────────────────────────────────────
+# A pointer is not a review surface, and neither is an artifact a reader has to diff by
+# eye against the last one. The envelope states what this is, what it would change, what
+# it hashes to and which delivery it replaces — enough for a broker to verify a decision
+# without reading the prose. docs/buzz-artifact-envelope.md is the normative spec.
+#
+# artifact_id is derived, not minted: the same job re-delivering the same artifact name
+# must land on the same id or supersession chains break on every restart.
+derive_artifact_id() {
+  printf '%s\0%s' "$job" "$(basename "$artifact")" | sha256sum | cut -c1-16
+}
+
+previous_event() {  # previous_event <artifact_id>
+  [ -r "$ARTIFACT_STATE" ] || return 0
+  sed -n "s/^$1\t//p" "$ARTIFACT_STATE" | tail -1
+}
+
+record_artifact_event() {  # record_artifact_event <artifact_id> <event_id>
+  [ -n "$2" ] || return 0
+  mkdir -p "$(dirname "$ARTIFACT_STATE")" 2>/dev/null || true
+  local tmp="$workdir/artifact-state"
+  { [ -r "$ARTIFACT_STATE" ] && grep -v "^$1	" "$ARTIFACT_STATE"
+    printf '%s\t%s\n' "$1" "$2"; } > "$tmp" 2>/dev/null && mv "$tmp" "$ARTIFACT_STATE"
+}
+
+render_envelope() {
+  python3 - "$artifact_id" "$artifact_type" "$target" "$operation" "$content_sha256" \
+            "$base_revision" "$risk_tier" "$supersedes" "${acceptance_checks[@]}" <<'PY'
+import json, sys
+
+KEYS = ["artifact_id", "artifact_type", "target", "operation",
+        "content_sha256", "base_revision", "risk_tier", "supersedes"]
+values, checks = sys.argv[1:1 + len(KEYS)], sys.argv[1 + len(KEYS):]
+out = ["```yaml"]
+out += ["%s: %s" % (k, json.dumps(v)) for k, v in zip(KEYS, values)]
+if checks:
+    out.append("acceptance_checks:")
+    out += ["  - %s" % json.dumps(c) for c in checks]
+else:
+    out.append("acceptance_checks: []")
+out.append("```")
+print("\n".join(out))
+PY
+}
+
+envelope=""
+if [ -n "$artifact" ]; then
+  artifact_id=$(derive_artifact_id)
+  content_sha256=$(sha256sum "$artifact" 2>/dev/null | cut -d' ' -f1)
+  supersedes=$(previous_event "$artifact_id")
+  [ -n "$supersedes" ] || supersedes="none"
+  envelope=$(render_envelope)
+fi
+
+# ── 5b. compose the content inside the CLI's byte ceiling ───────────────────────
+fit_body() {  # fit_body <budget> — body on stdin, cut at a line boundary if oversized
+  python3 - "$1" "${artifact:-}" <<'PY'
 import sys
 
-path, ceiling = sys.argv[1], int(sys.argv[2])
-raw = open(path, "rb").read()
-if len(raw) <= ceiling:
-    sys.stdout.write(raw.decode("utf-8", "replace"))
+budget, origin = int(sys.argv[1]), sys.argv[2]
+raw = sys.stdin.buffer.read()
+if len(raw) <= budget:
+    sys.stdout.buffer.write(raw)
     raise SystemExit
-head = raw[:ceiling]
+tail = " — full artifact: " + origin if origin else ""
+notice = "\n\n[truncated at {n} of %d bytes%s]\n" % (len(raw), tail)
+# The notice is measured at its widest (the budget has at least as many digits as any
+# length it can report), so the cut can never be undone by the notice it makes room for.
+room = budget - len(notice.format(n=budget).encode("utf-8"))
+head = raw[:max(room, 0)]
 cut = head.rfind(b"\n")
 if cut > 0:
     head = head[:cut]
 sys.stdout.write(head.decode("utf-8", "replace"))
-sys.stdout.write("\n\n[truncated at %d of %d bytes — full artifact: %s]\n"
-                 % (len(head), len(raw), path))
+sys.stdout.write(notice.format(n=len(head)))
 PY
 }
 
-body="$message"
-if [ -n "$artifact" ]; then
-  if is_media_artifact; then
-    buzz_payload="attached"
+header="$subject"
+[ -n "$envelope" ] && header="$subject"$'\n\n'"$envelope"
+
+body_source="$workdir/body"
+if [ -n "$artifact" ] && ! is_media_artifact; then
+  buzz_payload="inline"
+  cp "$artifact" "$body_source" 2>/dev/null || : > "$body_source"
+elif [ -n "$artifact" ]; then
+  buzz_payload="attached"
+  printf '%s' "$message" > "$body_source"
+else
+  printf '%s' "$message" > "$body_source"
+fi
+
+budget=$(( CONTENT_MAX_BYTES - $(printf '%s\n\n' "$header" | wc -c) ))
+if [ "$budget" -le 0 ]; then
+  fault config_error "subject and envelope alone exceed the ${CONTENT_MAX_BYTES}B content ceiling"
+  settle
+fi
+
+content_file="$workdir/content"
+printf '%s' "$header" > "$content_file"
+if [ -s "$body_source" ]; then
+  printf '\n\n' >> "$content_file"
+  fit_body "$budget" < "$body_source" >> "$content_file"
+fi
+
+# ── 5c. Buzz channel message ────────────────────────────────────────────────────
+send_message() {
+  buzz_attempted=true
+  local send_args=(messages send --channel "$channel" --content -)
+  [ "$kind" != 9 ] && send_args+=(--kind "$kind")
+  [ "$buzz_payload" = attached ] && send_args+=(--file "$artifact")
+  call_stdin="$content_file"
+  if buzz_call "${send_args[@]}"; then
+    call_stdin="/dev/null"
+    buzz_result="ok"
+    buzz_event_id=$(read_event_id)
+    [ -n "$artifact_id" ] && record_artifact_event "$artifact_id" "$buzz_event_id"
+    return 0
+  fi
+  local rc=$?  # must be the first statement: any assignment would overwrite it with 0
+  call_stdin="/dev/null"
+  buzz_result="failed"
+  fault "$(categorize "$rc")" "buzz messages send failed for route $route"
+  return 1
+}
+
+if [ "$canvas_mode" != only ] && ! send_message; then
+  settle
+fi
+
+# ── 5d. canvas: one living document per channel, one designated writer ──────────
+# A recurring rollup that posts a new message every week buries the previous one and
+# gives the channel N copies of the same document. The canvas is the same content held
+# at one address, so `unchanged` is a real outcome and must not read as a failure.
+canvas_hash_stored() {
+  [ -r "$CANVAS_STATE" ] || return 0
+  sed -n "s/^$channel\t//p" "$CANVAS_STATE" | tail -1
+}
+
+record_canvas_hash() {  # record_canvas_hash <hash>
+  mkdir -p "$(dirname "$CANVAS_STATE")" 2>/dev/null || true
+  local tmp="$workdir/canvas-state"
+  { [ -r "$CANVAS_STATE" ] && grep -v "^$channel	" "$CANVAS_STATE"
+    printf '%s\t%s\n' "$channel" "$1"; } > "$tmp" 2>/dev/null && mv "$tmp" "$CANVAS_STATE"
+}
+
+if [ "$canvas_mode" != off ]; then
+  canvas_attempted=true
+  canvas_hash=$(sha256sum "$content_file" 2>/dev/null | cut -d' ' -f1)
+  if [ -n "$canvas_hash" ] && [ "$canvas_hash" = "$(canvas_hash_stored)" ]; then
+    canvas_result="unchanged"
   else
-    buzz_payload="inline"
-    body=$(inline_artifact)
+    call_stdin="$content_file"
+    if buzz_call canvas set --channel "$channel" --content -; then
+      call_stdin="/dev/null"
+      canvas_result="ok"
+      record_canvas_hash "$canvas_hash"
+    else
+      rc=$?
+      call_stdin="/dev/null"
+      canvas_result="failed"
+      fault "$(categorize "$rc")" "buzz canvas set failed for route $route"
+    fi
   fi
 fi
 
-content="$subject"
-[ -n "$body" ] && content="$subject"$'\n\n'"$body"
-
-buzz_attempted=true
-send_args=(messages send --channel "$channel" --content "$content")
-[ "$buzz_payload" = attached ] && send_args+=(--file "$artifact")
-if buzz_call "${send_args[@]}"; then
-  buzz_result="ok"
-  buzz_event_id=$(read_event_id)
-else
-  rc=$?  # must be the first statement: any assignment would overwrite it with 0
-  buzz_result="failed"
-  fault "$(categorize "$rc")" "buzz messages send failed for route $route"
-  settle
-fi
+[ "$canvas_mode" = only ] && settle
 
 # ── 6. bounded NIP-01 note, only after the channel send landed ──────────────────
 pointer=${POINTER_TEMPLATE//\{channel\}/$channel}
