@@ -1,7 +1,10 @@
 # Admitting `praetorium` — the prepared change
 
-**Status: prepared, not applied.** Everything here is ready to run; none of it has been. It needs
-a decision from Dave first, for the reasons in "Why this is not shipped".
+**Status: APPLIED 2026-08-08.** Both halves are live and proven end to end — praetorium published
+to `#research` and claudius replied 6s later; same on `#ops` with marcus. All four units restarted
+clean (0 restarts, each `.toml` mtime older than its `ExecMainStartTimestamp`), and
+`~/.config/buzz-team/verify-fleet.sh` passes with praetorium in the expected author set.
+The section below is kept as the record of what was changed and why.
 
 ## The problem
 
@@ -53,10 +56,14 @@ most of them at dispatch. Keeping it `true` means the delivery must name the age
 half 2.
 
 The expression is the same single-equality shape as the four filters already running; only the hex
-literal differs. There is no offline validator — `buzz-acp` exposes no `--validate-config`, and
-pointing it at a dead relay is a non-test, because `--config` rules load *after* the relay
-connects. Shape-identity with a proven-working expression is the strongest check available short
-of a live restart.
+literal differs. `buzz-acp` exposes no `--validate-config`, and pointing it at a dead relay is a
+non-test because `--config` rules load *after* the relay connects — but there **is** an offline
+validator for rule shape: `~/.config/buzz-team/check-rules.py <file> <expected-author>...` fails
+any rule missing `require_mention`, any filter that is not exactly one `author == "<64 hex>"`
+equality, and any drift between the file's authors and the expected set. `verify-fleet.sh` runs it
+as gate 4, so the expected set there has to gain the new author in the same pass or the machine
+gate goes red. It cannot check evalexpr semantics; for that, shape-identity plus a watched restart
+remains the only proof.
 
 ### Half 2 — name the agent (`bin/deliver.sh`)
 
@@ -84,6 +91,16 @@ quietly reinterpret it, the notify map should carry **slugs** (`ROUTE_ops_notify
 sibling `bin/buzz_agents.env` mapping slug to pubkey. Two files, one job each, and the routes file
 keeps its property of naming no identity.
 
+**Mentioning a non-member is fatal, not degraded.** `buzz messages send` calls `missing_members()`
+and rejects the entire send with a usage error — "mentioned pubkeys are not channel members; add
+them explicitly before retrying" (`crates/buzz-cli/src/commands/messages.rs:601`). A wrong notify
+value therefore costs the delivery, not just the `p` tag. Two guards: every route→owner pair was
+confirmed present in `buzz channels members` before enabling, and `deliver.sh` now categorizes that
+wording as `membership_error` rather than an opaque `transport_error`. An owner slug that resolves
+to no pubkey at all is a `config_error` that still sends unmentioned — an unread message in the
+channel beats a dropped one — with `tests/test_buzz_unit_wiring.sh` making the case unreachable by
+joining the two tables at gate time.
+
 ## Rolling it out
 
 A malformed evalexpr filter **crash-loops the unit** — it does not fail lazily and it does not
@@ -102,7 +119,7 @@ degrade to mentions (that degradation is setup mode only). So:
    and is not evidence either way.
 5. Only then the other three.
 
-## Why this is not shipped
+## Why this needed a decision before shipping
 
 - **Half 1 changes agent dispatch fleet-wide.** 17 producers currently deliver into six routes
   with nothing listening. Admitting praetorium turns each of those into an agent turn. The static
@@ -121,6 +138,6 @@ degrade to mentions (that degradation is setup mode only). So:
 > at dispatch
 
 That is false, and it is the exact claim that would make someone edit a filter without watching
-the restart. Compilation is eager; a malformed expression crash-loops the unit. Corrected
-2026-08-07. The comment is inert, so it is not worth a restart of its own — fix it on the same
-pass as the rule.
+the restart. Compilation is eager; a malformed expression crash-loops the unit. Corrected in all
+three files on the 2026-08-08 pass, alongside a note that `require_mention = true` is load-bearing
+beyond its own matches.
