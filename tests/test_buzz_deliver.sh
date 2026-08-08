@@ -16,6 +16,7 @@ SCRIPT="$REPO_ROOT/bin/deliver.sh"
 
 CH_ID=1111111111111111111111111111111111111111111111111111111111111111
 NOTE_ID=2222222222222222222222222222222222222222222222222222222222222222
+AGENT_HEX=3333333333333333333333333333333333333333333333333333333333333333
 FAKE_NSEC=nsec1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq
 
 fail=0
@@ -75,6 +76,7 @@ SH
   chmod +x "$h/helper.sh" "$h/hermes"
 
   printf 'ROUTE_ops=%s\nROUTE_research=\n' "$CH_ID" > "$h/routes.env"
+  printf 'AGENT_marcus=%s\n' "$AGENT_HEX" > "$h/agents.env"
   echo "$h"
 }
 
@@ -86,6 +88,7 @@ run_deliver() {
   MOCK_CHANNEL_ID="$CH_ID" \
   MOCK_SOCIAL_ID="$NOTE_ID" \
   BUZZ_ROUTES_FILE="$h/routes.env" \
+  BUZZ_AGENTS_FILE="${AGENTS:-$h/agents.env}" \
   BUZZ_DELIVER_HELPER="${HELPER:-$h/helper.sh}" \
   HERMES_BIN="${HERMES:-$h/hermes}" \
   DELIVERY_RECEIPTS="$h/receipts.jsonl" \
@@ -229,6 +232,64 @@ h=$(sandbox); route_kind "$h" bogus 1234
 rc=$(run_deliver "$h" --job x.service --route bogus --subject s --message m)
 assert 'an unsupported kind is a config_error' "[ \"\$(field '$h' error)\" = config_error ]"
 assert 'and nothing is sent under it' "[ \"\$(ncalls '$h')\" -eq 0 ]"
+
+echo '--- the route table decides which agent a delivery wakes ---'
+# The subscription rules run `require_mention = true`, so an event with no `p` tag is
+# dropped by every agent no matter which author is admitted. Without a mention this whole
+# transport delivers into channels nobody is listening to — 20 receipts, all `delivered`,
+# zero turns. The route owns the decision for the same reason it owns the kind: it is one
+# choice per destination, not per producer.
+route_notify() { printf 'ROUTE_%s=%s\nROUTE_%s_notify=%s\n' "$2" "$CH_ID" "$2" "$3" >> "$1/routes.env"; }
+
+h=$(sandbox); route_notify "$h" owned marcus
+rc=$(run_deliver "$h" --job x.service --route owned --subject s --message m)
+assert 'exits 0' "[ '$rc' = 0 ]"
+assert 'the slug is resolved to a pubkey and mentioned' \
+  "sent_args '$h' | grep -q -- '--mention $AGENT_HEX'"
+assert 'the receipt names who it was addressed to' "[ \"\$(field '$h' notify)\" = marcus ]"
+assert 'outcome delivered' "[ \"\$(field '$h' outcome)\" = delivered ]"
+assert 'the pulse note is not addressed to the agent' \
+  "[ \"\$(grep -c -- '--mention' '$h/mock/argv.log')\" -eq 1 ]"
+assert 'no pubkey leaks into the delivery log' "! grep -q '$AGENT_HEX' '$h/deliver.log'"
+
+h=$(sandbox); route_notify "$h" nobody none
+rc=$(run_deliver "$h" --job x.service --route nobody --subject s --message m)
+assert 'an explicit `none` mentions nobody' "! sent_args '$h' | grep -q -- '--mention'"
+assert 'and is not an error' "[ -z \"\$(field '$h' error)\" ]"
+assert 'the receipt records that nobody was addressed' "[ -z \"\$(field '$h' notify)\" ]"
+
+h=$(sandbox)
+rc=$(run_deliver "$h" --job x.service --route ops --subject s --message m)
+assert 'a route with no notify line mentions nobody, unchanged' \
+  "! sent_args '$h' | grep -q -- '--mention'"
+assert 'and delivers exactly as before' "[ \"\$(field '$h' outcome)\" = delivered ]"
+
+# An unresolvable owner must not cost the delivery: the message still reaches the channel
+# where Dave can read it, and the receipt carries the fault. Which agent owns which route
+# is repo state, so tests/test_buzz_unit_wiring.sh is what actually prevents this.
+h=$(sandbox); route_notify "$h" ghosted nosuchagent
+rc=$(run_deliver "$h" --job x.service --route ghosted --subject s --message m)
+assert 'exits 0' "[ '$rc' = 0 ]"
+assert 'an unknown slug is a config_error' "[ \"\$(field '$h' error)\" = config_error ]"
+assert 'but the message still reaches the channel' "[ \"\$(field '$h' buzz_result)\" = ok ]"
+assert 'unmentioned rather than mis-addressed' "! sent_args '$h' | grep -q -- '--mention'"
+
+h=$(sandbox); route_notify "$h" orphan marcus
+rc=$(AGENTS="$h/no-agents.env" run_deliver "$h" --job x.service --route orphan \
+       --subject s --message m)
+assert 'a missing agent table is a config_error, not a crash' \
+  "[ \"\$(field '$h' error)\" = config_error ]"
+assert 'and the delivery still lands' "[ \"\$(field '$h' buzz_result)\" = ok ]"
+
+# A pubkey that is not a channel member is a fatal CliError::Usage, not a dropped tag:
+# the whole send fails. It has to read as a membership problem or the next reader spends
+# the evening on the transport.
+h=$(sandbox); route_notify "$h" strangers marcus
+rc=$(MOCK_CHANNEL_RC=1 MOCK_ERROR='mentioned pubkeys are not channel members' \
+     run_deliver "$h" --job x.service --route strangers --subject s --message m)
+assert 'exits 0' "[ '$rc' = 0 ]"
+assert 'a non-member mention is categorized membership_error' \
+  "[ \"\$(field '$h' error)\" = membership_error ]"
 
 echo '--- missing credential helper ---'
 h=$(sandbox)

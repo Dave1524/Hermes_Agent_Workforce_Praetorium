@@ -89,6 +89,36 @@ while IFS= read -r route; do
     "grep -q '^ROUTE_${route}_kind=' '$ROUTES'"
 done < <(rows | cut -f2 | sort -u)
 
+echo '--- every route names the agent its deliveries wake ---'
+# Every ~/.config/buzz-team/*.toml runs `require_mention = true`, so an event carrying no
+# `p` tag is dropped by every agent regardless of author. A route with no notify line
+# therefore publishes into a channel nobody is subscribed to — receipted `delivered`, and
+# silent. The value is a slug: the routes file names no identity, so the hex lives next
+# door in bin/buzz_agents.env and the two are joined here.
+AGENT_TABLE="$REPO_ROOT/bin/buzz_agents.env"
+assert 'agent table exists' "[ -f '$AGENT_TABLE' ]"
+assert 'agent table carries no key material' \
+  "! grep -qE 'nsec1|PRIVATE_KEY|AUTH_TAG' '$AGENT_TABLE'"
+assert 'every non-comment line maps a slug to a 64-hex pubkey' \
+  "[ \"\$(grep -v '^#' '$AGENT_TABLE' | grep -v '^[[:space:]]*\$' | grep -cvE '^AGENT_[a-z][a-z0-9_-]*=[0-9a-f]{64}\$')\" -eq 0 ]"
+assert 'the route table still names no identity' "! grep -qE '[0-9a-f]{64}' '$ROUTES'"
+
+notify_lines() { grep '^ROUTE_[a-z][a-z0-9_-]*_notify=' "$ROUTES"; }
+while IFS= read -r line; do
+  [ -n "$line" ] || continue
+  key=${line%%=*}; key=${key#ROUTE_}; key=${key%_notify}
+  slug=${line#*=}
+  assert "notify for '$key' names a route that exists" "grep -q '^ROUTE_${key}=' '$ROUTES'"
+  [ "$slug" = none ] && continue
+  assert "notify slug '$slug' for '$key' is a known agent" \
+    "grep -q '^AGENT_${slug}=' '$AGENT_TABLE'"
+done < <(notify_lines)
+
+while IFS= read -r route; do
+  assert "route '$route' states who it wakes rather than defaulting to nobody" \
+    "grep -q '^ROUTE_${route}_notify=' '$ROUTES'"
+done < <(rows | cut -f2 | sort -u)
+
 echo '--- wired units carry their route and a delivery hook ---'
 while IFS=$'\t' read -r unit route payload status silence canvas; do
   f="$REPO_ROOT/systemd/$unit"
