@@ -165,3 +165,6 @@ carries `yes | grep -q y` as a deterministic canary for the regression.
 Corollary for any flaky gate here: establish **which direction it degrades** before fixing
 it. A check that fails closed costs a rerun; one that fails open has been certifying nothing,
 and the assertions that were silently passing are the expensive half of the bug.
+
+Proposed upstream as a generic standard:
+https://github.com/jessebuitenhuis/claude-plugin/issues/12 — drop this local copy if it lands.
