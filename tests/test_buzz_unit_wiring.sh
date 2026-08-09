@@ -18,7 +18,22 @@ MANIFEST="$REPO_ROOT/bin/buzz_producers.tsv"
 ROUTES="$REPO_ROOT/bin/buzz_routes.env"
 
 fail=0
-assert() { local d=$1 c=$2; if eval "$c"; then echo "  ok: $d"; else echo "  FAIL: $d"; fail=1; fi; }
+
+# pipefail has no place inside a boolean condition. `grep -q` exits on its first match,
+# so whatever feeds it dies of SIGPIPE and the pipeline reports 141 for a pattern that
+# was found — failing a true assertion, and silently passing a negated one. It is scoped
+# off here rather than per-condition so a later `| grep -q` cannot reintroduce it.
+assert() {
+  local d=$1 c=$2 pf
+  pf=$(shopt -po pipefail)
+  set +o pipefail
+  if eval "$c"; then echo "  ok: $d"; else echo "  FAIL: $d"; fail=1; fi
+  eval "$pf"
+}
+
+# `yes` is guaranteed to still be writing when grep -q exits, so this is the race made
+# deterministic: it fails if and only if a condition is evaluated under pipefail.
+assert 'a found pattern is never reported as a failure' "yes | grep -q y"
 
 rows() { grep -v '^#' "$MANIFEST" | grep -v '^[[:space:]]*$'; }
 
@@ -233,8 +248,11 @@ offenders=$(
   for f in "$REPO_ROOT"/bin/* "$REPO_ROOT"/systemd/*; do
     [ -f "$f" ] || continue
     case "$f" in */deliver.sh) continue ;; esac
+    # Not `grep -q`: it would exit on the first match, SIGPIPE the comment strip, and
+    # under pipefail that reads as "no match" — dropping the offender it just found.
     if grep -v '^[[:space:]]*#' "$f" \
-         | grep -qE 'hermes(_cli\.main)? send|buzz messages send|buzz social publish|buzz canvas set'; then
+         | grep -E 'hermes(_cli\.main)? send|buzz messages send|buzz social publish|buzz canvas set' \
+           >/dev/null; then
       basename "$f"
     fi
   done

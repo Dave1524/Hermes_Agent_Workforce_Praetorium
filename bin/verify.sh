@@ -8,12 +8,17 @@ fail=0
 # Collect every shell script in bin/: *.sh plus extension-less executables whose
 # shebang is bash/sh (e.g. bin/auto-sync, bin/opencode-observe). Python helpers
 # (#!/usr/bin/env python3) are excluded so bash -n / shellcheck never see them.
+bash_shebang='^#!.*(bash|/sh( |$)|env sh( |$))'
 scripts=()
 for f in bin/*; do
   [ -f "$f" ] || continue
   case "$f" in
     *.sh) scripts+=("$f") ;;
-    *) if head -n1 "$f" | grep -Eq '^#!.*(bash|/sh( |$)|env sh( |$))'; then
+    *) # Matched without a pipe: `grep -q` exits on the match, SIGPIPEs head, and under
+       # pipefail the script is then silently dropped from the gate it just qualified for.
+       shebang=''
+       read -r shebang < "$f" || true
+       if [[ $shebang =~ $bash_shebang ]]; then
          scripts+=("$f")
        fi ;;
   esac

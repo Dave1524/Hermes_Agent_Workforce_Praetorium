@@ -17,7 +17,9 @@ check() {
   printf '%s' "$text" > "$out"
   local got
   got=$(python3 "$SCORER" "$task" "$out" "$TD")
-  if echo "$got" | grep -Eq "$pat"; then
+  # Not `grep -Eq`: an early exit SIGPIPEs the echo, and under pipefail a matched
+  # pattern then reports 141 — a passing scorer graded as a failure.
+  if echo "$got" | grep -E "$pat" >/dev/null; then
     echo "  ok: $task -> $got"
   else
     echo "  FAIL: $task expected /$pat/, got: $got"
@@ -91,6 +93,6 @@ check t11 'The next run is Wed 2026-07-22 07:45:25 CEST' '^FAIL 0.50 correct but
 echo "--- empty output ---"
 : > "$TD/empty"
 got=$(python3 "$SCORER" t7 "$TD/empty" "$TD")
-if echo "$got" | grep -Eq '^FAIL 0.00 empty output'; then echo "  ok: empty -> $got"; else echo "  FAIL: empty got: $got"; fail=1; fi
+if echo "$got" | grep -E '^FAIL 0.00 empty output' >/dev/null; then echo "  ok: empty -> $got"; else echo "  FAIL: empty got: $got"; fail=1; fi
 
 exit $fail

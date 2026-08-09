@@ -20,7 +20,22 @@ AGENT_HEX=3333333333333333333333333333333333333333333333333333333333333333
 FAKE_NSEC=nsec1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq
 
 fail=0
-assert() { local d=$1 c=$2; if eval "$c"; then echo "  ok: $d"; else echo "  FAIL: $d"; fail=1; fi; }
+
+# pipefail has no place inside a boolean condition. `grep -q` exits on its first match,
+# so whatever feeds it dies of SIGPIPE and the pipeline reports 141 for a pattern that
+# was found — failing a true assertion, and silently passing a negated one. It is scoped
+# off here rather than per-condition so a later `| grep -q` cannot reintroduce it.
+assert() {
+  local d=$1 c=$2 pf
+  pf=$(shopt -po pipefail)
+  set +o pipefail
+  if eval "$c"; then echo "  ok: $d"; else echo "  FAIL: $d"; fail=1; fi
+  eval "$pf"
+}
+
+# `yes` is guaranteed to still be writing when grep -q exits, so this is the race made
+# deterministic: it fails if and only if a condition is evaluated under pipefail.
+assert 'a found pattern is never reported as a failure' "yes | grep -q y"
 
 # ── Sandbox: throwaway HOME + mock helper + mock hermes + decoy PATH binaries ──
 sandbox() {
