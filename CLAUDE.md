@@ -150,3 +150,18 @@ Run: `bash bin/verify.sh` from the repo root.
 Gate = bash syntax check + shellcheck (error-severity, must be clean) over every script in
 `bin/`, plus any test scripts under `tests/*.sh` if present. Full shellcheck output (style/info)
 is printed but does not fail the gate.
+
+**Never end a pipeline in an early-exiting reader while `pipefail` is on.** `grep -q` and
+`head` exit the moment they succeed, so the upstream stage dies of SIGPIPE and the pipeline
+reports 141 — a failure verdict for a pattern that *was* found. In a boolean condition that
+inverts twice over: a true assertion fails, and a negated one (`! producer | grep -q X`)
+passes without reading anything. It reads as an intermittent red under load and as permanent
+false confidence the rest of the time; it cost this gate one run in seven until 2026-08-09,
+while quietly disabling every `no artifact attached`-style assertion in the suite. `pipefail`
+describes data-producing pipelines, not conditions, so `assert()` scopes it off; the sites
+outside an assert drop the early exit instead (`grep … >/dev/null`) or the pipe. Each suite
+carries `yes | grep -q y` as a deterministic canary for the regression.
+
+Corollary for any flaky gate here: establish **which direction it degrades** before fixing
+it. A check that fails closed costs a rerun; one that fails open has been certifying nothing,
+and the assertions that were silently passing are the expensive half of the bug.
