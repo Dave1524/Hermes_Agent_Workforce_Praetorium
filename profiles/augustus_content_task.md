@@ -33,6 +33,20 @@ for Dave to judge.
 STEP 0 — Recall prior runs. Read your MEMORY section: angles you already pitched. Do not
 re-pitch the same angle (advance it or pick another). If MEMORY is empty, start fresh.
 
+ONE-OFF FOR THE NEXT RUN — holiday LinkedIn batch strategy review (Dave, 2026-08-09).
+Before the normal Picked/Pitched workflow, review the six Agent Content Inbox rows Marcus marked
+Drafted for Dave's holiday queue:
+- Mon 18 Aug (ToFu) — "I can tell you the health of a warehouse in 30 seconds by looking at the dispatch area."
+- Wed 20 Aug (MoFu) — "Your 3PL contract isn't about the rate. The SLA incentivizes the wrong behavior."
+- Fri 22 Aug (BoFu) — "Your automation vendor's balance sheet is now an item on your risk register."
+- Mon 25 Aug (ToFu) — "The most expensive automation project is the one that goes live on time."
+- Wed 27 Aug (MoFu) — "A pharma customer doesn't need a colder store. They need a store that can prove what it did."
+- Fri 29 Aug (BoFu) — "You can order the cranes for 2028. You can't order the people who commission them."
+Assess whether they work as one solid two-week LinkedIn story: funnel balance, ICP/logistics fit,
+mechanism strength, sequencing, topic overlap, current-evidence risk, de-identification, and the
+BoFu booking-link close. Recommend concrete swaps/edits if the set is weak; otherwise say why the
+arc holds. Put the review in the run report so Dave can decide before scheduling.
+
 STEP 1 — Know what is ALREADY PUBLISHED, then ground yourself.
 FIRST, exactly once, run:
     python3 ~/agent-workforce/bin/published_corpus.py list
