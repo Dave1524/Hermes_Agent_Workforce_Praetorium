@@ -313,10 +313,19 @@ typed block above the body, so a reviewer or a Mac-side broker can identify, has
 supersede a delivery without parsing prose. Read that before changing any envelope field; the
 consumer is not in this repo and will not fail loudly.
 
-**Canvas** (living documents) is one designated writer per route, declared in the manifest's
-`canvas` column and enforced by the wiring test. `--canvas mirror` writes the canvas *and* posts
-the message; `--canvas only` writes the canvas and posts nothing. An unchanged canvas is skipped
-rather than rewritten, so a digest that has not moved does not churn the document.
+**Canvas** (living documents) is at most one designated writer per route, declared in the
+manifest's `canvas` column and enforced by the wiring test. `--canvas mirror` writes the canvas
+*and* posts the message; `--canvas only` writes the canvas and posts nothing. An unchanged canvas
+is skipped rather than rewritten, so a digest that has not moved does not churn the document.
+
+**As of 2026-08-10 every route is `canvas=none`** — no scheduled job writes any canvas. All six
+canvases are hand-authored channel charters (what lands here, the send kind, the silence contract,
+what the channel cannot do), and `buzz-acp` injects a pointer to each into the system prompt of
+every channel session, so they are an instruction surface the agents read. Mirroring copies the
+*message body*, which makes a scheduled writer and a charter mutually exclusive: `scorecard.service`
+held `mirror` on `ops` until it was flipped for exactly that reason. Before wiring a new mirror,
+check what the target canvas currently holds — `buzz canvas set` is a blind replace with no history.
+Sources: `~/OUTBOX/canvas-proposal/`.
 
 **The delivery boundary is fail-soft by contract:** a config or transport error exits 0 and files a
 categorized receipt. A work-producing unit is never marked failed by a delivery hiccup — that

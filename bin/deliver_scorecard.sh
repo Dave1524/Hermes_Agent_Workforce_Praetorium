@@ -58,10 +58,10 @@ if [ -z "$summary" ]; then
   exit 0
 fi
 
-# The canvas is written on the good path only. `buzz canvas set` is a blind replace, so
-# mirroring a degraded run would overwrite last week's readable rollup with "no digest at
-# <path>" — the living document is the one place a failure must not be allowed to land.
+# This job posts only. The `ops` canvas is a hand-authored channel charter, and mirroring
+# copies the *message body*, so a weekly rollup landing there would overwrite the charter
+# with a snapshot every Monday. Canvas writers are declared in bin/buzz_producers.tsv.
 note "summarising $(printf '%s\n' "$summary" | grep -c .) headline row(s)"
-delivery_handoff --subject "$SUBJECT" --message "$summary" --canvas mirror
+delivery_handoff --subject "$SUBJECT" --message "$summary"
 
 exit 0

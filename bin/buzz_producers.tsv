@@ -39,7 +39,7 @@ overnight-pre-snapshot.service	ops	file	wired	never	none
 overnight-morning-report.service	ops	file	wired	never	none
 praetorium-daily-plan.service	ops	file	wired	never	none
 praetorium-eod-summary.service	ops	file	wired	never	none
-scorecard.service	ops	summary	wired	never	mirror
+scorecard.service	ops	summary	wired	never	none
 agent-alert@.service	ops	summary	wired	allowed	none
 agent-proposal.service	research	status	wired	never	none
 raw-ingest.service	research	status	wired	never	none
