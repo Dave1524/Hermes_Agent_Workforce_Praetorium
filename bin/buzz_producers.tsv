@@ -21,6 +21,13 @@
 # `buzz canvas set` is a blind replace with no base-hash and no history to recover from.
 # The wiring test enforces at most one `mirror`/`only` per route.
 #
+# What a `mirror`/`only` writer PUTS there is the adapter's `--canvas-file`, or the
+# message body when it names none. Bodies and documents are different things: the six
+# canvases are hand-authored channel charters that buzz-acp points every channel session's
+# system prompt at, so a producer that mirrors its body over one replaces standing
+# instruction with the latest run's output. Read what a canvas holds before wiring a
+# writer to it — this column says a document is overwritten, not that it may be.
+#
 # The expected-fire calendar is NOT duplicated here — audit_buzz_dual_run.sh derives it
 # from each unit's own systemd/<stem>.timer OnCalendar, so the two cannot drift. A unit
 # with no timer (agent-alert@) is on-demand: it has no expected fires at all, and the

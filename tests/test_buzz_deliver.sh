@@ -118,9 +118,13 @@ field() {  # field <sandbox> <key> -> value of that key on the LAST receipt
 import json, sys
 try:
     lines = [l for l in open(sys.argv[1]).read().splitlines() if l.strip()]
-    print(json.loads(lines[-1]).get(sys.argv[2], ""))
+    value = json.loads(lines[-1]).get(sys.argv[2], "")
 except Exception:
-    print("<no-receipt>")
+    value = "<no-receipt>"
+# delivery_receipt.py coerces "true"/"false" to JSON booleans, and Python renders those
+# as True/False. Print them back in the vocabulary deliver.sh passed in, so an assertion
+# reads as the field does on the wire.
+print(json.dumps(value) if isinstance(value, bool) else value)
 PY
 }
 nreceipts() { [ -f "$1/receipts.jsonl" ] && grep -c . "$1/receipts.jsonl" || echo 0; }
@@ -196,7 +200,7 @@ h=$(sandbox)
 rc=$(run_deliver "$h" --job x.service --route nosuchroute --subject s --message m)
 assert 'exits 0' "[ '$rc' = 0 ]"
 assert 'error categorized config_error' "[ \"\$(field '$h' error)\" = config_error ]"
-assert 'buzz not attempted' "[ \"\$(field '$h' buzz_attempted)\" = False ]"
+assert 'buzz not attempted' "[ \"\$(field '$h' buzz_attempted)\" = false ]"
 assert 'discord still attempted and ok' "[ \"\$(field '$h' discord_result)\" = ok ]"
 assert 'outcome partial_success (discord landed, buzz did not)' \
   "[ \"\$(field '$h' outcome)\" = partial_success ]"
@@ -368,7 +372,7 @@ for c in "3|auth|auth_error" "2|relay|network_error" "4|other|transport_error" \
   assert "buzz exit $code exits 0 (fail-soft)" "[ '$rc' = 0 ]"
   assert "buzz exit $code categorized $want" "[ \"\$(field '$h' error)\" = '$want' ]"
   assert "buzz exit $code still wrote a receipt" "[ \"\$(nreceipts '$h')\" -eq 1 ]"
-  assert "buzz exit $code did not publish a note" "[ \"\$(field '$h' pulse_attempted)\" = False ]"
+  assert "buzz exit $code did not publish a note" "[ \"\$(field '$h' pulse_attempted)\" = false ]"
 done
 
 echo '--- Discord failure is independent of Buzz success ---'
@@ -389,7 +393,7 @@ assert 'no PATH fallback to a bare hermes' "[ ! -e '$h/mock/PATH_LEAK' ]"
 echo '--- DELIVER_DISCORD=0 stops attempting Discord (Phase 4 cutover) ---'
 h=$(sandbox)
 rc=$(DELIVER_DISCORD=0 run_deliver "$h" --job x.service --route ops --subject s --message m)
-assert 'discord not attempted' "[ \"\$(field '$h' discord_attempted)\" = False ]"
+assert 'discord not attempted' "[ \"\$(field '$h' discord_attempted)\" = false ]"
 assert 'buzz delivered' "[ \"\$(field '$h' outcome)\" = delivered ]"
 assert 'hermes never invoked' "[ ! -f '$h/mock/hermes.log' ]"
 
@@ -493,8 +497,14 @@ assert 'exits 0' "[ '$rc' = 0 ]"
 assert 'canvas failed' "[ \"\$(field '$h' canvas_result)\" = failed ]"
 assert 'categorized as a network error' "[ \"\$(field '$h' error)\" = network_error ]"
 assert 'outcome partial_success' "[ \"\$(field '$h' outcome)\" = partial_success ]"
-assert 'a failed write records no hash, so the next run retries' \
+assert 'a failed write records no hash' \
   "! grep -q '$CH_ID' '$h/var/buzz-canvas-hashes' 2>/dev/null"
+rc=$(run_deliver "$h" --job s.service --route ops --subject s --message m \
+       --canvas mirror --canvas-file "$h/artifacts/charter.md")
+assert 'so the next run writes it rather than reporting unchanged' \
+  "[ \"\$(field '$h' canvas_result)\" = ok ]"
+assert 'the document reached the relay on the retry' \
+  "cmp -s '$h/mock/content.canvas' '$h/artifacts/charter.md'"
 
 echo '--- channel ok + pulse failure => partial_success ---'
 h=$(sandbox)

@@ -321,11 +321,21 @@ is skipped rather than rewritten, so a digest that has not moved does not churn 
 **As of 2026-08-10 every route is `canvas=none`** — no scheduled job writes any canvas. All six
 canvases are hand-authored channel charters (what lands here, the send kind, the silence contract,
 what the channel cannot do), and `buzz-acp` injects a pointer to each into the system prompt of
-every channel session, so they are an instruction surface the agents read. Mirroring copies the
-*message body*, which makes a scheduled writer and a charter mutually exclusive: `scorecard.service`
-held `mirror` on `ops` until it was flipped for exactly that reason. Before wiring a new mirror,
-check what the target canvas currently holds — `buzz canvas set` is a blind replace with no history.
-Sources: `~/OUTBOX/canvas-proposal/`.
+every channel session, so they are an instruction surface the agents read. Sources:
+`~/OUTBOX/canvas-proposal/`.
+
+**`--canvas-file <path>` decouples the document from the message.** Without it the canvas gets the
+message content, so `mirror` is a snapshot of the last delivery — which is why a scheduled writer
+and a charter were mutually exclusive, and why `scorecard.service` held `mirror` on `ops` until it
+was flipped. With it, a producer maintains a file and the channel still gets its own message. The
+mode stays the declaration of intent: `--canvas-file` with no `--canvas mirror|only` is a
+`config_error` and nothing is sent, asserted in both suites. An unreadable, empty or oversized file
+is refused rather than written through — `canvas set` has no history to recover from, so truncating
+a living document loses the tail permanently. The refusal never costs the message: the canvas
+settles `failed`, the delivery settles `partial_success`, and the next run retries because a failed
+write records no hash.
+
+Before wiring a new writer, read what the target canvas currently holds.
 
 **The delivery boundary is fail-soft by contract:** a config or transport error exits 0 and files a
 categorized receipt. A work-producing unit is never marked failed by a delivery hiccup — that
