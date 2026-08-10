@@ -216,22 +216,42 @@ against the directory listing; every file on disk has a matching row.
 `promote` archives the proposal, appends the `decision=` line to `_inbox/agents/_metrics/approvals.tsv`
 and pushes the removal. It does not write canonical — that half already happened.
 
+**The tool is not on the branch it operates on.** `00_system/tools/agent_inbox.py` exists on the
+box-safe repo's `main` and **not** on `agents/inbox` (verified 2026-08-10:
+`git ls-tree -r --name-only origin/agents/inbox 00_system/tools/` returns `publish_boxsafe.sh`,
+`vault_lint.py`, `vault_lint_test.py` — no `agent_inbox.py`). So the moment you check out
+`agents/inbox` the tool vanishes from the working tree, and any relative-path invocation fails with
+`no such file or directory`. Run a copy from outside the tree — the canonical vault's
+(`~/dev/obsidian-ai-os/00_system/tools/agent_inbox.py`, its real home per
+`nuc23_approval_outcomes_macside.md:5`) or one extracted from `origin/main`. `BOXSAFE_REPO`
+defaults to `$HOME/dev/obsidian-ai-os-boxsafe`, so the tool acts on the right checkout either way.
+
+**Filenames in this block are assembled from variables on purpose.** The Buzz client
+markdown-linkifies any bare `name.ext` token — in both directions, so a command copied out of chat
+arrives at the shell as `agent_[inbox.py](http://inbox.py)`. Splitting the extension off defeats it.
+
 ```bash
+P=py; M=md
 cd ~/dev/obsidian-ai-os-boxsafe
 git fetch origin && git checkout agents/inbox && git pull
 
+git show "origin/main:00_system/tools/agent_inbox.$P" > /tmp/agent_inbox
+chmod +x /tmp/agent_inbox
+
 for f in 2026-07-17_dp-world-org-profile 2026-07-17_weekly-pre-assembly \
-         2026-07-20_bd-stall-radar 2026-07-20_cold-chain-corridor-vs-facility-strategy \
-         2026-07-20_m1-signal-scan 2026-07-22_bd-stall-radar 2026-07-23_bd-stall-radar \
-         2026-07-26_bd-stall-radar 2026-07-27_bd-stall-radar 2026-07-28_bd-stall-radar \
-         2026-07-28_qmd-refresh-root-cause 2026-07-28_weekly-pre-assembly \
-         2026-07-29_brief-duplicate-title-gate 2026-07-29_m1-signal-scan; do
-  00_system/tools/agent_inbox.py promote "$f.md"
+         2026-07-20_bd-stall-radar 2026-07-20_m1-signal-scan \
+         2026-07-22_bd-stall-radar 2026-07-23_bd-stall-radar \
+         2026-07-26_bd-stall-radar 2026-07-27_bd-stall-radar \
+         2026-07-28_bd-stall-radar 2026-07-28_qmd-refresh-root-cause \
+         2026-07-28_weekly-pre-assembly 2026-07-29_brief-duplicate-title-gate \
+         2026-07-29_m1-signal-scan; do
+  /tmp/agent_inbox promote "$f.$M"
 done
 
-00_system/tools/agent_inbox.py promote 2026-07-27_wms-implementatie-uitloop-artikel.md \
-  --target website-content
+/tmp/agent_inbox promote "2026-07-27_wms-implementatie-uitloop-artikel.$M" --target website-content
 ```
+
+That is 14 of the 15. `2026-07-20_cold-chain-corridor-vs-facility-strategy` is held back — see below.
 
 Three things that decide the outcome:
 
@@ -246,6 +266,8 @@ Three things that decide the outcome:
   actually landed before promoting it as `vault`; it is the only genuinely unclear file.
 - **`--edited` is the metric.** Pass it where the body was changed before applying. `promoted` vs
   `edited` is the split the scorecard's approval rate is computed from, so a backfill that defaults
-  everything to clean `promoted` inflates it in the opposite direction from gap 2's undercount.
+  everything to clean `promoted` inflates it in the opposite direction from gap 2's undercount. The
+  base rate on the 12 decisions already recorded is 8 `edited` to 1 clean `promoted`, so where the
+  call is genuinely unrecallable, `--edited` is the closer guess.
 
 **No action:** 7.
