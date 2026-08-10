@@ -4,7 +4,7 @@
 # usage: deliver.sh --job <unit> --route <key> --subject <text>
 #                   [--message <text>] [--file <exact-path>] [--note <digest>]
 #                   [--runtime <name>] [--run-marker <path>] [--max-age-secs <n>]
-#                   [--canvas off|mirror|only]
+#                   [--canvas off|mirror|only] [--canvas-file <path>]
 #                   [--artifact-type <t>] [--target <path>] [--operation <op>]
 #                   [--base-revision <rev>] [--risk-tier auto|review|strict]
 #                   [--acceptance-check <text>]...
@@ -92,7 +92,7 @@ log_line() {
 }
 
 job=""; route=""; subject=""; message=""; artifact=""; digest=""; runtime="unknown"
-run_marker=""; max_age=0; canvas_mode="off"
+run_marker=""; max_age=0; canvas_mode="off"; canvas_file=""
 artifact_type="report"; target="none"; operation="none"; base_revision="unknown"
 risk_tier="review"; acceptance_checks=()
 while [ $# -gt 0 ]; do
@@ -107,6 +107,7 @@ while [ $# -gt 0 ]; do
     --run-marker)       run_marker="${2:-}" ;;
     --max-age-secs)     max_age="${2:-0}" ;;
     --canvas)           canvas_mode="${2:-off}" ;;
+    --canvas-file)      canvas_file="${2:-}" ;;
     --artifact-type)    artifact_type="${2:-report}" ;;
     --target)           target="${2:-none}" ;;
     --operation)        operation="${2:-none}" ;;
@@ -195,6 +196,13 @@ case "$canvas_mode" in
   off|mirror|only) ;;
   *) fault config_error "--canvas '$canvas_mode' is not off, mirror or only"; finish skipped ;;
 esac
+# A canvas body with no mode to write it would be read as a published document and never
+# reach the relay. The mode stays the single declaration of intent, because that is the
+# field bin/buzz_producers.tsv and the wiring test agree on.
+if [ -n "$canvas_file" ] && [ "$canvas_mode" = off ]; then
+  fault config_error "--canvas-file needs --canvas mirror or only"
+  finish skipped
+fi
 # The default leans toward asking Dave. A caller that wants an artifact auto-applied has
 # to say so; nothing may arrive at `auto` by omission, and no confidence score upgrades it.
 case "$risk_tier" in
@@ -557,6 +565,12 @@ fi
 # A recurring rollup that posts a new message every week buries the previous one and
 # gives the channel N copies of the same document. The canvas is the same content held
 # at one address, so `unchanged` is a real outcome and must not read as a failure.
+#
+# The body defaults to the message content, which makes `mirror` a snapshot of the last
+# delivery. `--canvas-file` decouples them: the canvas holds a document the producer
+# maintains and the channel still gets its message. That is what a channel charter needs
+# — buzz-acp points every channel session's system prompt at the canvas, so it is read as
+# standing instruction, not as the latest run's output.
 canvas_hash_stored() {
   [ -r "$CANVAS_STATE" ] || return 0
   sed -n "s/^$channel\t//p" "$CANVAS_STATE" | tail -1
@@ -569,24 +583,49 @@ record_canvas_hash() {  # record_canvas_hash <hash>
     printf '%s\t%s\n' "$channel" "$1"; } > "$tmp" 2>/dev/null && mv "$tmp" "$CANVAS_STATE"
 }
 
+# `canvas set` is a blind replace with no base-hash and no revision the CLI can read
+# back, so a source it should not have written is unrecoverable. An unreadable, empty or
+# oversized file is refused outright rather than truncated through: cutting the tail off
+# a living document loses it permanently, where refusing costs one receipt.
+resolve_canvas_source() {  # sets canvas_src; faults and returns 1 if the file is unusable
+  canvas_src="$content_file"
+  [ -n "$canvas_file" ] || return 0
+  if [ ! -f "$canvas_file" ] || [ ! -s "$canvas_file" ]; then
+    fault config_error "canvas file missing or empty: $canvas_file"
+    return 1
+  fi
+  local bytes; bytes=$(stat -c %s "$canvas_file" 2>/dev/null || echo 0)
+  if [ "$bytes" -gt "$CONTENT_MAX_BYTES" ]; then
+    fault config_error "canvas file is ${bytes}B, over the ${CONTENT_MAX_BYTES}B ceiling: $canvas_file"
+    return 1
+  fi
+  canvas_src="$canvas_file"
+}
+
+write_canvas() {  # write_canvas <path>
+  local hash rc
+  hash=$(sha256sum "$1" 2>/dev/null | cut -d' ' -f1)
+  if [ -n "$hash" ] && [ "$hash" = "$(canvas_hash_stored)" ]; then
+    canvas_result="unchanged"
+    return 0
+  fi
+  call_stdin="$1"
+  buzz_call canvas set --channel "$channel" --content -
+  rc=$?
+  call_stdin="/dev/null"
+  if [ "$rc" -ne 0 ]; then
+    canvas_result="failed"
+    fault "$(categorize "$rc")" "buzz canvas set failed for route $route"
+    return 1
+  fi
+  canvas_result="ok"
+  record_canvas_hash "$hash"
+}
+
 if [ "$canvas_mode" != off ]; then
   canvas_attempted=true
-  canvas_hash=$(sha256sum "$content_file" 2>/dev/null | cut -d' ' -f1)
-  if [ -n "$canvas_hash" ] && [ "$canvas_hash" = "$(canvas_hash_stored)" ]; then
-    canvas_result="unchanged"
-  else
-    call_stdin="$content_file"
-    if buzz_call canvas set --channel "$channel" --content -; then
-      call_stdin="/dev/null"
-      canvas_result="ok"
-      record_canvas_hash "$canvas_hash"
-    else
-      rc=$?
-      call_stdin="/dev/null"
-      canvas_result="failed"
-      fault "$(categorize "$rc")" "buzz canvas set failed for route $route"
-    fi
-  fi
+  canvas_src=""
+  if resolve_canvas_source; then write_canvas "$canvas_src"; else canvas_result="failed"; fi
 fi
 
 [ "$canvas_mode" = only ] && settle

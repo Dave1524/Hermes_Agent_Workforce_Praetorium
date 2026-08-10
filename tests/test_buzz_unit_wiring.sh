@@ -214,14 +214,23 @@ while IFS=$'\t' read -r unit route payload status silence canvas; do
   f="$REPO_ROOT/systemd/$unit"
   [ -f "$f" ] || continue
   declared=none
+  has_file=no
   for hook in $(code "$f" | grep -E '^ExecSt(art|op)Post=' | sed 's/^[^=]*=//' | awk '{print $1}'); do
     s="$REPO_ROOT/bin/${hook##*/}"
     [ -f "$s" ] || continue
     mode=$(grep -v '^[[:space:]]*#' "$s" | sed -n 's/.*--canvas \([a-z][a-z]*\).*/\1/p' | tail -1)
     [ -n "$mode" ] && declared="$mode"
+    # One grep, no pipe: `grep -q` exits on its first match and would SIGPIPE an upstream
+    # comment filter, reporting 141 for a pattern that was found. See CLAUDE.md.
+    grep -qE '^[[:space:]]*[^#].*--canvas-file' "$s" && has_file=yes
   done
   assert "$unit's adapter passes canvas '$canvas' as the manifest declares" \
     "[ '$declared' = '$canvas' ]"
+  # `--canvas-file` with no mode writes nothing: deliver.sh refuses the pair at the
+  # argument contract, so the adapter would post its message and silently never publish
+  # the document it names. Caught here rather than one receipt at a time.
+  [ "$has_file" = yes ] && assert "$unit's adapter names a canvas file and a mode to write it" \
+    "[ '$canvas' != none ]"
 done < <(rows)
 
 echo '--- every wired unit states where its receipt runtime comes from ---'

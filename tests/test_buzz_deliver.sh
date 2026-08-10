@@ -65,6 +65,7 @@ done
 case "$sub" in
   messages) rc=${MOCK_CHANNEL_RC:-0}; id=$MOCK_CHANNEL_ID ;;
   social)   rc=${MOCK_SOCIAL_RC:-0};  id=$MOCK_SOCIAL_ID ;;
+  canvas)   rc=${MOCK_CANVAS_RC:-0};  id=$MOCK_CHANNEL_ID ;;
   *)        rc=1; id="" ;;
 esac
 if [ "$rc" -ne 0 ]; then
@@ -391,6 +392,109 @@ rc=$(DELIVER_DISCORD=0 run_deliver "$h" --job x.service --route ops --subject s 
 assert 'discord not attempted' "[ \"\$(field '$h' discord_attempted)\" = False ]"
 assert 'buzz delivered' "[ \"\$(field '$h' outcome)\" = delivered ]"
 assert 'hermes never invoked' "[ ! -f '$h/mock/hermes.log' ]"
+
+echo '--- canvas: the body defaults to the message, --canvas-file decouples it ---'
+h=$(sandbox)
+rc=$(run_deliver "$h" --job s.service --route ops --subject 'Weekly rollup' \
+       --message 'two lines' --canvas mirror)
+assert 'exits 0' "[ '$rc' = 0 ]"
+assert 'outcome delivered' "[ \"\$(field '$h' outcome)\" = delivered ]"
+assert 'canvas attempted' "[ \"\$(field '$h' canvas_attempted)\" = true ]"
+assert 'canvas written' "[ \"\$(field '$h' canvas_result)\" = ok ]"
+assert 'mirror puts the message content on the canvas' \
+  "cmp -s '$h/mock/content.canvas' '$h/mock/content.messages'"
+assert 'mirror also posts the message' "grep -q 'messages send' '$h/mock/argv.log'"
+
+h=$(sandbox)
+printf '# ops — charter\n\nWhat lands here.\n' > "$h/artifacts/charter.md"
+rc=$(run_deliver "$h" --job s.service --route ops --subject 'Weekly rollup' \
+       --message 'two lines' --canvas mirror --canvas-file "$h/artifacts/charter.md")
+assert 'exits 0' "[ '$rc' = 0 ]"
+assert 'outcome delivered' "[ \"\$(field '$h' outcome)\" = delivered ]"
+assert 'the canvas is the named file, byte for byte' \
+  "cmp -s '$h/mock/content.canvas' '$h/artifacts/charter.md'"
+assert 'the canvas carries no message subject' "! grep -q 'Weekly rollup' '$h/mock/content.canvas'"
+assert 'the message is unaffected by the canvas file' \
+  "head -1 '$h/mock/content.messages' | grep -q '^Weekly rollup\$'"
+assert 'the message body is still the message' "grep -q '^two lines\$' '$h/mock/content.messages'"
+
+echo '--- canvas: an unchanged document is skipped, a changed one is rewritten ---'
+rc=$(run_deliver "$h" --job s.service --route ops --subject 'Weekly rollup' \
+       --message 'different message entirely' --canvas mirror --canvas-file "$h/artifacts/charter.md")
+assert 'a second identical canvas is not rewritten' "[ \"\$(field '$h' canvas_result)\" = unchanged ]"
+assert 'unchanged still settles as delivered' "[ \"\$(field '$h' outcome)\" = delivered ]"
+assert 'no second canvas call reached the helper' \
+  "[ \"\$(grep -c 'canvas set' '$h/mock/argv.log')\" -eq 1 ]"
+printf '# ops — charter\n\nWhat lands here. Revised.\n' > "$h/artifacts/charter.md"
+rc=$(run_deliver "$h" --job s.service --route ops --subject 'Weekly rollup' \
+       --message m --canvas mirror --canvas-file "$h/artifacts/charter.md")
+assert 'an edited canvas file is written again' "[ \"\$(field '$h' canvas_result)\" = ok ]"
+assert 'the relay received the revision' "grep -q 'Revised' '$h/mock/content.canvas'"
+
+echo '--- canvas only: the document is published and nothing is posted ---'
+h=$(sandbox)
+printf 'charter body\n' > "$h/artifacts/charter.md"
+rc=$(run_deliver "$h" --job s.service --route ops --subject s --message m \
+       --canvas only --canvas-file "$h/artifacts/charter.md")
+assert 'exits 0' "[ '$rc' = 0 ]"
+assert 'outcome delivered' "[ \"\$(field '$h' outcome)\" = delivered ]"
+assert 'the canvas is the file' "cmp -s '$h/mock/content.canvas' '$h/artifacts/charter.md'"
+assert 'no channel message was sent' "! grep -q 'messages send' '$h/mock/argv.log'"
+assert 'no pulse note was published' "! grep -q 'social publish' '$h/mock/argv.log'"
+
+echo '--- canvas: a body with no mode to write it is refused before anything is sent ---'
+# The pair is the whole failure: the adapter posts its message and the document it names
+# is never published, which looks identical to a canvas nobody edited.
+h=$(sandbox)
+printf 'charter body\n' > "$h/artifacts/charter.md"
+rc=$(run_deliver "$h" --job s.service --route ops --subject s --message m \
+       --canvas-file "$h/artifacts/charter.md")
+assert 'exits 0' "[ '$rc' = 0 ]"
+assert 'outcome skipped' "[ \"\$(field '$h' outcome)\" = skipped ]"
+assert 'config_error receipt' "[ \"\$(field '$h' error)\" = config_error ]"
+assert 'the detail names the missing mode' \
+  "field '$h' detail | grep -q 'needs --canvas mirror or only'"
+assert 'nothing reached the relay' "[ \"\$(ncalls '$h')\" -eq 0 ]"
+
+echo '--- canvas: an unusable source is refused, never written through ---'
+# `canvas set` is a blind replace with no history, so a bad source is unrecoverable.
+# Each case must still deliver the message: the report is not the canvas's hostage.
+h=$(sandbox)
+rc=$(run_deliver "$h" --job s.service --route ops --subject s --message m \
+       --canvas mirror --canvas-file "$h/artifacts/nope.md")
+assert 'a missing canvas file is a failed canvas' "[ \"\$(field '$h' canvas_result)\" = failed ]"
+assert 'the message still went out' "[ \"\$(field '$h' buzz_result)\" = ok ]"
+assert 'outcome partial_success' "[ \"\$(field '$h' outcome)\" = partial_success ]"
+assert 'nothing was written to the canvas' "[ ! -f '$h/mock/content.canvas' ]"
+
+h=$(sandbox)
+: > "$h/artifacts/empty.md"
+rc=$(run_deliver "$h" --job s.service --route ops --subject s --message m \
+       --canvas mirror --canvas-file "$h/artifacts/empty.md")
+assert 'an empty canvas file never blanks the document' "[ ! -f '$h/mock/content.canvas' ]"
+assert 'empty is a config_error, not a silent no-op' "[ \"\$(field '$h' error)\" = config_error ]"
+
+h=$(sandbox)
+python3 -c "open('$h/artifacts/big.md','w').write('padding line\n' * 200)"
+rc=$(BUZZ_CONTENT_MAX_BYTES=500 run_deliver "$h" --job s.service --route ops \
+       --subject s --message m --canvas mirror --canvas-file "$h/artifacts/big.md")
+assert 'an oversized canvas is refused, not truncated' "[ ! -f '$h/mock/content.canvas' ]"
+assert 'the refusal is categorized' "[ \"\$(field '$h' error)\" = config_error ]"
+assert 'the message is still delivered under the same ceiling' \
+  "[ \"\$(field '$h' buzz_result)\" = ok ]"
+
+echo '--- canvas: a transport failure is categorized and does not fail the message ---'
+h=$(sandbox)
+printf 'charter body\n' > "$h/artifacts/charter.md"
+rc=$(MOCK_CANVAS_RC=2 MOCK_ERROR=relay \
+     run_deliver "$h" --job s.service --route ops --subject s --message m \
+       --canvas mirror --canvas-file "$h/artifacts/charter.md")
+assert 'exits 0' "[ '$rc' = 0 ]"
+assert 'canvas failed' "[ \"\$(field '$h' canvas_result)\" = failed ]"
+assert 'categorized as a network error' "[ \"\$(field '$h' error)\" = network_error ]"
+assert 'outcome partial_success' "[ \"\$(field '$h' outcome)\" = partial_success ]"
+assert 'a failed write records no hash, so the next run retries' \
+  "! grep -q '$CH_ID' '$h/var/buzz-canvas-hashes' 2>/dev/null"
 
 echo '--- channel ok + pulse failure => partial_success ---'
 h=$(sandbox)
