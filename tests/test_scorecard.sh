@@ -62,18 +62,26 @@ rc=$(sc "$c3" "$TD/none.tsv" "$d3")
 assert "exits 0 (no crash)" "[ '$rc' = 0 ]"
 assert "runs = 0" "grep -q '| Agent runs (all-time) | 0 |' '$d3'"
 
-echo "--- scenario 4: approvals present ---"
+echo "--- scenario 4: approvals present (incl. an edited decision) ---"
+# NUC-23 bug fix (2026-08-10): 'Approval rate' used to compute promoted/decisions, which
+# silently treated decision=edited (a used proposal, applied with Mac-side changes) as if
+# it were a rejection. This fixture pins that: with 2 promoted / 1 rejected / 1 edited,
+# clean-promote is 50% (2/4) but acceptance — what was actually used — is 75% (3/4). A
+# regression that reverts to the old single-field formula fails this scenario, not just
+# scenario 4's old 0-edited case which the buggy formula also happened to get "right".
 c4="$TD/cost4.log"; d4="$TD/digest4.md"; a4="$TD/appr4.tsv"
 cp "$c1" "$c4"
 cat > "$a4" <<'EOF'
 ts=2026-07-08T12:00:00+00:00 slug=alpha decision=promoted
 ts=2026-07-08T12:01:00+00:00 slug=beta decision=promoted
 ts=2026-07-08T12:02:00+00:00 slug=gamma decision=rejected
+ts=2026-07-08T12:03:00+00:00 slug=delta decision=edited
 EOF
 rc=$(sc "$c4" "$a4" "$d4")
 assert "exits 0" "[ '$rc' = 0 ]"
-assert "approvals cell 2 / 1 / 0" "grep -q 'Approvals promoted / rejected / edited | 2 / 1 / 0' '$d4'"
-assert "approval rate 66%" "grep -q 'Approval rate | 66%' '$d4'"
+assert "approvals cell 2 / 1 / 1" "grep -q 'Approvals promoted / rejected / edited | 2 / 1 / 1' '$d4'"
+assert "acceptance rate 75% (promoted+edited)" "grep -q 'Acceptance rate (promoted+edited / decisions) | 75%' '$d4'"
+assert "clean-promote rate 50% (promoted only)" "grep -q 'Clean-promote rate (promoted / decisions) | 50%' '$d4'"
 
 echo "--- scenario 5: idempotency ---"
 d5a="$TD/digest5a.md"; d5b="$TD/digest5b.md"

@@ -174,7 +174,7 @@ cat > "$h/scorecard.md" <<'MD'
 | Agent runs (all-time) | 129 |
 | Proposal rate | 46% |
 | Error runs (last 7d) | 0 (0 fail / 0 violation) |
-| Approval rate | 71% |
+| Acceptance rate (promoted+edited / decisions) | 71% |
 | Record window | 2026-06-01 → 2026-08-07 |
 MD
 touch -d '30 days ago' "$h/scorecard.md"

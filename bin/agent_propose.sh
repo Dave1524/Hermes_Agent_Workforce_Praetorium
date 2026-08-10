@@ -180,7 +180,10 @@ run_profile="${run_profile:-unknown}"
 run_task="${AGENT_TASK_SLUG:-standing}"
 profile_cfg="$HOME/.hermes/profiles/$run_profile/config.yaml"
 if [ -r "$profile_cfg" ]; then
-  run_model=$(awk '/^model:/{m=1;next} /^[^[:space:]]/{m=0} m && /^[[:space:]]+name:/{sub(/#.*/,"");sub(/^[[:space:]]*name:[[:space:]]*/,"");gsub(/[[:space:]]/,"");print;exit}' "$profile_cfg")
+  # Every profile on the box (marcus/trajan/augustus/claudius) keys its model as
+  # `default:` under `model:`, not `name:` — this parser looked for `name:` only and
+  # silently resolved model=unknown on every one of them. Accept either key.
+  run_model=$(awk '/^model:/{m=1;next} /^[^[:space:]]/{m=0} m && /^[[:space:]]+(name|default):/{sub(/#.*/,"");sub(/^[[:space:]]+(name|default):[[:space:]]*/,"");gsub(/[[:space:]]/,"");print;exit}' "$profile_cfg")
 fi
 run_model="${run_model:-unknown}"
 log "mode: AGENT_RUN_MODE=$run_mode task=$run_task profile=$run_profile"

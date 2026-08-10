@@ -141,25 +141,38 @@ echo; echo "── Last agent runs"
 tail -3 "$HOME/agent-workforce/logs/agent_propose.log" 2>/dev/null || echo "  no runs yet"
 echo; echo "── Cost log"
 tail -3 "$HOME/agent-workforce/logs/cost.log" 2>/dev/null || echo "  no cost entries yet"
-# ── NUC-26: surface the pending approval backlog (surfacing ONLY — promote/reject is a
+# ── NUC-26/45: surface the pending approval backlog (surfacing ONLY — promote/reject is a
 #    Mac-side human gate via agent_inbox.py against the canonical vault; the box never decides).
-#    Counts proposal files in _inbox/agents/ (excludes the _metrics/ digest dir) + oldest age.
-echo; echo "── Agent inbox backlog (pending proposals, NUC-26)"
+#    Pending count comes from agent_inbox_notion_sync.py --count, which knows Notion Status
+#    per file — a raw *.md count on disk overstates the backlog by however many files are
+#    already decided but not yet cleared by the Mac-side promote pass (NUC-45, 2026-08-10:
+#    40 raw files vs 25 genuinely pending on 2026-08-10). Raw disk count is still shown, as
+#    context, never as "pending".
+echo; echo "── Agent inbox backlog (pending proposals, NUC-26/45)"
 inbox_dir="$HOME/agent-worktrees/inbox/_inbox/agents"
 if [ -d "$inbox_dir" ]; then
-  pend=$(find "$inbox_dir" -maxdepth 1 -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
-  if [ "${pend:-0}" -gt 0 ]; then
-    oldest_line=$(find "$inbox_dir" -maxdepth 1 -type f -name '*.md' -printf '%T@ %p\n' 2>/dev/null \
-                    | sort -n | head -1)
-    oldest_epoch=${oldest_line%% *}          # first field: mtime epoch (secs.frac)
-    oldest_secs=${oldest_epoch%.*}           # strip fractional part
-    oldest_file=$(basename "${oldest_line#* }")
-    now_secs=$(date +%s)
-    age_days=$(( (now_secs - oldest_secs) / 86400 ))
-    printf "  pending  : %s awaiting Mac-side promote/reject (agent_inbox.py)\n" "$pend"
-    printf "  oldest   : %s (%sd old)\n" "$oldest_file" "$age_days"
+  disk_count=$(find "$inbox_dir" -maxdepth 1 -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
+  pend="" oldest_date=""
+  count_out=$(timeout 30 python3 "$HOME/agent-workforce/bin/agent_inbox_notion_sync.py" --count 2>/dev/null) || count_out=""
+  pend=$(printf '%s\n' "$count_out" | sed -n 's/^PENDING_COUNT=//p')
+  oldest_date=$(printf '%s\n' "$count_out" | sed -n 's/^OLDEST_PENDING_DATE=//p')
+  if [ -n "$pend" ]; then
+    if [ "$pend" -gt 0 ] && [ -n "$oldest_date" ] && [ "$oldest_date" != none ]; then
+      now_secs=$(date +%s)
+      oldest_secs=$(date -d "$oldest_date" +%s 2>/dev/null || echo "$now_secs")
+      age_days=$(( (now_secs - oldest_secs) / 86400 ))
+      printf "  pending  : %s awaiting Mac-side promote/reject (agent_inbox.py, Notion-verified)\n" "$pend"
+      printf "  oldest   : %s (%sd old)\n" "$oldest_date" "$age_days"
+    else
+      echo "  pending  : 0 (inbox clear, Notion-verified)"
+    fi
+    if [ "$disk_count" -gt "${pend:-0}" ]; then
+      printf "  on disk  : %s files (%s already decided in Notion, not yet cleared)\n" \
+        "$disk_count" "$(( disk_count - pend ))"
+    fi
   else
-    echo "  pending  : 0 (inbox clear)"
+    echo "  pending  : UNKNOWN — agent_inbox_notion_sync.py --count unavailable (network/token)"
+    printf "  on disk  : %s files (raw count — includes any already-decided, uncleared)\n" "$disk_count"
   fi
 else
   echo "  inbox worktree not present ($inbox_dir)"

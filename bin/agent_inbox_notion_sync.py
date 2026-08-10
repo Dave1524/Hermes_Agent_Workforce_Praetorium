@@ -146,6 +146,13 @@ def read_approvals():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true", help="report only; no Notion writes")
+    ap.add_argument("--count", action="store_true",
+                     help="print PENDING_COUNT=N and OLDEST_PENDING_DATE=<date|none>, then exit. "
+                          "Read-only (no CREATE/REFLECT, no writes even vs --dry-run) — for cheap, "
+                          "frequent callers like inbox_backlog_alert.sh and praetorium-status.sh, "
+                          "which used to raw-count *.md files on disk. That count included files "
+                          "already decided in Notion but not yet cleared by the Mac-side promote "
+                          "pass, so it overstated the real backlog (NUC-45 diagnosis, 2026-08-10).")
     args = ap.parse_args()
     token = load_token()
 
@@ -156,6 +163,18 @@ def main():
         fn = prop_text(r, "Filename")
         if fn:
             by_fn[fn] = r
+
+    if args.count:
+        pending_dates = []
+        for fn in files:
+            r = by_fn.get(fn)
+            status = prop_text(r, "Status") if r else "New"
+            if status == "New":
+                pending_dates.append(mtime_date(os.path.join(INBOX_DIR, fn)))
+        oldest = min(pending_dates) if pending_dates else None
+        print("PENDING_COUNT=%d" % len(pending_dates))
+        print("OLDEST_PENDING_DATE=%s" % (oldest or "none"))
+        return
 
     created, reflected, decision_map = [], [], read_approvals()
 

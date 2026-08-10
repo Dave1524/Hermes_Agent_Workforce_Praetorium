@@ -22,7 +22,7 @@ HEADLINE_ROWS=(
   'Agent runs (all-time)'
   'Proposal rate'
   'Error runs (last 7d)'
-  'Approval rate'
+  'Acceptance rate (promoted+edited / decisions)'
   'Record window'
 )
 

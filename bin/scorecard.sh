@@ -113,10 +113,18 @@ pct() { if [ "${2:-0}" -le 0 ]; then echo "n/a"; else echo "$(( $1 * 100 / $2 ))
 proposal_rate="n/a"
 [ "$proposal_denom" -gt 0 ] && proposal_rate="$(pct "$proposals" "$proposal_denom") ($proposals/$proposal_denom)"
 if [ "$approvals_present" -eq 1 ] && [ "$decisions" -gt 0 ]; then
-  approval_rate="$(pct "$promoted" "$decisions")"
+  # NUC-23 bug (2026-08-10): a single "Approval rate" field computed promoted/decisions,
+  # which reads as an overall acceptance rate but is actually a *clean*-promote rate —
+  # decision=edited means the promotion applied with Mac-side edits, still a used
+  # proposal, not a rejection. Split into two unambiguous fields instead of fixing the
+  # arithmetic under the old name, which would leave the label meaning a third thing.
+  accepted=$(( promoted + edited ))
+  acceptance_rate="$(pct "$accepted" "$decisions")"
+  clean_promote_rate="$(pct "$promoted" "$decisions")"
   approvals_cell="$promoted / $rejected / $edited"
 else
-  approval_rate="pending (awaiting Mac sync)"
+  acceptance_rate="pending (awaiting Mac sync)"
+  clean_promote_rate="pending (awaiting Mac sync)"
   approvals_cell="pending (awaiting Mac sync)"
 fi
 avg_dur="n/a"
@@ -153,7 +161,8 @@ tmp="$(mktemp "${TMPDIR:-/tmp}/scorecard.XXXXXX")" || { echo "scorecard: mktemp 
   echo "| Error runs (fail/violation) | ${errors} (${fails} fail / ${violations} violation) |"
   echo "| Error runs (last 7d) | ${errors7d} (${fails7d} fail / ${violations7d} violation) |"
   echo "| Approvals promoted / rejected / edited | ${approvals_cell} |"
-  echo "| Approval rate | ${approval_rate} |"
+  echo "| Acceptance rate (promoted+edited / decisions) | ${acceptance_rate} |"
+  echo "| Clean-promote rate (promoted / decisions) | ${clean_promote_rate} |"
   echo "| Inference served | 0% local / 100% remote |"
   echo "| Cost per run | best-effort: unknown (see OpenRouter dashboard) |"
   echo "| Avg run duration | ${avg_dur} |"

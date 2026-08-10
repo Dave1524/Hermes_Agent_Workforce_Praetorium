@@ -62,10 +62,20 @@ systemctl list-timers 'agent-*' 'augustus-*' 'bd-*' 'overnight-*' 'praetorium-*'
 journalctl --since '14 hours ago' -p warning --no-pager | tail -40
 tail -15 ~/agent-workforce/logs/cost.log
 ls -t ~/logs/overnight/morning-report-*.md 2>/dev/null | head -1
-ls -la ~/agent-worktrees/inbox/_inbox/agents/ 2>/dev/null | tail -10
+python3 ~/agent-workforce/bin/agent_inbox_notion_sync.py --dry-run 2>/dev/null | head -3
 ```
 Anything that FAILED or was BLOCKED overnight belongs in the plan as a line item, not as a
 footnote.
+
+**Never derive an inbox pending count yourself** (e.g. by counting `ls` output or `*.md` files
+in `~/agent-worktrees/inbox/_inbox/agents/`). That directory holds files awaiting the Mac-side
+`agent_inbox.py promote` pass, which lags Notion by however long that pass has been idle — a raw
+file count silently includes items already decided in Notion but not yet cleared from disk, and
+overstates the backlog (NUC-45, 2026-08-10: this produced "40 pending" in the daily plan the same
+morning the correct figure, 25, ran in the morning report ten minutes later). The `--dry-run`
+line above prints the authoritative count on its first line, e.g. `agent-inbox-sync: 25 pending
+review.` — quote that number verbatim, or write "UNCONFIRMED: pending count" if the command
+failed.
 
 ## 5. Scan the AI Trading Bot thread
 
