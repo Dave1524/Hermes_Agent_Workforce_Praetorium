@@ -199,8 +199,53 @@ All five are in `~/dev/agent-workforce`, all need `bin/deploy` afterwards, and `
 already exists as the gate for 2 and 6.
 
 **Mac-side, Dave only:** 3. One `agent_inbox.py promote` pass over the 15 dispositioned files
-unfreezes the metric and removes gap 1's root cause at the same time.
+unfreezes the metric and removes gap 1's root cause at the same time. Worklist below.
 
 **Awaiting a decision from Dave:** 8.
+
+---
+
+## Mac-side worklist for gap 3
+
+The 40 files in `_inbox/agents/` split cleanly at 30 July: everything from 2026-07-30 onward is
+genuinely pending (25 rows, Notion `Status=New`), everything before it is already dispositioned.
+All 15 stale ones are `Promoted` in Notion — none rejected — so this is bookkeeping over decisions
+already taken, not a review pass. Verified 2026-08-10 by joining the Notion `Filename` property
+against the directory listing; every file on disk has a matching row.
+
+`promote` archives the proposal, appends the `decision=` line to `_inbox/agents/_metrics/approvals.tsv`
+and pushes the removal. It does not write canonical — that half already happened.
+
+```bash
+cd ~/dev/obsidian-ai-os-boxsafe
+git fetch origin && git checkout agents/inbox && git pull
+
+for f in 2026-07-17_dp-world-org-profile 2026-07-17_weekly-pre-assembly \
+         2026-07-20_bd-stall-radar 2026-07-20_cold-chain-corridor-vs-facility-strategy \
+         2026-07-20_m1-signal-scan 2026-07-22_bd-stall-radar 2026-07-23_bd-stall-radar \
+         2026-07-26_bd-stall-radar 2026-07-27_bd-stall-radar 2026-07-28_bd-stall-radar \
+         2026-07-28_qmd-refresh-root-cause 2026-07-28_weekly-pre-assembly \
+         2026-07-29_brief-duplicate-title-gate 2026-07-29_m1-signal-scan; do
+  00_system/tools/agent_inbox.py promote "$f.md"
+done
+
+00_system/tools/agent_inbox.py promote 2026-07-27_wms-implementatie-uitloop-artikel.md \
+  --target website-content
+```
+
+Three things that decide the outcome:
+
+- **`--target` is auto-detected from the proposal's own `target:` line.** Eleven of the fifteen
+  carry `target: vault`. Four carry no line and default to `vault`, which is right for
+  `dp-world-org-profile` (Notion `Promoted To`: `05_knowledge/dp_world_logistics_org_profile.md`)
+  and `weekly-pre-assembly`. It is wrong for `wms-implementatie-uitloop-artikel`, whose
+  `Promoted To` is website PR #11 — hence the separate call above, so its archive does not read as
+  a vault promotion.
+- **`2026-07-20_cold-chain-corridor-vs-facility-strategy` has a blank `Promoted To`** and its Notion
+  title is "Blog draft: Why is cold-chain strategy moving up to corridor…". Check where that one
+  actually landed before promoting it as `vault`; it is the only genuinely unclear file.
+- **`--edited` is the metric.** Pass it where the body was changed before applying. `promoted` vs
+  `edited` is the split the scorecard's approval rate is computed from, so a backfill that defaults
+  everything to clean `promoted` inflates it in the opposite direction from gap 2's undercount.
 
 **No action:** 7.
