@@ -237,13 +237,19 @@ def main():
     # Promoted/Rejected without stamping a timestamp — otherwise the lifecycle report
     # below silently drops them (NUC report bug, 2026-08-11: 13 of 24 Promoted rows from
     # the 10 Aug batch had no Processed At and landed in no bucket at all).
-    backfilled = []
+    backfilled, conflicts = [], []
     for fn, r in by_fn.items():
         status = prop_text(r, "Status")
         if status not in ("Promoted", "Rejected") or prop_text(r, "Processed At"):
             continue
         dec = decision_map.get(fn)
         if not dec or not dec[1]:
+            continue
+        dec_status = "Rejected" if dec[0] == "rejected" else "Promoted"
+        if dec_status != status:
+            # Notion status disagrees with the box's own decision record — don't guess
+            # which is right, surface it instead (needs Dave to reconcile).
+            conflicts.append("%s (Notion=%s, approvals.tsv=%s)" % (fn, status, dec[0]))
             continue
         proc_date = dec[1][:10]
         if args.dry_run:
@@ -334,6 +340,8 @@ def main():
         print("  reflected this run: %s" % ", ".join(reflected))
     if backfilled:
         print("  backfilled Processed At this run: %s" % ", ".join(backfilled))
+    if conflicts:
+        print("  ! Notion/approvals.tsv status conflict, needs reconciliation: %s" % ", ".join(conflicts))
     if this_week:
         for tag, title, d in sorted(this_week, key=lambda x: x[2] or today_d, reverse=True):
             print("  %s  %s  (%s)" % (tag, title, fmt_d(d)))
