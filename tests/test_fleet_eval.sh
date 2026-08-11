@@ -144,7 +144,7 @@ HIT = {"file": "qmd://vault/a.md", "line": 85,
 
 asked = []
 grounding.qmd_get = lambda path: asked.append(path) or "chunk body, no pointer here"
-grounding._span_carries_pointer(HIT, "buzz[_-]architecture")
+grounding._span_text(HIT)
 if asked != ["vault/a.md:84:3"]:
     sys.exit(f"read {asked}, expected the hunk header range ['vault/a.md:84:3']")
 
@@ -152,13 +152,13 @@ if asked != ["vault/a.md:84:3"]:
 # context window would pull lines 2-85 and find it; the chunk is 84-86 and does not.
 BANNER = "> superseded — read [[buzz_architecture]]"
 grounding.qmd_get = lambda path: BANNER if path.endswith(":2:84") else "tail of the document"
-if grounding._span_carries_pointer(HIT, "buzz[_-]architecture"):
+if "buzz_architecture" in grounding._span_text(HIT):
     sys.exit("a banner outside the retrieved chunk was counted as a pointer")
 
 # A snippet with no hunk header falls back to the preview text, and must not pass by
 # reading a chunk it was never given a range for.
 headerless = {"file": "qmd://vault/a.md", "snippet": BANNER}
-if not grounding._span_carries_pointer(headerless, "buzz[_-]architecture"):
+if "buzz_architecture" not in grounding._span_text(headerless):
     sys.exit("a pointer in a headerless snippet was missed")
 PY
 python3 "$TMP/span_test.py" >"$TMP/span.out" 2>&1
@@ -202,12 +202,65 @@ python3 "$TMP/baseline_test.py" >"$TMP/baseline.out" 2>&1
 assert 'a verdict is scored against the recorded baseline, not against PASS' \
   "[ $? -eq 0 ] || { cat '$TMP/baseline.out'; false; }"
 
+echo '--- tier 2: a must_answer probe asserts the window, not the document ---'
+cat >"$TMP/window_test.py" <<PY
+import importlib.util, sys
+
+spec = importlib.util.spec_from_file_location("grounding", "$GROUNDING")
+grounding = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(grounding)
+
+ANCHOR = {"index": "p/anchor.md", "disk": "p/anchor.md", "pointer": "buzz[_-]architecture"}
+ANCHOR_FIRST = [{"file": "qmd://vault/p/anchor.md", "line": 44, "snippet": "@@ -44,4 @@"}]
+ANCHOR_ABSENT = [{"file": "qmd://vault/p/other.md", "line": 1, "snippet": "@@ -1,2 @@"}]
+ANSWER = "| Forum — root post | 45001 |"
+
+def score(results, chunk):
+    reads = []
+    grounding.run_query = lambda probe: results
+    grounding.qmd_get = lambda path: reads.append(path) or chunk
+    report = grounding.Report()
+    grounding.run_probe(report, {"id": "t", "limit": 1, "searches": [], "max_rank": 1,
+                                 "must_answer": r"\b45001\b", "baseline": "PASS"}, ANCHOR)
+    _check, _status, verdict, _detail = report.rows[0]
+    return verdict, report.failed, reads
+
+CASES = [
+    (ANCHOR_FIRST, ANSWER, "PASS", False,
+     "the anchor ranks and the window it hands over carries the answer"),
+    (ANCHOR_FIRST, "prose about forums that names no kind at all", "POINTER", True,
+     "right document, wrong window — the placement regression this shape exists to catch"),
+    (ANCHOR_ABSENT, ANSWER, "FAIL", True,
+     "another document's span must never satisfy the anchor's assertion"),
+]
+for results, chunk, want_verdict, want_failed, why in CASES:
+    verdict, failed, reads = score(results, chunk)
+    if (verdict, failed) != (want_verdict, want_failed):
+        sys.exit(f"{why}: got {verdict}/exit-fail={failed}, "
+                 f"expected {want_verdict}/exit-fail={want_failed}")
+    if results is ANCHOR_ABSENT and reads:
+        sys.exit(f"{why}: read {reads} — a span assertion with no anchor has nothing to read")
+PY
+python3 "$TMP/window_test.py" >"$TMP/window.out" 2>&1
+assert 'a span that loses the answer is a regression even at rank 1' \
+  "[ $? -eq 0 ] || { cat '$TMP/window.out'; false; }"
+
 echo '--- the fixture is data the runner never second-guesses ---'
 cat >"$TMP/fixture_test.py" <<PY
-import json, sys
+import json, re, sys
 
 fixture = json.load(open("$PROBES"))
 probes = fixture["probes"]
+
+for probe in probes:
+    if "must_answer" not in probe:
+        continue
+    try:
+        re.compile(probe["must_answer"])
+    except re.error as error:
+        sys.exit(f"{probe['id']}: must_answer is not a valid regex — {error}")
+if not any("must_answer" in probe for probe in probes):
+    sys.exit("no probe asserts a retrieved span — nothing here would catch a re-cut chunk")
 
 if not all("baseline" in probe for probe in probes):
     sys.exit("a probe with no baseline would be scored against PASS and go red on day one")

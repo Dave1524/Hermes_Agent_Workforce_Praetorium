@@ -12,6 +12,12 @@ that wording — it does NOT mean the agent answers wrong, because the instructi
 still points at the anchor. That is why `team_instructions` is the hard gate and the
 probes gate on regression against a recorded baseline.
 
+TWO PROBE SHAPES, BECAUSE THERE ARE TWO WAYS TO LOSE. Most probes assert a document:
+did the anchor rank, and if it did not, does the winner's retrieved span at least hand
+the reader onward. A probe carrying `must_answer` asserts the anchor's own retrieved
+span instead — the answer can leave the window while the file keeps ranking first, and
+no rank assertion sees that.
+
 FRESHNESS FIRST. Every probe below is a measurement of the index, so a stale index
 measures the wrong system entirely. The sweep compares each file's sha256 against the
 `documents.hash` column — qmd stores the plain sha256 of the file bytes, so this is
@@ -256,24 +262,50 @@ def _rank_of(results, anchor_index):
     return None
 
 
-def _span_carries_pointer(hit, pointer):
-    """Would the pointer be inside the chunk the agent actually receives?
+def _span_text(hit):
+    """The chunk the agent actually receives, re-read at its exact line range.
 
     A supersession banner at the top of a document is invisible when the retrieved
     chunk sits 80 lines below it — that is exactly how agent-inbox-sync/SKILL.md kept
     winning this question after being bannered. The chunk, not the document, is the
     honest unit: the agent is handed the chunk and has no reason to fetch the rest.
 
-    The snippet text is truncated for display, so the chunk is re-read at its exact
-    line range rather than pattern-matched against the preview.
+    The snippet text is truncated for display, so it is only the fallback for a hit
+    that carries no `@@ -start,count @@` header to re-read from.
     """
     snippet = hit.get("snippet", "")
     match = SPAN.search(snippet)
     if not match:
-        return bool(re.search(pointer, snippet))
-    start, count = int(match.group(1)), int(match.group(2))
+        return snippet
     path = hit.get("file", "").replace("qmd://", "")
-    return bool(re.search(pointer, qmd_get(f"{path}:{start}:{count}")))
+    return qmd_get(f"{path}:{match.group(1)}:{match.group(2)}")
+
+
+def _verdict_document(results, rank, probe, anchor):
+    """Did the right document win — and if not, does the winner hand the reader onward?"""
+    top = results[0] if results else {}
+    top_name = Path(top.get("file", "?")).name
+    if rank is not None and rank <= probe["max_rank"]:
+        return "PASS", f"anchor at rank {rank} (max {probe['max_rank']})"
+    if top and re.search(anchor["pointer"], _span_text(top)):
+        return "POINTER", f"anchor at rank {rank or 'absent'}; {top_name} wins but its retrieved span points here"
+    return "FAIL", f"anchor at rank {rank or 'absent'}; {top_name} wins and its retrieved span does not point here"
+
+
+def _verdict_span(hit, rank, probe):
+    """Does the anchor's own retrieved span still contain the answer?
+
+    Right document, wrong window is a real and silent failure, and no document-level
+    assertion sees it: a document is represented by one chunk, so prose added anywhere
+    above re-cuts every boundary below it and the chunk that used to answer stops
+    existing while the file keeps ranking first. Measured on 2026-08-11 — six lines
+    inserted at the top of the anchor cost p1_route_kind two ranks.
+    """
+    if hit is None:
+        return "FAIL", f"anchor at rank {rank or 'absent'} (max {probe['max_rank']})"
+    if re.search(probe["must_answer"], _span_text(hit)):
+        return "PASS", f"anchor at rank {rank}; its retrieved span carries the answer"
+    return "POINTER", f"anchor at rank {rank}; its retrieved span no longer carries the answer"
 
 
 def run_probe(report, probe, anchor):
@@ -283,17 +315,11 @@ def run_probe(report, probe, anchor):
         return
 
     rank = _rank_of(results, anchor["index"])
-    top = results[0] if results else {}
-    top_name = Path(top.get("file", "?")).name
-
-    if rank is not None and rank <= probe["max_rank"]:
-        verdict, detail = "PASS", f"anchor at rank {rank} (max {probe['max_rank']})"
-    elif top and _span_carries_pointer(top, anchor["pointer"]):
-        verdict = "POINTER"
-        detail = f"anchor at rank {rank or 'absent'}; {top_name} wins but its retrieved span points here"
+    if "must_answer" in probe:
+        within = rank is not None and rank <= probe["max_rank"]
+        verdict, detail = _verdict_span(results[rank - 1] if within else None, rank, probe)
     else:
-        verdict = "FAIL"
-        detail = f"anchor at rank {rank or 'absent'}; {top_name} wins and its retrieved span does not point here"
+        verdict, detail = _verdict_document(results, rank, probe, anchor)
 
     baseline = probe["baseline"]
     if RANK[verdict] < RANK[baseline]:

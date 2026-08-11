@@ -22,7 +22,14 @@
     "fires on REGRESSION rather than on a state that was already known and accepted.",
     "PASS > POINTER > FAIL. A probe that beats its baseline is reported as an",
     "improvement and the baseline is left alone — bumping it is a deliberate edit, not",
-    "something a scheduled job does to its own fixture."
+    "something a scheduled job does to its own fixture.",
+    "",
+    "PROBE SHAPE. A probe without `must_answer` asserts a document — did the anchor",
+    "rank within `max_rank`, and if not, does the winner's span point at it. A probe",
+    "WITH `must_answer` asserts the anchor's own retrieved span: PASS when the span",
+    "matches, POINTER when the anchor ranks but its span no longer carries the answer,",
+    "FAIL when the anchor drops out of `max_rank` entirely. Both shapes score against",
+    "the same PASS > POINTER > FAIL ladder."
   ],
 
   "anchor": {
@@ -108,6 +115,24 @@
       ],
       "max_rank": 2,
       "baseline": "FAIL"
+    },
+    {
+      "id": "p4_kind_span",
+      "why": "The placement guard. The other three probes assert which document wins; this one asserts that the anchor's own retrieved span still contains the answer, because those are different failures. A document is represented in results by ONE chunk, so prose added anywhere above re-cuts every boundary below it and the chunk that used to answer stops existing while the file keeps ranking first. Measured 2026-08-11: a six-line section inserted at the top of the anchor knocked p1_route_kind from rank 1 to rank 3, and only luck made that visible — a smaller shift would have kept rank 1 and quietly handed the agent a window with no answer in it. The answer chosen is the forum root-post kind, `45001`, because it is a single token that is either in the window or is not, and because sending kind 9 into a forum is the exact mistake this vault section exists to prevent (buzz_architecture §3). Measured PASS on the live index: anchor rank 1, span `@@ -44,4 @@`, deterministic over three runs.",
+      "limit": 3,
+      "searches": [
+        {
+          "type": "vec",
+          "query": "what event kind does a root post in a forum channel need?"
+        },
+        {
+          "type": "lex",
+          "query": "forum root post event kind stream"
+        }
+      ],
+      "max_rank": 1,
+      "must_answer": "\\b45001\\b",
+      "baseline": "PASS"
     }
   ]
 }

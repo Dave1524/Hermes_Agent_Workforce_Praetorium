@@ -6,10 +6,11 @@
 # Two runners, one scorecard, one history spine:
 #   tier1  fleet_eval_behaviour.py  — did deliveries carry the kind/channel/notify the
 #                                     route table specifies? (evidence: receipts)
-#   tier2  fleet_eval_grounding.py  — does the vault still answer the three questions
-#                                     the fleet got wrong? (evidence: qmd)
+#   tier2  fleet_eval_grounding.py  — does the vault still answer the questions the
+#                                     fleet got wrong, in the span it hands over?
+#                                     (evidence: qmd)
 #
-# WHY THIS GATES ON REGRESSION, NOT ON STATE. Two of the three grounding probes fail
+# WHY THIS GATES ON REGRESSION, NOT ON STATE. Two of the four grounding probes fail
 # today and are *known* to fail: the vault outranks its own Buzz note on a plainly-worded
 # question, and the box cannot fix that — it holds no canonical vault credential. A suite
 # that goes red on day one for a condition already accepted gets muted within a week, and
