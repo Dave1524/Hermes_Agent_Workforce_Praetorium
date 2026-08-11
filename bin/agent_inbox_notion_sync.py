@@ -132,14 +132,19 @@ def prop_text(row, name):
 
 
 def read_approvals():
-    """slug -> decision (promoted|edited|rejected), last wins. slug == proposal filename."""
+    """slug -> (decision, ts) for the most recent decision. slug == proposal filename.
+
+    ts is the authoritative decision timestamp — the Mac-side promote pass (agent_inbox.py,
+    outside this box's reach) sets Notion Status directly and does not always set
+    Processed At, so this is also used to backfill that field (see main()).
+    """
     out = {}
     if not os.path.exists(APPROVALS):
         return out
     for line in open(APPROVALS, encoding="utf-8"):
         parts = dict(p.split("=", 1) for p in line.strip().split("\t") if "=" in p)
         if parts.get("slug") and parts.get("decision"):
-            out[parts["slug"]] = parts["decision"]
+            out[parts["slug"]] = (parts["decision"], parts.get("ts"))
     return out
 
 
@@ -219,7 +224,7 @@ def main():
         dec = decision_map.get(fn)
         if not dec:
             continue
-        new_status = "Rejected" if dec == "rejected" else "Promoted"
+        new_status = "Rejected" if dec[0] == "rejected" else "Promoted"
         if args.dry_run:
             reflected.append("%s -> %s (DRY)" % (fn, new_status))
             continue
@@ -227,6 +232,27 @@ def main():
             {"properties": {"Status": {"select": {"name": new_status}},
                             "Processed At": {"date": {"start": today}}}})
         reflected.append("%s -> %s" % (fn, new_status))
+
+    # 3) BACKFILL Processed At for rows the Mac-side promote pass already flipped to
+    # Promoted/Rejected without stamping a timestamp — otherwise the lifecycle report
+    # below silently drops them (NUC report bug, 2026-08-11: 13 of 24 Promoted rows from
+    # the 10 Aug batch had no Processed At and landed in no bucket at all).
+    backfilled = []
+    for fn, r in by_fn.items():
+        status = prop_text(r, "Status")
+        if status not in ("Promoted", "Rejected") or prop_text(r, "Processed At"):
+            continue
+        dec = decision_map.get(fn)
+        if not dec or not dec[1]:
+            continue
+        proc_date = dec[1][:10]
+        if args.dry_run:
+            backfilled.append("%s -> %s (DRY)" % (fn, proc_date))
+            continue
+        api("PATCH", "/pages/%s" % r["id"], token,
+            {"properties": {"Processed At": {"date": {"start": proc_date}}}})
+        r["properties"]["Processed At"] = {"type": "date", "date": {"start": proc_date}}
+        backfilled.append("%s -> %s" % (fn, proc_date))
 
     # --- lifecycle report (read-only over files/rows; no sync side effects) ---
     today_d = datetime.date.today()
@@ -306,6 +332,8 @@ def main():
         print("  created this run: %s" % ", ".join(created))
     if reflected:
         print("  reflected this run: %s" % ", ".join(reflected))
+    if backfilled:
+        print("  backfilled Processed At this run: %s" % ", ".join(backfilled))
     if this_week:
         for tag, title, d in sorted(this_week, key=lambda x: x[2] or today_d, reverse=True):
             print("  %s  %s  (%s)" % (tag, title, fmt_d(d)))
