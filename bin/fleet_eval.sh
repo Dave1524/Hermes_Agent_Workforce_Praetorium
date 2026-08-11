@@ -62,6 +62,12 @@ WORKDIR="$LOG_ROOT/$STAMP"
 mkdir -p "$WORKDIR"
 RESULTS="$WORKDIR/results.psv"
 SCORECARD="$WORKDIR/scorecard.md"
+# The producers wired through an ExecStartPost adapter anchor their artifact to a run marker
+# the unit touches; this one delivers from inside its own ExecStart, so it stamps its own.
+# Without it the scorecard travels with anchor=none, and a run that died before writing one
+# would ship yesterday's verdict under today's subject line.
+MARKER="$WORKDIR/started"
+: >"$MARKER"
 
 run_tier() {
   local tier="$1"; shift
@@ -127,7 +133,7 @@ verdict="no regression"
 if [ "$DELIVER_ON_REGRESSION" -eq 1 ] && [ "$FAILS" -gt 0 ]; then
   "$DELIVER" --job fleet-eval.service --route ops \
     --subject "[Praetorium] Fleet eval — regression ($FAILS)" \
-    --file "$SCORECARD" --runtime none --artifact-type report \
+    --file "$SCORECARD" --run-marker "$MARKER" --runtime none --artifact-type report \
     --target none --operation none --risk-tier review \
     --acceptance-check "every FAIL row is either fixed or its fixture baseline is deliberately re-recorded"
 fi

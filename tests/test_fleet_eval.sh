@@ -236,6 +236,8 @@ assert 'the orchestrator names exactly one delivery route' "[ \$(echo $route | w
 assert "its route '$route' is defined in the route table" "grep -q '^ROUTE_${route}=' '$ROUTE_TABLE'"
 assert "its route '$route' names the agent the post wakes" \
   "grep -q '^ROUTE_${route}_notify=' '$ROUTE_TABLE'"
+assert 'the scorecard it posts is anchored to the run that produced it' \
+  "grep -q -- '--run-marker' '$ORCHESTRATOR'"
 assert 'delivery goes through bin/deliver.sh, never a transport directly' \
   "! grep -vE '^[[:space:]]*#' '$ORCHESTRATOR' | grep -E 'buzz messages send|buzz canvas set' >/dev/null"
 
