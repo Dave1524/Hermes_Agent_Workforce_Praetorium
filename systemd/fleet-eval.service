@@ -1,0 +1,31 @@
+# Standing drift check for the fleet's delivery conformance and vault grounding.
+# Deploy: sudo cp systemd/fleet-eval.{service,timer} /etc/systemd/system/, then
+# `sudo systemctl daemon-reload && sudo systemctl enable --now fleet-eval.timer`.
+#
+# NO OnFailure=agent-alert@%n.service, deliberately. This unit exits 1 on a regression,
+# and `--deliver` already posts the scorecard to #ops when that happens. Wiring the alert
+# path as well gives one problem two notifications on different surfaces — the same
+# duplication the runner avoids by delegating coverage to audit_buzz_dual_run.sh instead
+# of re-gating it. The non-zero exit stays: `systemctl --failed` naming this unit is the
+# quiet second signal, and it clears itself on the next green run.
+[Unit]
+Description=Fleet eval — delivery conformance + vault grounding regression check
+After=network-online.target qmd-mcp.service
+Wants=network-online.target
+ConditionPathExists=/home/dave/agent-workforce/bin/fleet_eval_probes.json
+
+[Service]
+Type=oneshot
+User=dave
+# The grounding tier shells out to the `qmd` CLI, which opens ~/.cache/qmd/index.sqlite
+# in WAL mode and writes there; run from $HOME so that path resolves the same way it does
+# for an interactive session.
+WorkingDirectory=/home/dave
+# Same Arc/Vulkan offload the qmd-mcp drop-in uses — without it the three probes rerank on
+# CPU and the run goes from ~2 minutes to a long one. `render`/`video` gate renderD128.
+Environment=QMD_LLAMA_GPU=vulkan
+SupplementaryGroups=render video
+ExecStart=/home/dave/agent-workforce/bin/fleet_eval.sh --deliver
+TimeoutStartSec=30min
+NoNewPrivileges=true
+Nice=5

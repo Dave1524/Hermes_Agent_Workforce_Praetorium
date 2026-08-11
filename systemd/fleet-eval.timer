@@ -1,0 +1,32 @@
+# Daily, because both tiers measure things that move daily and neither is expensive:
+# tier 1 reads a 2-day receipt window (a weekly cadence would let a malformed route sit
+# unnoticed through five nights of deliveries), and tier 2 measures an index that
+# qmd-refresh rewrites every 30 minutes against a vault Dave edits from the Mac.
+#
+# 07:07 is chosen, not arbitrary:
+#   * clear of the every-15m auto-sync (:00/:15/:30/:45), qmd-refresh (:20/:50) and
+#     inbox-sync (:01/:31) — a lock collision costs the run, since fleet_eval.sh skips
+#     rather than queues;
+#   * after the last overnight job (06:37 apt-daily-upgrade) and after the 06:00 daily
+#     plan, so the 2-day receipt window covers a full night of real deliveries rather
+#     than catching them mid-flight;
+#   * before the working day, so a regression is in #ops when Dave starts reading.
+#
+# Nearest neighbour is scorecard.timer (Mon 07:00 + RandomizedDelaySec=5min, so its window
+# closes at 07:05). The two share no lock and no state, but they do share the ops route —
+# keep this slot ahead of any jitter widening there, or Monday's #ops gets two posts at once.
+#
+# Persistent=true: a day the box was asleep is a day of unmeasured drift, and a late run
+# still reports it. RandomizedDelaySec is small — the point of a fixed slot is to stay out
+# of the other timers' way, and a wide jitter would walk back into them.
+[Unit]
+Description=Run the fleet eval daily
+
+[Timer]
+OnCalendar=*-*-* 07:07:00
+RandomizedDelaySec=90s
+AccuracySec=1min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

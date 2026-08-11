@@ -87,6 +87,7 @@ Supporting daemons (not override-driven):
 | `overnight-pre-snapshot.timer` | Model-free pre-run state capture → `~/logs/overnight/` (NUC-36) |
 | `inbox-backlog-alert.timer` | Daily 06:20 approvals-aging Discord alert (>2d oldest pending) — NUC-30 |
 | `local-tier-eval.timer` | Tier-0 capability eval 6×/day (02,08,11,14,17,20:17) via `bin/local_tier_eval.sh`. No `EnvironmentFile` by design — it must never reach a paid provider |
+| `fleet-eval.timer` | Daily 07:07 drift check via `bin/fleet_eval.sh`: tier 1 grades receipts against `bin/buzz_routes.env`, tier 2 re-asks the three vault questions the fleet got wrong. Gates on **regression against the baselines in `bin/fleet_eval_probes.json`**, not on absolute state — two probes fail today by design, and re-recording a baseline is a deliberate fixture edit. Exits 1 and posts to `ops` only when something moved backwards; history spine at `~/logs/fleet-eval/history.psv` |
 
 Deploy a unit after changing `systemd/`:
 

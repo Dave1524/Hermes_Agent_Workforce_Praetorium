@@ -41,6 +41,16 @@
 # it joins `ops`. It is a weekly rollup of agent-run outcomes — the same operational feed
 # as the morning report — and a rollup nobody reads is a rollup that stops being written.
 #
+# fleet-eval.service is a producer and is deliberately NOT a row here. Every row above
+# delivers the same way — the unit declares DELIVERY_ROUTE and an ExecStartPost adapter
+# fires unconditionally after a successful run — and fleet-eval cannot: it posts only when
+# it found a regression, which is exactly the run where ExecStart exits non-zero and
+# systemd skips ExecStartPost. It calls bin/deliver.sh itself, from inside
+# bin/fleet_eval.sh --deliver, with `--route ops`. Listing it as `wired` would assert a
+# unit-level route that isn't there; listing it as `pending` would tell the audit a ported
+# producer is still on Discord and fail a clean day. Its route is asserted in
+# tests/test_fleet_eval.sh instead, against this same route table.
+#
 # unit	route	payload	status	silence	canvas
 overnight-pre-snapshot.service	ops	file	wired	never	none
 overnight-morning-report.service	ops	file	wired	never	none
