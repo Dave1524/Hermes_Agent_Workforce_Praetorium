@@ -50,6 +50,42 @@ echo "kanban_run_and_wait: task=$task_id created (idempotency-key=$IDEMPOTENCY_K
 # imately blocks at t≈0). `|| echo unknown` keeps this fail-soft under set -euo pipefail:
 # an undeterminable status falls through to the normal poll loop, never a false DEDUP.
 DEDUP_EXIT=3
+# NUC-44: a `blocked` card is only a benign decline when the AGENT authored the block.
+# Hermes also parks a card at `blocked` after its own --max-retries are exhausted by
+# runs that crashed, timed out, or gave up — the same terminal status for the opposite
+# meaning. Signal that distinctly with exit 4 so the outer runner records CRASHED rather
+# than a phantom NOPROPOSAL, and so content_change_dispatch.sh holds its state file.
+CRASH_EXIT=4
+
+# True only when at least one run carries outcome=blocked (the agent called kanban_block).
+# Everything else on a blocked card — crashed, timed_out, gave_up, or no runs at all — is
+# a masked failure. Enumerating the FAILURE outcomes instead would fail OPEN: a new
+# outcome string would default to "benign decline", which is the exact bug being fixed
+# here, so the check is written to fail CLOSED. An unreadable or unparseable payload is
+# likewise treated as not-agent-authored: the expensive direction is certifying a crash
+# as a decline, not costing one retry.
+block_is_agent_authored() {
+  "$HERMES" kanban show "$1" --json 2>/dev/null | python3 -c 'import json,sys
+try:
+    runs = (json.load(sys.stdin) or {}).get("runs") or []
+except Exception:
+    sys.exit(1)
+sys.exit(0 if any(r.get("outcome") == "blocked" for r in runs) else 1)'
+}
+
+# One line per failed run, for the stderr report — the reason the card is parked is on
+# the runs, not on the task (there is no block_reason field).
+block_run_errors() {
+  "$HERMES" kanban show "$1" --json 2>/dev/null | python3 -c 'import json,sys
+try:
+    runs = (json.load(sys.stdin) or {}).get("runs") or []
+except Exception:
+    sys.exit(0)
+for r in runs:
+    err = (r.get("error") or "").strip().replace("\n", " ")
+    sys.stdout.write("  run %s: outcome=%s %s\n" % (r.get("id","?"), r.get("outcome"), err[:200]))' || true
+}
+
 initial_status=$(printf '%s' "$task_json" | python3 -c 'import json,sys
 d=json.load(sys.stdin); t=d.get("task",d); print(t.get("status","unknown"))' 2>/dev/null || echo unknown)
 if [ "$initial_status" = unknown ]; then
@@ -73,14 +109,25 @@ while [ "$elapsed" -lt "$POLL_TIMEOUT_SECONDS" ]; do
       exit 0
       ;;
     blocked)
-      # NUC-25 fix: a blocked card is a benign decline, not a runtime failure.
+      # NUC-25: an AGENT-AUTHORED block is a benign decline, not a runtime failure.
       # Hermes already exhausts its own --max-retries before ending a task
       # blocked, so the outer runner's 3x retry only repeats the identical block
       # and then marks the whole service failed. The old direct `hermes -z` path
       # counted "agent produced no proposal" as success — mirror that here. The
       # block reason is recorded on the card (hermes kanban show "$task_id").
-      echo "kanban_run_and_wait: task=$task_id ended status=blocked — benign decline, not retried (reason on card: hermes kanban show $task_id)" >&2
-      exit 0
+      #
+      # NUC-44: but `blocked` is ALSO where hermes parks a card whose runs all
+      # crashed, and treating that as a decline masked 20 consecutive
+      # augustus-content failures as outcome=NOPROPOSAL + exit 0. Only a card
+      # carrying a real kanban_block still exits 0; a crash-parked card exits
+      # CRASH_EXIT so the failure is legible all the way up.
+      if block_is_agent_authored "$task_id"; then
+        echo "kanban_run_and_wait: task=$task_id ended status=blocked — benign decline, not retried (reason on card: hermes kanban show $task_id)" >&2
+        exit 0
+      fi
+      echo "kanban_run_and_wait: task=$task_id ended status=blocked with NO agent-authored block — every run crashed or was abandoned. This is a FAILURE, not a decline:" >&2
+      block_run_errors "$task_id" >&2
+      exit "$CRASH_EXIT"
       ;;
     archived)
       echo "kanban_run_and_wait: task=$task_id ended status=archived (cancelled) — no proposal, not a failure" >&2
