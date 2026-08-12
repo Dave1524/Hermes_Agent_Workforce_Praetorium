@@ -3,7 +3,7 @@
 ## What this is
 The box-side operational home for the AI agent workforce running on this machine:
 orchestration config, cron/scheduling, inbox/approval tooling, agent profiles.
-This is a separate repo from `../vault-boxsafe/` — this one holds *how the agents run*,
+This is a separate repo from the vault clones (`../Obsidian_AI_Operating_System/` canonical, `../obsidian-ai-os-boxsafe/` legacy mirror) — this one holds *how the agents run*,
 the vault holds *what they know*.
 
 ## Roster
@@ -60,7 +60,9 @@ the vault holds *what they know*.
   mode 600) and is NOT this repo. Never `git add` anything from that path into this repo.
 
 ## Where things live
-- `../vault-boxsafe/` — the box-safe vault projection (branch `agents`), shared memory/context.
+- `../Obsidian_AI_Operating_System/` — canonical vault clone; shared memory/context.
+  Propose on `agents/<date>-<slug>` branches, never `main`. (Legacy mirror
+  `../obsidian-ai-os-boxsafe/` retires at cutover.)
 - `~/.config/agent-workforce/` — secrets + per-job override envs (mode 600). Outside git entirely.
 - This repo (`~/dev/agent-workforce/`) — **source of truth** for orchestration config, systemd
   unit sources, agent task profiles, inbox/approval tooling.
