@@ -8,7 +8,17 @@ SCRIPT="$REPO_ROOT/bin/scorecard.sh"
 TD="$(mktemp -d)"
 
 fail=0
-assert() { local d=$1 c=$2; if eval "$c"; then echo "  ok: $d"; else echo "  FAIL: $d"; fail=1; fi; }
+# See CLAUDE.md § Verification: a condition must not run under pipefail, or an early-exiting
+# reader (grep -q) SIGPIPEs its producer and turns a satisfied assertion red.
+assert() {
+  local d=$1 c=$2 pf
+  pf=$(shopt -po pipefail)
+  set +o pipefail
+  if eval "$c"; then echo "  ok: $d"; else echo "  FAIL: $d"; fail=1; fi
+  eval "$pf"
+}
+
+assert "a found pattern is never reported as a failure" "yes | grep -q y"
 
 sc() {
   local cost=$1 approvals=$2 digest=$3
@@ -133,5 +143,19 @@ assert "runs = 3 (OPS included in all-time)" "grep -q '| Agent runs (all-time) |
 assert "ops runs row = 2" "grep -q '| Ops runs (non-proposal, NUC-36) | 2 |' '$d8'"
 assert "proposal rate 100% (1/1), OPS excluded from denom" "grep -q 'Proposal rate | 100% (1/1)' '$d8'"
 assert "avg duration 63s (includes OPS seconds)" "grep -q '| Avg run duration | 63s |' '$d8'"
+
+echo "--- scenario 9: CRASHED counts as an error run, never as legacy (NUC-44) ---"
+# An unrecognised outcome falls to the `*)` arm and is reported as a pre-NUC-23 record of
+# "unknown proposal status" — which would hide a crash exactly the way outcome=NOPROPOSAL
+# hid 20 augustus-content nights. Pin the new vocab at the consumer, not just the producer.
+c9="$TD/cost9.log"; d9="$TD/digest9.md"
+cat > "$c9" <<'EOF'
+ts=2026-08-12T10:00:00+00:00 schema=3 profile=augustus model=x task=augustus-content outcome=PROPOSAL proposal=a run_seconds=100 attempts=1
+ts=2026-08-12T10:05:00+00:00 schema=3 profile=augustus model=x task=augustus-content outcome=CRASHED proposal=none run_seconds=215 attempts=1
+EOF
+rc=$(sc "$c9" "$TD/none.tsv" "$d9")
+assert "exits 0" "[ '$rc' = 0 ]"
+assert "error runs = 1 (CRASHED bucketed with fails)" "grep -q 'Error runs (fail/violation) | 1 (1 fail / 0 violation)' '$d9'"
+assert "no legacy note (CRASHED is a known outcome)" "! grep -q 'pre-NUC-23 record' '$d9'"
 
 exit $fail

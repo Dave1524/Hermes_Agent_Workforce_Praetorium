@@ -7,15 +7,22 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SCRIPT="$REPO_ROOT/bin/agent_propose.sh"
 
 fail=0
+# See CLAUDE.md § Verification: a condition must not run under pipefail, or an early-exiting
+# reader (grep -q) SIGPIPEs its producer and turns a satisfied assertion red.
 assert() {
-  local desc=$1 cond=$2
+  local desc=$1 cond=$2 pf
+  pf=$(shopt -po pipefail)
+  set +o pipefail
   if eval "$cond"; then
     echo "  ok: $desc"
   else
     echo "  FAIL: $desc"
     fail=1
   fi
+  eval "$pf"
 }
+
+assert "a found pattern is never reported as a failure" "yes | grep -q y"
 
 # ── Sandbox: isolate $HOME so the script never touches real secrets/logs/worktree ──
 sandbox() {
@@ -326,5 +333,27 @@ chmod +x "$h20/mock_hermes.sh"
 rc=$(run_silent "$h20" '' 'find "$HOME/logs/overnight" -name "morning-report-*.md" -newermt "@$AGENT_RUN_STARTED_AT" | grep -q .')
 assert "fresh artifact passes verify" "[ '$rc' = 0 ]"
 assert "logs ops OK" "grep -q 'OK: ops run completed' '$h20/agent-workforce/logs/agent_propose.log'"
+
+echo "--- scenario 21: CRASHED — runtime exits 4 (crash-parked kanban card) (NUC-44) ---"
+# The 2026-08-12 outage: 20 nights of crashed hermes runs recorded as outcome=NOPROPOSAL,
+# which reads identically to "the agent had nothing to say". A crash gets its own vocab.
+h21=$(sandbox)
+rc=$(run_scenario "$h21" 4 0)   # mock runtime exits 4 == CRASH_EXIT
+assert "exits 1 (a crash is a failure, not a decline)" "[ '$rc' = 1 ]"
+assert "cost.log outcome=CRASHED" "grep -q 'outcome=CRASHED' '$h21/agent-workforce/logs/cost.log'"
+assert "cost.log is NOT outcome=NOPROPOSAL (the masked-failure bug)" "! grep -q 'outcome=NOPROPOSAL' '$h21/agent-workforce/logs/cost.log'"
+assert "cost.log is NOT a generic outcome=FAIL" "! grep -q 'outcome=FAIL' '$h21/agent-workforce/logs/cost.log'"
+assert "logs CRASHED with the underlying cause named" "grep -q 'CRASHED: runtime reported a crashed run' '$h21/agent-workforce/logs/agent_propose.log'"
+assert "cost.log attempts=1 (hermes already retried; no outer re-run)" "grep -q 'attempts=1' '$h21/agent-workforce/logs/cost.log'"
+
+echo "--- scenario 22: an ops-mode crash is CRASHED too, and never OPS (NUC-44) ---"
+h22=$(sandbox)
+printf '\nAGENT_RUN_MODE=ops\nAGENT_TASK_SLUG=augustus-content\n' \
+  >> "$h22/.config/agent-workforce/secrets.env"
+rc=$(run_scenario "$h22" 4 0)
+assert "exits 1" "[ '$rc' = 1 ]"
+assert "cost.log outcome=CRASHED" "grep -q 'outcome=CRASHED' '$h22/agent-workforce/logs/cost.log'"
+assert "cost.log is NOT outcome=OPS" "! grep -q 'outcome=OPS' '$h22/agent-workforce/logs/cost.log'"
+assert "cost.log task=augustus-content (the crash is attributable)" "grep -q 'task=augustus-content' '$h22/agent-workforce/logs/cost.log'"
 
 exit $fail

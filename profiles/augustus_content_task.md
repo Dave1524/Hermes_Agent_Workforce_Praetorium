@@ -33,20 +33,6 @@ for Dave to judge.
 STEP 0 — Recall prior runs. Read your MEMORY section: angles you already pitched. Do not
 re-pitch the same angle (advance it or pick another). If MEMORY is empty, start fresh.
 
-ONE-OFF FOR THE NEXT RUN — holiday LinkedIn batch strategy review (Dave, 2026-08-09).
-Before the normal Picked/Pitched workflow, review the six Agent Content Inbox rows Marcus marked
-Drafted for Dave's holiday queue:
-- Mon 18 Aug (ToFu) — "I can tell you the health of a warehouse in 30 seconds by looking at the dispatch area."
-- Wed 20 Aug (MoFu) — "Your 3PL contract isn't about the rate. The SLA incentivizes the wrong behavior."
-- Fri 22 Aug (BoFu) — "Your automation vendor's balance sheet is now an item on your risk register."
-- Mon 25 Aug (ToFu) — "The most expensive automation project is the one that goes live on time."
-- Wed 27 Aug (MoFu) — "A pharma customer doesn't need a colder store. They need a store that can prove what it did."
-- Fri 29 Aug (BoFu) — "You can order the cranes for 2028. You can't order the people who commission them."
-Assess whether they work as one solid two-week LinkedIn story: funnel balance, ICP/logistics fit,
-mechanism strength, sequencing, topic overlap, current-evidence risk, de-identification, and the
-BoFu booking-link close. Recommend concrete swaps/edits if the set is weak; otherwise say why the
-arc holds. Put the review in the run report so Dave can decide before scheduling.
-
 STEP 1 — Know what is ALREADY PUBLISHED, then ground yourself.
 FIRST, exactly once, run:
     python3 ~/agent-workforce/bin/published_corpus.py list
@@ -73,11 +59,18 @@ insight bar (no table-stakes takes); business-correct language.
 
 STEP 2 — Draft any PICKED angles (quick check). Run:
     python3 ~/agent-workforce/bin/notion_rest.py board --status Picked --json
-If the result is empty, skip immediately to STEP 3. If some exist (handle max 2): use the
-linkedin-content-engine skill to write 2-3 distinct-hook variants for each row. Write the variants
-(labelled Variant A / B / C) to a temp file, then append + advance status in one call:
+If the result is empty, skip immediately to STEP 3. Otherwise use the linkedin-content-engine skill
+to write 2-3 distinct-hook variants for each row. Write the variants (labelled Variant A / B / C)
+to a temp file, then append + advance status in one call:
     python3 ~/agent-workforce/bin/notion_rest.py draft --page <PAGE_ID> --body-file <TMPFILE> --set-status Drafted
 (<PAGE_ID> is the row's "id" from the board --json output.)
+
+Two limits here are enforced by the helper, not by you, so do not work around them:
+- `board` returns at most 2 rows per run. If it prints a cap notice on stderr, more rows are
+  waiting — that is fine, they come to the next run. Do not pass `--max-rows` to get more.
+- `draft` REFUSES a page already at Drafted / Ready / Published, because appending would stack a
+  second set of variants into a body that already has one. If you hit that refusal, the row is
+  already done: leave it, say so in the run report, and move on. Do NOT pass `--force`.
 
 STEP 3 — Pitch new angles (this is the main job). Run:
     python3 ~/agent-workforce/bin/notion_rest.py board --status Pitched --json

@@ -8,7 +8,17 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SCRIPT="$REPO_ROOT/bin/kanban_run_and_wait.sh"
 
 fail=0
-assert() { local d=$1 c=$2; if eval "$c"; then echo "  ok: $d"; else echo "  FAIL: $d"; fail=1; fi; }
+# See CLAUDE.md § Verification: a condition must not run under pipefail, or an early-exiting
+# reader (grep -q) SIGPIPEs its producer and turns a satisfied assertion red.
+assert() {
+  local d=$1 c=$2 pf
+  pf=$(shopt -po pipefail)
+  set +o pipefail
+  if eval "$c"; then echo "  ok: $d"; else echo "  FAIL: $d"; fail=1; fi
+  eval "$pf"
+}
+
+assert 'a found pattern is never reported as a failure' "yes | grep -q y"
 
 # ── Sandbox: isolate $HOME and stub ~/.local/bin/hermes (what the wrapper invokes). The
 #    stub logs every argv to $ARGV_LOG and prints MOCK_CREATE_JSON for `kanban create` /
@@ -70,8 +80,12 @@ rc=$(run_wrapper "$h4" '{"id":"t1"}' '{"task":{"status":"done"}}')
 assert "exits 3 (DEDUP via show fallback)" "[ '$rc' = 3 ]"
 
 echo "--- scenario 5: fresh card that later blocks is a benign decline (exit 0), not DEDUP ---"
+# NUC-44: the block must be AGENT-authored to stay benign, so the fixture carries the
+# run that proves it. Without runs[] this card is now a crash-park (exit 4) — see
+# tests/test_kanban_crash_not_benign.sh.
 h5=$(sandbox)
-rc=$(run_wrapper "$h5" '{"id":"t1","task":{"status":"todo"}}' '{"task":{"status":"blocked"}}')
+rc=$(run_wrapper "$h5" '{"id":"t1","task":{"status":"todo"}}' \
+  '{"task":{"status":"blocked"},"runs":[{"status":"blocked","outcome":"blocked","summary":"declined"}]}')
 assert "exits 0 (benign decline, not dedup exit 3)" "[ '$rc' = 0 ]"
 assert "not flagged as an idempotent hit" "! grep -q 'idempotent hit' '$h5/stderr.log'"
 

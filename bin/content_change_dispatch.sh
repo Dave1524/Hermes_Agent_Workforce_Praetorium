@@ -31,8 +31,11 @@ log() { echo "$(date -Is) content_change_dispatch: $*" | tee -a "$LOG_DIR/conten
 # ── 1. Read current Picked page IDs (deterministic, model-free) ──
 # board --status Picked --json prints a JSON array of {id, angle, status, url};
 # extract ids, one sorted id per line. notion_rest.py exits non-zero on API error.
+# --max-rows 0 (NUC-44): the tool's default cap of 2 is for the agent that has to draft
+# them. This diff must see EVERY Picked row — a capped read would write a truncated set
+# to STATE and mark the rows it never saw as seen, which is the bug this file guards.
 current=""
-if ! current=$(python3 "$NOTION_REST" board --status Picked --json 2>>"$LOG_DIR/content_change_dispatch.log" \
+if ! current=$(python3 "$NOTION_REST" board --status Picked --json --max-rows 0 2>>"$LOG_DIR/content_change_dispatch.log" \
     | python3 -c 'import json,sys
 try:
     rows = json.load(sys.stdin)
@@ -77,6 +80,10 @@ log "detected $count new Picked row(s) — dispatching Augustus draft run via ag
 # Reuse the nightly wiring: agent_propose.sh sources secrets.env + this override
 # itself and drafts up to 2 Picked rows. We do NOT source the override here.
 export AGENT_JOB_OVERRIDES="$AUGUSTUS_OVERRIDES"
+# NUC-44: mark where cost.log ends BEFORE dispatching, so the outcome check below reads
+# only the record this dispatch produced and never an older one.
+COST_LOG="${AGENT_COST_LOG:-$LOG_DIR/cost.log}"
+cost_lines_before=$(wc -l < "$COST_LOG" 2>/dev/null || echo 0)
 rc=0
 "$AGENT_PROPOSE" || rc=$?
 if [ "$rc" -ne 0 ]; then
@@ -85,6 +92,19 @@ if [ "$rc" -ne 0 ]; then
   # confirm the Picked rows were drafted. Leave STATE untouched so the next tick
   # retries them rather than silently swallowing an undrafted Picked row.
   log "agent_propose.sh returned $rc — leaving state unchanged so new rows retry next tick"
+  exit 0
+fi
+
+# ── 3c. Belt and braces: rc=0 is a CLAIM of success, the cost.log record is evidence ──
+# The 2026-08-12 outage ran entirely through the rc=0 path: agent_propose.sh returned 0 on
+# a run whose every hermes attempt had crashed, the guard above never fired, and 20 nights
+# of Picked rows were marked seen without ever being drafted. Criterion (1)/(2) stop the
+# false zero at its source; this check keeps state safe if a future runner regresses to it.
+# awk (not `tail | grep`) so nothing in this pipeline can exit early — see CLAUDE.md.
+crashed=$(awk -v skip="$cost_lines_before" \
+  'NR > skip && /outcome=CRASHED/ { n++ } END { print n+0 }' "$COST_LOG" 2>/dev/null || echo 0)
+if [ "${crashed:-0}" -gt 0 ]; then
+  log "agent_propose.sh exited 0 but recorded outcome=CRASHED — leaving state unchanged so new rows retry next tick"
   exit 0
 fi
 

@@ -11,10 +11,11 @@ Target: data source "Agent Content Inbox" (LinkedIn Content Planner).
 Reads the token itself from ~/.config/agent-workforce/secrets.env — no env injection needed.
 
 Commands:
-  board  [--status NAME] [--json]         List rows (Angle + Status); optional status filter.
+  board  [--status NAME] [--json] [--max-rows N]
+                                          List rows (Angle + Status); optional status filter.
   pitch  --angle .. --insight .. --evidence .. [--signal ..] [--format ..] [--body ..|--body-file F]
                                           Create a new pitch row (Status=Pitched, Proposed by=Augustus).
-  draft  --page PAGE_ID (--body ..|--body-file F) [--set-status Drafted]
+  draft  --page PAGE_ID (--body ..|--body-file F) [--set-status Drafted] [--force]
                                           Append draft text to a page body and set its Status.
 
 All commands print a compact JSON result to stdout and exit non-zero on API error.
@@ -25,6 +26,18 @@ DATA_SOURCE_ID = "ab5eb999-e986-4a8b-9159-eb340196af9b"
 NOTION_VERSION = "2025-09-03"
 API = "https://api.notion.com/v1"
 SECRETS = os.path.expanduser("~/.config/agent-workforce/secrets.env")
+
+# NUC-44. Two limits an agent used to be merely *asked* to respect, in
+# profiles/augustus_content_task.md, and did not.
+#
+# A row at one of these statuses already carries a draft in its body. Appending a
+# second one stacks two variants into one page: nothing in the board view shows it,
+# and afterwards nobody can tell which paragraphs belong to which pass. Six rows were
+# sitting at Drafted when this landed. Ready/Published are included because appending
+# under them is strictly worse than under Drafted, and enumerating only the reported
+# case would fail open on the next one.
+HAS_DRAFT_STATUSES = ("Drafted", "Ready", "Published")
+DEFAULT_MAX_ROWS = 2  # per run; 0 = unlimited, which is what the machine callers pass
 
 
 def load_token():
@@ -88,6 +101,21 @@ def status_of(page):
     return sel.get("name") if sel else None
 
 
+def cap_rows(rows, max_rows):
+    """Hand back at most max_rows (0 = all), saying so on stderr when rows are dropped.
+
+    The note goes to stderr, never stdout: --json output stays parseable, and a cap is
+    never silent — a short list that looks like the whole board is how "handle max 2"
+    turns into "there were only 2".
+    """
+    if not max_rows or max_rows <= 0 or len(rows) <= max_rows:
+        return rows
+    sys.stderr.write(
+        "notion_rest: {} rows matched, returning {} — {} dropped by the per-run cap "
+        "(--max-rows 0 for all)\n".format(len(rows), max_rows, len(rows) - max_rows))
+    return rows[:max_rows]
+
+
 def cmd_board(args, token):
     payload = {"page_size": 100}
     if args.status:
@@ -96,6 +124,7 @@ def cmd_board(args, token):
     rows = [{"id": p["id"], "angle": title_of(p), "status": status_of(p),
              "url": p.get("url"), "last_edited": p.get("last_edited_time")}
             for p in res.get("results", [])]
+    rows = cap_rows(rows, getattr(args, "max_rows", DEFAULT_MAX_ROWS))
     if args.json:
         print(json.dumps(rows, indent=2))
     else:
@@ -156,6 +185,11 @@ def cmd_draft(args, token):
     body = read_body(args)
     if not body:
         sys.exit("draft: provide --body or --body-file")
+    current = status_of(api("GET", "/pages/{}".format(args.page), token))
+    if current in HAS_DRAFT_STATUSES and not args.force:
+        sys.exit("draft: page {} is already at Status={} — appending would stack a second "
+                 "variant into the same body. Pass --force if that is what you want."
+                 .format(args.page, current))
     api("PATCH", "/blocks/{}/children".format(args.page), token,
         {"children": paragraph_blocks(body)})
     result = {"page": args.page, "appended_chars": len(body)}
@@ -167,13 +201,15 @@ def cmd_draft(args, token):
     return result
 
 
-def main():
+def main(argv=None):
     p = argparse.ArgumentParser(description="REST Notion I/O for the Agent Content Inbox")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     b = sub.add_parser("board", help="list rows")
     b.add_argument("--status", help="filter by Status (Pitched/Picked/Drafted/...)")
     b.add_argument("--json", action="store_true")
+    b.add_argument("--max-rows", type=int, default=DEFAULT_MAX_ROWS,
+                   help="cap rows handed to one run (default %d; 0 = all)" % DEFAULT_MAX_ROWS)
 
     pi = sub.add_parser("pitch", help="create a pitch row")
     pi.add_argument("--angle", required=True)
@@ -189,8 +225,10 @@ def main():
     d.add_argument("--body")
     d.add_argument("--body-file")
     d.add_argument("--set-status", default="Drafted")
+    d.add_argument("--force", action="store_true",
+                   help="append even when the page already carries a draft")
 
-    args = p.parse_args()
+    args = p.parse_args(argv)
     token = load_token()
     {"board": cmd_board, "pitch": cmd_pitch, "draft": cmd_draft}[args.cmd](args, token)
 

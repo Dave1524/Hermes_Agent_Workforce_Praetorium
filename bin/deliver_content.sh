@@ -26,6 +26,24 @@ content_summary() {  # content_summary <run-line>
   printf '%s\n%s\n%s' "$(board_delta "$(marker_epoch)")" "$(corpus_line)" "$1"
 }
 
+# NUC-44: the outcome word alone is not a status. `NOPROPOSAL in 231s` and `CRASHED in
+# 215s` are one token apart and skim the same, which is how 20 consecutive crashed nights
+# passed as quiet ones. A failing outcome is spelled out as a failure, and says what was
+# NOT produced — the receipt has to be readable without the cost.log vocabulary in hand.
+run_line() {  # run_line <record>
+  local outcome secs
+  outcome=$(field "$1" outcome); secs=$(field "$1" run_seconds)
+  case "$outcome" in
+    CRASHED)
+      printf 'run: FAILED — %s after %ss (every attempt crashed; nothing was drafted)' \
+        "$outcome" "$secs" ;;
+    FAIL|VIOLATION)
+      printf 'run: FAILED — %s after %ss (nothing was drafted)' "$outcome" "$secs" ;;
+    *)
+      printf 'run: %s in %ss' "$outcome" "$secs" ;;
+  esac
+}
+
 record=$(run_record)
 if [ -z "$record" ]; then
   note "no cost.log record for task=$TASK"
@@ -41,7 +59,7 @@ if ! is_this_run "$record"; then
   exit 0
 fi
 
-summary=$(content_summary "run: $(field "$record" outcome) in $(field "$record" run_seconds)s")
+summary=$(content_summary "$(run_line "$record")")
 note "${summary//$'\n'/ | }"
 delivery_handoff --subject "$SUBJECT" --message "$summary"
 

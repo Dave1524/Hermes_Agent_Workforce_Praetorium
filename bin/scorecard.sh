@@ -84,7 +84,11 @@ if [ -r "$COST_LOG" ]; then
     case "${kv[outcome]:-}" in
       PROPOSAL)   proposals=$(( proposals + 1 )) ;;
       NOPROPOSAL) noproposals=$(( noproposals + 1 )) ;;
-      FAIL)       fails=$(( fails + 1 )); [ "$in7d" = 1 ] && fails7d=$(( fails7d + 1 )) ;;
+      # NUC-44: CRASHED is a FAIL with a diagnosis attached (the runtime told us the run
+      # crashed rather than merely exiting non-zero). It must land in the error bucket —
+      # left to the `*)` arm it would be counted as a legacy "unknown proposal status"
+      # record, which is the same masking this outcome was introduced to end.
+      FAIL|CRASHED) fails=$(( fails + 1 )); [ "$in7d" = 1 ] && fails7d=$(( fails7d + 1 )) ;;
       VIOLATION)  violations=$(( violations + 1 )); [ "$in7d" = 1 ] && violations7d=$(( violations7d + 1 )) ;;
       *)          legacy=$(( legacy + 1 )) ;;
     esac

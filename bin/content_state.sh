@@ -37,9 +37,12 @@ sys.stdout.write("corpus: %s, tip age %sh" % (
 }
 
 board_delta() {  # board_delta <since-epoch>
+  # --max-rows 0: the tool caps at 2 rows for the agent that has to draft them (NUC-44).
+  # A receipt counting "how many rows moved" needs the whole board, and 2>&1 here would
+  # fold the cap's stderr note into the JSON anyway.
   local json
   if ! json=$(timeout "${CONTENT_BOARD_TIMEOUT:-90}" \
-                python3 "$CONTENT_PROBE_DIR/notion_rest.py" board --json 2>&1); then
+                python3 "$CONTENT_PROBE_DIR/notion_rest.py" board --json --max-rows 0 2>&1); then
     printf 'board: UNAVAILABLE — %s' "$(printf '%s' "$json" | tail -1 | cut -c1-200)"
     return
   fi

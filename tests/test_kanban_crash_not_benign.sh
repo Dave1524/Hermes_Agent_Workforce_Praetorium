@@ -35,13 +35,25 @@ assert 'a found pattern is never reported as a failure' "yes | grep -q y"
 sandbox() {
   local home; home=$(mktemp -d)
   mkdir -p "$home/.local/bin"
+  # `show` is called twice on a blocked card — once by the poll loop for the status, then
+  # again by block_is_agent_authored for the runs. MOCK_SHOW_JSON_2, when set, answers the
+  # second call onwards, so a scenario can hand the status read a good payload and the
+  # runs read a bad one (scenario 5).
   cat > "$home/.local/bin/hermes" <<'HERMES'
 #!/usr/bin/env bash
 echo "$@" >> "$ARGV_LOG"
 case "${2:-}" in
   create) printf '%s' "$MOCK_CREATE_JSON" ;;
-  show)   printf '%s' "$MOCK_SHOW_JSON" ;;
-  *)      printf '%s' '{}' ;;
+  show)
+    n=$(( $(cat "$SHOW_COUNT" 2>/dev/null || echo 0) + 1 ))
+    echo "$n" > "$SHOW_COUNT"
+    if [ "$n" -ge 2 ] && [ -n "${MOCK_SHOW_JSON_2:-}" ]; then
+      printf '%s' "$MOCK_SHOW_JSON_2"
+    else
+      printf '%s' "$MOCK_SHOW_JSON"
+    fi
+    ;;
+  *) printf '%s' '{}' ;;
 esac
 HERMES
   chmod +x "$home/.local/bin/hermes"
@@ -52,11 +64,12 @@ HERMES
 # Card starts non-terminal so the wrapper enters its poll loop (a terminal status on the
 # create response is NUC-38 DEDUP, a different path); the poll then sees $1.
 run_wrapper() {
-  local home=$1 show_json=$2
+  local home=$1 show_json=$2 show_json_2=${3:-}
   local rc=0
-  HOME="$home" ARGV_LOG="$home/hermes_argv.log" \
+  HOME="$home" ARGV_LOG="$home/hermes_argv.log" SHOW_COUNT="$home/show_count" \
     POLL_INTERVAL_SECONDS=1 POLL_TIMEOUT_SECONDS=2 \
     MOCK_CREATE_JSON='{"id":"t1","task":{"status":"todo"}}' MOCK_SHOW_JSON="$show_json" \
+    MOCK_SHOW_JSON_2="$show_json_2" \
     bash "$SCRIPT" "Nightly content pitch+draft" "$home/task_body.md" augustus "$home/ws" \
       "augustus-content-2026-08-12" 5m \
     >"$home/stdout.log" 2>"$home/stderr.log" || rc=$?
@@ -102,10 +115,14 @@ h4=$(sandbox)
 rc=$(run_wrapper "$h4" "$no_runs")
 assert "exits $CRASH_EXIT (cannot prove a genuine decline)" "[ '$rc' = '$CRASH_EXIT' ]"
 
-echo '--- scenario 5: unparseable show payload -> fails CLOSED, never a false benign ---'
+echo '--- scenario 5: unparseable runs payload -> fails CLOSED, never a false benign ---'
+# Status reads fine, the runs read does not. A wholly-malformed payload would already die
+# in the poll loop's own status parse (non-zero, also fail-closed); this pins the branch
+# that is reachable AFTER the card is known blocked, which is where a false benign lives.
 h5=$(sandbox)
-rc=$(run_wrapper "$h5" '{"task":{"status":"blocked"},"runs":')
-assert "exits $CRASH_EXIT on malformed JSON" "[ '$rc' = '$CRASH_EXIT' ]"
+rc=$(run_wrapper "$h5" "$agent_blocked_runs" '{"task":{"status":"blocked"},"runs":')
+assert "exits $CRASH_EXIT when the runs payload cannot be parsed" "[ '$rc' = '$CRASH_EXIT' ]"
+assert 'stderr does NOT call it a benign decline' "! grep -q 'benign decline' '$h5/stderr.log'"
 
 echo '--- scenario 6: done card is untouched by the new check ---'
 h6=$(sandbox)

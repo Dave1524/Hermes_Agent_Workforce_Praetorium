@@ -354,6 +354,36 @@ assert 'exits 0 when a probe itself is broken' "[ '$rc' = 0 ]"
 assert 'a broken corpus probe is named, not silently omitted' \
   "argv '$h' | grep -q 'corpus: UNAVAILABLE'"
 
+# NUC-44: the receipt is the only place a human sees this job. `run: NOPROPOSAL in 231s`
+# and `run: CRASHED in 215s` are one word apart and read identically at a glance — which
+# is how 20 crashed nights were skimmed past. A failed run must SAY it failed and say
+# nothing was drafted, in words that do not require knowing the outcome vocabulary.
+h=$(sandbox); d=$(probes "$h" true '[]')
+printf 'ts=%s schema=3 task=augustus-content outcome=CRASHED proposal=none run_seconds=215 attempts=1\n' \
+  "$(date -Is)" > "$h/cost.log"
+touch -d '1 hour ago' "$h/marker"
+rc=$(run_content "$h" "$d")
+assert 'exits 0 (the receipt still delivers)' "[ '$rc' = 0 ]"
+assert 'a crashed run is labelled FAILED, not just named' "argv '$h' | grep -q 'run: FAILED'"
+assert 'the outcome and duration are still stated' "argv '$h' | grep -q 'CRASHED after 215s'"
+assert 'and it says nothing was drafted' "argv '$h' | grep -q 'nothing was drafted'"
+assert 'a crash never reads as a clean no-op' "! argv '$h' | grep -q 'run: CRASHED in'"
+
+h=$(sandbox); d=$(probes "$h" true '[]')
+printf 'ts=%s schema=3 task=augustus-content outcome=FAIL proposal=none run_seconds=60 attempts=3\n' \
+  "$(date -Is)" > "$h/cost.log"
+touch -d '1 hour ago' "$h/marker"
+rc=$(run_content "$h" "$d")
+assert 'a generic FAIL is labelled FAILED too' "argv '$h' | grep -q 'run: FAILED — FAIL after 60s'"
+
+h=$(sandbox); d=$(probes "$h" true "$(board_rows "$(date -u -Is -d '10 minutes ago' | sed 's/+00:00/Z/')")")
+printf 'ts=%s schema=3 task=augustus-content outcome=PROPOSAL proposal=a run_seconds=310 attempts=1\n' \
+  "$(date -Is)" > "$h/cost.log"
+touch -d '1 hour ago' "$h/marker"
+rc=$(run_content "$h" "$d")
+assert 'a healthy run is NOT labelled FAILED (no over-correction)' "! argv '$h' | grep -q 'FAILED'"
+assert 'and still reports normally' "argv '$h' | grep -q 'run: PROPOSAL in 310s'"
+
 echo '--- content-change-dispatch: a quiet poll stays silent, every decision delivers ---'
 # 96 ticks a day, almost all no-ops. A channel that reports each one stops being read,
 # and the two ticks that mattered go with it.
