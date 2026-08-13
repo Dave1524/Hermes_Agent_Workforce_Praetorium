@@ -36,6 +36,14 @@ echo "--- shellcheck (full, advisory only) ---"
 shellcheck "${scripts[@]}" || true
 
 if [ -d tests ]; then
+  # Most tests mktemp fixtures without a cleanup trap. Owning one temp root here
+  # beats 30 traps a new test can forget: on 2026-08-13 the accumulated leak hit
+  # /tmp's 1,048,576-inode ceiling with 13G of blocks still free, so `df -h` read
+  # healthy while mktemp, git commit and the gate itself failed with ENOSPC.
+  run_tmp=$(mktemp -d)
+  trap 'rm -rf "$run_tmp"' EXIT
+  export TMPDIR="$run_tmp"
+
   for t in tests/*.sh; do
     [ -e "$t" ] || continue
     echo "test: $t"
