@@ -75,15 +75,16 @@ That is: Hard non-negotiables, Step 1 (voice), Step 2.5 (business-writing angle)
 comment), Variations mode. The terminal is correct for THIS path — it is an exact known path,
 not a hunt through the vault, and the line ranges are the whole point.
 
-Then read these in full. The skill marks every one of them "load every run":
-    ~/vault/08_skills/linkedin-content-engine/references/voice.md
-    .../ai_tells.md         11 structural AI tells + the de-slop pass + self-check #11
-    .../hooks.md            hook structures
-    .../persuasion.md       narrative architecture, used at Step 3
-    .../content_pillars.md  pillar selection
-    .../funnel_111.md       the Step 2.55 stage gate
-    .../hooks_meat_ctas.md  hook/meat/CTA bank — read when selecting a hook. Ignore its
-                            "remote sessions: fetch from Notion" line; the file is on disk.
+Then read these in full, from `~/vault/08_skills/linkedin-content-engine/references/`. The
+skill marks every one of them "load every run":
+    voice.md            Dave's voice, ICP, hard rules, banned words
+    ai_tells.md         11 structural AI tells + the de-slop pass + self-check #11
+    hooks.md            hook structures
+    persuasion.md       narrative architecture, used at Step 3
+    content_pillars.md  pillar selection
+    funnel_111.md       the Step 2.55 stage gate
+    hooks_meat_ctas.md  hook/meat/CTA bank — read when selecting a hook. Ignore its
+                        "remote sessions: fetch from Notion" line; the file is on disk.
 qmd `get` serves these too, but its URI slugs hyphenate underscores (`ai-tells.md`,
 `content-pillars.md`, `funnel-111.md`) — if `get` returns empty, read the underscored path above.
 
