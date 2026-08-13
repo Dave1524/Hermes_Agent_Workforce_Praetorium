@@ -63,8 +63,21 @@ insight bar (no table-stakes takes); business-correct language.
 
 STEP 2 — Draft any PICKED angles (quick check). Run:
     python3 ~/agent-workforce/bin/notion_rest.py board --status Picked --json
-If the result is empty, skip immediately to STEP 3. Otherwise use the linkedin-content-engine skill
-to write 2-3 distinct-hook variants for each row. Write the variants (labelled Variant A / B / C)
+If the result is empty, skip immediately to STEP 3. Otherwise read the linkedin-content-engine
+skill from disk and follow it:
+    ~/.hermes/shared-skills/vault-business/linkedin-content-engine/SKILL.md   (the procedure)
+    .../references/voice.md          (Dave's voice — read this every time you draft)
+    .../references/hooks.md          (hook patterns)
+    .../references/content_pillars.md, examples.md, persuasion.md   (optional, as needed)
+Read these with the terminal. This path is NOT vault content, so the "do not browse the
+filesystem" rule above does not apply to it — that rule is about hunting vault files, which
+still goes through qmd. There is no skill *tool* on this harness; a skill here is markdown you
+read. Until 2026-08-13 this step named the skill without a path, and qmd cannot see it (the
+vault entry is a symlink to Dave's Mac), so the instruction silently loaded nothing.
+That copy is dated 2026-07-28 and its box-mode header at the top is STALE: it tells you to write
+Notion through a `notion` MCP server. Ignore that line — it was removed box-wide. notion_rest.py
+above is the only sanctioned path, exactly as stated in TOOLS.
+Use the skill to write 2-3 distinct-hook variants for each row. Write the variants (labelled Variant A / B / C)
 to a temp file, then append + advance status in one call:
     python3 ~/agent-workforce/bin/notion_rest.py draft --page <PAGE_ID> --body-file <TMPFILE> --set-status Drafted
 (<PAGE_ID> is the row's "id" from the board --json output.)
