@@ -11,6 +11,10 @@ TOOLS — use ONLY these, and do not waste turns:
   DO NOT use any mcp__notion__* / Notion MCP tool. It is intentionally removed on this box (its
   stream drops mid-run and query_data_sources needs a Business plan we do not have). If you ever
   see a Notion MCP tool offered, ignore it — the REST helper above is the only sanctioned path.
+  On the Buzz harness the helper cannot reach HTTPS — your namespace has no credential — so it
+  routes the same commands over the broker socket instead, and says so once on stderr. The
+  commands do not change. `Buzz Notion credential is unavailable` therefore means the broker
+  unit is down, not that you called the tool wrong: report it and stop, do not retry variants.
 - Published-site corpus over REST-free terminal:
     * List:  python3 ~/agent-workforce/bin/published_corpus.py list
     * Check: python3 ~/agent-workforce/bin/published_corpus.py check "<candidate title>"

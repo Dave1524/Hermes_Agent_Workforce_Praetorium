@@ -25,8 +25,8 @@ Scheduled **proposal** agent jobs share `bin/agent_propose.sh` (lock, preflight,
 | Raw source ingestion (Mechanism B) | **Tue–Sat 03:00** | `raw-ingest.{service,timer}` | `~/.config/agent-workforce/raw_ingest.env` | `profiles/raw_ingest_cc_task.md` | *(headless Claude Code)* |
 | Knowledge digest (Mechanism C) | **Sun 09:00** | `knowledge-digest.{service,timer}` | `~/.config/agent-workforce/knowledge_digest.env` | `profiles/knowledge_digest_cc_task.md` | *(headless Claude Code)* |
 | M1 signal scan (NUC-32/34) | **Mon,Wed 05:30** | `m1-signal-scan.{service,timer}` | `~/.config/agent-workforce/m1_signal_scan.env` | `profiles/m1_signal_scan_cc_task.md` | *(headless Claude Code)* |
-| Augustus content pitch+draft | daily **01:30** (backstop) | `augustus-content.{service,timer}` | `~/.config/agent-workforce/augustus-content.env` | `profiles/augustus_content_task.md` | `augustus` |
-| Content change-dispatch (poll) | every **15 min** | `content-change-dispatch.{service,timer}` | `~/.config/agent-workforce/augustus-content.env` (reused) | *(triggers the augustus run)* | `augustus` |
+| Augustus content pitch+draft | daily **01:30** (backstop) | `augustus-content.{service,timer}` | `~/.config/agent-workforce/augustus-content.env` | `profiles/augustus_content_task.md` | **`buzz-agent@augustus`** via `bin/run_content_via_buzz.sh` (NUC-46) |
+| Content change-dispatch (poll) | every **15 min** | `content-change-dispatch.{service,timer}` | `~/.config/agent-workforce/augustus-content.env` (reused) | *(triggers the augustus run)* | inherits the row above |
 | BD stall radar | **Sun–Thu 23:00** | `bd-stall-radar.{service,timer}` | `~/.config/agent-workforce/bd_stall_radar.env` | `profiles/bd_stall_radar_task.md` | `claudius` |
 | BD follow-up drafts | **Sun–Thu 23:30** | `bd-followup-drafts.{service,timer}` | `~/.config/agent-workforce/bd_followup_drafts.env` | `profiles/bd_followup_drafts_cc_task.md` | *(headless Claude Code)* |
 | Weekly pre-assembly | **Fri 22:00** | `weekly-pre-assembly.{service,timer}` | `~/.config/agent-workforce/weekly_pre_assembly.env` | `profiles/weekly_pre_assembly_task.md` | `claudius` |
@@ -49,6 +49,46 @@ write to `main`. **Follow-up (Mac-side, not attempted here):** promote the Mecha
 contradiction-flagging rule (baked into all three task profiles) into
 `00_system/update_protocol.md` § Source Ingestion itself — the box has no canonical vault
 write access to do this from here.
+
+**NUC-46 — the content job runs on the Buzz Augustus.** `augustus-content` went through
+hermes → OpenRouter → `openai/gpt-5.5`, which has answered `402 Insufficient credits` on every
+call since ~2026-07-25; ten `Picked` rows sat undrafted. The same Editor-in-Chief already runs
+on this box as `buzz-agent@augustus` (codex-acp, `gpt-5.6-sol`) at zero marginal cost, so the
+runtime now publishes a trigger to `ROUTE_content` and waits for him. Three seams, one job each:
+`bin/content_board_digest.sh` is the only definition of "what the board looks like",
+`bin/run_content_via_buzz.sh` is `AGENT_RUNTIME_CMD`, `bin/content_moved.sh` is
+`AGENT_VERIFY_CMD`. Notion works unchanged inside augustus's bwrap namespace because
+`bin/notion_rest.py` now carries a second transport (`--transport auto`) that routes the same
+five REST calls over the broker socket when there is no HTTPS credential — the namespace is
+**not** widened, and `~/.config/buzz-team/verify-fleet.sh` gate 5 still holds.
+
+The cutover is one line in `~/.config/agent-workforce/augustus-content.env` (deny-listed —
+Dave pastes it; no session can edit that file):
+
+```sh
+AGENT_RUNTIME_CMD='~/agent-workforce/bin/run_content_via_buzz.sh'
+AGENT_VERIFY_CMD='~/agent-workforce/bin/content_moved.sh'
+AGENT_MAX_ATTEMPTS=1
+```
+
+`AGENT_MAX_ATTEMPTS=1` is not optional. The non-kanban default is 3, and a timeout exits 1 —
+retried — so a slow-but-working augustus would be re-triggered up to three times and could
+draft the same row twice. The old `kanban_run_and_wait.sh` line got its 1 from
+`agent_propose.sh`'s path match; this one does not.
+
+**Revert** is the same file: restore the `AGENT_RUNTIME_CMD` from
+`config/job-overrides/augustus-content.env.example` (hermes/kanban → OpenRouter), drop
+`AGENT_VERIFY_CMD`, and the job is back on the pre-NUC-46 path. Nothing else changes — the
+15-min `content-change-dispatch` poller reuses this same env, so both jobs move and revert
+together, which is deliberate: two Augustuses drafting one board is the double-hosting hazard.
+Overlap between the 20-minute wait and the 15-minute tick is a clean SKIP on
+`agent_propose.sh`'s flock.
+
+Exit codes carry the NUC-44 split and must stay apart: **4** = the trigger never landed, nobody
+was asked (`CRASHED`, not retried); **1** = augustus was asked and was silent (`FAIL`); **0** =
+the board moved, or he replied `DECLINE: <reason>` — the runtime records that reply's relay
+event id in the snapshot so `content_moved.sh` can pass an unmoved board on evidence Dave can
+re-read (`buzz social event --event <id>`) rather than on the run's own say-so.
 
 **BD follow-up drafts is chained after the radar, deliberately.** `bd-stall-radar` (23:00)
 decides *which* deals are owed a touch and stops at flagging; `bd-followup-drafts` (23:30)
