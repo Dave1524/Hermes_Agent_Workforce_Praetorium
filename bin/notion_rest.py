@@ -20,12 +20,24 @@ Commands:
 
 All commands print a compact JSON result to stdout and exit non-zero on API error.
 """
-import argparse, json, os, sys, datetime, urllib.request, urllib.error
+import argparse, json, os, socket, sys, datetime, urllib.request, urllib.error
 
 DATA_SOURCE_ID = "ab5eb999-e986-4a8b-9159-eb340196af9b"
 NOTION_VERSION = "2025-09-03"
 API = "https://api.notion.com/v1"
 SECRETS = os.path.expanduser("~/.config/agent-workforce/secrets.env")
+
+# NUC-46. buzz-agent@augustus runs codex-acp inside a bwrap mount namespace whose
+# --tmpfs over ~/.config/agent-workforce replaces the credential directory, so on that
+# path load_token() finds nothing and HTTPS is unreachable. He reaches Notion only
+# through buzz-notion-broker.service, a host-namespace unit that owns the token and the
+# write policy and answers one JSON line per connection on a 0600 unix socket.
+#
+# The transport is the only thing that differs. Every guard above this seam — the
+# NUC-44 draft refusal and the --max-rows cap — runs before either path is chosen, so
+# the two cannot diverge; tests/test_notion_rest_broker.py replays one case table
+# through both to keep it that way.
+BROKER_SOCKET_DEFAULT = "/run/user/%d/buzz-notion.sock" % os.getuid()
 
 # NUC-44. Two limits an agent used to be merely *asked* to respect, in
 # profiles/augustus_content_task.md, and did not.
@@ -40,7 +52,12 @@ HAS_DRAFT_STATUSES = ("Drafted", "Ready", "Published")
 DEFAULT_MAX_ROWS = 2  # per run; 0 = unlimited, which is what the machine callers pass
 
 
-def load_token():
+def find_token():
+    """The HTTPS credential if one is reachable, else "". Never exits.
+
+    Split from load_token so `--transport auto` can ask whether HTTPS is possible
+    without the question itself being fatal inside augustus's namespace.
+    """
     tok = os.environ.get("NOTION_API_TOKEN", "").strip()
     if not tok:
         try:
@@ -51,11 +68,105 @@ def load_token():
                         v = line.split("=", 1)[1].strip().strip('"').strip("'")
                         if v:
                             tok = v  # last non-empty assignment wins
-        except FileNotFoundError:
+        except (FileNotFoundError, PermissionError, OSError):
             pass
+    return tok
+
+
+def load_token():
+    tok = find_token()
     if not tok:
         sys.exit("ERROR: NOTION_API_TOKEN not found in env or " + SECRETS)
     return tok
+
+
+def broker_socket_path():
+    return os.environ.get("BUZZ_NOTION_SOCKET") or BROKER_SOCKET_DEFAULT
+
+
+def broker_call(tool, arguments, timeout=30):
+    """One request per connection: the broker readline()s once, replies, and closes."""
+    path = broker_socket_path()
+    request = json.dumps({"tool": tool, "arguments": arguments}, separators=(",", ":"))
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+            sock.settimeout(timeout)
+            sock.connect(path)
+            sock.sendall(request.encode("utf-8") + b"\n")
+            with sock.makefile("rb") as stream:
+                raw = stream.readline()
+    except OSError as e:
+        sys.exit("Notion broker socket error on {} ({}): {}".format(path, tool, e))
+    if not raw:
+        sys.exit("Notion broker on {} closed the connection without a response "
+                 "({})".format(path, tool))
+    try:
+        response = json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError) as e:
+        sys.exit("Notion broker returned an unreadable response for {}: {}".format(tool, e))
+    if not isinstance(response, dict) or "ok" not in response:
+        sys.exit("Notion broker returned an unexpected response shape for {}: {}"
+                 .format(tool, raw[:200]))
+    if not response.get("ok"):
+        sys.exit("Notion broker error on {}: {}".format(tool, response.get("error", "unknown")))
+    return response.get("value")
+
+
+def api_via_broker(method, path, token, payload=None, timeout=30):
+    """The five REST calls this tool makes, expressed as the broker's tools.
+
+    An unmapped path is an error rather than a pass-through: the broker deliberately
+    exposes no raw REST surface, and inventing one here would put a hole in the policy
+    it enforces outside augustus's namespace.
+    """
+    payload = payload or {}
+    parts = path.strip("/").split("/")
+    if method == "POST" and len(parts) == 3 and parts[0] == "data_sources" \
+            and parts[2] == "query":
+        args = {"data_source_id": parts[1], "page_size": payload.get("page_size", 100)}
+        if payload.get("filter") is not None:
+            args["filter"] = payload["filter"]
+        return broker_call("notion_query_data_source", args, timeout)
+    if method == "GET" and len(parts) == 2 and parts[0] == "pages":
+        return broker_call("notion_fetch", {"id": parts[1], "object_type": "page"}, timeout)
+    if method == "PATCH" and len(parts) == 2 and parts[0] == "pages":
+        return broker_call("notion_update_page",
+                           {"page_id": parts[1], "properties": payload.get("properties", {})},
+                           timeout)
+    if method == "PATCH" and len(parts) == 3 and parts[0] == "blocks" \
+            and parts[2] == "children":
+        return broker_call("notion_append_blocks",
+                           {"block_id": parts[1], "children": payload.get("children", [])},
+                           timeout)
+    if method == "POST" and len(parts) == 1 and parts[0] == "pages":
+        args = {"parent": payload.get("parent"), "properties": payload.get("properties")}
+        if payload.get("children") is not None:
+            args["children"] = payload["children"]
+        return broker_call("notion_create_page", args, timeout)
+    sys.exit("notion_rest: no broker tool for {} {} — the broker exposes no raw REST "
+             "and this must not invent one".format(method, path))
+
+
+def resolve_transport(choice):
+    """Deterministic, and never a silent fallback (criterion 2).
+
+    `broker` that cannot find its socket is a hard error, not a quiet demotion to
+    HTTPS: a run that reaches Notion by an unintended path is exactly the failure
+    this seam exists to make visible.
+    """
+    if choice == "https":
+        return "https"
+    path = broker_socket_path()
+    if choice == "broker":
+        if not os.path.exists(path):
+            sys.exit("--transport broker: no broker socket at {} — is "
+                     "buzz-notion-broker.service running?".format(path))
+        return "broker"
+    if find_token():
+        return "https"
+    if os.path.exists(path):
+        return "broker"
+    return "https"  # no token and no socket: let load_token() raise the existing error
 
 
 def api(method, path, token, payload=None, timeout=30):
@@ -202,16 +313,26 @@ def cmd_draft(args, token):
 
 
 def main(argv=None):
-    p = argparse.ArgumentParser(description="REST Notion I/O for the Agent Content Inbox")
+    # --transport is carried by a shared parent parser so it is accepted both before
+    # and after the subcommand. default=SUPPRESS is load-bearing: without it the
+    # subparser's own default overwrites a value given at the top level.
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--transport", choices=["https", "broker", "auto"],
+                        default=argparse.SUPPRESS,
+                        help="how to reach Notion (default auto: HTTPS when a token is "
+                             "readable, else the Buzz broker socket)")
+
+    p = argparse.ArgumentParser(description="REST Notion I/O for the Agent Content Inbox",
+                                parents=[common])
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    b = sub.add_parser("board", help="list rows")
+    b = sub.add_parser("board", help="list rows", parents=[common])
     b.add_argument("--status", help="filter by Status (Pitched/Picked/Drafted/...)")
     b.add_argument("--json", action="store_true")
     b.add_argument("--max-rows", type=int, default=DEFAULT_MAX_ROWS,
                    help="cap rows handed to one run (default %d; 0 = all)" % DEFAULT_MAX_ROWS)
 
-    pi = sub.add_parser("pitch", help="create a pitch row")
+    pi = sub.add_parser("pitch", help="create a pitch row", parents=[common])
     pi.add_argument("--angle", required=True)
     pi.add_argument("--insight", required=True, help="Second-order insight")
     pi.add_argument("--evidence", required=True)
@@ -220,7 +341,8 @@ def main(argv=None):
     pi.add_argument("--body")
     pi.add_argument("--body-file")
 
-    d = sub.add_parser("draft", help="append draft text + set status on a page")
+    d = sub.add_parser("draft", help="append draft text + set status on a page",
+                       parents=[common])
     d.add_argument("--page", required=True)
     d.add_argument("--body")
     d.add_argument("--body-file")
@@ -229,7 +351,17 @@ def main(argv=None):
                    help="append even when the page already carries a draft")
 
     args = p.parse_args(argv)
-    token = load_token()
+    transport = resolve_transport(getattr(args, "transport", "auto"))
+    if transport == "broker":
+        # Announced, never inferred — a run that reached Notion by the other path
+        # should never have to be deduced from its effects afterwards.
+        sys.stderr.write("notion_rest: transport=broker via {} (no HTTPS token in this "
+                         "namespace)\n".format(broker_socket_path()))
+        global api
+        api = api_via_broker
+        token = ""  # the broker owns the credential; asking for one here would hard-exit
+    else:
+        token = load_token()
     {"board": cmd_board, "pitch": cmd_pitch, "draft": cmd_draft}[args.cmd](args, token)
 
 
