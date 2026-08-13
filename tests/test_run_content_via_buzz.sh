@@ -264,6 +264,32 @@ env CONTENT_DIGEST_BIN="$WORK/digest.sh" CONTENT_BOARD_SNAPSHOT="$WORK/board.sna
     bash "$MOVED" >"$WORK/out" 2>&1 || rc=$?
 assert 'an unreadable board fails the verify rather than reading as unchanged' "[ $rc -ne 0 ]"
 
+echo '--- the handoff: the verifier reads the artifact the RUNTIME actually wrote ---'
+# Every case above hand-builds the snapshot, so none of them exercises the one file that
+# crosses between the two scripts. Live 2026-08-13 the runtime wrote it without a trailing
+# newline, `decline_event=` fused onto the last digest row, and the verify passed by
+# reporting a board that had not moved — the decline branch was never reached. It fails
+# OPEN: after any decline the snapshot can never equal the board again.
+reset_case
+event "$AUGUSTUS" "DECLINE: nothing Picked tonight"
+run_dispatch; rc=$?
+assert 'the runtime exits 0 on the decline' "[ $rc -eq 0 ]"
+assert 'the record is a line of its own, not fused onto the last digest row' \
+  "grep -q '^decline_event=' '$WORK/board.snapshot'"
+assert 'no digest row was corrupted by the appended record' \
+  "! grep -q '[^=]decline_event=' '$WORK/board.snapshot'"
+assert 'the snapshot is the digest plus exactly one metadata line' \
+  "[ \$(wc -l <'$WORK/board.snapshot') -eq \$(( \$(wc -l <'$STUB_DIGEST_BEFORE') + 1 )) ]"
+
+rc=0
+env CONTENT_DIGEST_BIN="$WORK/digest.sh" CONTENT_BOARD_SNAPSHOT="$WORK/board.snapshot" \
+    bash "$MOVED" >"$WORK/out" 2>&1 || rc=$?
+assert 'the verify passes on the unmoved board' "[ $rc -eq 0 ]"
+assert 'and it passes BECAUSE of the decline, not because the board looks moved' \
+  "grep -qi 'declined' '$WORK/out'"
+assert 'it never claims movement that did not happen' \
+  "! grep -qi 'board moved' '$WORK/out'"
+
 echo '--- transport ownership: the dispatcher owns no transport ---'
 # bin/deliver.sh is the single owner of `buzz messages send`
 # (tests/test_buzz_unit_wiring.sh). The waiter only READS.

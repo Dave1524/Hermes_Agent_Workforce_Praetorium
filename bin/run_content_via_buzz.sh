@@ -60,7 +60,11 @@ baseline=$("$DIGEST_BIN") \
   || crash "the board could not be read — refusing to dispatch on an unknown baseline"
 
 mkdir -p "$(dirname "$SNAPSHOT")" 2>/dev/null || true
-printf '%s' "$baseline" >"$SNAPSHOT" \
+# The trailing newline is load-bearing: `decline_event=` is appended to this file later and
+# content_moved.sh strips metadata by line anchor. Written without it, the record fuses onto
+# the last digest row, the strip misses it, and the verify reports a board that never moved
+# — passing on its own bookkeeping. Live on 2026-08-13's first run.
+printf '%s\n' "$baseline" >"$SNAPSHOT" \
   || crash "could not write the board snapshot at $SNAPSHOT"
 
 dispatch_epoch=$(date +%s)
