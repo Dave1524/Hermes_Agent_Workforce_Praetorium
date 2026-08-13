@@ -31,8 +31,12 @@ re-enabling it would re-inflate every prompt for jobs that work over a checked-o
 
 Done means all six hold, each proven by the command named in **Test plan** — not by inspection:
 
-1. **F1** — `~/CLAUDE.md` contains no reference to `~/dev/vault-boxsafe`, and every project path it
-   names resolves on disk.
+1. **F1** — every `~/dev/*` path `~/CLAUDE.md` names resolves on disk, with one deliberate
+   exception: a single tombstone line recording that `~/dev/vault-boxsafe/` was deleted 2026-08-12,
+   kept so the next reader who finds a stale pointer elsewhere can tell "deleted" from "typo".
+   *(Amended 2026-08-13 — the original wording said "contains no reference to `~/dev/vault-boxsafe`"
+   and the `grep -c … → 0` test below followed from it. Both would have failed the tombstone. F1 is
+   done; see the status note at the end of this file.)*
 2. **F2** — `/home/dave/agent-worktrees/inbox/.git` records a `gitdir:` that contains no symlinked
    path component, and `git -C /home/dave/agent-worktrees/inbox status` still succeeds.
 3. **F3** — `/home/dave/.claude/jobs/95f52624/tmp/scratch/.qmd/` no longer exists, and a `qmd` CLI
@@ -117,8 +121,9 @@ outside this repo. Each of those needs its own proof:
   daemon reachable, and confirm the opted-out job emits no qmd `WARN` line while the other still
   probes. Then assert **which branch ran** by grepping the log, not by exit code — a job that
   declines and a job that crashes can both exit 0 here.
-- **F1:** `grep -c 'vault-boxsafe' ~/CLAUDE.md` → 0, then resolve every `~/dev/*` path the file names
-  and confirm each exists.
+- **F1:** `grep -c 'vault-boxsafe' ~/CLAUDE.md` → **1**, and that one hit is the tombstone line (not
+  a routing instruction — check it reads as "was deleted", not as a path to work in). Then resolve
+  every *other* `~/dev/*` path the file names and confirm each exists.
 - **F2:** `git -C /home/dave/agent-worktrees/inbox status --short` succeeds and
   `git -C /home/dave/agent-worktrees/inbox rev-parse --git-dir` returns a path under
   `~/dev/obsidian-ai-os-boxsafe`. Then re-run the check with `~/vault` temporarily unavailable to
@@ -185,3 +190,44 @@ outside this repo. Each of those needs its own proof:
   *different* stale config (run 1 the `deploy-staging` one, run 2 the `.claude/jobs` one) — both real,
   each run blind to the other. Treat this list as a floor, not a census. If you find a third shadow
   `.qmd/` while working, fix it and say so.
+
+---
+
+## Status — 2026-08-13, split of work (Marcus)
+
+**F5 is yours (Trajan). F1, F2, F3, F4 and F6 are done — do not redo them.** They all land outside
+this repo, so `bin/verify.sh` neither covers nor protects them; re-verify by the Test plan commands
+above if you want independent confirmation.
+
+| Item | State | Where it landed |
+|---|---|---|
+| F1 | done | `~/CLAUDE.md` — split into canonical / legacy-mirror bullets, `vault-boxsafe` reduced to one tombstone line (criterion amended above), plus three further corrections found while in the file (below) |
+| F2 | done | `~/agent-worktrees/inbox/.git` now records `/home/dave/dev/obsidian-ai-os-boxsafe/.git/worktrees/inbox`; proven by `strace` showing **0** syscalls touching `/home/dave/vault` |
+| F3 | done | `~/.claude/jobs/95f52624/tmp/scratch/.qmd/` deleted; box-wide sweep found no other shadow collection |
+| F4 | done | `~/deploy-staging/config/qmd-index.yml` synced from live — it was **not** cosmetic, the staged copy still carried the pre-08-12 "de-identified mirror / no `_confidential/`" wording and promoting it would have reverted that correction |
+| F5 | **yours** | `bin/agent_propose.sh` + the `--strict-mcp-config` comment — untouched by me |
+| F6 | done | `~/OUTBOX/qmd-doc-gap-2026-08-13.md` |
+
+**F6 resolved fully** — the gap is not a mystery and needs no further digging. 499 `.md` on disk
+− 1 in `.git/` − 4 under `vendor/` = 494 = `qmd status`; the `documents` table's extra 3 rows are
+stale entries for moved/deleted files. Root cause is a **hardcoded** `excludeDirs` in qmd
+(`dist/store.js:947`) containing `vendor`, reachable by no config change. No fix applied — the
+recommended one is a `git mv` in the canonical vault, which is a vault change and therefore Dave's.
+
+**Three things I corrected in `~/CLAUDE.md` beyond F1's scope**, because they were wrong in the same
+section and would have misled you:
+1. The doc count said 468; live is 494.
+2. It claimed `buzz-agent@*` sessions have **no** MCP servers. They do — `buzz-agent@.service:39`
+   passes `--mcp-command`. The tools are `mcp__qmd-mcp__*`, **not** `mcp__qmd__*`, which is why they
+   look absent if you grep for the short name.
+3. Added the `qmd get` fuzzy-match trap: on a path it cannot find it returns a *different* document
+   with no error.
+
+**One live issue I found and deliberately did not act on — it is Dave's call, and it would have
+interrupted you.** `qmd-mcp` has not restarted since 2026-08-01, so it is still serving the
+pre-correction `global_context`: every MCP consumer is currently told the vault is "the
+**de-identified** … mirror … contains no `_confidential/` material", while the on-disk config has
+said "REAL business content … **NOT** de-identified" since 08-12. Tool *results* are live (`status`
+correctly returns 494); only the advertised blurb is the stale start-time snapshot. The fix is one
+`systemctl restart qmd-mcp`, but it would drop in-flight qmd calls — including yours — so it is not
+mine to run mid-build.
