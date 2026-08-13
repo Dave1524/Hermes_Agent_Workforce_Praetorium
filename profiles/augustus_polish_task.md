@@ -75,36 +75,17 @@ LESS CLAIMY. Every claim must either carry its mechanism inline or be deleted. S
 - Business-correct language throughout.
 
 SHAPE — measured, not eyeballed
-LinkedIn truncates and readers are on phones. These are hard targets, and you VERIFY them
-with the terminal rather than estimating — you cannot count characters by looking.
+Read the spec and follow it: `~/agent-workforce/profiles/linkedin_shape.md`. It carries the
+length band, the fold rules, block density, the close, and the measurement command. Both this
+pass and the nightly draft run read the same file, so the numbers cannot drift apart.
 
-Write the finished post to a temp file, then check it:
-    wc -m < POST.txt          # total characters
-    head -c 210 POST.txt      # what shows above the "See more" fold
-    awk 'NF{n=split($0,w," "); if(n>12) print n": "$0}' POST.txt   # sentences running long
+Write each finished post to a temp file and run the checker before you write it back:
+    python3 ~/agent-workforce/bin/linkedin_shape.py POST.txt
+Fix every FAIL. A WARN you decide to ship goes on the Watch line with its reason.
 
-Targets:
-- LENGTH. Default 1,300-1,900 characters. That band is the working target for authority
-  and storytelling posts, which is nearly everything on this board. A simple announcement
-  or a single direct question may run 300-500. NOTHING exceeds 2,500 — past that, attention
-  falls off faster than the extra depth earns back. If a post lands at 2,600, cut a claim,
-  do not compress the mechanism behind the ones you keep.
-- THE HOOK. The first 1-2 sentences must be complete and self-carrying inside 210
-  characters, because that is all the reader sees before "See more". `head -c 210` must not
-  end mid-thought. A hook that needs the third sentence to make sense has already lost.
-- SENTENCES. Under 12 words. Direct, one idea each.
-- PARAGRAPHS. 1-2 sentences per block, 3 at the absolute outside. Single-sentence lines are
-  the strongest pacing tool you have — use them deliberately, not everywhere.
-- WHITE SPACE. Blank line between blocks, always. A wall of text is not read on a phone.
-
-WHERE THIS FIGHTS THE BAR, THE BAR WINS
-Short sentences and a mechanism are not in conflict — but naive shortening breaks the
-cause→effect chain and leaves bare assertion, which is precisely the claimy register you
-are here to remove. When a causal sentence runs long, SPLIT IT ACROSS LINES. Never drop the
-link. "Rates rose, so carriers held capacity back, and shippers who booked late paid twice"
-becomes three short lines, not "Booking late is expensive." The second is shorter, reads as
-AI, and proves nothing. If you must choose between the 12-word rule and showing why
-something is true, show why — then break the line.
+Read the spec's BLOCK DENSITY section twice. The first polish run passed every length target
+and still produced posts that read as endless, because 65-87% of their blocks were a single
+short line. Length was never the problem; chopping was.
 
 HOW TO WRITE IT BACK
 `draft` appends — it does not replace. The original variants stay on the page above your
@@ -116,11 +97,12 @@ block with a line reading exactly:
 then the post, then two lines:
 
     Changed: <one line — what you actually did to it, e.g. "fused A's opener with B's close; cut three unbacked claims">
-    Shape: <chars> chars, hook <chars> — from `wc -m`, not estimated
+    Shape: <paste the last line linkedin_shape.py printed, verbatim>
     Watch: <one line — anything Dave should decide, or "nothing">
 
-The Shape line is a measurement you ran, not a guess. If a post is outside the band and you
-judged it right to leave it there, say so on the Watch line with the reason.
+The Shape line is copied from the checker's output, not retyped and not estimated. Every row
+in the first polish run shipped without one, which is how eleven posts reached Ready with no
+evidence the shape was ever measured. A row with no Shape line is an unfinished row.
 
 Then set the row to Ready in the same call (`--set-status Ready`). Ready here means "augustus
 is finished, Dave's turn" — it is the signal this run completed, and Dave still owns

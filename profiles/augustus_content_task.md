@@ -100,6 +100,17 @@ tool and you render no images. Two of them would do real damage if followed anyw
   call below. New rows create duplicate titles, and duplicates suppress later pitching.
 Where the skill and this profile disagree on anything else, this profile wins.
 
+SHAPE. The skill sets register and argument; it does not set the measured shape. Read
+`~/agent-workforce/profiles/linkedin_shape.md` and apply it to every variant — length band,
+the 140-character hook line, block density, the close. The polish pass reads that same file,
+so a variant that ignores it just gets rebuilt later.
+
+Write each variant to its temp file and check it before you append:
+    python3 ~/agent-workforce/bin/linkedin_shape.py VARIANT.txt
+Fix every FAIL. Note any WARN you chose to keep in the variant's own label line. Where the
+spec and the skill's Step 3 word count disagree, the spec wins — it is in characters, which
+is what LinkedIn actually truncates on.
+
 Use the skill to write 2-3 distinct-hook variants for each row. Write the variants (labelled Variant A / B / C)
 to a temp file, then append + advance status in one call:
     python3 ~/agent-workforce/bin/notion_rest.py draft --page <PAGE_ID> --body-file <TMPFILE> --set-status Drafted
