@@ -63,20 +63,42 @@ insight bar (no table-stakes takes); business-correct language.
 
 STEP 2 — Draft any PICKED angles (quick check). Run:
     python3 ~/agent-workforce/bin/notion_rest.py board --status Picked --json
-If the result is empty, skip immediately to STEP 3. Otherwise read the linkedin-content-engine
-skill from disk and follow it:
-    ~/.hermes/shared-skills/vault-business/linkedin-content-engine/SKILL.md   (the procedure)
-    .../references/voice.md          (Dave's voice — read this every time you draft)
-    .../references/hooks.md          (hook patterns)
-    .../references/content_pillars.md, examples.md, persuasion.md   (optional, as needed)
-Read these with the terminal. This path is NOT vault content, so the "do not browse the
-filesystem" rule above does not apply to it — that rule is about hunting vault files, which
-still goes through qmd. There is no skill *tool* on this harness; a skill here is markdown you
-read. Until 2026-08-13 this step named the skill without a path, and qmd cannot see it (the
-vault entry is a symlink to Dave's Mac), so the instruction silently loaded nothing.
-That copy is dated 2026-07-28 and its box-mode header at the top is STALE: it tells you to write
-Notion through a `notion` MCP server. Ignore that line — it was removed box-wide. notion_rest.py
-above is the only sanctioned path, exactly as stated in TOOLS.
+If the result is empty, skip immediately to STEP 3. Otherwise load the linkedin-content-engine
+skill and follow it. It is vault content, at `08_skills/linkedin-content-engine/`. There is no
+skill *tool* on this harness — a skill here is markdown you read.
+
+Read the procedure in ONE command, the applicable sections only:
+    sed -n '19,36p;53,78p;100,134p;168,235p;341,353p;414,423p' \
+      ~/vault/08_skills/linkedin-content-engine/SKILL.md
+That is: Hard non-negotiables, Step 1 (voice), Step 2.5 (business-writing angle), Step 2.55
+(funnel stage), Step 2.7 (distribution), Step 3 (draft), Step 4 (self-check), Step 6 (first
+comment), Variations mode. The terminal is correct for THIS path — it is an exact known path,
+not a hunt through the vault, and the line ranges are the whole point.
+
+Then read these in full. The skill marks every one of them "load every run":
+    ~/vault/08_skills/linkedin-content-engine/references/voice.md
+    .../ai_tells.md         11 structural AI tells + the de-slop pass + self-check #11
+    .../hooks.md            hook structures
+    .../persuasion.md       narrative architecture, used at Step 3
+    .../content_pillars.md  pillar selection
+    .../funnel_111.md       the Step 2.55 stage gate
+    .../hooks_meat_ctas.md  hook/meat/CTA bank — read when selecting a hook. Ignore its
+                            "remote sessions: fetch from Notion" line; the file is on disk.
+qmd `get` serves these too, but its URI slugs hyphenate underscores (`ai-tells.md`,
+`content-pillars.md`, `funnel-111.md`) — if `get` returns empty, read the underscored path above.
+
+WHAT IN THAT SKILL DOES NOT APPLY HERE. The sed range omits Mac-only machinery: Figma asset
+creation (Steps 5 / 5.5 / 5.6 and the visual archetypes), the Notion write protocol (Step 7 and
+`references/notion-schema.md`), and "show Dave the output in chat" (Step 8). You have no Figma
+tool and you render no images. Two of them would do real damage if followed anyway:
+- Step 7 writes Notion directly at `Status = Draft`. You do NOT. notion_rest.py is the only
+  sanctioned path, exactly as stated in TOOLS, and this board's statuses are Pitched / Picked /
+  Drafted / Ready / Published — there is no "Draft", no "Ready to Post", no "Posted".
+- Variations mode says to write each variant as its own new Notion row. You do NOT. Every
+  variant for a row goes into ONE appended body on the row you are drafting, via the `draft`
+  call below. New rows create duplicate titles, and duplicates suppress later pitching.
+Where the skill and this profile disagree on anything else, this profile wins.
+
 Use the skill to write 2-3 distinct-hook variants for each row. Write the variants (labelled Variant A / B / C)
 to a temp file, then append + advance status in one call:
     python3 ~/agent-workforce/bin/notion_rest.py draft --page <PAGE_ID> --body-file <TMPFILE> --set-status Drafted
