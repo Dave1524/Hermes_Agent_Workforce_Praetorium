@@ -400,18 +400,14 @@ print("--- an unmapped REST path is an error, never a pass-through ---")
 state = FakeState()
 stub = BrokerStub(state)
 with no_https_credential():
-    saved, nr.api = nr.api, nr.api
+    os.environ["BUZZ_NOTION_SOCKET"] = stub.path
+    err_msg = None
     try:
-        nr.load_token = lambda: "t"
-        os.environ["BUZZ_NOTION_SOCKET"] = stub.path
-        err_msg = None
-        try:
-            nr.api_via_broker("DELETE", "/pages/{}".format(PAGE_A), "")
-        except SystemExit as e:
-            err_msg = str(e.code)
+        nr.api_via_broker("DELETE", "/pages/{}".format(PAGE_A), "")
+    except SystemExit as e:
+        err_msg = str(e.code)
     finally:
         os.environ.pop("BUZZ_NOTION_SOCKET", None)
-        nr.api = saved
 check("an unmapped method/path exits non-zero", bool(err_msg))
 check("nothing was sent to the socket", stub.tools == [])
 stub.stop()
@@ -437,8 +433,10 @@ check("HTTPS is the quiet default — no transport notice", "broker" not in err.
 
 missing = os.path.join(tempfile.mkdtemp(prefix="nosock-"), "absent.sock")
 with no_https_credential():
-    msg, out, err = run(["board", "--json"], socket_path=missing, forbid_token=True)
+    msg, out, err = run(["board", "--json"], socket_path=missing, real_token=True)
 check("auto with neither a token nor a socket is a hard error", bool(msg))
+check("and it is the pre-existing missing-credential error, not a broker one",
+      "NOTION_API_TOKEN" in str(msg))
 
 with no_https_credential():
     msg, out, err = run(["board", "--json", "--transport", "broker"], socket_path=missing,
@@ -470,14 +468,6 @@ with no_https_credential():
 check("a broker {ok:false} exits non-zero", bool(msg))
 check("the broker's message reaches the caller", "archiving" in str(msg))
 stub.stop()
-
-
-class GarbageBroker(BrokerStub):
-    def dispatch(self, line):
-        return "not-json-at-all"
-
-    def _serve(self):
-        pass
 
 
 state = FakeState({PAGE_A: page(PAGE_A, "a", "Picked")})

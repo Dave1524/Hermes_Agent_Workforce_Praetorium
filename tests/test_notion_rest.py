@@ -81,14 +81,19 @@ def page(pid, angle, status):
 
 
 def run(argv, api):
-    """Invoke the CLI; returns (exit_message_or_None, stdout, stderr)."""
+    """Invoke the CLI; returns (exit_message_or_None, stdout, stderr).
+
+    Pinned to --transport https: this suite replaces the `api` seam, which the broker
+    transport bypasses, so an `auto` resolution against a live socket would leave the
+    fake behind and write to the real board.
+    """
     out, err = io.StringIO(), io.StringIO()
     msg = None
     nr.api = api
     nr.load_token = lambda: "test-token"
     try:
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            nr.main(argv)
+            nr.main(["--transport", "https"] + argv)
     except SystemExit as e:
         msg = e.code
     return msg, out.getvalue(), err.getvalue()
