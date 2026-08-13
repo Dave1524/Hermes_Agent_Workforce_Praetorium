@@ -75,7 +75,7 @@
   "probes": [
     {
       "id": "p1_route_kind",
-      "why": "Control. Phrased in Buzz-native terms, so retrieval alone should find the anchor. If this one fails the index is broken, not the wording.",
+      "why": "Control. Phrased in Buzz-native terms, so retrieval alone should find the anchor. A FAIL here means either a broken index or a chunk shift above the anchor re-cutting the boundary below it — see p4_kind_span's why for the measured mechanism (08-11: a six-line insert at the top of this same anchor knocked this probe from rank 1 to rank 3, and 'only luck made that visible'). Recurred 08-13: vault commit 5c046b5 rewrote the header blockquote and §6 above this probe's span and dropped the anchor to rank 3 while index-freshness stayed PASS at 480/480 — the index was clean both times.",
       "limit": 4,
       "searches": [
         {
