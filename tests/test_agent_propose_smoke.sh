@@ -63,6 +63,16 @@ printf '%s' '{"data":{"usage":1.5,"limit":25,"limit_remaining":23.5}}'
 CURL
   chmod +x "$home/mockbin/curl"
 
+  # Offline stub for brave_healthy()'s `ss -ltn | grep ':8766'`. Default = brave DOWN, so a
+  # scenario that leaves BRAVE_HEALTH_POLICY unset exercises the real default (warn) instead
+  # of the host's actual socket table. MOCK_BRAVE_UP=1 emits a matching LISTEN line.
+  cat > "$home/mockbin/ss" <<'SS'
+#!/usr/bin/env bash
+[ "${MOCK_BRAVE_UP:-0}" = 1 ] && echo 'LISTEN 0 128 127.0.0.1:8766 0.0.0.0:*'
+exit 0
+SS
+  chmod +x "$home/mockbin/ss"
+
   cat > "$home/.config/agent-workforce/secrets.env" <<EOF
 OPENROUTER_API_KEY=test-key-not-real
 AGENT_RUNTIME_CMD=$mock_hermes
@@ -355,5 +365,82 @@ assert "exits 1" "[ '$rc' = 1 ]"
 assert "cost.log outcome=CRASHED" "grep -q 'outcome=CRASHED' '$h22/agent-workforce/logs/cost.log'"
 assert "cost.log is NOT outcome=OPS" "! grep -q 'outcome=OPS' '$h22/agent-workforce/logs/cost.log'"
 assert "cost.log task=augustus-content (the crash is attributable)" "grep -q 'task=augustus-content' '$h22/agent-workforce/logs/cost.log'"
+
+# ── F5: per-job MCP opt-out (AGENT_MCP_DEPS) ────────────────────────────────
+# Eight of the eleven runners exec with `--strict-mcp-config --mcp-config '{"mcpServers":{}}'`
+# and reach no MCP daemon at all, so probing qmd/brave for them logged a WARN naming a
+# dependency the job does not have. Scenario 24 pins the opt-out; scenario 23 is the one that
+# matters more — it pins that a job which does NOT opt out still gets the `warn` default, so
+# this change can neither switch the probe off fleet-wide nor make it fail closed.
+run_mcp_deps() {
+  local home=$1 overrides=${2:-} rc=0 ov=""
+  if [ -n "$overrides" ]; then
+    ov="$home/job.env"
+    printf '%s\n' "$overrides" > "$ov"
+  fi
+  # Deliberately does NOT preset QMD_HEALTH_POLICY/BRAVE_HEALTH_POLICY, unlike run_scenario:
+  # these scenarios are about which DEFAULT the script picks. Both daemons are mocked down,
+  # and AGENT_JOB_OVERRIDES is the real supply path a job would use (NUC-24).
+  HOME="$home" PATH="$home/mockbin:$PATH" AGENT_PROPOSE_LOCK="$home/lock" \
+    AGENT_RETRY_BASE_SECONDS=0 AGENT_JOB_OVERRIDES="$ov" MOCK_QMD_HEALTH_RC=7 \
+    bash "$SCRIPT" >"$home/stdout.log" 2>&1 || rc=$?
+  echo "$rc"
+}
+
+echo "--- scenario 23: no AGENT_MCP_DEPS -> both probes still run at the warn default ---"
+h23=$(sandbox)
+rc=$(run_mcp_deps "$h23")
+assert "exits 0 (warn never blocks)" "[ '$rc' = 0 ]"
+assert "qmd WARN still fires for a job that did not opt out" "grep -q 'WARN: qmd MCP daemon down (policy=warn)' '$h23/agent-workforce/logs/agent_propose.log'"
+assert "brave WARN still fires (default is warn, not off)" "grep -q 'WARN: brave MCP endpoint down (policy=warn)' '$h23/agent-workforce/logs/agent_propose.log'"
+assert "default is NOT block (no BLOCKED record)" "! grep -q 'outcome=BLOCKED' '$h23/agent-workforce/logs/cost.log'"
+assert "run proceeded to the agent" "[ -s '$h23/hermes_argv.log' ]"
+
+echo "--- scenario 24: AGENT_MCP_DEPS=none -> both probes skipped, run still proceeds ---"
+h24=$(sandbox)
+rc=$(run_mcp_deps "$h24" 'AGENT_MCP_DEPS=none')
+assert "exits 0" "[ '$rc' = 0 ]"
+assert "logs the skip, naming why" "grep -q 'MCP probes: skipped' '$h24/agent-workforce/logs/agent_propose.log'"
+assert "no qmd WARN (the misleading line is gone)" "! grep -q 'WARN: qmd MCP daemon down' '$h24/agent-workforce/logs/agent_propose.log'"
+assert "no brave WARN" "! grep -q 'WARN: brave MCP endpoint down' '$h24/agent-workforce/logs/agent_propose.log'"
+assert "opting out never blocks (no BLOCKED record)" "! grep -q 'outcome=BLOCKED' '$h24/agent-workforce/logs/cost.log'"
+assert "run reached the agent unchanged" "[ -s '$h24/hermes_argv.log' ]"
+assert "cost.log outcome=NOPROPOSAL (same outcome as scenario 23)" "grep -q 'outcome=NOPROPOSAL' '$h24/agent-workforce/logs/cost.log'"
+
+echo "--- scenario 25: an explicit policy still wins over AGENT_MCP_DEPS=none ---"
+# The opt-out supplies a DEFAULT only. If it could override, adding AGENT_MCP_DEPS=none to a
+# job env would silently disarm a block someone set deliberately — a fail-open regression.
+h25=$(sandbox)
+rc=$(run_mcp_deps "$h25" 'AGENT_MCP_DEPS=none
+QMD_HEALTH_POLICY=block')
+assert "exits 0 (blocked is not a crash)" "[ '$rc' = 0 ]"
+assert "explicit block still BLOCKS" "grep -q 'BLOCKED: qmd MCP daemon down' '$h25/agent-workforce/logs/agent_propose.log'"
+assert "cost.log outcome=BLOCKED" "grep -q 'outcome=BLOCKED' '$h25/agent-workforce/logs/cost.log'"
+assert "agent never launched" "[ ! -s '$h25/hermes_argv.log' ]"
+
+echo "--- scenario 26: an unrecognised AGENT_MCP_DEPS probes as normal, and says so ---"
+# Fail OPEN on a typo: 'none' is the only value that skips. A misspelling must not silently
+# opt a job out of a gate it still depends on.
+h26=$(sandbox)
+rc=$(run_mcp_deps "$h26" 'AGENT_MCP_DEPS=nonw')
+assert "exits 0" "[ '$rc' = 0 ]"
+assert "logs the unrecognised value" "grep -q 'AGENT_MCP_DEPS=.nonw. unrecognised' '$h26/agent-workforce/logs/agent_propose.log'"
+assert "probes ran anyway (qmd WARN present)" "grep -q 'WARN: qmd MCP daemon down' '$h26/agent-workforce/logs/agent_propose.log'"
+assert "did NOT silently skip" "! grep -q 'MCP probes: skipped' '$h26/agent-workforce/logs/agent_propose.log'"
+
+echo "--- scenario 27: brave_healthy reports UP without SIGPIPEing ss under pipefail ---"
+# CLAUDE.md § Verification: `ss -ltn | grep -q ':8766'` returns 141 when grep exits first,
+# reporting the daemon DOWN while it is up. Pin the fixed form against a chatty socket table.
+h27=$(sandbox)
+cat > "$h27/mockbin/ss" <<'SS'
+#!/usr/bin/env bash
+echo 'LISTEN 0 128 127.0.0.1:8766 0.0.0.0:*'
+for i in $(seq 1 20000); do echo "LISTEN 0 128 127.0.0.1:$((9000 + i % 900)) 0.0.0.0:*"; done
+exit 0
+SS
+chmod +x "$h27/mockbin/ss"
+rc=$(run_mcp_deps "$h27")
+assert "exits 0" "[ '$rc' = 0 ]"
+assert "brave reported UP (no false 'down' from SIGPIPE)" "! grep -q 'brave MCP endpoint down' '$h27/agent-workforce/logs/agent_propose.log'"
 
 exit $fail

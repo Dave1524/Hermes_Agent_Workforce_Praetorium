@@ -16,6 +16,9 @@ CLAUDE_BIN="${CLAUDE_BIN:-/home/linuxbrew/.linuxbrew/bin/claude}"
 INBOX="${STANDING_RESEARCH_INBOX:-$HOME/agent-worktrees/inbox}"
 TASK_FILE="${STANDING_RESEARCH_TASK:-$HOME/agent-workforce/profiles/standing_research_cc_task.md}"
 
+# No MCP servers by design (toolset trim, 2026-07-20): this job reads the vault off disk via
+# its `cd "$INBOX"` checkout with Read/Glob/Grep and needs no qmd retrieval. Declare
+# AGENT_MCP_DEPS=none in the job env so agent_propose.sh skips the daemon probes too.
 cd "$INBOX"
 exec "$CLAUDE_BIN" -p "$(cat "$TASK_FILE")" \
   --model claude-opus-5 \

@@ -31,6 +31,9 @@ TASK_FILE="$WORKDIR/profiles/overnight_morning_report_cc_task.md"
 
 mkdir -p "$HOME/logs/overnight"
 
+# No MCP servers by design (toolset trim, 2026-07-20): cwd here is $HOME/agent-workforce, NOT
+# a vault checkout — the job reads ~/agent-worktrees/inbox by absolute path with Read/Glob/
+# Grep. Declare AGENT_MCP_DEPS=none in the job env to skip the daemon probes too.
 cd "$WORKDIR"
 exec "$CLAUDE_BIN" -p "$(cat "$TASK_FILE")" \
   --model "$MODEL" \

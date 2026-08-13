@@ -36,6 +36,9 @@ if ! "$GUARD" check; then
   exit 1
 fi
 
+# No MCP servers by design (toolset trim, 2026-07-20): cwd here is $HOME/agent-workforce, NOT
+# a vault checkout — the job reads ~/vault by absolute path with Read/Glob/Grep and needs no
+# qmd retrieval. Declare AGENT_MCP_DEPS=none in the job env to skip the daemon probes too.
 cd "$WORKDIR"
 exec "$CLAUDE_BIN" -p "$(cat "$TASK_FILE")" \
   --model "$MODEL" \

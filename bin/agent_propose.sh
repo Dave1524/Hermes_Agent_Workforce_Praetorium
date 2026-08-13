@@ -134,7 +134,10 @@ qmd_healthy() {
 }
 brave_healthy() {
   command -v ss >/dev/null 2>&1 || return 0
-  ss -ltn 2>/dev/null | grep -q ':8766'
+  # NOT `grep -q` (CLAUDE.md § Verification): -q exits on the first match, SIGPIPEs ss, and
+  # under this script's `pipefail` the pipeline returns 141 — reporting the daemon DOWN while
+  # it is up. Latent with a short socket table, live on a busy box.
+  ss -ltn 2>/dev/null | grep ':8766' >/dev/null
 }
 
 exec 9>"$LOCK"
@@ -194,6 +197,23 @@ log "mode: AGENT_RUN_MODE=$run_mode task=$run_task profile=$run_profile"
 # blocked. Per-daemon policy: warn (log + proceed) | block (log BLOCKED via NUC-37 + no
 # run) | off (skip the probe). Defaults are warn-only for BOTH daemons — a daemon outage
 # is visible in the run log but never blocks a run; flip to block with a one-word change.
+# Per-job opt-out: eight of the eleven runners exec with `--strict-mcp-config
+# --mcp-config '{"mcpServers":{}}'` and so reach NO MCP daemon at all. Probing qmd/brave
+# for those jobs logs a WARN naming a dependency the job does not have, which is how they
+# came to be read as "hard-blocked on the qmd daemon" in review. AGENT_MCP_DEPS=none, set
+# in the job's override env, opts a job out of both probes. It supplies a DEFAULT only —
+# an explicit QMD_HEALTH_POLICY/BRAVE_HEALTH_POLICY in that same env still wins, so this
+# can never silently downgrade a policy someone set deliberately. Unset = unchanged.
+AGENT_MCP_DEPS="${AGENT_MCP_DEPS:-}"
+if [ "$AGENT_MCP_DEPS" = none ]; then
+  QMD_HEALTH_POLICY="${QMD_HEALTH_POLICY:-off}"
+  BRAVE_HEALTH_POLICY="${BRAVE_HEALTH_POLICY:-off}"
+  log "MCP probes: skipped (AGENT_MCP_DEPS=none — job declares no MCP dependency)"
+elif [ -n "$AGENT_MCP_DEPS" ]; then
+  # Fail OPEN on a typo, but say so: an unrecognised value probes as normal rather than
+  # silently opting out. 'none' is the only value that skips.
+  log "WARN: AGENT_MCP_DEPS='$AGENT_MCP_DEPS' unrecognised (only 'none' skips) — probing as normal"
+fi
 QMD_HEALTH_POLICY="${QMD_HEALTH_POLICY:-warn}"     # warn | block | off
 BRAVE_HEALTH_POLICY="${BRAVE_HEALTH_POLICY:-warn}" # warn | block | off
 if [ "$QMD_HEALTH_POLICY" != off ] && ! qmd_healthy; then
