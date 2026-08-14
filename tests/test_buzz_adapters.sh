@@ -306,7 +306,7 @@ PY
   echo "$d"
 }
 board_rows() {  # board_rows <iso-stamp>
-  printf '[{"id":"p1","angle":"Why cold-store grid capacity is the constraint","status":"Drafted","last_edited":"%s"}]' "$1"
+  printf '[{"id":"p1","angle":"Why cold-store grid capacity is the constraint","status":"Draft","last_edited":"%s"}]' "$1"
 }
 run_content() {  # run_content <sandbox> <probe-dir>
   local h=$1 d=$2

@@ -48,11 +48,12 @@ def check(desc, cond):
         failures.append(desc)
 
 
-def page(pid, angle, status):
+def page(pid, angle, status, proposed_by="Augustus"):
     return {"id": pid, "url": "https://notion.so/" + pid,
             "last_edited_time": "2026-08-12T00:00:00Z",
-            "properties": {"Angle": {"type": "title", "title": [{"plain_text": angle}]},
-                           "Status": {"select": {"name": status}}}}
+            "properties": {"Title": {"type": "title", "title": [{"plain_text": angle}]},
+                           "Proposed by": {"select": {"name": proposed_by}},
+                           "Status": {"status": {"name": status}}}}
 
 
 class FakeState:
@@ -63,14 +64,24 @@ class FakeState:
         self.children = {}
         self.created = []
 
-    def query(self, flt, page_size):
+    def _matches(self, pg, clause):
+        if "and" in clause:
+            return all(self._matches(pg, c) for c in clause["and"])
+        if clause.get("property") == "Status":
+            return nr.status_of(pg) == clause["status"]["equals"]
+        return nr.select_of(pg, clause["property"]) == clause["select"]["equals"]
+
+    def query(self, flt, page_size, start_cursor=None):
         if not 1 <= int(page_size) <= 100:
             raise ValueError("page_size must be between 1 and 100")
         rows = list(self.pages.values())
-        flt = flt or {}
-        if "select" in flt:
-            rows = [p for p in rows if nr.status_of(p) == flt["select"]["equals"]]
-        return {"results": rows}
+        if flt:
+            rows = [p for p in rows if self._matches(p, flt)]
+        start = int(start_cursor or 0)
+        window = rows[start:start + int(page_size)]
+        more = start + int(page_size) < len(rows)
+        return {"results": window, "has_more": more,
+                "next_cursor": str(start + int(page_size)) if more else None}
 
     def fetch_page(self, pid):
         return self.pages[self._id(pid)]
@@ -114,7 +125,8 @@ class HttpsTransport:
         head = path.split("/")
         payload = payload or {}
         if method == "POST" and head[1] == "data_sources":
-            return self.state.query(payload.get("filter"), payload.get("page_size", 100))
+            return self.state.query(payload.get("filter"), payload.get("page_size", 100),
+                                    payload.get("start_cursor"))
         if method == "GET" and head[1] == "pages":
             return self.state.fetch_page(head[2])
         if method == "PATCH" and head[1] == "pages":
@@ -167,7 +179,8 @@ class BrokerStub:
     def _run(self, tool, args):
         if tool == "notion_query_data_source":
             FakeState._id(args.get("data_source_id"))
-            return self.state.query(args.get("filter"), args.get("page_size", 100))
+            return self.state.query(args.get("filter"), args.get("page_size", 100),
+                                    args.get("start_cursor"))
         if tool == "notion_fetch":
             if args.get("object_type") != "page":
                 raise ValueError("unsupported object_type")
@@ -242,59 +255,73 @@ def run(argv, api=None, socket_path=None, forbid_token=False, real_token=False):
 # Each case is transport-agnostic on purpose: it names the seed board, the argv,
 # and what must be true afterwards. Nothing in a case may mention a transport.
 
-def seed_drafted(status):
+def seed_status(status):
     return lambda: FakeState({PAGE_A: page(PAGE_A, "Cold-store grid capacity", status)})
 
 
+def uid(i):
+    return "%08d-1111-4111-8111-111111111111" % i
+
+
 def seed_picked_many(n):
-    def build():
-        return FakeState({
-            "%08d-1111-4111-8111-111111111111" % i: page(
-                "%08d-1111-4111-8111-111111111111" % i, "angle %d" % i, "Picked")
-            for i in range(n)})
-    return build
+    return lambda: FakeState({uid(i): page(uid(i), "angle %d" % i, "Picked")
+                              for i in range(n)})
+
+
+def seed_mixed_authors():
+    rows = {uid(i): page(uid(i), "dave %d" % i, "Idea", "Dave") for i in range(4)}
+    rows.update({uid(100 + i): page(uid(100 + i), "augustus %d" % i, "Idea", "Augustus")
+                 for i in range(2)})
+    return FakeState(rows)
 
 
 GUARD_CASES = [
     {
-        "name": "draft refuses at Drafted and appends nothing",
-        "state": seed_drafted("Drafted"),
+        "name": "draft refuses at Draft and appends nothing",
+        "state": seed_status("Draft"),
         "argv": ["draft", "--page", PAGE_A, "--body", "a second variant"],
         "expect": lambda st, msg, out, err: (
             bool(msg)
-            and "Drafted" in str(msg)
+            and "Draft" in str(msg)
             and "--force" in str(msg)
             and st.appends(PAGE_A) == []
-            and nr.status_of(st.pages[PAGE_A]) == "Drafted"),
+            and nr.status_of(st.pages[PAGE_A]) == "Draft"),
     },
     {
-        "name": "draft refuses at Ready and appends nothing",
-        "state": seed_drafted("Ready"),
+        "name": "draft refuses at Review and appends nothing",
+        "state": seed_status("Review"),
         "argv": ["draft", "--page", PAGE_A, "--body", "a second variant"],
         "expect": lambda st, msg, out, err: (
-            bool(msg) and "Ready" in str(msg) and st.appends(PAGE_A) == []),
+            bool(msg) and "Review" in str(msg) and st.appends(PAGE_A) == []),
     },
     {
-        "name": "draft refuses at Published and appends nothing",
-        "state": seed_drafted("Published"),
+        "name": "draft refuses at Posted and appends nothing",
+        "state": seed_status("Posted"),
         "argv": ["draft", "--page", PAGE_A, "--body", "a second variant"],
         "expect": lambda st, msg, out, err: (
-            bool(msg) and "Published" in str(msg) and st.appends(PAGE_A) == []),
+            bool(msg) and "Posted" in str(msg) and st.appends(PAGE_A) == []),
+    },
+    {
+        "name": "the allowlist refuses a status nobody has written down yet",
+        "state": seed_status("Some Future Option"),
+        "argv": ["draft", "--page", PAGE_A, "--body", "a second variant"],
+        "expect": lambda st, msg, out, err: (
+            bool(msg) and "Some Future Option" in str(msg) and st.appends(PAGE_A) == []),
     },
     {
         "name": "--force is the deliberate override and does append",
-        "state": seed_drafted("Drafted"),
+        "state": seed_status("Draft"),
         "argv": ["draft", "--page", PAGE_A, "--body", "an intentional rewrite", "--force"],
         "expect": lambda st, msg, out, err: msg is None and len(st.appends(PAGE_A)) == 1,
     },
     {
-        "name": "the normal Picked -> Drafted path still works",
-        "state": seed_drafted("Picked"),
+        "name": "the normal Picked -> Draft path still works",
+        "state": seed_status("Picked"),
         "argv": ["draft", "--page", PAGE_A, "--body", "the draft"],
         "expect": lambda st, msg, out, err: (
             msg is None
             and len(st.appends(PAGE_A)) == 1
-            and nr.status_of(st.pages[PAGE_A]) == "Drafted"
+            and nr.status_of(st.pages[PAGE_A]) == "Draft"
             and json.loads(out)["page"] == PAGE_A),
     },
     {
@@ -320,13 +347,36 @@ GUARD_CASES = [
         "expect": lambda st, msg, out, err: msg is None and len(json.loads(out)) == 3,
     },
     {
-        "name": "pitch creates a row with Status=Pitched",
+        # The broker clamps page_size to 1..100 and is the ONLY path augustus has, so
+        # "does this transport follow the cursor" is exactly the question that decides
+        # whether he sees a 126-row board or its first 100 rows.
+        "name": "board reads every page of a 126-row board",
+        "state": seed_picked_many(126),
+        "argv": ["board", "--status", "Picked", "--json", "--max-rows", "0"],
+        "expect": lambda st, msg, out, err: (
+            msg is None
+            and len(json.loads(out)) == 126
+            and len({r["id"] for r in json.loads(out)}) == 126),
+    },
+    {
+        "name": "board --proposed-by returns only that author's rows",
+        "state": seed_mixed_authors,
+        "argv": ["board", "--status", "Idea", "--proposed-by", "Augustus", "--json",
+                 "--max-rows", "0"],
+        "expect": lambda st, msg, out, err: (
+            msg is None
+            and len(json.loads(out)) == 2
+            and all(r["proposed_by"] == "Augustus" for r in json.loads(out))),
+    },
+    {
+        "name": "pitch creates a row with Status=Idea",
         "state": lambda: FakeState(),
         "argv": ["pitch", "--angle", "A", "--insight", "I", "--evidence", "E",
                  "--body", "para one"],
         "expect": lambda st, msg, out, err: (
             msg is None and len(st.created) == 1
-            and st.created[0]["properties"]["Status"]["select"]["name"] == "Pitched"
+            and st.created[0]["properties"]["Status"] == {"status": {"name": "Idea"}}
+            and "Title" in st.created[0]["properties"]
             and st.created[0]["children"]),
     },
 ]
@@ -380,9 +430,7 @@ check("append_blocks passes block_id, never id",
       all("block_id" in a for t, a in stub.tools if t == "notion_append_blocks"))
 stub.stop()
 
-state = FakeState(dict((("%08d-1111-4111-8111-111111111111" % i),
-                        page("%08d-1111-4111-8111-111111111111" % i, "a", "Picked"))
-                       for i in range(3)))
+state = FakeState({uid(i): page(uid(i), "a", "Picked") for i in range(3)})
 stub = BrokerStub(state)
 with no_https_credential():
     msg, out, err = run(["board", "--status", "Picked", "--json", "--max-rows", "0",
@@ -390,10 +438,26 @@ with no_https_credential():
 qs = [a for t, a in stub.tools if t == "notion_query_data_source"]
 check("board queries via notion_query_data_source", len(qs) == 1)
 check("the query carries the data_source_id", qs and qs[0].get("data_source_id") == SOURCE)
-check("the query carries the Status filter",
-      qs and qs[0].get("filter", {}).get("select", {}).get("equals") == "Picked")
+check("the Status filter is status-shaped, not select-shaped",
+      qs and qs[0].get("filter") == {"property": "Status", "status": {"equals": "Picked"}})
 check("page_size stays inside the broker's 1..100 validation",
       qs and 1 <= int(qs[0].get("page_size", 0)) <= 100)
+check("a board that fits in one page chases no cursor",
+      qs and "start_cursor" not in qs[0])
+stub.stop()
+
+# api_via_broker forwards only an explicit allowlist of payload keys. start_cursor was
+# not on it until 2026-08-14, which capped this transport at the first 100 rows of a
+# 126-row board with nothing on either side reporting a truncation.
+state = FakeState({uid(i): page(uid(i), "a", "Picked") for i in range(126)})
+stub = BrokerStub(state)
+with no_https_credential():
+    msg, out, err = run(["board", "--status", "Picked", "--json", "--max-rows", "0",
+                         "--transport", "broker"], socket_path=stub.path, forbid_token=True)
+qs = [a for t, a in stub.tools if t == "notion_query_data_source"]
+check("a 126-row board takes two broker queries", len(qs) == 2)
+check("the cursor reaches the broker as start_cursor", len(qs) > 1 and qs[1].get("start_cursor") == "100")
+check("and all 126 rows come back", msg is None and len(json.loads(out)) == 126)
 stub.stop()
 
 print("--- an unmapped REST path is an error, never a pass-through ---")

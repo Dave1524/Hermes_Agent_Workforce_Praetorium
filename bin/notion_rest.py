@@ -7,22 +7,24 @@ dropping its long-lived stream mid-run, hanging unattended agents. This helper t
 Notion REST API with the "Praetorium" integration token (NOTION_API_TOKEN in secrets.env) over
 plain request/response — no long-lived stream, nothing to stall on.
 
-Target: data source "Agent Content Inbox" (LinkedIn Content Planner).
+Target: data source "Content DB" (LinkedIn Content Planner) — the system of record since the
+2026-08-14 migration off the Agent Content Inbox.
 Reads the token itself from ~/.config/agent-workforce/secrets.env — no env injection needed.
 
 Commands:
-  board  [--status NAME] [--json] [--max-rows N]
-                                          List rows (Angle + Status); optional status filter.
-  pitch  --angle .. --insight .. --evidence .. [--signal ..] [--format ..] [--body ..|--body-file F]
-                                          Create a new pitch row (Status=Pitched, Proposed by=Augustus).
-  draft  --page PAGE_ID (--body ..|--body-file F) [--set-status Drafted] [--force]
+  board  [--status NAME] [--proposed-by NAME] [--json] [--max-rows N]
+                                          List rows (Title + Status); optional filters.
+  pitch  --angle .. --insight .. --evidence .. [--signal ..] [--type ..] [--body ..|--body-file F]
+                                          Create a new pitch row (Status=Idea, Proposed by=Augustus).
+  draft  --page PAGE_ID (--body ..|--body-file F) [--set-status Draft] [--force]
                                           Append draft text to a page body and set its Status.
 
 All commands print a compact JSON result to stdout and exit non-zero on API error.
 """
-import argparse, json, os, socket, sys, datetime, urllib.request, urllib.error
+import argparse, json, os, socket, sys, urllib.request, urllib.error
 
-DATA_SOURCE_ID = "ab5eb999-e986-4a8b-9159-eb340196af9b"
+DATA_SOURCE_ID = "df18d768-1ede-82c1-9cf0-070ba3ef070e"
+BOARD_NAME = "Content DB"
 NOTION_VERSION = "2025-09-03"
 API = "https://api.notion.com/v1"
 SECRETS = os.path.expanduser("~/.config/agent-workforce/secrets.env")
@@ -39,16 +41,23 @@ SECRETS = os.path.expanduser("~/.config/agent-workforce/secrets.env")
 # through both to keep it that way.
 BROKER_SOCKET_DEFAULT = "/run/user/%d/buzz-notion.sock" % os.getuid()
 
+# Content DB's Status is a `status` property, not a `select`. The two are written and
+# filtered with different JSON, and neither reports a shape error — a select-shaped write
+# to a status property is rejected outright, while a select-shaped *read* just returns
+# None, which reads as "no status" rather than as a bug.
+PITCH_STATUS = "Idea"
+DRAFTED_STATUS = "Draft"
+
 # NUC-44. Two limits an agent used to be merely *asked* to respect, in
 # profiles/augustus_content_task.md, and did not.
 #
-# A row at one of these statuses already carries a draft in its body. Appending a
-# second one stacks two variants into one page: nothing in the board view shows it,
-# and afterwards nobody can tell which paragraphs belong to which pass. Six rows were
-# sitting at Drafted when this landed. Ready/Published are included because appending
-# under them is strictly worse than under Drafted, and enumerating only the reported
-# case would fail open on the next one.
-HAS_DRAFT_STATUSES = ("Drafted", "Ready", "Published")
+# Appending to a row that already carries a draft stacks two variant sets into one page:
+# nothing in the board view shows it, and afterwards nobody can tell which paragraphs
+# belong to which pass. This is an allowlist rather than the deny-list it replaced,
+# because the deny-list's own comment predicted its failure mode — enumerating the known
+# cases fails open on the next one, and Dave adds status options from the Notion UI
+# (`Picked` arrived that way on 2026-08-14). An unrecognised status now refuses.
+APPENDABLE_STATUSES = (PITCH_STATUS, "Picked")
 DEFAULT_MAX_ROWS = 2  # per run; 0 = unlimited, which is what the machine callers pass
 
 
@@ -124,8 +133,9 @@ def api_via_broker(method, path, token, payload=None, timeout=30):
     if method == "POST" and len(parts) == 3 and parts[0] == "data_sources" \
             and parts[2] == "query":
         args = {"data_source_id": parts[1], "page_size": payload.get("page_size", 100)}
-        if payload.get("filter") is not None:
-            args["filter"] = payload["filter"]
+        for key in ("filter", "start_cursor"):
+            if payload.get(key) is not None:
+                args[key] = payload[key]
         return broker_call("notion_query_data_source", args, timeout)
     if method == "GET" and len(parts) == 2 and parts[0] == "pages":
         return broker_call("notion_fetch", {"id": parts[1], "object_type": "page"}, timeout)
@@ -208,8 +218,36 @@ def title_of(page):
 
 def status_of(page):
     pv = page.get("properties", {}).get("Status", {})
+    sel = pv.get("status")
+    return sel.get("name") if sel else None
+
+
+def select_of(page, prop):
+    pv = page.get("properties", {}).get(prop, {})
     sel = pv.get("select")
     return sel.get("name") if sel else None
+
+
+def query_all(token, payload):
+    """Every matching row, following Notion's cursor — not just the first page.
+
+    Notion caps one query at 100 results and hides the rest behind `next_cursor`. Content
+    DB passed 100 rows during the migration that made it the target (126 as of
+    2026-08-14), so an unpaginated read returns a silent subset. content_board_digest.sh
+    compares whole-board digests to decide whether augustus did anything, and a subset
+    whose membership can shift between two reads is indistinguishable there from a real
+    status change.
+    """
+    rows, cursor = [], None
+    while True:
+        page = dict(payload)
+        if cursor:
+            page["start_cursor"] = cursor
+        res = api("POST", "/data_sources/{}/query".format(DATA_SOURCE_ID), token, page)
+        rows.extend(res.get("results", []))
+        cursor = res.get("next_cursor") if res.get("has_more") else None
+        if not cursor:
+            return rows
 
 
 def cap_rows(rows, max_rows):
@@ -227,22 +265,33 @@ def cap_rows(rows, max_rows):
     return rows[:max_rows]
 
 
+def board_filter(status, proposed_by):
+    clauses = []
+    if status:
+        clauses.append({"property": "Status", "status": {"equals": status}})
+    if proposed_by:
+        clauses.append({"property": "Proposed by", "select": {"equals": proposed_by}})
+    if not clauses:
+        return None
+    return clauses[0] if len(clauses) == 1 else {"and": clauses}
+
+
 def cmd_board(args, token):
     payload = {"page_size": 100}
-    if args.status:
-        payload["filter"] = {"property": "Status", "select": {"equals": args.status}}
-    res = api("POST", "/data_sources/{}/query".format(DATA_SOURCE_ID), token, payload)
+    filt = board_filter(args.status, getattr(args, "proposed_by", None))
+    if filt:
+        payload["filter"] = filt
     rows = [{"id": p["id"], "angle": title_of(p), "status": status_of(p),
+             "proposed_by": select_of(p, "Proposed by"),
              "url": p.get("url"), "last_edited": p.get("last_edited_time")}
-            for p in res.get("results", [])]
+            for p in query_all(token, payload)]
     rows = cap_rows(rows, getattr(args, "max_rows", DEFAULT_MAX_ROWS))
     if args.json:
         print(json.dumps(rows, indent=2))
     else:
         from collections import Counter
         counts = Counter(r["status"] for r in rows)
-        print("Agent Content Inbox — {} rows  {}".format(
-            len(rows), dict(counts)))
+        print("{} — {} rows  {}".format(BOARD_NAME, len(rows), dict(counts)))
         for r in rows:
             print("  [{}] {}  ({})".format(r["status"], r["angle"][:70], r["id"]))
     return rows
@@ -268,26 +317,27 @@ def read_body(args):
 
 
 def cmd_pitch(args, token):
-    today = datetime.date.today().isoformat()
+    # No pitch date is written: the inbox's `Pitched` date property has no counterpart on
+    # Content DB, and Notion's own created_time already carries it.
     props = {
-        "Angle": {"title": rt(args.angle)},
-        "Status": {"select": {"name": "Pitched"}},
+        "Title": {"title": rt(args.angle)},
+        "Status": {"status": {"name": PITCH_STATUS}},
         "Proposed by": {"select": {"name": "Augustus"}},
-        "Second-order insight": {"rich_text": rt(args.insight)},
+        "POV": {"rich_text": rt(args.insight)},
         "Evidence": {"rich_text": rt(args.evidence)},
-        "Pitched": {"date": {"start": today}},
     }
     if args.signal:
-        props["Signal"] = {"rich_text": rt(args.signal)}
-    if args.format:
-        props["Format"] = {"select": {"name": args.format}}
+        props["Topic"] = {"rich_text": rt(args.signal)}
+    if args.type:
+        props["Type"] = {"select": {"name": args.type}}
     payload = {"parent": {"type": "data_source_id", "data_source_id": DATA_SOURCE_ID},
                "properties": props}
     body = read_body(args)
     if body:
         payload["children"] = paragraph_blocks(body)
     res = api("POST", "/pages", token, payload)
-    out = {"created": res["id"], "angle": args.angle, "status": "Pitched", "url": res.get("url")}
+    out = {"created": res["id"], "angle": args.angle, "status": PITCH_STATUS,
+           "url": res.get("url")}
     print(json.dumps(out, indent=2))
     return out
 
@@ -297,16 +347,18 @@ def cmd_draft(args, token):
     if not body:
         sys.exit("draft: provide --body or --body-file")
     current = status_of(api("GET", "/pages/{}".format(args.page), token))
-    if current in HAS_DRAFT_STATUSES and not args.force:
-        sys.exit("draft: page {} is already at Status={} — appending would stack a second "
-                 "variant into the same body. Pass --force if that is what you want."
-                 .format(args.page, current))
+    # A page with no Status at all still appends: that is a schema surprise, not a
+    # duplicate, and refusing it would turn a missing property into a silent no-op.
+    if current is not None and current not in APPENDABLE_STATUSES and not args.force:
+        sys.exit("draft: page {} is at Status={}, which is not one of {} — appending would "
+                 "stack a second variant into the same body. Pass --force if that is what "
+                 "you want.".format(args.page, current, "/".join(APPENDABLE_STATUSES)))
     api("PATCH", "/blocks/{}/children".format(args.page), token,
         {"children": paragraph_blocks(body)})
     result = {"page": args.page, "appended_chars": len(body)}
     if args.set_status:
         api("PATCH", "/pages/{}".format(args.page), token,
-            {"properties": {"Status": {"select": {"name": args.set_status}}}})
+            {"properties": {"Status": {"status": {"name": args.set_status}}}})
         result["status"] = args.set_status
     print(json.dumps(result, indent=2))
     return result
@@ -322,22 +374,25 @@ def main(argv=None):
                         help="how to reach Notion (default auto: HTTPS when a token is "
                              "readable, else the Buzz broker socket)")
 
-    p = argparse.ArgumentParser(description="REST Notion I/O for the Agent Content Inbox",
+    p = argparse.ArgumentParser(description="REST Notion I/O for " + BOARD_NAME,
                                 parents=[common])
     sub = p.add_subparsers(dest="cmd", required=True)
 
     b = sub.add_parser("board", help="list rows", parents=[common])
-    b.add_argument("--status", help="filter by Status (Pitched/Picked/Drafted/...)")
+    b.add_argument("--status", help="filter by Status (Idea/Picked/Draft/Review/...)")
+    b.add_argument("--proposed-by", help="filter by Proposed by (Dave/Augustus/Claudius)")
     b.add_argument("--json", action="store_true")
     b.add_argument("--max-rows", type=int, default=DEFAULT_MAX_ROWS,
                    help="cap rows handed to one run (default %d; 0 = all)" % DEFAULT_MAX_ROWS)
 
     pi = sub.add_parser("pitch", help="create a pitch row", parents=[common])
-    pi.add_argument("--angle", required=True)
-    pi.add_argument("--insight", required=True, help="Second-order insight")
+    pi.add_argument("--angle", required=True, help="Title")
+    pi.add_argument("--insight", required=True, help="POV")
     pi.add_argument("--evidence", required=True)
-    pi.add_argument("--signal", default="")
-    pi.add_argument("--format", choices=["LinkedIn post", "Carousel", "Article", "Other"])
+    pi.add_argument("--signal", default="", help="Topic")
+    pi.add_argument("--type", choices=["Text-only", "Single-image", "Multi-image", "Video",
+                                       "Article", "Newsletter", "Document",
+                                       "Celebrate an Occasion", "Polls"])
     pi.add_argument("--body")
     pi.add_argument("--body-file")
 
@@ -346,7 +401,7 @@ def main(argv=None):
     d.add_argument("--page", required=True)
     d.add_argument("--body")
     d.add_argument("--body-file")
-    d.add_argument("--set-status", default="Drafted")
+    d.add_argument("--set-status", default=DRAFTED_STATUS)
     d.add_argument("--force", action="store_true",
                    help="append even when the page already carries a draft")
 

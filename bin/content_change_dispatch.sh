@@ -6,7 +6,7 @@
 # the existing Augustus draft run (bin/agent_propose.sh, same wiring the nightly
 # augustus-content.timer uses) ONLY when a Picked ID appears that we have not seen
 # before. On a quiet tick it spends nothing — no agent_propose.sh call, so no LLM,
-# no cost.log line, no agent_run.log entry. This cuts Picked->Drafted latency from
+# no cost.log line, no agent_run.log entry. This cuts Picked->Draft latency from
 # the ~24h nightly cadence to ~15 min while keeping per-tick cost at zero.
 #
 # Fail-soft BY CONTRACT (matches notion_rest.py / key_usage): on ANY error querying

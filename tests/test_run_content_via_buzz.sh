@@ -90,8 +90,8 @@ export STUB_DIGEST_AFTER="$WORK/digest_after"
 export STUB_DIGEST_MOVE="$WORK/digest_move"
 export STUB_DIGEST_N="$WORK/digest_n"
 
-printf 'page-1:Picked\npage-2:Drafted\n' >"$STUB_DIGEST_BEFORE"
-printf 'page-1:Drafted\npage-2:Drafted\n' >"$STUB_DIGEST_AFTER"
+printf 'page-1:Picked\npage-2:Draft\n' >"$STUB_DIGEST_BEFORE"
+printf 'page-1:Draft\npage-2:Draft\n' >"$STUB_DIGEST_AFTER"
 
 reset_case() {
   : >"$STUB_ARGV"; : >"$STUB_SEND_RC"; : >"$STUB_DIGEST_RC"; : >"$STUB_STDIN"
@@ -128,13 +128,13 @@ if os.environ.get("FAKE_NOTION_FAIL"):
     sys.exit("boom: the board could not be read")
 print(json.dumps([
     {"id": "bbb", "status": "Picked", "angle": "b"},
-    {"id": "aaa", "status": "Drafted", "angle": "a"},
+    {"id": "aaa", "status": "Draft", "angle": "a"},
 ]))
 PY
 out=$(NOTION_REST_BIN="$WORK/fake_notion.py" bash "$DIGEST" 2>/dev/null); rc=$?
 assert 'the digest exits clean when the board reads' "[ $rc -eq 0 ]"
 assert 'one <page-id>:<status> line per row, sorted' \
-  "[ \"\$(printf '%s' '$out')\" = 'aaa:Drafted
+  "[ \"\$(printf '%s' '$out')\" = 'aaa:Draft
 bbb:Picked' ]"
 
 out=$(FAKE_NOTION_FAIL=1 NOTION_REST_BIN="$WORK/fake_notion.py" bash "$DIGEST" 2>/dev/null); rc=$?
