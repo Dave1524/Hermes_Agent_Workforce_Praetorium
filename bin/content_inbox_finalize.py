@@ -49,9 +49,10 @@ RECEIPT = os.path.expanduser("~/agent-workforce/var/content_inbox_finalize.json"
 NOTION_REST = os.path.expanduser("~/agent-workforce/bin/notion_rest.py")
 NOTIFY = os.path.expanduser("~/agent-workforce/bin/notify.sh")
 
-# The migration tool is the one file that must keep naming the old data source — it is
-# what rolls the migration back. Any other live reference means a caller was missed.
-MIGRATION_TOOL = "notion_content_migrate.py"
+# Two files must keep naming the old data source: the migration tool, which is what rolls
+# the migration back, and this one, which operates on that board. They act ON the inbox;
+# the guard is looking for anything still READING it as a live source.
+OPERATORS = ("notion_content_migrate.py", os.path.basename(__file__))
 LIVE_CODE_DIRS = [
     os.path.expanduser("~/agent-workforce/bin"),
     os.path.expanduser("~/agent-workforce/profiles"),
@@ -113,7 +114,7 @@ def guard_inbox_unchanged(token):
 def live_code_files():
     for directory in LIVE_CODE_DIRS:
         for name in sorted(os.listdir(directory)):
-            if name.endswith(LIVE_CODE_SUFFIXES) and name != MIGRATION_TOOL:
+            if name.endswith(LIVE_CODE_SUFFIXES) and name not in OPERATORS:
                 yield os.path.join(directory, name)
 
 

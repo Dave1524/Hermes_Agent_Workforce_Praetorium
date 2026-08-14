@@ -157,12 +157,14 @@ def workspace(live_files=None, ledger_entries=BASELINE):
         (root / "var" / name).write_text(json.dumps({"entries": chunk}))
     files = {
         "notion_rest.py": "DATA_SOURCE_ID = 'df18d768'\n",
-        # The rollback tool must keep naming the old data source, and a dated .bak of a
-        # retired profile still does. Both are expected; only a third hit is a finding.
-        fin.MIGRATION_TOOL: "SOURCE_DS = '{}'\n".format(fin.INBOX_DATA_SOURCE),
+        # Three files legitimately name the old data source once deployed: the rollback
+        # tool, this tool itself, and a dated .bak of a retired profile. Only a fourth
+        # hit is a finding.
         "augustus_content_task.md.bak-notion-rest-20260713-093716":
             "use {}\n".format(fin.INBOX_DATA_SOURCE),
     }
+    for operator in fin.OPERATORS:
+        files[operator] = "SOURCE_DS = '{}'\n".format(fin.INBOX_DATA_SOURCE)
     files.update(live_files or {})
     for name, body in files.items():
         (root / "bin" / name).write_text(body)
@@ -288,6 +290,19 @@ for desc, overrides, guard in cases:
     check("{} -> no receipt is written".format(desc), not os.path.exists(fin.RECEIPT))
     check("{} -> Dave is told it refused".format(desc),
           len(shell.notifications) == 1 and "REFUSED" in shell.notifications[0][0])
+
+print("--- the reference guard exempts the tools that operate ON the old board ---")
+# This tool and the rollback tool both name the old data source by necessity. Once this
+# one is deployed into bin/ it scans itself, so without the exemption the guard refuses
+# every run — which is how it behaved on its first run from the deployed tree.
+workspace()
+raised, result, out, err = run(["check"], FakeNotion(), FakeShell())
+check("a clean tree still passes with both operators present", result == 0)
+check("and with a dated .bak that names it too",
+      any("no live references" in line and line.startswith("PASS")
+          for line in out.splitlines()))
+check("the count of files actually scanned is reported, not assumed",
+      any("live files scanned" in line for line in out.splitlines()))
 
 print("--- a guard that cannot answer is a failure, not a crash ---")
 # nr.api reports an HTTP error by calling sys.exit. `except Exception` does not catch
