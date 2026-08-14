@@ -1,0 +1,30 @@
+# content-inbox-finalize.service — steps 4 and 5 of the 2026-08-14 Content DB migration.
+#
+# One-shot. Freezes the retired Agent Content Inbox (a note on the database and a callout
+# on its parent page) and archives the inline database to Notion trash, in a single pass.
+# Dave did steps 1-3 by hand on 2026-08-14 and asked for 4 and 5 to run the following
+# night; the timer that drives this is a single absolute date, not a recurring schedule.
+#
+# The tool runs six read-only guards first and refuses the whole pass if any of them
+# fails, so an unattended run can only ever leave the board as it found it. A second run
+# is refused the same way: once the database is in the trash the inbox row-count guard
+# cannot read it. Reverse a completed pass with:
+#   /home/dave/agent-workforce/bin/content_inbox_finalize.py undo
+#
+# Shape copied from content-change-dispatch.service (same delivery env + OnFailure alert).
+[Unit]
+Description=Freeze and archive the retired Agent Content Inbox (Content DB migration steps 4-5)
+After=network-online.target
+Wants=network-online.target
+OnFailure=agent-alert@%n.service
+
+[Service]
+Type=oneshot
+User=dave
+Environment=DELIVERY_ROUTE=ops
+Environment=DELIVERY_JOB=%n
+Environment=DELIVERY_RUNTIME=none
+EnvironmentFile=/home/dave/.config/agent-workforce/secrets.env
+ExecStart=/usr/bin/python3 /home/dave/agent-workforce/bin/content_inbox_finalize.py apply --notify
+TimeoutStartSec=10min
+NoNewPrivileges=true

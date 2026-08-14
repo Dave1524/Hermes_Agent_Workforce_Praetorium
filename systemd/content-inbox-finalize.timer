@@ -1,0 +1,25 @@
+# content-inbox-finalize.timer — fires exactly once.
+#
+# OnCalendar is a single absolute date, so there is no recurrence to disable afterwards:
+# once 2026-08-15 22:00 has passed the timer has no next elapse. Local time (CEST) — the
+# box runs Europe/Amsterdam.
+#
+# Why that slot: augustus-content.timer drafts at 01:30, so 22:00 on the 15th is after
+# one full nightly cycle has written to Content DB, which is what the tool's
+# "nightly run healthy" guard checks. It is also 15 minutes ahead of
+# praetorium-eod-summary.timer, so the two do not share a minute.
+#
+# Persistent=true so a box that is down at 22:00 still runs this on the next boot rather
+# than skipping the migration silently. That is safe here because the guards re-check
+# every precondition at run time, whenever that turns out to be.
+#
+# Deploy: sudo systemctl enable --now content-inbox-finalize.timer
+[Unit]
+Description=Schedule the one-shot Agent Content Inbox freeze and archive (2026-08-15 22:00 CEST)
+
+[Timer]
+OnCalendar=2026-08-15 22:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
