@@ -55,7 +55,8 @@ TARGET_SCHEMA = {
 class FakeNotion:
     """The slice of the Notion REST surface the migration touches."""
 
-    def __init__(self, source_rows, target_rows=None, schema=None, fail_create_at=None):
+    def __init__(self, source_rows, target_rows=None, schema=None, fail_create_at=None,
+                 fail_append=False):
         self.rows = {mig.SOURCE_DS: source_rows, mig.TARGET_DS: target_rows or []}
         self.schema = json.loads(json.dumps(schema if schema is not None else TARGET_SCHEMA))
         self.bodies = {}
@@ -64,6 +65,7 @@ class FakeNotion:
         self.archived = []
         self.calls = []
         self._fail_create_at = fail_create_at
+        self._fail_append = fail_append
 
     def __call__(self, method, path, token, payload=None, timeout=30):
         self.calls.append((method, path, payload))
@@ -78,6 +80,12 @@ class FakeNotion:
         if method == "GET" and head[1] == "blocks":
             return {"results": self.bodies.get(head[2], []), "has_more": False}
         if method == "PATCH" and head[1] == "blocks":
+            if self._fail_append:
+                raise SystemExit("Notion API 400 on PATCH /blocks/x/children: simulated")
+            for child in payload["children"]:
+                if any(v is None for v in child[child["type"]].values()):
+                    raise SystemExit("Notion API 400: should be an object or `undefined`, "
+                                     "instead was `null`")
             self.appended.setdefault(head[2], []).extend(payload["children"])
             return {"results": []}
         if method == "POST" and head[1] == "pages":
@@ -129,10 +137,11 @@ def para(text, href=None):
             "plain_text": text, "href": href}
     if href:
         item["text"]["link"] = {"url": href}
+    # `icon: null` is what the live API returns on every paragraph, and rejects on write.
     return {"object": "block", "id": "b1", "type": "paragraph", "created_time": "x",
             "last_edited_time": "x", "has_children": False, "archived": False,
             "parent": {"type": "page_id"}, "paragraph": {"rich_text": [item],
-                                                         "color": "default"}}
+                                                         "color": "default", "icon": None}}
 
 
 def run(argv, api):
@@ -274,6 +283,8 @@ check("read-only rich_text fields are stripped (they 400 on write)",
       and "href" not in body[0]["paragraph"]["rich_text"][0])
 check("read-only block fields are stripped",
       set(body[0]) == {"object", "type", "paragraph"})
+check("null-valued body keys are stripped (icon: null 400s the whole batch)",
+      "icon" not in body[0]["paragraph"])
 trailer = body[3]["paragraph"]["rich_text"][0]["text"]["content"]
 check("a provenance trailer is appended", body[2]["type"] == "heading_2")
 check("it records the source row", "notion.so/p1" in trailer)
@@ -322,6 +333,20 @@ ledger = json.load(open(path))
 check("the ledger records the rows that DID land", len(ledger["entries"]) == 2)
 check("it records both ends of each mapping",
       ledger["entries"][0]["source"] == "p0" and ledger["entries"][0]["created"] == "new-0")
+
+print("--- a page created but not filled is STILL in the ledger ---")
+# The page and its body are two API calls. Recording the ledger entry after both means a
+# failed body append orphans a live row that rollback cannot find — which is how the
+# first live run left an empty row on Dave's planner.
+orphan_path = ledger_path()
+api = FakeNotion([source_row("p1", "An angle", "Ready")], fail_append=True)
+api.bodies["p1"] = [para("a draft")]
+msg, result, out, err = run(["apply", "--ledger", orphan_path], api)
+check("the failure is not swallowed", bool(msg))
+check("the page was created", len(api.created) == 1)
+orphan = json.load(open(orphan_path))
+check("and it is recorded for rollback", len(orphan["entries"]) == 1)
+check("with the id rollback needs", orphan["entries"][0]["created"] == "new-0")
 
 print("--- rollback archives exactly the ledger, and nothing else ---")
 api = FakeNotion([])

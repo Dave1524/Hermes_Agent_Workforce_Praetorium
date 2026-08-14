@@ -126,8 +126,13 @@ def clean_rich_text(items):
 
 
 def clean_block(block):
+    """Reshape a read block into one the create API accepts.
+
+    Notion returns keys on read that it rejects on write: every paragraph here carries
+    `icon: null`, and echoing it back is a 400 on the whole batch.
+    """
     kind = block["type"]
-    body = dict(block.get(kind) or {})
+    body = {k: v for k, v in (block.get(kind) or {}).items() if v is not None}
     if "rich_text" in body:
         body["rich_text"] = clean_rich_text(body["rich_text"])
     body.pop("children", None)
@@ -273,17 +278,21 @@ def cmd_plan(args, token):
     return {"planned": len(planned), "skipped": len(skipped)}
 
 
-def create_row(page, token, today):
+def create_row(page, token):
     payload = {"parent": {"type": "data_source_id", "data_source_id": TARGET_DS},
                "properties": target_properties(page)}
     created = nr.api("POST", "/pages", token, payload)
-    blocks = body_blocks(page["id"], token) + provenance_blocks(page, today)
-    for start in range(0, len(blocks), BLOCK_BATCH):
-        nr.api("PATCH", "/blocks/{}/children".format(created["id"]), token,
-               {"children": blocks[start:start + BLOCK_BATCH]})
     return {"source": page["id"], "source_title": nr.title_of(page),
             "source_status": select_of(page, "Status"), "created": created["id"],
-            "created_url": created.get("url"), "blocks": len(blocks)}
+            "created_url": created.get("url"), "blocks": 0}
+
+
+def copy_body(page, target_id, token, today):
+    blocks = body_blocks(page["id"], token) + provenance_blocks(page, today)
+    for start in range(0, len(blocks), BLOCK_BATCH):
+        nr.api("PATCH", "/blocks/{}/children".format(target_id), token,
+               {"children": blocks[start:start + BLOCK_BATCH]})
+    return len(blocks)
 
 
 def write_ledger(path, entries):
@@ -304,8 +313,12 @@ def cmd_apply(args, token):
     entries = []
     try:
         for page in planned:
-            entries.append(create_row(page, token, today))
-            print("created {}  {}".format(entries[-1]["created"], entries[-1]["source_title"][:64]))
+            # Recorded before the body is copied, not after: a page that exists but whose
+            # body append failed is exactly the one that must still be rollback-able.
+            entry = create_row(page, token)
+            entries.append(entry)
+            entry["blocks"] = copy_body(page, entry["created"], token, today)
+            print("created {}  {}".format(entry["created"], entry["source_title"][:64]))
     finally:
         # The ledger is written even on a mid-run failure: a partial migration that
         # cannot be rolled back is the one outcome worth engineering against.
