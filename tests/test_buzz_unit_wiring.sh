@@ -141,7 +141,11 @@ while IFS=$'\t' read -r unit route payload status silence canvas; do
   [ -f "$f" ] || continue
 
   has_route=$(code "$f" | grep -c "^Environment=DELIVERY_ROUTE=$route\$" || true)
-  has_hook=$(code "$f" | grep -cE '/bin/(deliver[a-z_]*|notify|inbox_backlog_alert)\.sh' || true)
+  # agent_alert.sh is an adapter entry point, not a delivery adapter itself: it hands
+  # off to notify.sh after deciding whether this failure is news. The chain it stands
+  # in front of is pinned in tests/test_agent_alert.sh, so widening the pattern here
+  # does not weaken "a wired unit reaches delivery".
+  has_hook=$(code "$f" | grep -cE '/bin/(deliver[a-z_]*|notify|inbox_backlog_alert|agent_alert)\.sh' || true)
 
   if [ "$status" = wired ]; then
     assert "$unit declares DELIVERY_ROUTE=$route" "[ '$has_route' -ge 1 ]"

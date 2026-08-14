@@ -11,6 +11,13 @@
 # The local journal and log paths are deliberately first and independent: they are
 # the only two that still work when the failure being reported IS the transport.
 #
+# The behaviour now lives in bin/agent_alert.sh rather than inline here, because a
+# handler quoted twice inside a unit file cannot be tested and this one now has to
+# decide something: paths 1 and 2 fire on EVERY failure, path 3 only on the
+# transition INTO failure. Repetition is not news — on 2026-08-14 a stuck
+# qmd-refresh emitted 14 identical alerts, and across the 17-31 Aug fortnight one
+# such unit would bury every other unit's first failure. See that script's header.
+#
 # Deploy: sudo cp to /etc/systemd/system/ + daemon-reload. No enable needed — it
 # is pulled in on demand by OnFailure=. (% is escaped as %% in unit files; %i is
 # the systemd instance specifier.)
@@ -27,5 +34,5 @@ Environment=DELIVERY_ROUTE=ops
 Environment=DELIVERY_JOB=%n
 Environment=DELIVERY_RUNTIME=none
 EnvironmentFile=/home/dave/.config/agent-workforce/secrets.env
-ExecStart=/bin/sh -c 'msg="agent-workforce ALERT: unit %i failed at $(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)"; printf "%%s\\n" "$msg" | systemd-cat -t agent-alert -p err; mkdir -p /home/dave/logs; printf "%%s\\n" "$msg" >> /home/dave/logs/agent-alert.log; /home/dave/agent-workforce/bin/notify.sh "[Praetorium] Unit failed: %i" "$msg" || true'
+ExecStart=/home/dave/agent-workforce/bin/agent_alert.sh %i
 NoNewPrivileges=true
