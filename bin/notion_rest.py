@@ -228,7 +228,7 @@ def select_of(page, prop):
     return sel.get("name") if sel else None
 
 
-def query_all(token, payload):
+def query_all(token, payload, data_source_id=None):
     """Every matching row, following Notion's cursor — not just the first page.
 
     Notion caps one query at 100 results and hides the rest behind `next_cursor`. Content
@@ -237,13 +237,18 @@ def query_all(token, payload):
     compares whole-board digests to decide whether augustus did anything, and a subset
     whose membership can shift between two reads is indistinguishable there from a real
     status change.
+
+    data_source_id defaults to Content DB. content_inbox_finalize.py passes the retired
+    Agent Content Inbox: a second hand-rolled query loop is how the pagination bug above
+    comes back on a board that has not got there yet.
     """
     rows, cursor = [], None
     while True:
         page = dict(payload)
         if cursor:
             page["start_cursor"] = cursor
-        res = api("POST", "/data_sources/{}/query".format(DATA_SOURCE_ID), token, page)
+        res = api("POST", "/data_sources/{}/query".format(data_source_id or DATA_SOURCE_ID),
+                  token, page)
         rows.extend(res.get("results", []))
         cursor = res.get("next_cursor") if res.get("has_more") else None
         if not cursor:
