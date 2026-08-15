@@ -18,6 +18,14 @@ the reader onward. A probe carrying `must_answer` asserts the anchor's own retri
 span instead — the answer can leave the window while the file keeps ranking first, and
 no rank assertion sees that.
 
+AN ANCHOR IS A LIST, NOT A FILE. A fact outlives the document holding it, and the two
+halves of a move land from different machines: the vault half is promoted from the Mac,
+the fixture half is committed here. Naming one file forces those halves into the same
+window and mis-scores every run in between — a `must_answer` probe has no pointer
+fallback, so it reports a hard FAIL the moment its fact moves. So an anchor is an
+ordered list of candidate documents and the first one present in the index wins.
+Whichever document currently carries the fact is the one measured, in either order.
+
 FRESHNESS FIRST. Every probe below is a measurement of the index, so a stale index
 measures the wrong system entirely. The sweep compares each file's sha256 against the
 `documents.hash` column — qmd stores the plain sha256 of the file bytes, so this is
@@ -110,7 +118,7 @@ def _disk_documents(root, pattern, ignores):
     }
 
 
-def check_freshness(report, index, anchor_disk):
+def check_freshness(report, index, anchor_disks):
     """Does the index hold the bytes that are on disk right now?
 
     qmd stores the plain sha256 of the file, so this is exact. mtime is not usable in
@@ -130,25 +138,25 @@ def check_freshness(report, index, anchor_disk):
     ]
     deleted = sorted(set(indexed) - {as_index_path(r) for r in on_disk})
 
-    anchor_stale = str(anchor_disk) in drifted
-    if anchor_stale:
+    stale_anchors = sorted(set(map(str, anchor_disks)) & set(drifted))
+    if stale_anchors:
         report.add(
             "index-freshness", "FAIL", len(drifted),
-            f"the anchor is indexed at older content — the probes below would measure the "
-            f"previous vault. Run `systemctl start qmd-refresh` and re-run.",
+            f"{', '.join(stale_anchors)} is indexed at older content — the probes below would "
+            f"measure the previous vault. Run `systemctl start qmd-refresh` and re-run.",
         )
     elif drifted or deleted:
         report.add(
             "index-freshness", "WARN", len(drifted) + len(deleted),
             f"{len(drifted)} documents changed since indexing, {len(deleted)} indexed but gone "
-            f"(anchor is current, so the probes still hold): {', '.join((drifted + deleted)[:3])}",
+            f"(anchors are current, so the probes still hold): {', '.join((drifted + deleted)[:3])}",
         )
     else:
         report.add(
             "index-freshness", "PASS", len(indexed),
             f"{len(indexed)} documents, every one indexed at its current content",
         )
-    return not anchor_stale
+    return not stale_anchors
 
 
 def check_coverage(report, index, baseline):
@@ -174,20 +182,34 @@ def check_coverage(report, index, baseline):
     )
 
 
-def check_anchor(report, index, anchor):
-    """Both path spellings must resolve — they differ, and the error looks identical."""
-    root, _, _ = collection_root(index)
-    on_disk = root / anchor["disk"]
-    if on_disk.is_file():
-        report.add("anchor-on-disk", "PASS", on_disk.stat().st_size, str(on_disk))
-    else:
-        report.add("anchor-on-disk", "FAIL", 0, f"{on_disk} does not exist")
+def resolve_anchors(specs, indexed):
+    """First candidate that is actually in the index wins; None if none of them are."""
+    return {
+        name: next((c for c in candidates if c["index"] in indexed), None)
+        for name, candidates in specs.items()
+        if not name.startswith("_")
+    }
 
-    body = qmd_get(f"{COLLECTION}/{anchor['index']}")
-    if body:
-        report.add("anchor-in-index", "PASS", len(body.splitlines()), anchor["index"])
-    else:
-        report.add("anchor-in-index", "FAIL", 0, f"qmd get returned nothing for {anchor['index']}")
+
+def _anchor_row(root, anchor):
+    if anchor is None:
+        return "FAIL", 0, "no candidate document is in the index"
+    if not (root / anchor["disk"]).is_file():
+        return "FAIL", 0, f"{root / anchor['disk']} does not exist"
+    if not qmd_get(f"{COLLECTION}/{anchor['index']}"):
+        return "FAIL", 0, f"qmd get returned nothing for {anchor['index']}"
+    return "PASS", (root / anchor["disk"]).stat().st_size, anchor["disk"]
+
+
+def check_anchors(report, index, anchors):
+    """Both path spellings must resolve — they differ, and the error looks identical.
+
+    The row names which candidate won, because during a migration the fallback answering
+    instead of the primary is the whole state worth seeing.
+    """
+    root, _, _ = collection_root(index)
+    for name, anchor in sorted(anchors.items()):
+        report.add(f"anchor/{name}", *_anchor_row(root, anchor))
 
 
 def check_team_instructions(report, team_file, spec, root):
@@ -342,19 +364,24 @@ def main():
     args = parser.parse_args()
 
     fixture = json.loads(args.probes.read_text())
-    anchor = fixture["anchor"]
     report = Report()
     root, _, _ = collection_root(args.index)
+    anchors = resolve_anchors(fixture["anchors"], indexed_hashes(args.index))
+    resolved = [a["disk"] for a in anchors.values() if a]
 
-    fresh = check_freshness(report, args.index, anchor["disk"])
+    fresh = check_freshness(report, args.index, resolved)
     check_coverage(report, args.index, fixture["index"]["unindexed_baseline"])
-    check_anchor(report, args.index, anchor)
+    check_anchors(report, args.index, anchors)
     check_team_instructions(report, args.team, fixture["team_instructions"], root)
     check_census(report, root, fixture["census"])
 
     for probe in fixture["probes"]:
+        anchor = anchors[probe["anchor"]]
         if args.skip_probes:
             report.add(f"probe/{probe['id']}", "SKIP", "", "--skip-probes")
+        elif anchor is None:
+            report.add(f"probe/{probe['id']}", "FAIL", "",
+                       f"anchor '{probe['anchor']}' resolves to no indexed document — not measured")
         elif not fresh:
             report.add(f"probe/{probe['id']}", "SKIP", "", "index is stale at the anchor — not measured")
         else:

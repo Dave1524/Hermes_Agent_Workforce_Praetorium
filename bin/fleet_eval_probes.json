@@ -29,13 +29,46 @@
     "WITH `must_answer` asserts the anchor's own retrieved span: PASS when the span",
     "matches, POINTER when the anchor ranks but its span no longer carries the answer,",
     "FAIL when the anchor drops out of `max_rank` entirely. Both shapes score against",
-    "the same PASS > POINTER > FAIL ladder."
+    "the same PASS > POINTER > FAIL ladder.",
+    "",
+    "ANCHORS ARE LISTS, AND PROBES NAME ONE. Each entry under `anchors` is an ordered",
+    "list of candidate documents; the runner resolves it to the first candidate present",
+    "in the live index. A fact outlives the document holding it, and the two halves of a",
+    "move land from different machines — the vault half is promoted from the Mac, this",
+    "file is committed on the box. Naming one file forces both halves into the same",
+    "window and mis-scores every run in between: a `must_answer` probe has no pointer",
+    "fallback, so it reports a hard FAIL from the moment its fact moves until the fixture",
+    "catches up. With a list, either order is safe and the change self-activates.",
+    "Every candidate carries its own `pointer`, because the pointer describes the",
+    "document that resolved, not the topic."
   ],
 
-  "anchor": {
-    "index": "03-projects/active/ai-agent-workforce/buzz-architecture.md",
-    "disk": "03_projects/active/ai_agent_workforce/buzz_architecture.md",
-    "pointer": "buzz[_-]architecture"
+  "anchors": {
+    "_comment": [
+      "`routes` moved out of buzz_architecture.md on 2026-08-15 (vault e223a8f). The old",
+      "location stays as the second candidate — it is what makes the list worth having,",
+      "and removing it is a separate deliberate edit once the split has held for a while.",
+      "`architecture` keeps the narrative document, which is what p2/p3 actually assert."
+    ],
+    "routes": [
+      {
+        "index": "03-projects/active/ai-agent-workforce/buzz-routes.md",
+        "disk": "03_projects/active/ai_agent_workforce/buzz_routes.md",
+        "pointer": "buzz[_-]routes"
+      },
+      {
+        "index": "03-projects/active/ai-agent-workforce/buzz-architecture.md",
+        "disk": "03_projects/active/ai_agent_workforce/buzz_architecture.md",
+        "pointer": "buzz[_-]architecture"
+      }
+    ],
+    "architecture": [
+      {
+        "index": "03-projects/active/ai-agent-workforce/buzz-architecture.md",
+        "disk": "03_projects/active/ai_agent_workforce/buzz_architecture.md",
+        "pointer": "buzz[_-]architecture"
+      }
+    ]
   },
 
   "index": {
@@ -75,7 +108,8 @@
   "probes": [
     {
       "id": "p1_route_kind",
-      "why": "Control. Phrased in Buzz-native terms, so retrieval alone should find the anchor. A FAIL here means either a broken index or a chunk shift above the anchor re-cutting the boundary below it — see p4_kind_span's why for the measured mechanism (08-11: a six-line insert at the top of this same anchor knocked this probe from rank 1 to rank 3, and 'only luck made that visible'). Recurred 08-13: vault commit 5c046b5 rewrote the header blockquote and §6 above this probe's span and dropped the anchor to rank 3 while index-freshness stayed PASS at 480/480 — the index was clean both times.",
+      "why": "NOT a control, despite being labelled one until 2026-08-15. It was called Buzz-native, and it is not: 'channel', 'scheduled job' and 'report' are Sentinel PRD vocabulary, and three of the four documents it returns are Sentinel briefs. Measured 08-15 on a clean index — the anchor placed 3rd at 0.39 behind prd-08-4c at 0.88, while p4_kind_span's genuinely Buzz-native wording put the same document 1st at 0.93 on the same run. So what this probe measures is whether the route/kind tables outrank a corpus that shares their vocabulary. That is a real question and a harder one than a control, which is why it went red twice from edits with no relation to routes or kinds: 08-11, a six-line insert at the top of the old anchor (rank 1 to rank 3); 08-13, vault commit 5c046b5 rewriting the header blockquote and §6 above the span. index-freshness stayed PASS at 480/480 both times — the index was clean, the chunk boundary was not. Repointed 08-15 at buzz_routes.md, a document whose stated purpose is to sit still.",
+      "anchor": "routes",
       "limit": 4,
       "searches": [
         {
@@ -88,7 +122,8 @@
     },
     {
       "id": "p2_publish_approve",
-      "why": "The plainly-worded version of the same question. On 2026-08-11 this returned agent-inbox-sync/SKILL.md first and the anchor fourth at 0.44; after two supersession banners were added it returned inbox_workflow.md first, which mentions Buzz nowhere at all. Bannering two documents promoted an unbannered third.",
+      "why": "The plainly-worded version of the same question. On 2026-08-11 this returned agent-inbox-sync/SKILL.md first and the anchor fourth at 0.44; after two supersession banners were added it returned inbox_workflow.md first, which mentions Buzz nowhere at all. Bannering two documents promoted an unbannered third. Stays on the architecture anchor: this asks how the workforce publishes and approves, which is narrative, not the route table. Baseline bumped FAIL to PASS on 2026-08-15: moving the two tables out to buzz_routes.md left the narrative document's chunks about publishing and approval, and the anchor went from absent to rank 1 — deterministic over four runs, one rank inside max_rank 2. Bumped deliberately rather than left as a standing 'improved' row, because an improvement nothing baselines is an improvement nothing protects.",
+      "anchor": "architecture",
       "limit": 3,
       "searches": [
         {
@@ -97,11 +132,12 @@
         }
       ],
       "max_rank": 2,
-      "baseline": "FAIL"
+      "baseline": "PASS"
     },
     {
       "id": "p3_nuc_approval_gate",
-      "why": "Claudius's exact failure. The top hit carried a supersession banner at lines 6-10 and the retrieved span was line 85 — the pointer existed and was outside the window the agent saw. This probe is the reason the span, not the document, is what gets checked.",
+      "why": "Claudius's exact failure. The top hit carried a supersession banner at lines 6-10 and the retrieved span was line 85 — the pointer existed and was outside the window the agent saw. This probe is the reason the span, not the document, is what gets checked. Narrative question, so it keeps the architecture anchor.",
+      "anchor": "architecture",
       "limit": 4,
       "searches": [
         {
@@ -118,7 +154,8 @@
     },
     {
       "id": "p4_kind_span",
-      "why": "The placement guard. The other three probes assert which document wins; this one asserts that the anchor's own retrieved span still contains the answer, because those are different failures. A document is represented in results by ONE chunk, so prose added anywhere above re-cuts every boundary below it and the chunk that used to answer stops existing while the file keeps ranking first. Measured 2026-08-11: a six-line section inserted at the top of the anchor knocked p1_route_kind from rank 1 to rank 3, and only luck made that visible — a smaller shift would have kept rank 1 and quietly handed the agent a window with no answer in it. The answer chosen is the forum root-post kind, `45001`, because it is a single token that is either in the window or is not, and because sending kind 9 into a forum is the exact mistake this vault section exists to prevent (buzz_architecture §3). Measured PASS on the live index: anchor rank 1, span `@@ -44,4 @@`, deterministic over three runs.",
+      "why": "The placement guard. The other three probes assert which document wins; this one asserts that the anchor's own retrieved span still contains the answer, because those are different failures. A document is represented in results by ONE chunk, so prose added anywhere above re-cuts every boundary below it and the chunk that used to answer stops existing while the file keeps ranking first. Measured 2026-08-11: a six-line section inserted at the top of the anchor knocked p1_route_kind from rank 1 to rank 3, and only luck made that visible — a smaller shift would have kept rank 1 and quietly handed the agent a window with no answer in it. The answer chosen is the forum root-post kind, `45001`, because it is a single token that is either in the window or is not, and because sending kind 9 into a forum is the exact mistake this vault section exists to prevent (buzz_architecture §3). Measured PASS on the live index: anchor rank 1, span `@@ -44,4 @@`, deterministic over three runs. Repointed 2026-08-15 at buzz_routes.md, which now carries the kind table; this is the probe that made the anchor a list, because a `must_answer` probe has no pointer fallback and would have hard-FAILED for every run between the vault promotion and this edit.",
+      "anchor": "routes",
       "limit": 3,
       "searches": [
         {

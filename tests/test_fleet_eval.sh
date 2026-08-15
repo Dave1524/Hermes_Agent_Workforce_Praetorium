@@ -245,6 +245,43 @@ python3 "$TMP/window_test.py" >"$TMP/window.out" 2>&1
 assert 'a span that loses the answer is a regression even at rank 1' \
   "[ $? -eq 0 ] || { cat '$TMP/window.out'; false; }"
 
+echo '--- tier 2: an anchor follows the fact across a vault move, in either order ---'
+# The vault half of a move is promoted from the Mac and the fixture half is committed
+# here, so there is always a window where only one has landed. Both orders must measure.
+cat >"$TMP/anchor_test.py" <<PY
+import importlib.util, sys
+
+spec = importlib.util.spec_from_file_location("grounding", "$GROUNDING")
+grounding = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(grounding)
+
+NEW = {"index": "p/routes.md", "disk": "p/routes.md", "pointer": "buzz[_-]routes"}
+OLD = {"index": "p/arch.md", "disk": "p/arch.md", "pointer": "buzz[_-]architecture"}
+SPEC = {"_comment": ["not an anchor"], "routes": [NEW, OLD], "architecture": [OLD]}
+
+CASES = [
+    ({"p/arch.md": "h"}, OLD, "fixture landed first: the fact is still at the old document"),
+    ({"p/routes.md": "h", "p/arch.md": "h"}, NEW, "both landed: the new document wins"),
+    ({"p/routes.md": "h"}, NEW, "old document retired: the new one is all that is left"),
+    ({}, None, "neither indexed: unresolved, never a silent fallback to some other document"),
+]
+for indexed, want, why in CASES:
+    resolved = grounding.resolve_anchors(SPEC, indexed)
+    if resolved["routes"] is not want:
+        sys.exit(f"{why}: resolved to {resolved['routes']}, expected {want}")
+    if "_comment" in resolved:
+        sys.exit("a _comment block was resolved as an anchor")
+
+# An anchor nobody can resolve must be a loud row, not an absent one — a probe scored
+# against a document that is not there would otherwise read as a retrieval regression.
+status, _value, detail = grounding._anchor_row(grounding.Path("/nonexistent"), None)
+if status != "FAIL" or "index" not in detail:
+    sys.exit(f"an unresolvable anchor reported {status}/{detail}, expected a FAIL that says why")
+PY
+python3 "$TMP/anchor_test.py" >"$TMP/anchor.out" 2>&1
+assert 'an anchor resolves to whichever document currently holds the fact' \
+  "[ $? -eq 0 ] || { cat '$TMP/anchor.out'; false; }"
+
 echo '--- the fixture is data the runner never second-guesses ---'
 cat >"$TMP/fixture_test.py" <<PY
 import json, re, sys
@@ -270,8 +307,19 @@ if not all(probe.get("why") for probe in probes):
     sys.exit("a probe with no 'why' cannot be judged when it goes red a month from now")
 if len({probe["id"] for probe in probes}) != len(probes):
     sys.exit("duplicate probe ids collapse two rows into one in the history spine")
-if fixture["anchor"]["index"] == fixture["anchor"]["disk"]:
-    sys.exit("the anchor must be spelled in both dialects — they differ and the error is identical")
+
+anchors = {k: v for k, v in fixture["anchors"].items() if not k.startswith("_")}
+for name, candidates in anchors.items():
+    if not candidates:
+        sys.exit(f"anchor '{name}' has no candidates — every probe naming it FAILs unmeasured")
+    for candidate in candidates:
+        if candidate["index"] == candidate["disk"]:
+            sys.exit(f"anchor '{name}' must be spelled in both dialects — they differ "
+                     "and the error is identical")
+        re.compile(candidate["pointer"])
+for probe in probes:
+    if probe.get("anchor") not in anchors:
+        sys.exit(f"{probe['id']}: anchor '{probe.get('anchor')}' is not defined — KeyError mid-run")
 PY
 python3 "$TMP/fixture_test.py" >"$TMP/fixture.out" 2>&1
 assert 'the probe fixture is self-consistent' "[ $? -eq 0 ] || { cat '$TMP/fixture.out'; false; }"
@@ -304,6 +352,10 @@ assert 'both tiers report into the same run' \
   "[ \$(cut -d'|' -f2 '$TMP/logs/history.psv' | sort -u | grep -c 'tier[12]') -eq 2 ]"
 assert 'each tier produced rows rather than an empty runner' \
   "! grep -q '|runner|FAIL|' '$TMP'/logs/*/results.psv"
+assert 'each anchor is reported by name, so a fallback resolution is visible' \
+  "[ \$(grep -c '|anchor/' '$TMP'/logs/*/results.psv) -eq 2 ]"
+assert 'and every one of them resolves against the live index' \
+  "! grep -q '|anchor/[a-z]*|FAIL|' '$TMP'/logs/*/results.psv"
 
 before=$(wc -l <"$TMP/logs/history.psv")
 FLEET_EVAL_LOG_ROOT="$TMP/logs" FLEET_EVAL_LOCK="$TMP/lock" \
