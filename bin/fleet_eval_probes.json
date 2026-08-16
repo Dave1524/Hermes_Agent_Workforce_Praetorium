@@ -122,7 +122,7 @@
     },
     {
       "id": "p2_publish_approve",
-      "why": "The plainly-worded version of the same question. On 2026-08-11 this returned agent-inbox-sync/SKILL.md first and the anchor fourth at 0.44; after two supersession banners were added it returned inbox_workflow.md first, which mentions Buzz nowhere at all. Bannering two documents promoted an unbannered third. Stays on the architecture anchor: this asks how the workforce publishes and approves, which is narrative, not the route table. Baseline bumped FAIL to PASS on 2026-08-15: moving the two tables out to buzz_routes.md left the narrative document's chunks about publishing and approval, and the anchor went from absent to rank 1 — deterministic over four runs, one rank inside max_rank 2. Bumped deliberately rather than left as a standing 'improved' row, because an improvement nothing baselines is an improvement nothing protects.",
+      "why": "The plainly-worded version of the same question. On 2026-08-11 this returned agent-inbox-sync/SKILL.md first and the anchor fourth at 0.44; after two supersession banners were added it returned inbox_workflow.md first, which mentions Buzz nowhere at all. Bannering two documents promoted an unbannered third. Stays on the architecture anchor: this asks how the workforce publishes and approves, which is narrative, not the route table. This is the least stable probe in the fixture — across 13 recorded runs its anchor has been absent (08-11, 08-12), rank 1 (08-13 to 08-15, seven runs) and absent again (08-16) without the vault's answer to the question changing once, because the field is near-tied: ranks 2 through 8 span 0.53 down to 0.39, so chunk movement anywhere in the folder reorders it. Neither transition was an edit about publishing or approval. The gain is not isolable to one commit — five publishes in that window touched nine documents in this folder, including inbox_workflow.md, the incumbent winner. The loss is vault 13d3a94 (08-15 13:04) rewriting the write-boundary bullet in section 6 and expanding agent_branch_workflow.md by 38 lines, which moved the anchor's retrieved span to `@@ -51,4 @@` and its rank to 6 at 0.41, behind vision.md at 0.90. BASELINE HISTORY: bumped FAIL to PASS on 2026-08-15 and reverted to FAIL on 2026-08-16. Recorded rather than quietly restored, because both halves are informative. The bump had seven runs over four days behind it and still did not survive a fifth, so run count is not evidence of stability for a probe scoring inside a 0.14-wide band. It also carried a wrong cause — it credited the buzz_routes split, which landed 08-15, two days after the gain. A baseline is a claim about what is stable, and this probe has not earned one above FAIL. OPEN: the anchor may now be wrong rather than merely unstable. buzz_architecture section 6 defers the approval half of this question to [[agent_branch_workflow]], which is where that fact moved on 08-12. Repointing is a decision about what the probe should measure, not a baseline correction, so it is left for a human edit.",
       "anchor": "architecture",
       "limit": 3,
       "searches": [
@@ -132,7 +132,7 @@
         }
       ],
       "max_rank": 2,
-      "baseline": "PASS"
+      "baseline": "FAIL"
     },
     {
       "id": "p3_nuc_approval_gate",
