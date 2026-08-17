@@ -23,13 +23,16 @@ THE CONTROL MUST REPRODUCE LIVE FIRST. A scratch arm that disagrees with the liv
 before any edit is applied is measuring something else, and every conclusion drawn from
 it is void. That check runs first and aborts the comparison.
 
-EDIT SHAPES ARE THE THREE THAT MOVE CHUNKS. `append` adds a section at the end of a
+EDIT SHAPES ARE THE FOUR THAT MOVE CHUNKS. `append` adds a section at the end of a
 file, which re-cuts nothing below it because there is nothing below it. `append_to_line`
 extends an existing line so the text joins that line's chunk instead of forming its own
 — the difference between being retrieved with a paragraph and competing against it.
-`replace_block` swaps a run of lines in place. A fourth shape, inserting before existing
-prose, is deliberately absent: it re-cuts every span below and is the move that cost
-p1_route_kind two ranks on 2026-08-11.
+`replace_block` swaps a run of lines in place. `substitute` rewrites one unique substring,
+for a rename that has to land inside a paragraph; it must match exactly once, because a
+rename that silently hits two sites is the failure it exists to prevent. Inserting before
+existing prose has no shape of its own — express it as a `replace_block` that re-emits the
+anchor, so the insert is visible in the spec rather than implied. Every shape but the first
+re-cuts the spans below it, which is the whole reason to measure instead of reasoning.
 """
 
 import argparse
@@ -99,6 +102,9 @@ def apply_edit(vault, edit):
     if "append" in edit:
         path.write_text(text.rstrip("\n") + "\n" + edit["append"])
         return
+    if "substitute" in edit:
+        path.write_text(_substitute(text, edit["substitute"], edit["path"]))
+        return
     lines = text.split("\n")
     start = _find(lines, edit["anchor"], edit["path"])
     if "append_to_line" in edit:
@@ -107,6 +113,13 @@ def apply_edit(vault, edit):
         end = _find(lines[start:], edit["until"], edit["path"], start)
         lines[start : end + 1] = edit["replace_block"].split("\n")
     path.write_text("\n".join(lines))
+
+
+def _substitute(text, spec, where):
+    hits = text.count(spec["from"])
+    if hits != 1:
+        sys.exit(f"substitute matched {hits}x in {where}, need exactly 1: {spec['from']!r}")
+    return text.replace(spec["from"], spec["to"])
 
 
 def _find(lines, needle, where, offset=0):
