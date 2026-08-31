@@ -16,6 +16,7 @@ rejected outright.
 """
 import re
 
+FORMAT_VERSION = 2
 CHUNK = 1900
 MAX_SPANS = 100
 MAX_HEADING = 3
@@ -36,6 +37,7 @@ NUMBERED = re.compile(r"^\d+\.\s+(.*)$")
 DIVIDER = re.compile(r"^-{3,}$")
 FENCE = re.compile(r"^(`{3,})")
 SEPARATOR_CELL = re.compile(r"^:?-+:?$")
+CONTINUING = ("paragraph", "bulleted_list_item", "numbered_list_item", "quote")
 
 
 def _span(content, annotations=None, link=None):
@@ -119,21 +121,23 @@ def text_block(kind, text):
     return {"object": "block", "type": kind, kind: {"rich_text": rich_text(text)}}
 
 
-def block_from_line(line):
-    text = line.strip()
-    if DIVIDER.match(text):
-        return {"object": "block", "type": "divider", "divider": {}}
+def divider_block():
+    return {"object": "block", "type": "divider", "divider": {}}
+
+
+def opening_block(text):
+    """(kind, text) when the line opens a block; None when it may continue the one above."""
     head = HEADING.match(text)
     if head:
-        return text_block("heading_%d" % min(len(head.group(1)), MAX_HEADING), head.group(2))
+        return "heading_%d" % min(len(head.group(1)), MAX_HEADING), head.group(2)
     if text.startswith(("- ", "* ", "+ ")):
-        return text_block("bulleted_list_item", text[2:])
+        return "bulleted_list_item", text[2:]
     numbered = NUMBERED.match(text)
     if numbered:
-        return text_block("numbered_list_item", numbered.group(1))
+        return "numbered_list_item", numbered.group(1)
     if text.startswith(">"):
-        return text_block("quote", text[1:].lstrip())
-    return text_block("paragraph", text)
+        return "quote", text[1:].lstrip()
+    return None
 
 
 def _code_block(text):
@@ -186,20 +190,56 @@ def _consume_fence(lines, start):
     return _code_block("\n".join(body)), min(i + 1, len(lines))
 
 
+def _flushed(blocks, pending):
+    if pending:
+        kind, parts = pending
+        blocks.append(text_block(kind, " ".join(parts)))
+    return None
+
+
 def blocks_from_markdown(md):
+    """Markdown to Notion blocks, joining a hard-wrapped paragraph back into one block.
+
+    The proposals this renders are wrapped at ~90 columns, so a bold span or a link
+    routinely opens on one line and closes on the next. A line-per-block scanner leaves
+    both halves unmatched and prints the markers literally.
+    """
     lines = (md or "").splitlines()
-    blocks, i = [], 0
+    blocks, pending, i = [], None, 0
     while i < len(lines):
         text = lines[i].strip()
         if not text:
+            pending = _flushed(blocks, pending)
             i += 1
         elif FENCE.match(text):
+            pending = _flushed(blocks, pending)
             block, i = _consume_fence(lines, i)
             blocks.append(block)
         elif "|" in text and i + 1 < len(lines) and _is_separator(lines[i + 1]):
+            pending = _flushed(blocks, pending)
             block, i = _consume_table(lines, i)
             blocks.append(block)
-        else:
-            blocks.append(block_from_line(lines[i]))
+        elif DIVIDER.match(text):
+            pending = _flushed(blocks, pending)
+            blocks.append(divider_block())
             i += 1
+        else:
+            pending = _opened(blocks, pending, text)
+            i += 1
+    _flushed(blocks, pending)
     return blocks
+
+
+def _opened(blocks, pending, text):
+    opening = opening_block(text)
+    if not opening:
+        if pending:
+            pending[1].append(text)
+            return pending
+        return ("paragraph", [text])
+    pending = _flushed(blocks, pending)
+    kind, content = opening
+    if kind in CONTINUING:
+        return (kind, [content])
+    blocks.append(text_block(kind, content))
+    return None

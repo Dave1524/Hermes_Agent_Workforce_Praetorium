@@ -34,7 +34,7 @@ BOX_LINK_BASE = ("https://github.com/Dave1524/obsidian-ai-os-boxsafe/blob/"
 SECRETS = os.path.expanduser("~/.config/agent-workforce/secrets.env")
 BRANCH = "agents/inbox"
 BATCH = 100
-SENTINEL_RE = re.compile(r"^— synced from (.+) @ (.+) —$")
+SENTINEL_RE = re.compile(r"^— synced from (.+) @ (.+) \(render v(\d+)\) —$")
 
 
 def load_token():
@@ -75,8 +75,15 @@ def make_call(token):
 
 
 def sentinel_text(filename):
+    """The idempotency key, carrying the converter version that produced the body.
+
+    A body rendered by an older converter fails the match and is re-rendered, so a
+    change to notion_markdown reaches the pages already synced instead of leaving
+    them frozen at whatever the renderer did that day.
+    """
     stamp = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
-    return "— synced from %s @ %s —" % (filename, stamp)
+    return "— synced from %s @ %s (render v%d) —" % (
+        filename, stamp, notion_markdown.FORMAT_VERSION)
 
 
 def divider():
@@ -145,7 +152,8 @@ def has_sentinel(children, filename):
     if not children:
         return False
     m = SENTINEL_RE.match(block_plain(children[-1]).strip())
-    return bool(m) and m.group(1) == filename
+    return (bool(m) and m.group(1) == filename
+            and m.group(3) == str(notion_markdown.FORMAT_VERSION))
 
 
 def write_body(call, page_id, filename, path, box_link, dry_run=False):

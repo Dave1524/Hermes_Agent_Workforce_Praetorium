@@ -193,7 +193,7 @@ with sandbox({FILENAME: PROPOSAL}) as api:
     last = body[-1]
     check("the last block is the sentinel paragraph",
           last["type"] == "paragraph"
-          and re.match(r"^— synced from %s @ \S+ —$" % re.escape(FILENAME),
+          and re.match(r"^— synced from %s @ \S+ \(render v\d+\) —$" % re.escape(FILENAME),
                        api.text_of(last)) is not None)
     check("the sentinel is preceded by a divider", body[-2]["type"] == "divider")
 
@@ -304,6 +304,20 @@ with sandbox({FILENAME: PROPOSAL}) as api:
     check("it needed no DELETE (there was nothing to clear)", api.deletes() == [])
     check("the filled body ends in the sentinel",
           re.match(r"^— synced from ", api.text_of(api.body(page)[-1])) is not None)
+
+print("--- a body rendered by an OLDER converter is re-rendered, not left stale ---")
+with sandbox({FILENAME: PROPOSAL}) as api:
+    run([])
+    page = api.only_page()
+    stale = "— synced from %s @ 2026-08-30T10:00:00+02:00 (render v1) —" % FILENAME
+    api.children[page][-1]["paragraph"]["rich_text"] = [
+        {"type": "text", "text": {"content": stale}}]
+    api.calls = []
+    run(["--backfill-bodies"])
+    check("the stale body is cleared", len(api.deletes()) > 0)
+    check("and rewritten at the current render version",
+          sync.SENTINEL_RE.match(api.text_of(api.body(page)[-1])).group(3)
+          == str(sync.notion_markdown.FORMAT_VERSION))
 
 print("--- backfill is scoped to Status=New, the rows still awaiting review ---")
 with sandbox({FILENAME: PROPOSAL}) as api:

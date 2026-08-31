@@ -81,6 +81,45 @@ check("every block carries object=block",
       all(b["object"] == "block"
           for b in nm.blocks_from_markdown("# h\n- b\n> q\n---\ntext")))
 
+print("--- hard-wrapped source: a paragraph is its lines, not one block per line ---")
+WRAPPED = ("The proposals on this box are hard-wrapped, so a paragraph arrives as\n"
+           "several source lines and a **span opens on one line and closes on\n"
+           "the next**.\n"
+           "\n"
+           "A blank line still starts a new paragraph.\n")
+wrapped = nm.blocks_from_markdown(WRAPPED)
+check("wrapped lines join into one paragraph", len(wrapped) == 2)
+check("joined on a space, not a newline",
+      plain(wrapped[0]).startswith("The proposals on this box are hard-wrapped, so a "
+                                   "paragraph arrives as several source lines"))
+check("a span wrapping a line break renders, leaving no literal markers",
+      "**" not in plain(wrapped[0]))
+check("and renders as one bold span",
+      any(s.get("annotations", {}).get("bold") and
+          s["text"]["content"] == "span opens on one line and closes on the next"
+          for s in spans(wrapped[0])))
+check("a blank line still separates paragraphs",
+      plain(wrapped[1]) == "A blank line still starts a new paragraph.")
+
+check("a link wrapping a line break survives",
+      nm.rich_text("see [the vendor\nprofile](https://example.com/x)".replace("\n", " "))
+      == nm.rich_text("see [the vendor profile](https://example.com/x)"))
+
+LAZY = "- a bullet that runs past the\n  wrap column\n- second bullet\n"
+lazy = nm.blocks_from_markdown(LAZY)
+check("a wrapped bullet continues the same list item",
+      [b["type"] for b in lazy] == ["bulleted_list_item", "bulleted_list_item"])
+check("and carries the continuation text",
+      plain(lazy[0]) == "a bullet that runs past the wrap column")
+
+check("a heading never absorbs the line below it",
+      [b["type"] for b in nm.blocks_from_markdown("## Heading\nbody text")]
+      == ["heading_2", "paragraph"])
+for closer in ("# next", "- item", "> quote", "---", "```\ncode\n```"):
+    got = nm.blocks_from_markdown("open paragraph\n" + closer)
+    check("{!r} closes the paragraph above it".format(closer.split("\n")[0]),
+          got[0]["type"] == "paragraph" and plain(got[0]) == "open paragraph")
+
 print("--- tables: width is exact, short rows pad, long rows truncate ---")
 TABLE = ("| Claim | Source | Confidence |\n"
          "| --- | --- | --- |\n"
