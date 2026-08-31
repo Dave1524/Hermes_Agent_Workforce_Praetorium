@@ -305,6 +305,17 @@ with sandbox({FILENAME: PROPOSAL}) as api:
     check("the filled body ends in the sentinel",
           re.match(r"^— synced from ", api.text_of(api.body(page)[-1])) is not None)
 
+print("--- backfill is scoped to Status=New, the rows still awaiting review ---")
+with sandbox({FILENAME: PROPOSAL}) as api:
+    run([])
+    page = api.only_page()
+    api.pages[page]["properties"]["Status"] = {"select": {"name": "Approved"}}
+    api.children = {}
+    api.calls = []
+    out = run(["--backfill-bodies"])
+    check("a decided row is not backfilled", api.body(page) == [] and api.appends() == [])
+    check("and it is not reported as a body write", "bodies written" not in out)
+
 print("--- a row whose file is gone from the box is left alone ---")
 with sandbox({FILENAME: PROPOSAL}) as api:
     run([])

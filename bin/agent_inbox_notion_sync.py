@@ -7,7 +7,11 @@ on the exhausted OpenRouter budget). This is that algorithm, deterministic and f
 
 Direction: read-only on git, write-only on Notion (same contract as the old cron).
   1. CREATE: for every _inbox/agents/*.md proposal not yet in the DB (exact Filename match),
-     create a row (Status=New; Proposal Date = file mtime; Source inferred; Excerpt + Box Link).
+     create a row (Status=New; Proposal Date = file mtime; Source inferred; Excerpt + Box Link)
+     and write the proposal markdown into the page body, so the proposal is readable in
+     Notion itself rather than only behind the private-repo Box Link.
+  1b. --backfill-bodies: the same body write for existing Status=New rows — the backlog
+     still awaiting review. Decided rows are left alone; they have already been read.
   2. REFLECT: for DB rows whose proposal file is gone AND still New/Approved, read the
      box-safe approvals.tsv; if a promoted/rejected decision is recorded, set Status +
      Processed At so Notion mirrors what happened on the Mac. (Skipped if approvals.tsv absent.)
@@ -259,10 +263,12 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true", help="report only; no Notion writes")
     ap.add_argument("--backfill-bodies", action="store_true",
-                     help="write the proposal markdown into the page body of every existing "
-                          "row whose file is still on the box. Rows created before this "
-                          "existed have an EMPTY body, which left the private-repo Box Link "
-                          "as the only copy — and that 404s for a signed-out browser. "
+                     help="write the proposal markdown into the page body of every Status=New "
+                          "row whose file is still on the box — the backlog Dave has yet to "
+                          "review. Rows created before this existed have an EMPTY body, which "
+                          "left the private-repo Box Link as the only copy — and that 404s for "
+                          "a signed-out browser. A decided row (Approved/Promoted/Rejected) is "
+                          "left alone: it has already been read. "
                           "Idempotent: a body already ending in the sentinel is left alone.")
     ap.add_argument("--count", action="store_true",
                      help="print PENDING_COUNT=N and OLDEST_PENDING_DATE=<date|none>, then exit. "
@@ -340,7 +346,7 @@ def main(argv=None):
     if args.backfill_bodies:
         for fn in files:
             row = by_fn.get(fn)
-            if not row:
+            if not row or prop_text(row, "Status") != "New":
                 continue
             outcome, count = write_body(call, row["id"], fn, os.path.join(INBOX_DIR, fn),
                                         BOX_LINK_BASE + fn, args.dry_run)
