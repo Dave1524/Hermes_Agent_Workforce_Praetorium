@@ -16,7 +16,7 @@ rejected outright.
 """
 import re
 
-FORMAT_VERSION = 2
+FORMAT_VERSION = 3
 CHUNK = 1900
 MAX_SPANS = 100
 MAX_HEADING = 3
@@ -27,8 +27,9 @@ INLINE = re.compile(
     r"|(?P<wiki>\[\[[^\]\n]*\]\])"
     r"|(?P<link>\[[^\]\n]*\]\([^)\s]+\))"
     r"|(?P<autolink><https?://[^>\s]+>)"
-    r"|(?P<bold>\*\*(?=\S)[^*\n]+(?<=\S)\*\*)"
-    r"|(?P<istar>\*(?=[^\s*])[^*\n]+(?<=[^\s*])\*)"
+    r"|(?P<bolditalic>\*\*\*(?=\S)[^\n]*?(?<=\S)\*\*\*)"
+    r"|(?P<bold>\*\*(?=\S)[^\n]*?(?<=\S)\*\*)"
+    r"|(?P<istar>\*(?=[^\s*])[^\n]*?(?<=[^\s*])\*(?!\*))"
     r"|(?P<iunder>(?<![A-Za-z0-9_])_(?=[^\s_])[^_\n]+(?<=[^\s_])_(?![A-Za-z0-9_]))"
     r"|(?P<url>https?://[^\s<>()\[\]]*[^\s<>()\[\].,;:!?'\"])"
 )
@@ -67,6 +68,8 @@ def _expand(match, annotations, link):
         return [_span(raw[1:-1], annotations, raw[1:-1])]
     if kind == "url":
         return [_span(raw, annotations, raw)]
+    if kind == "bolditalic":
+        return _spans(raw[3:-3], _marked(_marked(annotations, "bold"), "italic"), link)
     if kind == "bold":
         return _spans(raw[2:-2], _marked(annotations, "bold"), link)
     return _spans(raw[1:-1], _marked(annotations, "italic"), link)
@@ -237,8 +240,13 @@ def _opened(blocks, pending, text):
             pending[1].append(text)
             return pending
         return ("paragraph", [text])
-    pending = _flushed(blocks, pending)
     kind, content = opening
+    if kind == "quote" and not content:
+        return _flushed(blocks, pending)
+    if pending and pending[0] == "quote" == kind:
+        pending[1].append(content)
+        return pending
+    pending = _flushed(blocks, pending)
     if kind in CONTINUING:
         return (kind, [content])
     blocks.append(text_block(kind, content))

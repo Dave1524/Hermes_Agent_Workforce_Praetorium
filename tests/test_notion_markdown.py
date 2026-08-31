@@ -120,6 +120,52 @@ for closer in ("# next", "- item", "> quote", "---", "```\ncode\n```"):
     check("{!r} closes the paragraph above it".format(closer.split("\n")[0]),
           got[0]["type"] == "paragraph" and plain(got[0]) == "open paragraph")
 
+print("--- hard-wrapped blockquotes: consecutive > lines are ONE quote ---")
+QUOTED = ('> "a claim that runs past the wrap column and carries a **span that\n'
+          '> opens on one line and closes on the next**, mid-sentence."\n')
+quoted = nm.blocks_from_markdown(QUOTED)
+check("consecutive > lines collapse to one quote block",
+      [b["type"] for b in quoted] == ["quote"])
+check("and the straddling span renders, leaving no literal markers",
+      "**" not in plain(quoted[0]))
+check("as one bold span",
+      any(s.get("annotations", {}).get("bold") and
+          s["text"]["content"] == "span that opens on one line and closes on the next"
+          for s in spans(quoted[0])))
+check("a blank line still separates two quotes",
+      [b["type"] for b in nm.blocks_from_markdown("> one\n\n> two\n")]
+      == ["quote", "quote"])
+check("a quote still closes when a non-quote block opens",
+      [b["type"] for b in nm.blocks_from_markdown("> quoted\n# heading\n")]
+      == ["quote", "heading_1"])
+check("a bare > closes the quote, as a blank line does",
+      [b["type"] for b in nm.blocks_from_markdown("> one\n>\n> two\n")]
+      == ["quote", "quote"])
+check("consecutive bullets do NOT merge (only quotes continue by marker)",
+      [b["type"] for b in nm.blocks_from_markdown("- one\n- two\n")]
+      == ["bulleted_list_item"] * 2)
+
+print("--- inline: emphasis nests, because the proposals nest it ---")
+check("bold containing italic keeps both spans",
+      marks("**a claim *stressed* mid-span**")
+      == {"a claim ": {"bold": True}, "stressed": {"bold": True, "italic": True},
+          " mid-span": {"bold": True}})
+check("italic containing bold keeps both spans",
+      marks('*"**11,000 pallet spaces**."*')
+      == {'"': {"italic": True}, "11,000 pallet spaces": {"italic": True, "bold": True},
+          '."': {"italic": True}})
+check("***both*** is bold and italic",
+      marks("***emphatic***") == {"emphatic": {"bold": True, "italic": True}})
+check("a stray asterisk earlier in the line no longer eats a later bold pair",
+      marks("a footnote* elsewhere. **Verified from that source:** tail")
+      == {"a footnote* elsewhere. ": {}, "Verified from that source:": {"bold": True},
+          " tail": {}})
+check("two bold spans stay two spans, not one greedy run",
+      marks("**one** and **two**")
+      == {"one": {"bold": True}, " and ": {}, "two": {"bold": True}})
+check("an unclosed ** is left literal",
+      plain(nm.blocks_from_markdown("**never closed")[0]) == "**never closed")
+
 print("--- tables: width is exact, short rows pad, long rows truncate ---")
 TABLE = ("| Claim | Source | Confidence |\n"
          "| --- | --- | --- |\n"
