@@ -15,7 +15,10 @@ Direction: read-only on git, write-only on Notion (same contract as the old cron
 Token: NOTION_API_TOKEN from env or ~/.config/agent-workforce/secrets.env. Never the MCP
 (it linkifies .md filenames and breaks exact-Filename dedup).
 """
-import argparse, json, os, sys, glob, datetime, urllib.request, urllib.error
+import argparse, json, os, re, sys, glob, datetime, urllib.request, urllib.error
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import notion_markdown  # noqa: E402  — sibling module owns markdown -> Notion blocks
 
 DATA_SOURCE_ID = "ecb52f8e-2125-416f-b08e-824a7416e561"
 NOTION_VERSION = "2025-09-03"
@@ -25,6 +28,9 @@ APPROVALS = os.path.join(INBOX_DIR, "_metrics", "approvals.tsv")
 BOX_LINK_BASE = ("https://github.com/Dave1524/obsidian-ai-os-boxsafe/blob/"
                  "agents/inbox/_inbox/agents/")
 SECRETS = os.path.expanduser("~/.config/agent-workforce/secrets.env")
+BRANCH = "agents/inbox"
+BATCH = 100
+SENTINEL_RE = re.compile(r"^— synced from (.+) @ (.+) —$")
 
 
 def load_token():
@@ -56,6 +62,107 @@ def api(method, path, token, payload=None):
 
 def rt(s):
     return [{"type": "text", "text": {"content": (s or "")[:1900]}}]
+
+
+def make_call(token):
+    def call(method, path, payload=None):
+        return api(method, path, token, payload)
+    return call
+
+
+def sentinel_text(filename):
+    stamp = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
+    return "— synced from %s @ %s —" % (filename, stamp)
+
+
+def divider():
+    return {"object": "block", "type": "divider", "divider": {}}
+
+
+def provenance_blocks(filename, box_link):
+    """Makes the page self-describing — the GitHub link 404s for a signed-out browser."""
+    return [{"object": "block", "type": "paragraph", "paragraph": {"rich_text": [
+        {"type": "text", "text": {"content": "Source: "}},
+        {"type": "text", "text": {"content": filename}, "annotations": {"code": True}},
+        {"type": "text", "text": {"content": " on branch %s of obsidian-ai-os-boxsafe — "
+                                             % BRANCH}},
+        {"type": "text", "text": {"content": "view on GitHub", "link": {"url": box_link}}},
+        {"type": "text", "text": {"content": " (private repo; the full text is below)."}},
+    ]}}, divider()]
+
+
+def body_blocks(filename, path, box_link):
+    try:
+        text = open(path, encoding="utf-8").read()
+    except OSError:
+        text = ""
+    sentinel = {"object": "block", "type": "paragraph",
+                "paragraph": {"rich_text":
+                              notion_markdown.plain_rich_text(sentinel_text(filename))}}
+    return (provenance_blocks(filename, box_link)
+            + notion_markdown.blocks_from_markdown(text)
+            + [divider(), sentinel])
+
+
+def batches(blocks):
+    """A table's rows ride along inside it; charge them to the same 100-block budget."""
+    out, current, weight = [], [], 0
+    for b in blocks:
+        cost = 1 + len((b.get("table") or {}).get("children", []))
+        if current and weight + cost > BATCH:
+            out.append(current)
+            current, weight = [], 0
+        current.append(b)
+        weight += cost
+    if current:
+        out.append(current)
+    return out
+
+
+def child_blocks(call, page_id):
+    out, cur = [], None
+    while True:
+        path = "/blocks/%s/children?page_size=100" % page_id
+        if cur:
+            path += "&start_cursor=" + cur
+        d = call("GET", path)
+        out += d.get("results", [])
+        if not d.get("has_more"):
+            return out
+        cur = d["next_cursor"]
+
+
+def block_plain(block):
+    rich = (block.get(block.get("type")) or {}).get("rich_text", [])
+    return "".join(s.get("plain_text") or s.get("text", {}).get("content", "") for s in rich)
+
+
+def has_sentinel(children, filename):
+    if not children:
+        return False
+    m = SENTINEL_RE.match(block_plain(children[-1]).strip())
+    return bool(m) and m.group(1) == filename
+
+
+def write_body(call, page_id, filename, path, box_link, dry_run=False):
+    """Idempotent, crash-safe body write. Returns (written|repaired|skipped, blocks).
+
+    The sentinel is the LAST block written, so it can only exist if every preceding
+    batch landed — children without one are a partial write and get cleared, not
+    appended to.
+    """
+    children = child_blocks(call, page_id)
+    if has_sentinel(children, filename):
+        return "skipped", 0
+    blocks = body_blocks(filename, path, box_link)
+    outcome = "repaired" if children else "written"
+    if dry_run:
+        return outcome, len(blocks)
+    for child in children:
+        call("DELETE", "/blocks/%s" % child["id"])
+    for batch in batches(blocks):
+        call("PATCH", "/blocks/%s/children" % page_id, {"children": batch})
+    return outcome, len(blocks)
 
 
 def source_for(fn):
@@ -148,9 +255,15 @@ def read_approvals():
     return out
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true", help="report only; no Notion writes")
+    ap.add_argument("--backfill-bodies", action="store_true",
+                     help="write the proposal markdown into the page body of every existing "
+                          "row whose file is still on the box. Rows created before this "
+                          "existed have an EMPTY body, which left the private-repo Box Link "
+                          "as the only copy — and that 404s for a signed-out browser. "
+                          "Idempotent: a body already ending in the sentinel is left alone.")
     ap.add_argument("--count", action="store_true",
                      help="print PENDING_COUNT=N and OLDEST_PENDING_DATE=<date|none>, then exit. "
                           "Read-only (no CREATE/REFLECT, no writes even vs --dry-run) — for cheap, "
@@ -158,8 +271,9 @@ def main():
                           "which used to raw-count *.md files on disk. That count included files "
                           "already decided in Notion but not yet cleared by the Mac-side promote "
                           "pass, so it overstated the real backlog (NUC-45 diagnosis, 2026-08-10).")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     token = load_token()
+    call = make_call(token)
 
     files = inbox_files()
     rows = all_rows(token)
@@ -182,6 +296,7 @@ def main():
         return
 
     created, reflected, decision_map = [], [], read_approvals()
+    bodies, body_total = 0, 0
 
     # 1) CREATE rows for new proposal files
     for fn in files:
@@ -205,13 +320,33 @@ def main():
         }
         if note:
             props["Notes"] = {"rich_text": rt(note)}
+        box_link = BOX_LINK_BASE + fn
         if args.dry_run:
             created.append(fn + "  (DRY)")
+            bodies += 1
+            body_total += len(body_blocks(fn, path, box_link))
             continue
-        api("POST", "/pages", token,
-            {"parent": {"type": "data_source_id", "data_source_id": DATA_SOURCE_ID},
-             "properties": props})
+        page = api("POST", "/pages", token,
+                   {"parent": {"type": "data_source_id", "data_source_id": DATA_SOURCE_ID},
+                    "properties": props})
         created.append(fn)
+        # Two calls, not inline children: a create carrying children is capped at 100
+        # blocks and would silently truncate a long proposal.
+        _, count = write_body(call, page["id"], fn, path, box_link)
+        bodies += 1
+        body_total += count
+
+    # 1b) BACKFILL bodies for rows that predate the body sync, or whose write crashed
+    if args.backfill_bodies:
+        for fn in files:
+            row = by_fn.get(fn)
+            if not row:
+                continue
+            outcome, count = write_body(call, row["id"], fn, os.path.join(INBOX_DIR, fn),
+                                        BOX_LINK_BASE + fn, args.dry_run)
+            if outcome != "skipped":
+                bodies += 1
+                body_total += count
 
     # 2) REFLECT Mac-side outcomes back into Notion (file gone + approvals.tsv decision)
     today = datetime.date.today().isoformat()
@@ -336,6 +471,9 @@ def main():
     print("agent-inbox-sync: %s." % ", ".join(parts))
     if created:
         print("  created this run: %s" % ", ".join(created))
+    if bodies:
+        print("  bodies written this run: %d ({:,} blocks)%s".format(body_total)
+              % (bodies, " (DRY)" if args.dry_run else ""))
     if reflected:
         print("  reflected this run: %s" % ", ".join(reflected))
     if backfilled:

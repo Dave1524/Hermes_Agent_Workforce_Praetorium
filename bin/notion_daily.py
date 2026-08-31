@@ -29,12 +29,12 @@ import datetime
 import json
 import os
 import pathlib
-import re
 import sys
 import urllib.error
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from notion_markdown import blocks_from_markdown  # noqa: E402  — the shared converter
 from notion_rest import load_token  # noqa: E402  — sibling helper owns the token rule
 
 NOTION_VERSION = "2025-09-03"
@@ -49,7 +49,6 @@ CLIENT_PIPELINE_DS = "e5b6fe9a-f0d9-45b9-9320-d4f20c1f1e0e"
 PLAN_TITLE = "{} — Daily Plan"
 EOD_TITLE = "{} — EOD Summary"
 CLOSED_TASK_STATUSES = ("Done", "Parked")
-NUMBERED_LINE = re.compile(r"^\d+\.\s+(.*)")
 
 
 class NotionHttp:
@@ -79,27 +78,6 @@ def rt(text):
     chunks = [text[i:i + 1900] for i in range(0, len(text), 1900)]
     return [{"type": "text", "text": {"content": c}} for c in chunks] or \
            [{"type": "text", "text": {"content": ""}}]
-
-
-def block(kind, text):
-    return {"object": "block", "type": kind, kind: {"rich_text": rt(text)}}
-
-
-def block_from_line(line):
-    text = line.strip()
-    for prefix, kind in (("### ", "heading_3"), ("## ", "heading_2"), ("# ", "heading_1"),
-                         ("> ", "quote"), ("- ", "bulleted_list_item"),
-                         ("* ", "bulleted_list_item")):
-        if text.startswith(prefix):
-            return block(kind, text[len(prefix):])
-    numbered = NUMBERED_LINE.match(text)
-    if numbered:
-        return block("numbered_list_item", numbered.group(1))
-    return block("paragraph", text)
-
-
-def blocks_from_markdown(text):
-    return [block_from_line(line) for line in (text or "").splitlines() if line.strip()]
 
 
 def now_iso():

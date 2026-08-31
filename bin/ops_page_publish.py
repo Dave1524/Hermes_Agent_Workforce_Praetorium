@@ -11,6 +11,9 @@ overnight run leaves it dormant (no page, no write).
 """
 import json, os, sys, urllib.request, urllib.error
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from notion_markdown import blocks_from_markdown  # noqa: E402  — the shared converter
+
 API = "https://api.notion.com/v1"
 NOTION_VERSION = "2025-09-03"
 SECRETS = os.path.expanduser("~/.config/agent-workforce/secrets.env")
@@ -49,47 +52,6 @@ def api(method, path, token, payload=None):
         sys.exit("Notion API network error on {} {}: {}".format(method, path, e))
 
 
-def rt(text):
-    return [{"type": "text", "text": {"content": text[i:i + 1900]}}
-            for i in range(0, len(text), 1900)] or [{"type": "text", "text": {"content": ""}}]
-
-
-def code_block(lines):
-    return {"object": "block", "type": "code",
-            "code": {"language": "plain text", "rich_text": rt("\n".join(lines))}}
-
-
-def heading(text, level):
-    key = "heading_{}".format(level)
-    return {"object": "block", "type": key, key: {"rich_text": rt(text)}}
-
-
-def paragraph(text):
-    return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": rt(text)}}
-
-
-def markdown_to_blocks(md):
-    blocks, fence, buf = [], False, []
-    for line in md.splitlines():
-        if line.strip().startswith("```"):
-            if fence:
-                blocks.append(code_block(buf))
-                buf = []
-            fence = not fence
-            continue
-        if fence:
-            buf.append(line)
-        elif line.startswith("## "):
-            blocks.append(heading(line[3:], 2))
-        elif line.startswith("# "):
-            blocks.append(heading(line[2:], 1))
-        elif line.strip():
-            blocks.append(paragraph(line))
-    if buf:
-        blocks.append(code_block(buf))
-    return blocks
-
-
 def clear_children(page_id, token):
     res = api("GET", "/blocks/{}/children?page_size=100".format(page_id), token)
     for block in res.get("results", []):
@@ -105,7 +67,7 @@ def append_children(page_id, blocks, token):
 def main():
     token = require("NOTION_API_TOKEN")
     page_id = require("OPS_PAGE_ID")
-    blocks = markdown_to_blocks(sys.stdin.read())
+    blocks = blocks_from_markdown(sys.stdin.read())
     clear_children(page_id, token)
     append_children(page_id, blocks, token)
     print("OK  published {} blocks -> page {}".format(len(blocks), page_id))
