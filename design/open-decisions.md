@@ -216,7 +216,96 @@ remembered; (c) retire the S3 allowlist investment now that hermes is a one-off 
 - **Recommend:** (b) for the four skills the content and research workflows actually name.
   Leave (c) until a card actually fails.
 
-**ANSWER:**
+**ANSWER (2026-09-01): (b) YES — as POINTER skills, never copies — AND fix augustus's extraction.
+The premise above is wrong twice, and the fix augustus needs is not a skill.**
+
+**Correction 1 — S1 and S2 already have a skill index.** `~/.claude/skills/` does not exist,
+which is true and misleading. Measured by probe: a `SKILL.md` dropped there is listed by name
+in a run shaped exactly like S2 (`claude -p --permission-mode bypassPermissions
+--strict-mcp-config --mcp-config '{"mcpServers":{}}' --allowedTools "Bash,Read,Write,Glob,Grep"`),
+and that run already saw **25 skills** — the 7 `shared@jbuitenhuis` ones this doc counted, the 4
+in `~/.claude/commands/` (`finish`, `implement`, `plan-feature`, `ship`), and ~14 Claude Code
+built-ins (`code-review`, `security-review`, `simplify`, `loop`, `schedule`, `workflow-authoring`,
+`dataviz`, …). So (b) is not "build an index". It is "add files to one that already exists,
+already loads on both surfaces, and needs no runner change."
+
+**Correction 2 — one skill is named by a live workflow, not four.** Grep across all
+`profiles/*.md`: **5 references, 1 distinct skill** — `08_skills/linkedin-content-engine`, by
+`augustus_content_task.md` (3) and `augustus_polish_task.md` (2). No research profile names any
+vault skill. "The four skills the content and research workflows actually name" was never
+measured.
+
+**Third finding, from the same probe: `--allowedTools` is inert under `bypassPermissions`.**
+`Edit` was absent from the allowlist and was nonetheless available and used to edit a file
+successfully. §2's surface table lists S2's tool set as "explicit `--allowedTools`"; that is not
+a containment mechanism. S2's real containment is `--strict-mcp-config --mcp-config '{}'` (no MCP
+server is loaded, so no connector tool exists) plus `agent_propose.sh`'s write boundary. **§6.1
+credits the wrong mechanism** for the outward-connector guarantee — the conclusion holds, the
+reason does not. Anyone who drops `--strict-mcp-config` believing the allowlist is the guard
+removes containment with no error. Correct §2 and §6.1; this does not disturb D1, whose chosen
+mechanism is `permissions.deny`, which *is* enforced under bypass (this session cannot read its
+own deny-listed paths).
+
+**The asymmetry that decides scope: (b) cannot reach the only agent that uses a skill.**
+`buzz-agent@augustus.service.d/harness.conf` sets
+`BUZZ_ACP_AGENT_COMMAND=/usr/local/bin/codex-acp` with its own `CODEX_HOME`, and Codex has no
+skills mechanism at all (`codex --help` offers no skill flag). `augustus-content` is
+`surface = "buzz_dispatch"` → S1 → codex. So registering `linkedin-content-engine` offers it to
+marcus, claudius, trajan, aurelian and every S2 job — everyone except augustus.
+
+**And his workaround has already drifted silently.** `augustus_content_task.md:69-79` states the
+problem outright ("There is no skill *tool* on this harness — a skill here is markdown you read")
+and extracts the 37,631-byte `SKILL.md` by pinned line numbers:
+`sed -n '19,36p;53,78p;100,134p;168,235p;341,353p;414,423p'`. Measured against the file today
+(453 lines, last edited 2026-08-14): four ranges land exactly, **two are off by 2 lines**.
+
+| pinned range | intended section | actual | consequence |
+|---|---|---|---|
+| `341,353p` | Step 6 — first-comment strategy | 343-355 | opens on Step 5's Codex sandbox note; drops the last 2 lines, incl. "Bridge to the adjacent audience without hijacking the post." |
+| `414,423p` | Variations mode | 416-425 | drops "Recommended N: 3 (more than 5 is decision fatigue)" |
+
+Nothing errors, no suite covers it, and **the pins live in this repo while the file lives in the
+vault** — two repos with no shared gate, so no commit here can ever see the target move. The
+drift is 2 lines today and only grows. This is the live defect; a skill registration would not
+have touched it.
+
+**Decision, in two parts.**
+
+1. **Fix the extraction (the real fix).** Replace the six pinned ranges in
+   `augustus_content_task.md` (and `augustus_polish_task.md`) with heading-anchored extraction
+   that **fails loudly** when a named section is absent, rather than silently returning the
+   wrong lines. A missing heading must abort the run, not degrade it. Needs a suite —
+   `tests/test_content_skill_extract.sh` — asserting every named section resolves against the
+   live vault file. That test is the shared gate the two repos do not otherwise have.
+
+2. **Register pointer skills under `~/.claude/skills/`.** **A pointer, never a copy:** each
+   `SKILL.md` is a few lines naming the canonical vault path and telling the agent to read it.
+   A copy would go stale against the vault in exactly the way the line pins just did, and would
+   create the second source of truth the vault's one-fact-one-place rule exists to prevent.
+
+   Starting list, grounded in the vault's own `08_skills/skill_index.md` categories against each
+   persona's charter role — **to be confirmed in the Phase-B brief, not treated as settled here**:
+
+   | persona | pointer skills | grounding |
+   |---|---|---|
+   | augustus | linkedin-content-engine, linkedin-review, blog-engine | index "Content & LinkedIn"; **reaches him not at all — he is on codex.** Registered for whoever else drafts. |
+   | claudius | prospect-research, meeting-prep, investment-research | index "VP Sales Skills" + "Investing" |
+   | trajan | systematic-debugging, test-driven-development, verification-before-completion, spec-to-code-enforcement | index "Development Skills" |
+   | marcus | weekly-review, agent-inbox-sync, post-call-capture | index "Daily Operations" |
+   | aurelian | none | read-only by calibration pin |
+
+   **Honest caveat: 1 of these 14 is named by a live workflow.** The other 13 are offered on role
+   grounding, not demonstrated demand. That is the point of "offered rather than remembered" —
+   but it should be recorded as a bet, and revisited by measuring which pointers are ever invoked.
+
+   **`morning-startup` and `eod-wrap` are deliberately excluded.** `CLAUDE.md` records the daily
+   rhythm jobs as a *port* of those two Mac skills, with the Mac copies canonical for interactive
+   runs. Registering them would offer an S2 daily-plan job a competing procedure to the task
+   profile it already has. **General rule: a pointer skill must not duplicate a task profile that
+   already owns the same surface.**
+
+- **Option (c) is not decided here** — see D7, where the measurement that settles it lives.
+- **Dependencies:** part 1 gives `augustus-content` a second suite (R15b). Part 2 is independent.
 
 ---
 
@@ -407,7 +496,91 @@ rather than an omission.
 
 - **Recommend:** yes, leave it; fold into D3 (skills posture) rather than answering twice.
 
-**ANSWER:**
+**ANSWER (2026-09-01): INVESTIGATE RETIRING S3 ENTIRELY — investigation done, and it concludes
+RETIRE. The question "how do we evaluate the kanban surface" was premature: nothing runs on it.**
+
+**S3 is not lightly-used, it is idle.** Measured across the board, the gateway and the runners:
+
+| measurement | value |
+|---|---|
+| cards on the board | 11 |
+| last card dispatched to completion | **2026-07-20** (43 days ago) |
+| SEO cards assigned `trajan`, status `blocked` | 5, since **2026-07-10** (53 days) |
+| `hermes cron list` | **"No scheduled jobs"** |
+| listening socket for the dashboard | **none** — nothing bound |
+| cards carrying a non-empty `skills:` field | **0 of 11** |
+
+That last row settles the parent question directly. The NUC-42 per-agent allowlists (marcus 46,
+trajan 44, claudius 25, augustus 23) are selected from by the **card's** `skills` field, and no
+card has ever set one. **There is no S3 skill behaviour to evaluate — the mechanism has never
+been exercised once.** D3's index work and D6's suite-reachability rule both apply to S1/S2 only.
+
+**The gateway is degraded, not merely idle.** `hermes-gateway` has burned **~7,074 s of CPU**
+since its 2026-08-17 start, and its 30-day journal is effectively one repeating
+`ClientConnectorDNSError` against `gateway-us-east1-d.discord.gg` (53 unhealthy warnings in 30d,
+14 in 7d) — a Discord *gateway* connection for a surface `CLAUDE.md` documents as delivery-only
+via `bin/deliver_report.sh`, which is REST and does not need it. So the running cost buys a
+connection nothing consumes. (Note: a naive `grep -vci discord` counts 526 "non-Discord" lines,
+but those are traceback frames of the same errors — the word does not appear in a frame. Do not
+propagate that number.)
+
+**Two same-named objects; only one is being retired.** `hermes` the **CLI**
+(`~/.local/bin/hermes`) is load-bearing — `bin/local_tier_eval.sh:105` execs it
+(`timeout "${TIMEOUT_MIN}m" "$HERMES" -t "$toolset" -z "$prompt"`) for the local-tier eval, and a
+live `hermes` process in the process table is what caught this. `hermes-gateway` the **daemon**
+owns the kanban board and nothing scheduled. **Retirement touches the daemon and the board only;
+`~/.local/bin/hermes` and `local_tier_eval.sh` are not in scope.** Same trap as D8's three unit
+trees: a correct verdict about a same-named object hides the real one.
+
+*Method note:* my first grep classified `local_tier_eval.sh` as a path-only reference, because it
+invokes `"$HERMES"`, not a literal `hermes `. A classifier that only matches literal invocations
+under-reports every `$VAR` caller — re-run any such sweep for variable forms before trusting it.
+
+**The kanban dispatch path is dead code, and one measurement nearly said otherwise.**
+`content-change-dispatch`'s journal shows the kanban runtime command and its timer is active,
+enabled and firing every 15 minutes — on a workflow re-enabled today (registry §7.4). That looked
+like a live dependency. Three measurements disproved it: the kanban path last actually ran
+**2026-08-13**; today's ticks short-circuit at `bin/content_change_dispatch.sh:71` ("no new Picked
+rows … refreshing state, no dispatch"); and both content triggers share the same override file
+(`bin/content_change_dispatch.sh:25` and `systemd/augustus-content.service:11` →
+`~/.config/agent-workforce/augustus-content.env`), whose live `AGENT_RUNTIME_CMD` is
+`run_content_via_buzz.sh`. **A green timer on a dead code path is exactly the D8/readiness class
+of false signal** — the journal line was a stale artefact of the override, not evidence.
+
+**Dead code the retirement removes:**
+- `bin/kanban_run_and_wait.sh`
+- `bin/agent_propose.sh:267-270` — the `*kanban_run_and_wait.sh*)` branch setting
+  `max_attempts=1` (with the `retries: 1` intent it encodes migrating to the workflow's own
+  manifest if any surface still needs it)
+- `profiles/standing_research.env.example:34` — already commented out
+- `tests/test_kanban_run_and_wait.sh` and `tests/test_kanban_crash_not_benign.sh` — **the first
+  two orphans found under D6's reachability rule.** They pass today and prove nothing, which is
+  precisely the failure D6's rule exists to catch. Delete with the code, in the same commit.
+
+**Retirement sequence — order matters, and step 1 is not optional.**
+1. **Move the 5 blocked SEO cards off the board first.** They are the only content on it that is
+   not a completed record, they have been blocked 53 days, and retiring the board loses them.
+   Destination: the `vpc-seo` work already tracked in the Vantage SEO remediation task list.
+   **Do not proceed to step 2 until they are somewhere durable.**
+2. Export the board (all 11 cards) to `design/archive/` as a plain record — it is the only
+   evidence of what S3 ever did.
+3. `systemctl --user disable --now hermes-gateway`, **leave it installed but stopped** for one
+   review cycle. Reversible; ends the CPU burn and the DNS retry loop immediately.
+4. Remove the dead code and its two suites (one commit, `verify.sh` green).
+5. Drop S3 from `design/agent-model.md` §2's surface table and from the manifests' `surface`
+   enum, leaving S1/S2/S4. Record it as retired-with-date, not deleted from the history.
+
+**Consequences elsewhere in this design:**
+- **D3 (c) — "should S3 cards select skills?" — is answered NO by retirement**, not by design
+  preference. The `skills:` field goes with the board.
+- `design/agent-model.md:113` records `skills = 25 # kanban only: offered count, measured`. That
+  field belongs to a surface that is going away; fold the measured 25 into the S1/S2 discussion
+  where it is actually true, and drop the kanban qualifier.
+- **D9 inherits a smaller problem:** three surfaces to cover rather than four.
+
+**One thing this does NOT do:** it does not retire `hermes` the CLI, `~/.hermes/profiles/`, or the
+episodic-memory path. Those are entangled with the `AGENT_PROFILE` naming defect (six scheduled
+jobs logging `memory=no-store`) which is registry §6.6 work, and must not be bundled in here.
 
 ---
 
