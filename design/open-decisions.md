@@ -305,7 +305,82 @@ an unowned one.
 - **Depends on:** W5 (explicit per-workflow `status`), and on D4 being yes.
 - **Recommend:** yes. It is small, and it grades every brief that comes after it.
 
-**ANSWER:**
+**ANSWER (2026-09-01): YES — but with a DECLARED join, not an inferred one. The premise above is wrong.**
+
+The sentence "resolves each live workflow to a suite" has no implementation that works. Four
+join rules were measured against the live tree; all four disagree, in both directions:
+
+| join rule | covered | failure |
+|---|---|---|
+| unit name appears in suite text | 17 | **false green** — `agent-workforce-auto-sync` "covered" by a `list-timers` *fixture string* in `test_local_tier_eval_score.sh` |
+| suite filename ~= unit name | 7 | false red on `augustus-content`, `agent-proposal`, `qmd-refresh`, `memory-consolidation` |
+| manifest `runner` field | 7 | false red on **both** rhythm jobs: manifest records `run_daily_rhythm_cc.sh`, the suites name the wrappers |
+| `runner` + resolve wrapper chain | 9 | right answer, wrong mechanism — credits daily-plan with `eod_summary_smoke` and vice versa, because they *share* an implementation |
+
+Two structural reasons no rule can be made to work:
+
+1. **13 of 26 entries carry no `runner`** (every trajan platform job), so that key is
+   unavailable for half the registry.
+2. **Coverage can sit three hops out.** `agent-inbox-sync` -> `bin/agent_inbox_pipeline.sh` ->
+   `bin/agent_inbox_notion_sync.py` -> `test_agent_inbox_body_sync.sh`. Following one wrapper
+   level is not enough, and following N levels is what produces the shared-implementation
+   false green above.
+
+**Decision: add `suite = [...]` to every manifest entry, hand-declared, and have the checker
+read it.** Same shape as W5's `status` — it converts an inference problem into a data problem,
+which is why the count stops moving. The checker asserts, per entry:
+
+- `status == "standing"` and `in_repo != false` => `len(suite) >= 1`
+- every path named in `suite` exists on disk
+- every `tests/test_*.sh` is claimed by >= 1 entry (**orphan detection**, the reverse direction)
+
+**Out-of-repo workflows are exempt but never invisible.** Three standing workflows exec
+scripts that are not in this repo — `fleet-turn-check` (`~/.config/buzz-team/`),
+`ttm-pool-drain` (`/usr/local/bin/`, root-owned) and `buzz-pr-watch` (`~/.local/bin/`, a
+`--user` unit). They carry `in_repo = false` (the field D2 already added to ttm-pool-drain)
+and are exempt from needing a suite, but the checker **prints them as a named list on every
+run**. Exempt, not hidden — `fleet-turn-check` is the gate that proves an agent can complete
+a turn, and it is exactly the kind of thing that disappears from a whitelist.
+
+**The recorded figure was wrong three ways.** "9 of 26" in the headline, 11 implied by this
+doc's own table (which lists 15 uncovered), and **16 covered / 10 uncovered** on measurement.
+Corrected in `design/eval-spec.md` §8.1 in the same commit. The measured mapping, which the
+`suite` fields are seeded from so Phase B does not re-derive it:
+
+| workflow | suite(s) | found via |
+|---|---|---|
+| augustus-content | `run_content_via_buzz` | runner |
+| content-change-dispatch | `content_change_dispatch`, `content_dispatch_state_hold` | name |
+| knowledge-digest | `knowledge_digest_smoke` | name + runner |
+| agent-proposal | `standing_research_smoke` | runner only |
+| raw-ingest | `raw_ingest_smoke` | name + runner |
+| bd-followup-drafts | `bd_followup_drafts_smoke` | name (owns a **dormant** unit) |
+| praetorium-daily-plan | `daily_plan_smoke` | wrapper, not the recorded runner |
+| praetorium-eod-summary | `eod_summary_smoke` | wrapper, not the recorded runner |
+| weekly-pre-assembly | `weekly_pre_assembly_smoke` | name |
+| fleet-eval | `fleet_eval` | name |
+| local-tier-eval | `local_tier_eval_score` | name |
+| scorecard | `scorecard` | name |
+| memory-consolidation | `consolidate_memory` | ExecStart script |
+| qmd-refresh | `vault_sync_guard` | ExecStart script |
+| agent-inbox-sync | `agent_inbox_body_sync`, `agent_inbox_branch_rows` | **hop 3** |
+| inbox-backlog-alert | `buzz_adapters` | ExecStart script |
+
+Uncovered — 10, of which 2 campaign + 1 dormant (`bd-stall-radar`) + 7 standing. Of the 7
+standing, 3 are `in_repo = false` (above) and **4 are writable today**: `m1-signal-scan`,
+`overnight-morning-report`, `agent-workforce-auto-sync`, `overnight-pre-snapshot`. The
+checker therefore ships **red with 4 named failures**, deliberately — those four are the
+Phase-B backlog it exists to produce. `overnight-morning-report` is the sharp one: it is
+uncovered and it is the unit carrying the entire recurring reporting-defect class.
+
+One live orphan in the reverse direction: `tests/test_content_inbox_finalize.sh` owns
+`content-inbox-finalize`, a unit **removed 2026-09-01** (units in `systemd/archive/`, nothing
+in `/etc`). `bin/content_inbox_finalize.py` is still present and still gated. The orphan check
+is what would have caught that on the day of the removal.
+
+- **Depends on:** W5 (done, `3a52d42`), D4 (yes, `b49606b`).
+- **Sequencing:** the `suite` + `in_repo` fields land now as a W-item (manifest data, same
+  class as W5). The checker script itself is the first Phase-B brief.
 
 ---
 
