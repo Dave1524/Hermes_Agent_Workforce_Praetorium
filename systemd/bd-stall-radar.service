@@ -2,6 +2,7 @@
 Description=BD pipeline stall radar — NUC-24
 After=network-online.target qmd-mcp.service brave-mcp.service
 Wants=network-online.target brave-mcp.service
+OnFailure=agent-alert@%n.service
 ConditionPathExists=/home/dave/agent-worktrees/inbox
 
 [Service]
