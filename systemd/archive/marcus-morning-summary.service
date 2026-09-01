@@ -1,0 +1,6 @@
+[Unit]
+Description=One-shot morning summary to Dave in Buzz (requested 2026-08-25)
+
+[Service]
+Type=oneshot
+ExecStart=%h/services/marcus-morning-summary.sh

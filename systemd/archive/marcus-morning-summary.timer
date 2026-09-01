@@ -1,0 +1,10 @@
+[Unit]
+Description=Fire the one-shot morning summary at 08:00 on 2026-08-26
+
+[Timer]
+OnCalendar=2026-08-26 08:00:00
+AccuracySec=1min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

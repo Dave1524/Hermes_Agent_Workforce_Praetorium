@@ -1,0 +1,7 @@
+[Unit]
+Description=Reminder to re-enable content automation after Dave holiday
+
+[Service]
+Type=oneshot
+ExecStart=/home/dave/.local/bin/holiday-content-reminder-20260831.sh
+NoNewPrivileges=true
