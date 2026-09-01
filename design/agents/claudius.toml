@@ -134,13 +134,15 @@ notes    = "23:30 clears the 04:30/05:30/06:00 jobs sharing agent_propose.sh's g
 
 [[must_not]]
 rule     = "send email or any outward message"
-enforced = false
-why      = "charter; §6.1"
+enforced = true
+why      = "~/.config/buzz-team/agent-settings.json denies mcp__claude_ai_{Gmail,Microsoft_365,Google_Drive,Figma} for every claude-agent-acp session, reached via CLAUDE_CODE_EXECUTABLE; the box holds no other outward credential"
+test     = "tests/test_fleet_guards.sh::connector-deny"
 
 [[must_not]]
 rule     = "write the vault outside _inbox/agents/**"
 enforced = true
-why      = "agent_propose.sh write boundary"
+why      = "agent_propose.sh write boundary — a violation discards the whole worktree rather than committing the compliant part"
+test     = "tests/test_fleet_guards.sh::propose-write-boundary"
 
 [[must_not]]
 rule     = "write Notion pipeline state (Stage / Last contact / Next action date)"

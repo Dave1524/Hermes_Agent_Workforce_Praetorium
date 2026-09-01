@@ -175,7 +175,7 @@ them is the first Phase-B brief.
 A Phase-B brief is done when **all** of the following hold. "Impacted suites" is now
 definable because the manifests exist.
 
-1. `bash bin/verify.sh` exits 0 — lint plus all 42 suites.
+1. `bash bin/verify.sh` exits 0 — lint plus all 43 suites.
 2. Every workflow the change touches has a suite that **owns** it and asserts its
    contract's `## Acceptance checks` (per `design/contract-schema.md`).
 3. The suite obeys R1–R14. The two that catch the most defects here: **R8** (assert the
@@ -199,6 +199,23 @@ Gate ownership by surface, from D2:
 | S3 Hermes kanban | `bin/verify.sh` | — (none; see §7) |
 | S4 Buzz-dispatched scheduled | `bin/verify.sh` | L2, L5 |
 
+### Suite ownership has two valid owners, not one
+
+D6's join runs workflow → suite: every registry entry hand-declares the suites that own it
+(`suite = [...]`, R15b), and the coverage checker of §7.1 reads that join in both
+directions — an unowned workflow is red, and so is a suite no workflow claims.
+
+**A suite can also be owned by the fleet rather than by a workflow.** Those are declared in
+`design/fleet-suites.toml`, one `[[suite]]` table per file, carrying `owner = "fleet"`
+alongside `path` and the `asserts` list. `owner = "fleet"` is the second value the §7.1
+checker must accept as ownership.
+
+This is not a formality. `tests/test_fleet_guards.sh` asserts the guards on the agents
+themselves — a settings deny, a git hook, an absent slug, a namespace without a credential.
+Nothing schedules it, so no registry entry can ever claim it, and a checker that knows only
+the workflow→suite direction would classify the security suite as an orphan and recommend
+deleting it. The declaration exists so that recommendation cannot be made.
+
 ---
 
 ## 7. Gaps
@@ -207,6 +224,12 @@ Gate ownership by surface, from D2:
 `design/agents/*.toml`, resolves each `status = "live"` workflow to a suite, and fails on
 an unowned one. It is the only new mechanism D3 asks for, and it makes §5 self-maintaining
 instead of a number that rots the day it is written.
+
+It must read `design/fleet-suites.toml` as a second source of ownership and treat
+`owner = "fleet"` as owned (§6). A checker that knows only the workflow→suite direction
+reports `tests/test_fleet_guards.sh` as an orphan, and an orphan's recommended fix is
+deletion — so the first act of the coverage checker would be to propose deleting the suite
+that asserts the fleet's security guards.
 
 **7.2 The Hermes kanban surface has no eval at all.** L2–L5 cover Buzz and the scheduled
 jobs. Nothing grades a kanban card's execution. This may be correct to leave — D2 §8.4
@@ -219,10 +242,37 @@ nothing about what is running, and this has already produced two live outages (D
 alert throttle, §6.3 unit drift). Source-vs-deployed drift deserves its own assertion in
 L1 rather than living as a rule people are asked to remember.
 
-**7.4 No eval asserts a `must_not` rule.** The manifests carry 22 of them; 
-`enforced = true` on only a subset. An unenforced `must_not` is prose, and prose is what
-D2 §6.1 found sitting between the fleet and a live `send_message` tool. Each `enforced =
-true` rule should have a negative test that fails if the mechanism is removed.
+**7.4 No eval asserts a `must_not` rule — CLOSED 2026-09-01 (D1 + D9).** The manifests
+carry 22 of them, `enforced = true` on only a subset. An unenforced `must_not` is prose,
+and prose is what D2 §6.1 found sitting between the fleet and a live `send_message` tool.
+
+`tests/test_fleet_guards.sh` now asserts every `enforced = true` rule, and each rule names
+the assertion that covers it in a `test = "<file>::<assertion-id>"` field. The suite's last
+group closes the loop in the other direction: it reads the manifests, and fails if a rule
+is flagged enforced while naming no assertion, or naming one that is not in the file it
+names. `enforced = true` is therefore no longer a string anyone can type.
+
+**D9 redefines the flag to make that checkable: `enforced = true` iff a machine-checkable
+artifact exists whose removal or absence a test can detect.** Not "a mechanism blocks it"
+in the abstract — a mechanism nobody can point a test at is indistinguishable from prose,
+which is the defect this gap was opened for. Two consequences worth stating:
+
+- **A rule can be enforced by different mechanisms on different agents, and the `why` must
+  name the right one.** marcus and claudius are covered by the strict settings file;
+  augustus is covered by running a harness that never had the connectors, and the settings
+  file never reaches him. Crediting the settings file for augustus would be the exact
+  §2/§6.1 defect D3 found — a real boundary attributed to the wrong thing, which then
+  survives the removal of the thing that actually holds it.
+- **A rule whose mechanism is the non-existence of a surface gets `test_exempt`, not a
+  test.** Same shape as R15b's `suite_exempt`: an exemption is a declared hole that greps,
+  and silence is not. trajan's hermes-cron rule is the one instance — the cron list is
+  empty because the surface is retired, so there is nothing whose removal a test could
+  detect, and a test pinning it empty would go red the day D7 finishes the retirement.
+
+Negative tests here **assert the absence of capability and never attempt the forbidden
+action.** You cannot test "must not send email" by sending email — the test would be the
+violation, and a "safe" recipient is still an outward action from a box whose whole charter
+is that it performs none. Every assertion reads the state of a mechanism instead.
 
 ---
 
@@ -234,6 +284,9 @@ true` rule should have a negative test that fails if the mechanism is removed.
    skills-posture decision rather than answered separately.
 3. **Add a source-vs-deployed drift assertion to `verify.sh` (7.3)?** Recommended yes.
    Two of D2's eight gaps were this defect; it is the highest-yield single check available.
-4. **Negative tests for `enforced = true` must-nots (7.4)?** Recommended yes, but scoped to
-   the outward-action rules only, and only after D2 §8.1 is decided — the deny-list is the
-   mechanism those tests would assert.
+4. **Negative tests for `enforced = true` must-nots (7.4)?** ANSWERED yes — done
+   2026-09-01 as D1, and wider than the original recommendation. Scoping to the outward
+   rules was the wrong shape: the flag itself was the unchecked thing, so the suite covers
+   all six enforced rules and adds the reverse-direction check that a flag with no
+   assertion is red. D9 supplies the definition that makes the reverse check possible
+   (§7.4).

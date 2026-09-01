@@ -19,8 +19,11 @@ channels    = "all"
 tools       = ["claude-code-builtins", "mcp__qmd-mcp__*", "notion_* (7, via broker)"]
 mcp         = ["qmd-mcp", "buzz-team-mcp"]
 notes       = """
-Also inherits every undenied claude.ai connector from ~/.claude/settings.json —
-Gmail, M365, Drive, Figma. See agent-model.md §6.1; this is a gap, not a grant.
+The claude.ai connectors (Gmail, M365, Drive, Figma) are denied on this surface as of
+2026-09-01 — CLAUDE_CODE_EXECUTABLE points buzz-agent@.service at
+~/.config/buzz-team/claude-agent-wrapper.sh, which adds --settings
+~/.config/buzz-team/agent-settings.json. Dave's own interactive sessions keep them.
+Mechanism and proof: agent-model.md §6.1.
 """
 
 [surfaces.scheduled]
@@ -108,13 +111,15 @@ notes    = "Hermes-era claudius task; ownership moved to marcus 2026-09-01 (regi
 
 [[must_not]]
 rule     = "send email or any outward message"
-enforced = false
-why      = "charter; §6.1 leaves Gmail/M365 live on the interactive surface"
+enforced = true
+why      = "~/.config/buzz-team/agent-settings.json denies mcp__claude_ai_{Gmail,Microsoft_365,Google_Drive,Figma} for every claude-agent-acp session, reached via CLAUDE_CODE_EXECUTABLE; the box holds no other outward credential"
+test     = "tests/test_fleet_guards.sh::connector-deny"
 
 [[must_not]]
 rule     = "write the vault outside _inbox/agents/**"
 enforced = true
-why      = "agent_propose.sh write boundary"
+why      = "agent_propose.sh write boundary — a violation discards the whole worktree rather than committing the compliant part"
+test     = "tests/test_fleet_guards.sh::propose-write-boundary"
 
 [[must_not]]
 rule     = "write 07_daily/logs/ on any branch"

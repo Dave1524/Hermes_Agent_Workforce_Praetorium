@@ -1,0 +1,35 @@
+# Suites that belong to the fleet itself, not to a workflow.
+#
+# D6's join runs workflow -> suite: every entry in the workflow registry hand-declares the
+# test files that own it (R15b), and brief 3's coverage checker reads that join in both
+# directions. A suite reached by neither direction is an orphan, and the checker's first
+# recommendation for an orphan is to delete it.
+#
+# tests/test_fleet_guards.sh has no workflow and never will: it asserts the guards on the
+# agents themselves — a settings deny, a git hook, an absent slug, a namespace without a
+# credential. Nothing schedules it, so nothing in the registry can claim it. This file is
+# the second valid owner value that keeps the security suite out of the orphan bucket.
+#
+# owner = "fleet" is the declared value; design/eval-spec.md §6 documents it as part of
+# D6's join so the checker and this file cannot drift apart.
+
+[[suite]]
+path    = "tests/test_fleet_guards.sh"
+owner   = "fleet"
+asserts = [
+  "connector-deny",                  # marcus, claudius: outward connectors denied for agent sessions
+  "augustus-no-claude-connectors",   # augustus: same rule, different mechanism — codex harness
+  "deny-superset",                   # the strict file can never be laxer than ~/.claude/settings.json
+  "vault-push-guard",                # trajan: the pre-push guard, in every vault clone on this box
+  "aurelian-unaddressable",          # aurelian: absent from the slug table
+  "propose-write-boundary",          # marcus, claudius: the _inbox/agents/** write boundary
+  "augustus-no-fetch",               # augustus: no ssh credential inside his bwrap namespace
+  "enforced-has-test",               # the reverse direction — an enforced flag with no assertion is red
+]
+why_no_workflow = """
+It asserts fleet state, not the output of a scheduled job. Most of what it reads lives
+outside this repo — ~/.claude/settings.json, .git/hooks in two vault clones, a bwrap
+wrapper in /usr/local/bin, a --user unit — which is exactly why it exists: this repo's
+commits cannot see those files move, so a test is the only thing that fails loudly when
+the far side does.
+"""

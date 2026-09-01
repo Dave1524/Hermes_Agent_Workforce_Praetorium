@@ -19,8 +19,9 @@ states any agent's full capability in one place. That is the design gap D2 close
 
 Concretely, claudius is four different things depending on how you reach him:
 
-- over Buzz he has Claude Code's full built-in toolset, qmd over MCP, seven Notion
-  tools through the broker, and — unintentionally — Gmail, Outlook and Drive;
+- over Buzz he has Claude Code's full built-in toolset, qmd over MCP, and seven Notion
+  tools through the broker — and, until 2026-09-01, Gmail, Outlook and Drive as well
+  (§6.1, now closed);
 - inside `knowledge-digest` he has exactly `Bash,Read,Write,Edit,Glob,Grep` and **no
   MCP server at all**;
 - inside `m1-signal-scan` he additionally has `WebSearch,WebFetch`;
@@ -132,8 +133,12 @@ notes       = """..."""
 
 [[must_not]]                      # one block per prohibition
 rule        = "send email or any outward message"
-enforced    = false               # true = a mechanism blocks it TODAY
-why         = "charter; §6.1 leaves Gmail/M365 live on the interactive surface"
+enforced    = true                # D9: true iff a machine-checkable artifact exists whose
+                                  # removal or absence a test can DETECT. Not "a mechanism
+                                  # blocks it" in the abstract — see eval-spec.md §7.4.
+why         = "<the mechanism, named precisely enough to be wrong>"
+test        = "tests/test_fleet_guards.sh::connector-deny"  # REQUIRED when enforced = true
+test_exempt = "mechanism is a surface that no longer exists" # presence = exempt from needing a test
 ```
 
 ### Workflow `suite` — required on every entry (R15b)
@@ -210,9 +215,10 @@ It is empty for every `OnUnitActiveSec` timer (monotonic, not realtime), and
 `ttm-pool-drain` showed exactly that during this audit and is entirely healthy. Use
 `is-enabled` plus `LastTriggerUSec`.
 
-`must_not` is the field that earns the file. Today "claudius must not act outward" is
-prose in a charter that S1's deny-list does not enforce (§6.1). Stated here once, a
-Phase-B validator can assert it against every surface at once — and `enforced = false` is
+`must_not` is the field that earns the file. It was written when "claudius must not act
+outward" was prose in a charter that S1's deny-list did not enforce (§6.1, closed
+2026-09-01). Stated here once, a Phase-B validator asserts it against every surface at
+once — `tests/test_fleet_guards.sh` now does exactly that — and `enforced = false` remains
 the honest half: it marks a rule that is policy, not mechanism, instead of implying a
 boundary that does not exist.
 
@@ -233,9 +239,18 @@ which §7.5 recorded as "planned"; they are installed and disabled, not absent.
 2. **A capability is added on one surface at a time, and the manifest says which.**
    Adding `WebSearch` to a scheduled wrapper does not grant it on Buzz and must not be
    described as "claudius can search the web".
-3. **A prohibition must name its enforcement point.** A `must_not` entry with no
-   corresponding allowlist absence or deny-list rule is an aspiration; mark it
-   `enforced = false` rather than implying a boundary that does not exist.
+3. **A prohibition must name its enforcement point, and `enforced = true` must name the
+   test that detects its removal.** A `must_not` entry with no corresponding allowlist
+   absence or deny-list rule is an aspiration; mark it `enforced = false` rather than
+   implying a boundary that does not exist. Where a mechanism does exist, `test` names the
+   assertion covering it (`<file>::<assertion-id>`), or `test_exempt` says in prose why no
+   assertion is possible. `tests/test_fleet_guards.sh` enforces this rule on the manifests
+   themselves, in both directions. Definition and rationale: eval-spec.md §7.4 (D9).
+   **Same rule, different agents, different mechanism — name the right one.** marcus and
+   claudius are covered by the strict settings file; augustus is covered by a harness that
+   never had the connectors, and that file never reaches him. Attributing a real boundary
+   to the wrong thing is the §6.1 defect in miniature, and it survives the removal of
+   whatever actually held the line.
 4. **Deployed-copy convention (D1 §7.8) still holds**: units ExecStart from
    `~/agent-workforce/bin` except auto-sync. The manifest records the source path; the
    runtime reads the deployed one.
@@ -244,7 +259,7 @@ which §7.5 recorded as "planned"; they are installed and disabled, not absent.
 
 Each was read from the running box on 2026-09-01, with the evidence named.
 
-### 6.1 Outward-action tools are live in every Buzz agent session
+### 6.1 Outward-action tools are live in every Buzz agent session — CLOSED 2026-09-01
 
 `claude-agent-acp` starts each session with `settingSources: ["user","project","local"]`
 (`…/claude-agent-acp/dist/acp-agent.js:4156`), and agents run with cwd `/home/dave`, so
@@ -252,15 +267,32 @@ Each was read from the running box on 2026-09-01, with the evidence named.
 `mcp__claude_ai_Notion` — correctly, per Dave's REST-only directive — and blocks the
 four secret paths. It denies **nothing else**.
 
-Live in this session, therefore live in every agent session:
+Live in this session at the time of the audit, therefore live in every agent session:
 `mcp__claude_ai_Gmail__send_message`, `mcp__claude_ai_Microsoft_365__outlook_send_mail`,
 `mcp__claude_ai_Google_Drive__share_file`, plus the rest of Gmail, M365, Drive and Figma.
+(That reading is the finding, not the current state — see the closure below.)
 
-The charter says the fleet drafts and never acts outward. On S2 that is true by
-construction — those tools are not in any `--allowedTools`. On S1 it is true only
-because the agents have not tried. **The deny-list is one line per connector and the
-mechanism is already proven** (the Notion deny dropped its tools mid-session,
-2026-08-03). This is the highest-value, lowest-cost item in D2.
+The charter says the fleet drafts and never acts outward. On S2 that was true by
+construction — those tools are not in any `--allowedTools`. On S1 it was true only because
+the agents had not tried.
+
+**Closed 2026-09-01 (D1).** All four families are denied for agent sessions, and Dave's own
+interactive sessions are unchanged — `~/.claude/settings.json` was not edited. The split is
+the mechanism: `buzz-agent@.service` sets
+`CLAUDE_CODE_EXECUTABLE=%h/.config/buzz-team/claude-agent-wrapper.sh`, and the wrapper
+execs the real `claude` with `--settings ~/.config/buzz-team/agent-settings.json`, a
+15-entry **superset** of the base deny list. Two things about that seam are load-bearing
+and neither is guessable: `--settings` passed through `BUZZ_ACP_AGENT_ARGS` is a silent
+no-op, because buzz-acp parses nothing from argv but `--version`; and the strict file is
+written as a superset so the split holds whether the loader merges or replaces.
+
+**It does not cover augustus, and must not be credited for him.** He runs `codex-acp`, so
+the claude.ai connector surface is absent from his harness by construction — a separate
+mechanism with its own assertion.
+
+Asserted by `tests/test_fleet_guards.sh` (`::connector-deny`, `::deny-superset`,
+`::augustus-no-claude-connectors`); `::deny-superset` is what goes red if a deny is ever
+added to the base file and not mirrored here. Definition of the flag: eval-spec.md §7.4.
 
 ### 6.2 The failure-alert throttle has been deployed but unwired for 18 days
 
@@ -422,10 +454,11 @@ The minimum wiring that makes them load-bearing, in the order it should be built
 ## 8. Decisions required from Dave
 
 1. **Close §6.1 by denying the outward connectors in `~/.claude/settings.json`?**
-   Recommended yes — Gmail, M365, Drive and Figma, one deny line each. It costs nothing
-   the fleet uses today and makes "drafts only" true rather than merely instructed.
-   Note it applies to *Dave's own interactive sessions on this box too*, since there is
-   one settings file; a split policy needs a wrapper injecting `--settings`.
+   ANSWERED yes, done 2026-09-01 as D1 — but **not** in `~/.claude/settings.json`, which
+   was left untouched. The caveat in the original recommendation turned out to be the whole
+   design: one settings file would have taken the connectors off Dave too, so the split
+   runs through `CLAUDE_CODE_EXECUTABLE` and a wrapper that injects `--settings`. Mechanism
+   and proof: §6.1.
 2. **WITHDRAWN 2026-09-01.** This asked for a timer fix before 2026-09-03. §6.5 was wrong:
    both content-research timers are bounded campaigns and expire by design. No action. The
    live question it *should* have asked is now decision 6 below.

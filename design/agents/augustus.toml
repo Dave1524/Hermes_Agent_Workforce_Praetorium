@@ -123,13 +123,15 @@ notes    = "agent-model.md §6.5 and §6.7. Logged one silent lock-skip on 2026-
 
 [[must_not]]
 rule     = "send email or any outward message"
-enforced = false
-why      = "charter"
+enforced = true
+why      = "he runs codex-acp, so the claude.ai connector surface is absent from his harness by construction. NOT the strict settings file — that reaches claude-agent-acp sessions only, and crediting it here would be the §2/§6.1 defect D3 found"
+test     = "tests/test_fleet_guards.sh::augustus-no-claude-connectors"
 
 [[must_not]]
 rule     = "own any workflow requiring git fetch"
 enforced = true
-why      = "bwrap --tmpfs ~/.ssh strips the capability"
+why      = "bwrap --tmpfs ~/.ssh strips the capability — his namespace has neither the deploy keys nor the Host aliases"
+test     = "tests/test_fleet_guards.sh::augustus-no-fetch"
 
 [[must_not]]
 rule     = "call buzz messages send outside bin/deliver.sh"

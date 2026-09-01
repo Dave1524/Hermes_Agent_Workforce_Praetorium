@@ -199,7 +199,8 @@ notes = "systemctl --user. Every other job here is system scope; do not debug it
 [[must_not]]
 rule     = "push the vault main branch"
 enforced = true
-why      = "box holds no canonical vault credential; boxsafe pre-push hook"
+why      = "the vault-main-push-guard pre-push hook is installed in BOTH vault clones on this box as of 2026-09-01 (canonical, and boxsafe which had none until today). Both clauses of the previous why were wrong: this box does hold a canonical push credential, and the boxsafe hook it named did not exist. What the hook enforces is that an unexplained main push cannot happen SILENTLY — it is friction and a record, not a boundary, since GitHub evaluates this box key as a ruleset bypass actor and --no-verify walks past the hook"
+test     = "tests/test_fleet_guards.sh::vault-push-guard"
 
 [[must_not]]
 rule     = "run publish_boxsafe.sh"
@@ -220,3 +221,4 @@ why      = "the gateway dispatches within 60s of ready"
 rule     = "schedule recurring work on hermes cron"
 enforced = true
 why      = "retired, registry §7.6 — hermes cron list is empty"
+test_exempt = "the mechanism is a surface that no longer exists, so there is nothing whose removal a test could detect (D9). A test pinning an empty cron list would assert the absence of a retired thing and would go red the day D7 finishes removing it. Folds into D7's retirement"

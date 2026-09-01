@@ -830,11 +830,11 @@ aspirational.
 
 | test | asserts | today |
 |---|---|---|
-| vault push guard | `pre-push` guard installed in every vault clone with a push remote | **RED** — boxsafe unhooked |
+| vault push guard | `pre-push` guard installed in every vault clone with a push remote | green — boxsafe hooked 2026-09-01 |
 | aurelian unaddressable | `aurelian` absent from `bin/buzz_agents.env` | green (0 matches) |
 | propose write boundary | `agent_propose.sh` confines writes to `_inbox/agents/**` (marcus + claudius, one test) | green |
 | augustus no-fetch | the bwrap wrapper leaves no usable `~/.ssh`, so `git fetch` cannot succeed | green |
-| outward connectors denied | the Gmail / M365 / messaging tool families are in `permissions.deny` | **blocked on D1** |
+| outward connectors denied | the four `mcp__claude_ai_*` families are in the agent-session `permissions.deny` | green — D1 landed 2026-09-01 |
 | hermes cron empty | trajan's rule | **fold into D7's retirement, not a standing test** |
 
 **Two structural notes for the brief.**

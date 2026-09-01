@@ -62,4 +62,5 @@ why      = "independence is the only thing he provides"
 [[must_not]]
 rule     = "appear in bin/buzz_agents.env"
 enforced = true
-why      = "absence from the slug table is what makes him unaddressable by scheduled work"
+why      = "absence from the slug table is what makes him unaddressable by scheduled work — bin/deliver.sh resolves a notify slug to a pubkey there, and every route config sets require_mention = true"
+test     = "tests/test_fleet_guards.sh::aurelian-unaddressable"
