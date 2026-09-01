@@ -1,9 +1,11 @@
 # Workflow registry — ownership freeze (D1)
 
-**Status: FROZEN 2026-09-01** — Dave decided §7.1–7.5 and §7.8 (ALL-CAPS answers
-recorded in §7, commit `ed568f8`; applied same day). Two exceptions remain OPEN and
-under discussion: §7.6 (kanban posture) and §7.7 (kill/archive list) — §4's kill
-proposals stand as proposals until §7.7 closes.
+**Status: FROZEN 2026-09-01** — all eight decisions in §7 are closed (Dave's ALL-CAPS
+answers to §7.1–7.5/§7.8 in commit `ed568f8`; §7.6 and §7.7 discussed and closed the
+same day). Every action below is executed, not proposed. Timer coverage was verified
+by enumerating live timers from systemd (system + user scope) and diffing against this
+file: **every box-owned timer is accounted for here**; the only unlisted timers are OS
+ones (apport, launchpadlib, xfs_scrub, sysstat…). D2 starts from this table.
 Once confirmed, this file is the single source of truth for **which workflows exist
 and who is accountable for each** — build-order step 1 of the approved infrastructure
 review (Notion: "Proposal — Praetorium agent infrastructure review", decision section
@@ -85,25 +87,35 @@ All run headless Claude Code via `bin/agent_propose.sh` + `AGENT_JOB_OVERRIDES`.
 |---|---|---|
 | augustus-content.timer | RE-ENABLED 2026-09-01 08:15; Persistent=true fired an immediate catch-up run (healthy at launch) | done — owner augustus (§7.4) |
 | content-change-dispatch.timer | RE-ENABLED 2026-09-01 08:15; first poll tick clean (0 Picked, exit 0) | done (§7.4) |
-| content-inbox-finalize.{service,timer} | one-shot, completed 2026-08-15 | remove units |
-| holiday-content-reminder (user) | fired 2026-08-31, purpose served | remove |
-| marcus-morning-summary (user) | disabled; superseded by daily-plan + morning-report | remove |
+| content-inbox-finalize.{service,timer} | spent one-shot: absolute `OnCalendar=2026-08-15 22:00`, fired 08-15 22:00:29, **no next elapse** | REMOVED 2026-09-01 (disabled, /etc files deleted, units → `systemd/archive/`) |
+| holiday-content-reminder (user) | spent one-shot: `OnCalendar=2026-08-31 09:00`, fired 08-31 09:00:12, no next elapse | REMOVED 2026-09-01 (user unit; text preserved in `systemd/archive/`) |
+| marcus-morning-summary (user) | spent one-shot Dave requested for 2026-08-26 08:00, fired, no next elapse — **not** a competing recurring summary (an earlier note here said otherwise) | REMOVED 2026-09-01 (user unit; text preserved in `systemd/archive/`) |
 | profiles/bd_stall_radar_task.md | no scheduler; kernel built, never wired | DECIDED: wire to timer, owner claudius — Phase B brief (§7.5) |
 | profiles/bd_followup_drafts_cc_task.md | no scheduler | DECIDED: wire to timer, owner claudius — Phase B brief (§7.5) |
-| profiles/augustus_polish_task.md | hand-dispatched only, by design | keep as manual runbook |
-| profiles/{claudius,overnight_morning_report,weekly_pre_assembly,m1_signal_scan}_task.md | hermes-era variants, superseded by `_cc_task.md` | move to profiles/archive/ |
-| profiles/cron-overnight-pre-snapshot.prompt.md | hermes cron is empty; job gone | move to profiles/archive/ |
-| profiles/linkedin_shape.md | reference for bin/linkedin_shape.py, not a workflow | keep, mark as reference |
+| profiles/augustus_polish_task.md | hand-dispatched only, by design | KEPT as manual runbook (§7.7) |
+| profiles/{claudius,overnight_morning_report,weekly_pre_assembly,m1_signal_scan}_task.md | hermes-era variants, superseded by `_cc_task.md`. Proven unused before moving: each live unit's journal logs its effective runtime (`run attempt N/M: …`) and all four exec `bin/run_*_cc.sh`, which hardcode the `_cc_task.md` paths | ARCHIVED 2026-09-01 → `profiles/archive/` |
+| profiles/cron-overnight-pre-snapshot.prompt.md | hermes cron is empty. `overnight-pre-snapshot.service` is live (daily 04:26) but references this file only in a **comment** ("Replaces the Hermes cron LLM checklist"), not an ExecStart | ARCHIVED 2026-09-01 → `profiles/archive/` |
+| profiles/linkedin_shape.md | reference for bin/linkedin_shape.py, not a workflow | KEPT as reference (§7.7) |
 
 ## 5. Other dispatch surfaces
 
 - **hermes cron** — empty ("No scheduled jobs"); everything migrated to systemd.
-  Propose: declared retired; nothing may be scheduled here again.
-- **hermes kanban** — gateway auto-dispatches `ready` cards every 60s. `default` board
-  is stale. `vpc-seo` mixes a live queue (5 SEO cards assigned `engineer` = trajan)
-  with stale blocked nightly content / box-brief leftovers (38 blocked total).
-  Propose: vpc-seo stays as trajan's one-off queue; archive the stale nightly cards;
-  rule going forward — recurring = systemd, queued one-offs = kanban. → §7.6
+  **RETIRED (§7.6)** — nothing may be scheduled here again.
+- **hermes kanban** — gateway auto-dispatches `ready` cards every 60s. **Rule adopted
+  2026-09-01 (§7.6): recurring work = systemd timers; queued one-offs = kanban.**
+  Executed the same day:
+  - `vpc-seo` stays as **trajan's** one-off queue. Its 5 SEO cards were assigned to
+    `engineer`, a profile that is **not on disk** (`kanban assignees` → `engineer / no`),
+    so they could never have dispatched; reassigned to trajan. They remain `blocked` on
+    purpose — unblocking makes the gateway dispatch them within 60s, which is Dave's call.
+  - 33 stale blocked nightly `content pitch+draft` / `box-brief run` cards archived
+    (reversible; `archive`, not `--rm`). Root cause worth recording: those cards were
+    generated by the old `kanban_run_and_wait.sh` wiring in
+    `config/job-overrides/augustus-content.env.example`; the live job moved to
+    `run_content_via_buzz.sh`, so nothing consumed them and they piled up. They are the
+    residue of inconsistency 5 below, not an independent mess.
+  - `default` board: 3 stale blocked cards archived. The board itself is kept — Hermes
+    documents `default` as always existing — but now holds no actionable work.
 - **Agent Inbox (Notion)** — the approval pipeline (propose → sync → Dave approves on
   Mac → promote). Stays; it is the human gate, not a workflow.
 - **Buzz** — interactive dispatch; stays the human-facing control plane per the
@@ -126,6 +138,26 @@ All run headless Claude Code via `bin/agent_propose.sh` + `AGENT_JOB_OVERRIDES`.
 4. **Report input coverage is hand-maintained in N places.** The `praetorium-*` glob
    defect existed in six files. A unit list *generated from this registry* should
    replace every hand-maintained coverage list in the reporting jobs.
+5. **Job-override examples live in two homes, and the authoritative-looking one is the
+   stale one.** Found 2026-09-01 while closing §7.7. `config/job-overrides/*.env.example`
+   — the directory whose README correctly describes the mechanism — held only
+   **retired-runtime** examples (`~/.local/bin/hermes -z …`, and
+   `kanban_run_and_wait.sh` for augustus-content), while `profiles/*.env.example` carry
+   the live headless-Claude-Code wiring. Provisioning a live `.env` from the config
+   directory installed a runtime that no longer exists. All four stale files moved to
+   `config/job-overrides/archive/` and the README now points at `profiles/`
+   (2026-09-01). **Consolidating the two homes into one is D2/Phase-B work and is NOT
+   done.** Method note: the live wiring was established without reading any deny-listed
+   `~/.config/agent-workforce/*.env` — each unit's journal logs
+   `run attempt N/M: <command>`, which is the effective `AGENT_RUNTIME_CMD`.
+6. **Inconsistency 2 is wider than "66 m1 runs".** Measured 2026-09-01 from journals:
+   `m1-signal-scan`, `weekly-pre-assembly`, `overnight-morning-report` and
+   `praetorium-daily-plan` all run `profile=claude-sonnet`; `knowledge-digest` and
+   `raw-ingest` run `profile=claude-opus`; the `bd_followup_drafts` example ships
+   `AGENT_PROFILE=claude-opus`. m1 and knowledge-digest log
+   `MEMORY: no per-profile store at /home/dave/.her…` outright. So **no scheduled
+   persona workflow currently accumulates episodic memory** — the fix is a fleet-wide
+   rename to owner personas, not a one-job patch.
 
 ## 7. Decisions required from Dave
 
@@ -134,11 +166,26 @@ All run headless Claude Code via `bin/agent_propose.sh` + `AGENT_JOB_OVERRIDES`.
 3. content-strategy + faceless-content research owner: claudius (proposed) or augustus? AUGUSTUS
 4. Re-enable augustus-content + content-change-dispatch now that the holiday is over? RE-ENABLE 
 5. bd-stall-radar and bd-followup-drafts: wire to timers (owner claudius) or kill? WIRE TO TIMERS
-6. Kanban posture: confirm "recurring = systemd, one-offs = kanban, vpc-seo stays"? LETS DISCUSS THIS 
-7. Confirm the kill/archive list in §4. LETS DISCUSS 
+6. Kanban posture: confirm "recurring = systemd, one-offs = kanban, vpc-seo stays"? LETS DISCUSS THIS
+   → **CLOSED 2026-09-01.** Rule adopted; hermes cron retired; vpc-seo kept as trajan's
+   queue (5 cards reassigned off the non-existent `engineer` profile, left blocked);
+   33 + 3 stale cards archived. Detail in §5.
+7. Confirm the kill/archive list in §4. LETS DISCUSS
+   → **CLOSED 2026-09-01**, with two corrections found while verifying rather than
+   assuming: (a) all three "kill" units were **spent one-shots with absolute dates and
+   no next elapse** — inert clutter, not live risks, and the stated reason for
+   marcus-morning-summary ("competing recurring summary") was wrong; (b) two candidates
+   needed a live check before removal — `cron-overnight-pre-snapshot.prompt.md` is named
+   by a **live** unit (comment only, safe) and the four hermes-era task files are named
+   by five `.env.example` files (proven unused via journal runtime lines, safe). Nothing
+   was deleted outright: units and prompts are in `systemd/archive/` and
+   `profiles/archive/`, kanban cards are `archive`d rather than purged.
 8. Confirm the deploy-path convention in §6.1. AGREED
 
 Decision log: §7.1–7.5 and §7.8 answered by Dave 2026-09-01 (ALL-CAPS above, commit
-`ed568f8`); applied and content timers re-enabled the same day. §7.6 and §7.7 remain
-OPEN — closing them drops the status exceptions, and D2 (contracts, manifests,
-skill/tool profiles) starts from the fully frozen table.
+`ed568f8`) and applied the same day, with the content timers re-enabled and verified.
+§7.6 and §7.7 discussed and closed 2026-09-01; all their actions are executed. **D1 is
+complete** — D2 (contract schema, five agent manifests, per-agent skill/tool profiles)
+starts from this table. Two items carried into D2 rather than closed here: consolidating
+the job-override example homes (§6.5) and the fleet-wide `AGENT_PROFILE` → owner-persona
+rename (§6.6).

@@ -11,9 +11,17 @@ gaps, not greenfield.
   empty). Timers: radar Sun–Thu 23:00, followup Sun–Thu 23:30 (one slot later, on purpose —
   the unit comments explain the flock-collision and radar-consumption reasoning; keep them).
 - `bin/run_bd_followup_drafts_cc.sh` exists (Opus 5, headless CC, vault_sync_guard-gated,
-  no MCP by design). There is NO `run_bd_stall_radar_cc.sh` — the radar has only the
-  hermes-era invocation in `config/job-overrides/bd_stall_radar.env.example`, and hermes
-  cron is retired. `config/job-overrides/bd_followup_drafts.env.example` does not exist.
+  no MCP by design). There is NO `run_bd_stall_radar_cc.sh`.
+- **CORRECTED 2026-09-01 (this brief's first draft got both wrong).**
+  `profiles/bd_followup_drafts.env.example` **already exists** — do not create it — and it
+  already wires the CC runner and `AGENT_VERIFY_CMD`. Its defect is one line:
+  `AGENT_PROFILE=claude-opus`.
+  And the example **directory convention is the reverse of what it looks like**:
+  `config/job-overrides/*.env.example` were all retired-runtime files (archived
+  2026-09-01, registry §6.5); `profiles/*.env.example` are the live ones. New/edited
+  examples go in `profiles/`. The radar's old hermes example is now at
+  `config/job-overrides/archive/bd_stall_radar.env.example` — read it for the task
+  wiring, do not revive it.
 - Task files `profiles/bd_stall_radar_task.md` and `profiles/bd_followup_drafts_cc_task.md`
   are current (REST-only Notion, correct data-source ids).
 
@@ -25,10 +33,13 @@ gaps, not greenfield.
 - `systemd/bd-stall-radar.service` carries `OnFailure=agent-alert@%n.service` (currently
   MISSING; its sibling and every comparable job have it — without it a nightly failure is
   silent).
-- Both `.env.example` files under `config/job-overrides/` describe the CC runtime and set
+- Both `.env.example` files live under `profiles/`, describe the CC runtime, and set
   `AGENT_PROFILE=claudius` — NOT a model-named profile. AGENT_PROFILE keys the episodic
-  memory dir; a model-named profile silently logs `memory=no-store` (66 runs of m1 proved
-  it), and the radar task DEPENDS on run-to-run memory ("do not re-flag ... last 3 days").
+  memory dir; a model-named profile logs `MEMORY: no per-profile store at …` (confirmed
+  live 2026-09-01 on m1-signal-scan and knowledge-digest; six scheduled jobs carry the
+  defect, registry §6.6), and the radar task DEPENDS on run-to-run memory ("do not
+  re-flag ... last 3 days"). These two jobs are the first to be built correctly; the
+  fleet-wide rename is separate D2 work.
 - Units installed to /etc, daemon-reloaded, and each service run ONCE live with its output
   checked (see Deployment order) — `Persistent=true` never re-fires a fired-and-failed
   slot, and `active`+`enabled` proves nothing about whether the run can produce output.
@@ -49,14 +60,15 @@ gaps, not greenfield.
   no-MCP-by-design choice) and declare `AGENT_MCP_DEPS=none` in the env example.
   No vault_sync_guard for the radar (it only flags inward; nothing leaves the box) —
   match what the unit already assumes.
-- `config/job-overrides/bd_followup_drafts.env.example` —
-  `AGENT_TASK_SLUG=bd-followup-drafts`, `AGENT_PROFILE=claudius`, `AGENT_MCP_DEPS=none`,
-  `AGENT_RUNTIME_CMD=$HOME/agent-workforce/bin/run_bd_followup_drafts_cc.sh`.
+- `profiles/bd_stall_radar.env.example` — the radar's CC wiring:
+  `AGENT_TASK_SLUG=bd-stall-radar`, `AGENT_PROFILE=claudius`, `AGENT_MCP_DEPS=none`,
+  `AGENT_MAX_ATTEMPTS=2`, `AGENT_RUNTIME_CMD='~/agent-workforce/bin/run_bd_stall_radar_cc.sh'`,
+  `AGENT_VERIFY_CMD='~/agent-workforce/bin/proposal_or_decline.sh bd-stall-radar'`.
+  Mirror the header-comment style of `profiles/bd_followup_drafts.env.example`.
 
 ## Files to modify
-- `config/job-overrides/bd_stall_radar.env.example` — replace the hermes invocation with
-  the CC runner (same four vars as above, slug `bd-stall-radar`, runtime
-  `run_bd_stall_radar_cc.sh`). Keep the "non-secret wiring only" header comment.
+- `profiles/bd_followup_drafts.env.example` — change `AGENT_PROFILE=claude-opus` to
+  `AGENT_PROFILE=claudius`. One line; leave everything else byte-intact.
 - `systemd/bd-stall-radar.service` — add `OnFailure=agent-alert@%n.service` in [Unit].
 - `profiles/bd_stall_radar_task.md` — step 2 qmd→disk-read amendment (above); leave every
   guard clause (Stage guard, parked-deal guard, no-Notion-writes rule) byte-intact.
@@ -74,8 +86,10 @@ gaps, not greenfield.
    file missing"). Probe instead of peeking: `sudo systemctl start bd-stall-radar.service`,
    then read `journalctl -u bd-stall-radar.service` OUTPUT (never trust exit code alone).
    - block_exit missing-env → STOP. Leave both timers disabled; print for Dave:
-     `! cp ~/dev/agent-workforce/config/job-overrides/bd_stall_radar.env.example ~/.config/agent-workforce/bd_stall_radar.env`
-     (and the bd_followup_drafts twin), then re-run this step.
+     `! install -m 600 ~/dev/agent-workforce/profiles/bd_stall_radar.env.example ~/.config/agent-workforce/bd_stall_radar.env`
+     (and the bd_followup_drafts twin), then re-run this step. NOTE: if
+     `bd_followup_drafts.env` already exists from an earlier attempt it may carry the old
+     `AGENT_PROFILE=claude-opus` — Dave must re-install it, since the file is deny-listed.
    - Real run → check it completed AND check delivery: route=bd receipt in
      `~/logs/delivery-receipts.jsonl` (or an explicit no-stalls/no-pack decline in the run
      output — a decline is a valid outcome, not a failure).
