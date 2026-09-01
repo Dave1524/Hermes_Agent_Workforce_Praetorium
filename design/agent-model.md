@@ -347,9 +347,9 @@ The minimum wiring that makes them load-bearing, in the order it should be built
    the fleet uses today and makes "drafts only" true rather than merely instructed.
    Note it applies to *Dave's own interactive sessions on this box too*, since there is
    one settings file; a split policy needs a wrapper injecting `--settings`.
-2. **§6.5 needs doing before 2026-09-03 regardless of anything else here** — two live
-   workflows expire. It is a two-line edit and I can do it on your word; it is listed as a
-   decision only because it touches `/etc` and needs sudo.
+2. **WITHDRAWN 2026-09-01.** This asked for a timer fix before 2026-09-03. §6.5 was wrong:
+   both content-research timers are bounded campaigns and expire by design. No action. The
+   live question it *should* have asked is now decision 6 below.
 3. **Fix §6.2 and §6.3 now, or fold them into the Phase-B bd-radar brief?**
    Recommended: fix §6.2 now (it is degrading alerting today), fold §6.3 in. §6.6 and §6.7
    are Phase B — per-workflow locks, and importing the four orphan units into `systemd/`.
@@ -361,3 +361,9 @@ The minimum wiring that makes them load-bearing, in the order it should be built
    workflows actually name, and leave (c) alone until a card actually fails.
 5. **Confirm the manifest is the source of truth** for tools/owner/coverage, i.e. that
    Phase B may generate the wrappers' `--allowedTools` from it rather than the reverse.
+6. **Do you want a *standing* content-research workflow at all?** (Replaces the withdrawn
+   decision 2.) The two campaigns end 09-03 and 09-04 having delivered ~8 runs each on two
+   named topics. A permanent version is a different thing and needs its own topic rotation,
+   a slot that is not 01:30 (the augustus-content collision of §6.6) and its own registry
+   row. Recommended: **no** for now — let them expire, and revisit once the content
+   pipeline's existing backlog is consumed.
