@@ -132,7 +132,73 @@ have no repo source at all.
 - **Recommend:** fix §6.2 now — it is degrading alerting today. Fold §6.3 into Phase B.
 - §6.6 (per-workflow locks) and §6.7 (import the four orphan units) are Phase B either way.
 
-**ANSWER:**
+**ANSWER (2026-09-01): FIX BOTH NOW — the throttle is wired, and alert coverage is closed.**
+
+Done and verified on the box, not merely committed.
+
+**The throttle (§6.2) is live.** `/etc/systemd/system/agent-alert@.service` now execs
+`bin/agent_alert.sh %i` instead of the inline `/bin/sh -c`. Proven end-to-end with a
+throwaway failing unit through the real chain: two failures produced two records in
+`~/logs/agent-alert.log` — the second reading
+`[notification throttled: failure 1 since the last alert]` — and exactly **one** outbound
+delivery, receipt `2026-09-01T14:12:04Z`, `discord_result: ok`, `buzz_result: ok`,
+`outcome: delivered`. Two records, one notification, which is the design.
+
+**Two corrections to the framing this decision was written on.**
+
+1. *The alert volume was not chronic noise.* 27 alerts across 11 units in seven days
+   looked like a standing duplication problem. It was **one incident**: headless Claude
+   Code's OAuth session expired ~08-27 and every scheduled job failed identically with
+   `Failed to authenticate: OAuth session expired and could not be refreshed` until Dave
+   re-authorised on 08-31 ~11:40. Alerts stop dead at 11:42 and there have been none
+   since. The daily counts (08-28:8, 08-29:5, 08-30:5, 08-31:6) read as ongoing only
+   because nobody noticed 08-31's stopped mid-morning — presence is not freshness.
+   The throttle would still have helped, collapsing ~27 alerts into ~11 first-failures;
+   it just was not fixing what the doc said it was fixing.
+
+2. *`fleet-eval` is deliberately unrouted and stays that way.* `systemctl --failed`
+   named it, and the obvious reading — an eval harness that fails silently — is wrong.
+   Its own header says `NO OnFailure=`, deliberately: it exits 1 on a regression and
+   `--deliver` already posts the scorecard to `#ops`, so wiring the alert path would
+   give one problem two notifications on different surfaces. Verified rather than
+   assumed: this morning's `probe/p2_publish_approve` regression **was** delivered at
+   `05:09:04Z`, discord ok, buzz ok, outcome delivered. Its non-zero exit is the intended
+   quiet second signal and clears on the next green run. The receipt gap 08-16 → 09-01 is
+   fourteen clean days, not fourteen lost alerts.
+
+**Alert coverage (the genuine half).** Four units had no route and no one delivering on
+their behalf: `local-tier-eval`, `memory-consolidation`, `scorecard` (whose
+`ExecStartPost=deliver_scorecard.sh` only runs when `ExecStart` succeeded, so a failing
+run delivered nothing at all), and `ttm-pool-drain` — which was untracked in `/etc`
+entirely and is now adopted into `systemd/`. All four carry `OnFailure=agent-alert@%n.service`
+in repo and `/etc`, in sync, confirmed live via `systemctl show`.
+
+**Sequencing constraint, now recorded in `systemd/ttm-pool-drain.service`'s header.**
+That unit fires **every two minutes**. Wiring its `OnFailure=` before the throttle existed
+would have emitted ~720 notifications a day into Discord and Buzz. So the throttle is not
+an independent improvement to alerting — it is a **precondition for widening alert
+coverage at all**, and the two halves of this decision had to be done in that order.
+
+**§6.3 re-measured, and it was right.** Three repo unit sources still differ from `/etc`
+(`bd-stall-radar`, `m1-signal-scan`, `weekly-pre-assembly`) and — filtering Ubuntu stock —
+three box units still have no repo source (`fleet-turn-check`,
+`praetorium-content-strategy-research`, `praetorium-faceless-content-research`, plus their
+timers). The doc said four orphans; `ttm-pool-drain` was the fourth and is now adopted.
+**Both remain Phase B**, as recommended — but note `fleet-turn-check` is among the orphans,
+and it is the gate that proves an agent can complete a turn.
+
+**Two defects this surfaced, not fixed here, for the Phase-B list.**
+- *The runner's stderr is captured but unfindable.* `agent_propose.sh:309` writes every
+  attempt to `logs/agent_run.log` — untimestamped and interleaved with report prose from
+  every job. The journal shows only `FAIL: runtime failed after 2 attempts`; finding the
+  four-word cause of a four-day outage meant grepping 547 KB. Per-job, timestamped runner
+  logs would have made this a ten-second question.
+- *`Persistent=true` does not re-fire a slot that fired and failed.* Four nights of
+  research runs were recovered only because someone hand-wrote four make-up `OnCalendar`
+  lines. An unattended job that fails during an absence is not recovered by its own
+  schedule, and nothing distinguishes "did not run" from "ran and produced nothing".
+
+Commit: `28eda21` (unit sources) + this file.
 
 ---
 
