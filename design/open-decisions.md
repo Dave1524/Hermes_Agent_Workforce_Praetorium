@@ -1,12 +1,21 @@
 # Open decisions — the sync agenda before Phase B
 
-**Status:** open, 2026-09-01. This is the single list. D1 is closed; D2 and D3 each end in
-a decisions section, and this file consolidates what is still unanswered plus the work D1
-decided in principle but never implemented.
+**Status: ALL NINE CLOSED, 2026-09-01.** This is the single list. It consolidated what D1, D2
+and D3 left unanswered, plus the work D1 decided in principle but never implemented (W1-W5).
+Every `**ANSWER:**` slot below is filled and committed. Phase B is unblocked.
 
-**How to use it:** answer inline in CAPS under each item, the same way D1 §7 was closed.
-That worked — the answers stayed attached to the evidence instead of living in a chat
-scrollback. Nothing in Phase B starts until D1–D9 are answered.
+**Read the answers, not the questions.** Six of the nine questions rested on a premise that did
+not survive measurement — D3's ("no skill index", "four skills"), D6's ("resolve each workflow to
+a suite"), D7's ("how do we evaluate S3"), D5's ("~8 runs each"), D8's ("compare source to the
+deployed copy") and D9's ("scope to outward rules"). In each case the question is preserved
+unedited and the answer states the correction. A brief written from a question alone will
+implement the wrong thing.
+
+**How it was closed:** answered inline under each item, the same way D1 §7 was closed. That
+worked — the answers stayed attached to the evidence instead of living in a chat scrollback.
+Where a later measurement contradicted an earlier answer, the earlier answer was **rewritten in
+place** (D8's cleared baseline, corrected while measuring D5), never appended to: a decision doc
+carrying two contradicting measurements of the same thing is worse than one carrying neither.
 
 ---
 
@@ -15,8 +24,8 @@ scrollback. Nothing in Phase B starts until D1–D9 are answered.
 | | Doc | Decisions | State |
 |---|---|---|---|
 | D1 | `workflow-registry.md` | 8 | **all closed** 2026-09-01 (`ed568f8`) |
-| D2 | `agent-model.md` §8 | 5 open + 1 withdrawn | open |
-| D3 | `eval-spec.md` §8 | 4 | open |
+| D2 | `agent-model.md` §8 | 5 open + 1 withdrawn | **all closed** 2026-09-01 |
+| D3 | `eval-spec.md` §8 | 4 | **all closed** 2026-09-01 |
 
 D1 also left **four work items decided in principle and not done** (W1–W4 below). They are
 not questions; they are the backlog D1 handed forward.
@@ -764,7 +773,88 @@ is prose, and prose is what D2 §6.1 found sitting between the fleet and a live
 - **Depends on:** D1 — the deny-list is the mechanism these tests would assert.
 - **Recommend:** yes, scoped to the outward-action rules only.
 
-**ANSWER:**
+**ANSWER (2026-09-01): YES — but the stated scope is almost empty, and the one rule it does
+yield is weaker than its own flag claims. Widen the scope, and sequence it behind D1.**
+
+**"Scoped to the outward-action rules only" selects exactly one rule.** Counted across the five
+manifests: **22 must-not rules, 6 `enforced = true`, 8 outward-action — and the intersection is 1.**
+
+| | outward rule | manifest | enforced |
+|---|---|---|---|
+| | send email or any outward message | marcus, claudius, augustus (×3) | **false** |
+| | execute anything — no writes, no commits, no sends | aurelian | **false** |
+| | call `buzz messages send` outside `bin/deliver.sh` | augustus | **false** |
+| | run `publish_boxsafe.sh` | trajan | **false** |
+| | use `--no-verify` on any push | trajan | **false** |
+| ✔ | **push the vault `main` branch** | trajan | **true** |
+
+So the recommendation as written buys one test. **That is not a gap in the plan — it is the
+finding.** D2 §6.1 said prose sits between the fleet and a live `send_message`; these seven
+`false`s are that same fact, stated honestly in the manifests. They cannot be tested because
+there is nothing yet to test. **D1 is what converts them**, which makes the dependency line above
+backwards: D9 does not merely *depend on* D1, it is **the assertion half of D1** and should be
+written in the same brief, not a later one.
+
+**And the one enforced rule is over-flagged.** Measured:
+
+- The guard is `00_system/tools/hooks/pre-push`, installed **per clone, by hand**
+  (`install_vault_hooks.sh` — "install the main-push guard into **this clone's** `.git/hooks`").
+- It is installed in `~/dev/Obsidian_AI_Operating_System/` (3,569 B, 2026-08-15) and **absent from
+  `~/dev/obsidian-ai-os-boxsafe/`** — that clone has no hooks at all, sits on `main`, has a live
+  push remote (`git@github-boxsafe:…`), and the box holds `keys/boxsafe_deploy`. **It is also the
+  clone `~/vault` resolves to.**
+- The installer's own header disclaims the flag: *"what it does not do is documented in
+  hooks/pre-push; it is not protection for main."* It records a supervised push; it does not
+  prevent an unsupervised one.
+- It is bypassable by `--no-verify` — **which is itself a separate must-not rule, `enforced = false`.**
+  An enforcement mechanism whose bypass is guarded only by prose is prose with extra steps.
+
+`enforced = true` here means "a mechanism exists somewhere", not "the mechanism covers every path
+the rule names". **First test: assert the guard is installed in every vault clone on this box that
+has a push remote. It ships RED.**
+
+**The design constraint that governs every one of these tests, and must be stated before anyone
+writes one: a negative test asserts the ABSENCE OF CAPABILITY. It never attempts the forbidden
+action.** You cannot test "must not send email" by sending email — the test would *be* the
+violation, and a "safe" test recipient is still an outward action from a box whose whole charter
+is that it performs none. Every test here is therefore an assertion about the *state of a
+mechanism* (a config key, an installed hook, an absent credential, a namespace that lacks a path),
+never about behaviour under attempt.
+
+That constraint also fixes what the field is allowed to mean. **Redefine: `enforced = true` iff a
+machine-checkable artifact exists whose removal or absence a test can detect.** Under that
+definition the vault-push rule is `true` only once the guard covers both clones; today it is
+aspirational.
+
+**Scope decided: all 6 currently-enforced rules, plus each outward rule as D1 promotes it.**
+
+| test | asserts | today |
+|---|---|---|
+| vault push guard | `pre-push` guard installed in every vault clone with a push remote | **RED** — boxsafe unhooked |
+| aurelian unaddressable | `aurelian` absent from `bin/buzz_agents.env` | green (0 matches) |
+| propose write boundary | `agent_propose.sh` confines writes to `_inbox/agents/**` (marcus + claudius, one test) | green |
+| augustus no-fetch | the bwrap wrapper leaves no usable `~/.ssh`, so `git fetch` cannot succeed | green |
+| outward connectors denied | the Gmail / M365 / messaging tool families are in `permissions.deny` | **blocked on D1** |
+| hermes cron empty | trajan's rule | **fold into D7's retirement, not a standing test** |
+
+**Two structural notes for the brief.**
+
+1. **These tests belong to the fleet, not to a workflow — and D6's checker cannot express that.**
+   D6 resolves each *workflow* to a suite via a declared join. A guard suite that asserts a
+   fleet-wide invariant has no owning workflow, so D6's reachability rule would classify it as an
+   **orphan and flag it for deletion** — the same verdict it correctly gives the two kanban
+   suites. D6's declared-join schema needs a `fleet` owner value before this suite lands, or the
+   first thing the coverage checker does is recommend deleting the security tests. **This is a
+   required amendment to D6, not a nice-to-have.**
+
+2. **Most of what these tests assert lives outside this repo** — `~/.claude/settings.json`, a
+   `.git/hooks/` file in two other repos, a bwrap wrapper in `/usr/local/bin`. That is the same
+   cross-boundary pinning that silently rotted augustus's `sed` ranges in D3: this repo's commits
+   cannot see those files move. The difference is that a test *is* the gate the line-pins never
+   had — it fails loudly when the far side changes. So the boundary is acceptable here **provided
+   every assertion is a test and none is a comment.** No negative rule gets recorded as a note.
+
+`bin/verify.sh` already collects `tests/*.sh`, so these are picked up with no gate change.
 
 ---
 
@@ -782,16 +872,31 @@ Not questions. D1 settled the direction; nobody has implemented them.
 
 ---
 
-## Suggested order
+## Phase-B brief order
 
-Dependencies first, then yield.
+The original order was for *answering*; this one is for *building*. It differs in three places,
+each forced by something an answer found.
 
-1. **D4** — decides whether the manifests are configuration. Everything downstream assumes it.
-2. **D1** — closes a live outward-action exposure and unblocks D9.
-3. **D2** (§6.2 half) — stops the alert degradation running today.
-4. **W5 → D6** — makes coverage self-reporting instead of a number that rots.
-5. **D8** — the drift assertion; retires the class that produced two of D2's gaps.
-6. **D3 + D7 together** — one skills-and-kanban conversation, not two.
-7. **D5**, then **D9**, then **W1–W4** as Phase-B briefs.
+1. **D1 + D9 as ONE brief.** D9 is the assertion half of D1, not a later item: seven of the eight
+   outward must-not rules are `enforced = false` precisely because D1's mechanism is not installed
+   yet. Installing the deny entries and writing the tests that fail when they are removed is one
+   unit of work; splitting it ships a mechanism nobody checks. **Amend D6's declared join with a
+   `fleet` owner value first, or its checker's first act is to flag the new security suite as an
+   orphan.**
+2. **D8's drift check, widened.** It must compare unit *membership* as well as content, in both
+   directions, with an ownership filter and a dated exclusion list. It ships **red**, naming
+   `fleet-turn-check` — which exists only in `/etc` and would be lost by any rebuild from source.
+   Backport that unit as part of the brief.
+3. **W5 → D6** — the coverage checker, once its schema carries `fleet`.
+4. **D3, both parts.** Part 1 (heading-anchored extraction + its test) is the live defect and
+   should not wait on part 2 (pointer skills), which is independent.
+5. **D7's retirement**, in the recorded sequence — the 5 SEO cards move off the board **first**.
+   Folds in trajan's `hermes cron` negative test, which becomes moot rather than standing.
+6. **W1–W4**, then **D5's cleanup**: delete the two campaign `/etc` units after their last
+   firings (content-strategy 09-03 23:00, faceless 09-04 01:30).
 
-Items 1–3 are conversations. 4–7 are briefs.
+**D4, D2 and D5 need no brief** — D4 and D2 were resolved as decisions, and D5 was a "no".
+
+**Standing side items, owned by nobody yet:** marcus's engram is at ~79% of the 65,535 B wall and
+needs a prune; `augustus-content.timer` was found *stopped* and ran once in eight days — confirm it
+holds its own schedule before anything is concluded from the content backlog.
