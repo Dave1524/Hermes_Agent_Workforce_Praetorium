@@ -125,7 +125,9 @@ contract    = "design/contracts/knowledge-digest.md"
 status      = "standing"          # REQUIRED on every entry — see the table below (R15)
 expires     = "2026-09-03 23:00"  # campaign only: the last absolute OnCalendar date
 alerted     = true                # platform jobs: is OnFailure present ON THE LIVE UNIT
-in_repo     = false               # is there a source unit in systemd/ at all (§6.7)
+in_repo     = false               # is there a source UNIT FILE in systemd/ at all (§6.7)
+suite       = ["tests/test_knowledge_digest_smoke.sh"]   # REQUIRED on every entry (R15b)
+suite_exempt = "script lives outside this repo at <path>" # presence = exempt from needing a suite
 notes       = """..."""
 
 [[must_not]]                      # one block per prohibition
@@ -133,6 +135,35 @@ rule        = "send email or any outward message"
 enforced    = false               # true = a mechanism blocks it TODAY
 why         = "charter; §6.1 leaves Gmail/M365 live on the interactive surface"
 ```
+
+### Workflow `suite` — required on every entry (R15b)
+
+`suite` is a **hand-declared** list of the test files that own this workflow. It is declared,
+not inferred, because inference does not work: D6 measured four plausible join rules
+(unit-name-in-suite-text, suite-filename-matches-unit, the `runner` field, `runner` plus
+wrapper-chain resolution) and got four different coverage numbers, with false greens and false
+reds in both directions. Three reasons no rule survives:
+
+- **13 of 26 entries carry no `runner`** — every trajan platform job — so that key is
+  unavailable for half the registry.
+- **Coverage can sit three hops out.** `agent-inbox-sync` -> `bin/agent_inbox_pipeline.sh` ->
+  `bin/agent_inbox_notion_sync.py` -> `tests/test_agent_inbox_body_sync.sh`.
+- **Two workflows can share one implementation.** `praetorium-daily-plan` and
+  `praetorium-eod-summary` both run `bin/run_daily_rhythm_cc.sh`; resolving the wrapper chain
+  far enough to find either suite is far enough to credit each job with the other's.
+
+Rules:
+
+- `status = "standing"` and no `suite_exempt` => `suite` must be non-empty.
+- Every path in `suite` must exist on disk. A checker asserts this; a stale path is the
+  failure mode a declared join trades for an inferred one, and it is the cheap one.
+- `suite_exempt = "<reason>"` marks a workflow whose code is not in this repo. It is a
+  **separate field from `in_repo`** on purpose: `in_repo` describes the *unit file*
+  (`ttm-pool-drain` is `in_repo = true` since D2 adopted its unit into `systemd/`), while its
+  *script* is `/usr/local/bin/ttm-pool-drain` and is not here. One word, two referents.
+- Exempt is not hidden. The checker prints every exempt workflow by name on each run —
+  `fleet-turn-check` is the gate that proves an agent can complete a turn, and a silent
+  exemption is how that kind of thing stops being looked at.
 
 ### Workflow `status` — required on every entry (R15)
 

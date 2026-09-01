@@ -330,16 +330,27 @@ Two structural reasons no rule can be made to work:
 read it.** Same shape as W5's `status` — it converts an inference problem into a data problem,
 which is why the count stops moving. The checker asserts, per entry:
 
-- `status == "standing"` and `in_repo != false` => `len(suite) >= 1`
+- `status == "standing"` and no `suite_exempt` => `len(suite) >= 1`
 - every path named in `suite` exists on disk
-- every `tests/test_*.sh` is claimed by >= 1 entry (**orphan detection**, the reverse direction)
+- every `bin/` entrypoint is **reachable** — exec'd by a live unit, or invoked by a script that
+  is. A suite whose only subject is an unreachable script is an orphan.
+
+The obvious reverse rule — "every `tests/test_*.sh` is claimed by >= 1 entry" — was measured
+and **rejected**: 23 of 41 suites are unclaimed and most legitimately test *libraries*
+(`notion_rest`, `notion_markdown`, `buzz_deliver`, `proposal_or_decline`, `qmd_status`), not
+workflows. It would fire 23 false positives to catch one real orphan. The unit-name variant is
+no better — it catches only `not-yet-ported.service`, a fixture placeholder inside
+`test_audit_buzz_dual_run.sh`. **Reachability is the rule that works**, and it pinpoints the one
+real case with no false positives.
 
 **Out-of-repo workflows are exempt but never invisible.** Three standing workflows exec
 scripts that are not in this repo — `fleet-turn-check` (`~/.config/buzz-team/`),
 `ttm-pool-drain` (`/usr/local/bin/`, root-owned) and `buzz-pr-watch` (`~/.local/bin/`, a
-`--user` unit). They carry `in_repo = false` (the field D2 already added to ttm-pool-drain)
-and are exempt from needing a suite, but the checker **prints them as a named list on every
-run**. Exempt, not hidden — `fleet-turn-check` is the gate that proves an agent can complete
+`--user` unit). They carry `suite_exempt = "<reason>"` and are exempt from needing a suite, but
+the checker **prints them as a named list on every run**. The exemption gets its own field, `suite_exempt = "<reason>"`, **not** `in_repo`: D2 set
+`in_repo = true` on ttm-pool-drain meaning *the unit file* was adopted into `systemd/`, while
+its *script* is `/usr/local/bin/ttm-pool-drain` and is not here. One word, two referents — a
+checker keying on `in_repo` would exempt the wrong set. Exempt, not hidden — `fleet-turn-check` is the gate that proves an agent can complete
 a turn, and it is exactly the kind of thing that disappears from a whitelist.
 
 **The recorded figure was wrong three ways.** "9 of 26" in the headline, 11 implied by this
@@ -367,19 +378,23 @@ Corrected in `design/eval-spec.md` §8.1 in the same commit. The measured mappin
 | inbox-backlog-alert | `buzz_adapters` | ExecStart script |
 
 Uncovered — 10, of which 2 campaign + 1 dormant (`bd-stall-radar`) + 7 standing. Of the 7
-standing, 3 are `in_repo = false` (above) and **4 are writable today**: `m1-signal-scan`,
+standing, 3 are `suite_exempt` (above) and **4 are writable today**: `m1-signal-scan`,
 `overnight-morning-report`, `agent-workforce-auto-sync`, `overnight-pre-snapshot`. The
 checker therefore ships **red with 4 named failures**, deliberately — those four are the
 Phase-B backlog it exists to produce. `overnight-morning-report` is the sharp one: it is
 uncovered and it is the unit carrying the entire recurring reporting-defect class.
 
-One live orphan in the reverse direction: `tests/test_content_inbox_finalize.sh` owns
-`content-inbox-finalize`, a unit **removed 2026-09-01** (units in `systemd/archive/`, nothing
-in `/etc`). `bin/content_inbox_finalize.py` is still present and still gated. The orphan check
-is what would have caught that on the day of the removal.
+One live orphan, and it is the reachability rule's test case:
+`tests/test_content_inbox_finalize.sh` tests `bin/content_inbox_finalize.py`, whose unit was
+**removed 2026-09-01** (`systemd/archive/content-inbox-finalize.{service,timer}`, nothing in
+`/etc`). The script is still present and still gated by `verify.sh`, so nothing goes red. It is
+exec'd by no unit, and its only other mention in `bin/` is a comment at `notion_rest.py:241`
+naming it *"the retired"* path — i.e. the codebase already knows, in prose, what no check
+asserts. Same shape as every defect in the reporting class: the fact was written down and
+nothing was measuring it.
 
 - **Depends on:** W5 (done, `3a52d42`), D4 (yes, `b49606b`).
-- **Sequencing:** the `suite` + `in_repo` fields land now as a W-item (manifest data, same
+- **Sequencing:** the `suite` + `suite_exempt` fields land now as a W-item (manifest data, same
   class as W5). The checker script itself is the first Phase-B brief.
 
 ---

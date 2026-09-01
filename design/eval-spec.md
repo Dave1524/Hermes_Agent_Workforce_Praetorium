@@ -16,9 +16,15 @@ retrieval probes, model tiers, turn liveness. None is organised by *workflow*. S
 is not a property anyone chose; it is an accident of which mechanism a given workflow
 happens to touch.
 
-Measured: **9 of the 26 workflows in the D2 manifests have a dedicated test. Four have no
-mention anywhere in `tests/`** — `praetorium-faceless-content-research`, `m1-signal-scan`,
-`ttm-pool-drain`, `overnight-pre-snapshot`.
+Measured, and **corrected 2026-09-01 under D6**: **16 of the 26 workflows in the D2 manifests
+have an owning suite; 10 do not.** The figure first recorded here — "9 of 26, four absent from
+`tests/` entirely" — was wrong, and wrong in a way worth keeping visible: it came from
+eyeballing suite filenames against unit names, which is one of four plausible join rules that
+each yield a different number (D6 measures all four). Six workflows §5 called uncovered are
+covered, three by a suite named for the *implementation script* rather than the unit
+(`qmd-refresh` -> `test_vault_sync_guard.sh`, `memory-consolidation` ->
+`test_consolidate_memory.sh`, `inbox-backlog-alert` -> `test_buzz_adapters.sh`), and
+`agent-inbox-sync` by a suite three hops down its call chain.
 
 Nothing on the box reports that number, because computing it needs a list of all workflows
 and until D2 no such list existed. `fleet_eval.sh --no-coverage` sounds like the missing
@@ -126,33 +132,41 @@ returns a clean `0`. Assert the input exists before asserting what it does not c
 
 ---
 
-## 5. Coverage, measured 2026-09-01
+## 5. Coverage, measured 2026-09-01 (revised under D6)
 
-Dedicated suite present for 9 of 26. Uncovered by owner:
+**16 of 26 have an owning suite. 10 do not**, and they are not all holes:
 
-| Owner | Workflows with no dedicated suite |
-|---|---|
-| marcus | `overnight-morning-report` |
-| claudius | `m1-signal-scan` |
-| augustus | `augustus-content`, both content-research campaigns |
-| trajan | `fleet-turn-check`, `local-tier-eval`, `memory-consolidation`, `agent-inbox-sync`, `inbox-backlog-alert`, `qmd-refresh`, `agent-workforce-auto-sync`, `ttm-pool-drain`, `overnight-pre-snapshot`, `buzz-pr-watch` |
+| Workflow | Owner | Status | Why uncovered |
+|---|---|---|---|
+| `overnight-morning-report` | marcus | standing | **real hole — highest value.** Carries the whole recurring reporting-defect class. |
+| `m1-signal-scan` | claudius | standing | **real hole.** `bin/run_m1_signal_scan_cc.sh` is in-repo and writable. |
+| `agent-workforce-auto-sync` | trajan | standing | **real hole.** `bin/auto-sync` is in-repo. Appears in `test_local_tier_eval_score.sh` only as a `list-timers` *fixture string*. |
+| `overnight-pre-snapshot` | trajan | standing | **real hole.** `bin/overnight_pre_snapshot.sh` is in-repo. |
+| `fleet-turn-check` | trajan | standing | exempt — `~/.config/buzz-team/fleet-turn-check.sh`, outside this repo |
+| `ttm-pool-drain` | trajan | standing | exempt — `/usr/local/bin/ttm-pool-drain`, root-owned, outside this repo |
+| `buzz-pr-watch` | trajan | standing | exempt — `--user` unit running `~/.local/bin/buzz-pr-watch`, outside this repo |
+| `praetorium-content-strategy-research` | augustus | campaign | bounded, `expires` 2026-09-03 — needs no standing suite |
+| `praetorium-faceless-content-research` | augustus | campaign | bounded, `expires` 2026-09-04 — needs no standing suite |
+| `bd-stall-radar` | claudius | dormant | installed but disabled; its sibling `bd-followup-drafts` has a suite |
+
+So the honest backlog is **four suites** — not fifteen, and not the two this section previously
+concluded. Every other gap is bounded, disabled, or code this repo does not own.
 
 Two qualifications, both load-bearing:
 
-- **"No dedicated suite" is not "untested."** `augustus-content` and
-  `overnight-morning-report` are each touched by five or more suites obliquely. What they
-  lack is a suite that owns them, so nothing fails when *they* break.
-- **Four are absent from `tests/` entirely** — `praetorium-faceless-content-research`,
-  `m1-signal-scan`, `ttm-pool-drain`, `overnight-pre-snapshot`. These are the real holes.
-  Note two of the four are the bounded campaigns of D2 §6.5 and need no standing suite;
-  the honest count of *missing* coverage is therefore **two**, not four. A coverage checker
-  must read a workflow's `status` to know which, which is why R15 below is a schema fix and
-  not a test.
+- **"No owning suite" is not "untested."** Several uncovered workflows are touched obliquely by
+  five or more suites. What they lack is a suite that fails when *they* break.
+- **The reverse direction has one live case.** `tests/test_content_inbox_finalize.sh` tests
+  `bin/content_inbox_finalize.py`, whose unit was removed 2026-09-01 (`systemd/archive/`,
+  nothing in `/etc`). The script is exec'd by nothing, and its only other mention in `bin/` is a
+  comment at `notion_rest.py:241` calling it *"the retired"* path. It still runs green in the
+  gate. Detecting this needs **reachability**, not suite-name matching — see D6.
 
-**R15 — every workflow entry must carry an explicit `status`.** Only claudius's manifest
-sets it at workflow level today; the other four set it once per agent. A coverage checker
-cannot distinguish "untested standing workflow" from "spent campaign" without it. This is
-the first Phase-B edit, and it is a manifest change, not a code change.
+**R15 — every workflow entry must carry an explicit `status`.** DONE 2026-09-01 (`3a52d42`):
+all 26 entries carry one, validated under `tomllib`. Extended by **R15b — every entry must also
+carry `suite = [...]`**, hand-declared, plus `suite_exempt = "<reason>"` where the code is not
+in this repo (`6e4fb34`). Both are manifest changes, not code changes; the checker that consumes
+them is the first Phase-B brief.
 
 ---
 
