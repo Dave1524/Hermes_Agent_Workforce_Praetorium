@@ -379,7 +379,84 @@ A permanent version is a different thing: it needs topic rotation, a slot that i
 - **Recommend:** no for now. Let them expire; revisit when the content pipeline's existing
   backlog is consumed.
 
-**ANSWER:**
+**ANSWER (2026-09-01): NO — confirmed, but the stated reason is wrong and "let them expire" is
+not a no-op. The campaigns have delivered HALF what this question credits them with, and they
+leave three things behind that need an owner.**
+
+**The "~8 runs each" premise is wrong by 2x.** Read from the producer's own counter —
+`~/agent-workforce/var/notion_research_pages.json`, which `bin/notion_research_page.py` maintains
+— not inferred from timer slots:
+
+| slug | `run_count` | design target (`--total-runs`) |
+|---|---|---|
+| `content-strategy-2026` | **4** | 6 |
+| `faceless-content-product` | **4** | 6 |
+
+Eight runs **across both campaigns**, not each. The original claim counted scheduled slots. This
+is the readiness-report class landing inside our own design doc: a count that was never asked of
+the thing that produces it.
+
+**Because 8 of 16 scheduled runs failed — four consecutive nights per campaign — and the
+alerting worked perfectly the whole time.** From `cost.log` and the journals:
+
+| campaign | delivered | failed | failure signature |
+|---|---|---|---|
+| content-strategy (23:00) | 08-25*, 08-26, 08-31*, 08-31 | 08-27, 08-28, 08-29, 08-30 | `outcome=FAIL run_seconds=33 attempts=2` |
+| faceless-content (01:30) | 08-26, 08-27, 08-31*, 09-01 | 08-28, 08-29, 08-30, 08-31 | same |
+
+*(\* = hand-run, not a scheduled firing. Only **5 of the 8 deliveries were scheduled**.)*
+
+Cause, per the make-up timer's own header comment: `"Failed to authenticate: OAuth session
+expired and could not be refreshed"` — the 2026-08-27 OAuth outage. **`OnFailure=agent-alert@%n`
+fired every time**: 9 alerts, all present in `~/logs/agent-alert.log`, correctly timestamped. And
+both campaigns still sat dead for four consecutive nights until Dave reauthorised by hand on
+08-31. **Alerting is not recovery** — and `Persistent=true` does not re-fire a slot that fired and
+failed, so every lost night is lost permanently unless a human reschedules it, which is exactly
+what the two `/etc` make-up timers are.
+
+**That is the real argument against a standing version, and it is stronger than "revisit later".**
+A permanent workflow inherits a failure mode that is silent to everything except a log nobody
+reads, unrecoverable without hand-rescheduling, and capable of eating four nights before anyone
+notices. Topic rotation and a non-01:30 slot are the *easy* half. Fix the recovery story first —
+that is D9 territory (a must-run rule with teeth) and the `fleet-turn-check` pattern, not a new
+timer.
+
+**Two premises in the question that measurement does not support:**
+
+- **The §6.6 01:30 lock collision has never occurred, and could not have.**
+  `augustus-content.timer` is `enabled` but was **not active** — `systemctl show … -p
+  LastTriggerUSec` plus `journalctl -u augustus-content.timer` put its `Started` at
+  **2026-09-01 08:15:39**, with no reboot behind it (`uptime -s` = 2026-08-17). It fired **once
+  in eight days**, as a `Persistent` catch-up at 08:15, while the campaign ran at 01:30:04 on
+  every one of those nights. So the overlap is structural (`*-*-* 01:30` + `RandomizedDelaySec=5min`
+  against a job that starts at 01:30 and runs 4.5-7 min) but **untested**. §6.6 states a
+  prediction as an observation; mark it unverified. `enabled` is not `active`, and `list-timers`
+  does not show a stopped timer at all.
+- **"Revisit when the content backlog is consumed" rests on a consumer that is barely running.**
+  The nightly pitch+draft job that draws the backlog down is `augustus-content` — the same job
+  that ran once in eight days. The backlog is not being consumed at the rate the condition
+  assumes, so the trigger for revisiting would never fire on its own terms.
+
+**Decision: no standing workflow. Let both campaigns finish their remaining nights.** Three
+things must be owned when they do — none of which "let them expire" covers:
+
+1. **Delete the two `/etc` units after the last firing** (content-strategy 09-03 23:00, faceless
+   09-04 01:30). Left in place they are expired `OnCalendar` lists that will never fire again —
+   permanently green in `list-timers`, permanently incapable of producing anything. That is the
+   exact shape of the mirror case D8 records.
+2. **Reconcile the overshoot.** 4 runs + 3 remaining nights each = **7 against a target of 6**.
+   The make-up schedule recovered the 4 lost *scheduled* nights but never deducted the 08-31
+   hand-run. Harmless; recorded so the run counts are not later read as a defect.
+3. **The output has no home in this repo.** Neither campaign's artifact is a proposal
+   (`proposal=none` on all 16 rows, `AGENT_RUN_MODE=ops`, no `ExecStartPost` delivery by design)
+   — it is a Notion page plus `run_count`. When the units go, `var/notion_research_pages.json`
+   and the two Notion pages are the only surviving record. Note that in the registry so a later
+   cleanup does not read them as orphans.
+
+**Revisit condition, replacing the vague one:** propose a standing content-research workflow when
+(a) `augustus-content` has run on its own schedule for 14 consecutive days, and (b) an auth
+failure is recoverable without a hand-written make-up timer. Both are measurable; "backlog
+consumed" was not.
 
 ---
 
@@ -601,7 +678,8 @@ Measured before deciding. Both halves had live drift, in opposite directions:
 `OnFailure=agent-alert@%n.service` in `/etc` and **not** in the source unit here —
 `bd-stall-radar`, `m1-signal-scan`, `weekly-pre-assembly`. Any redeploy from source would have
 silently removed alerting from three units and nothing would have gone red. Backported in
-`e0e4b25`; all 47 source units are now byte-identical to `/etc`.
+`e0e4b25`; all 47 source units are now byte-identical to `/etc`. **That is CONTENT drift only —
+see the existence correction below.**
 
 **Code (`bin/` vs `~/agent-workforce/bin/`).** Three files stale on the box and two never
 deployed at all:
@@ -642,10 +720,35 @@ memory note records the same. So a check comparing source against the *staging* 
 the moment a unit is deployed, while `/etc` stays stale — a false green in precisely the
 direction that matters. Compare `systemd/` to `/etc` directly.
 
-**Baseline cleared 2026-09-01.** `bin/deploy` run with Dave's approval: 5 `bin/` files plus the
-profile/config archives. Post-deploy both halves measure zero drift, so the check **ships green**
+**Baseline cleared 2026-09-01 for CONTENT drift only — CORRECTED while measuring D5.** `bin/deploy`
+run with Dave's approval: 5 `bin/` files plus the profile/config archives. Post-deploy both halves
+measure zero *content* drift, so the file-comparison half **ships green**
 rather than red-on-arrival — unlike D6's coverage checker, which ships red with four named holes
 by design.
+
+**But EXISTENCE drift was never measured, and it is not clear.** A unit present in one tree and
+absent from the other is invisible to a byte-comparison of the units that exist in both — which is
+all `e0e4b25` and the deploy checked. Measured 2026-09-01, **three agent-workforce units live only
+in `/etc` with no source counterpart**:
+
+- `fleet-turn-check.timer` / `.service` — the hourly gate that proves an agent can complete a turn,
+  and the one signal that stayed honest through a 4-day outage. **It exists nowhere in this repo.**
+  A rebuild from source loses it silently.
+- `praetorium-content-strategy-research.timer` / `.service` and
+  `praetorium-faceless-content-research.timer` / `.service` — the two campaign units of D5.
+
+So `bin/check_deploy_drift.sh` must compare **membership as well as content**, in both directions,
+and it does **not** ship green: it ships red naming `fleet-turn-check` at minimum. Two design
+consequences: the check needs an **ownership filter** (a bare set-difference against
+`/etc/systemd/system/` also returns `chronyd`, `ollama`, `iscsi` and every other OS unit — 15 in
+total, 12 of them not ours), and it needs an **explicit, dated exclusion list** for genuinely
+ephemeral units, so a campaign timer can be `/etc`-only on purpose without teaching everyone to
+ignore a red. Backport `fleet-turn-check` before the check lands; exclude the campaigns and delete
+them per D5.
+
+**Method note:** the content half was measured and cleared, which made the whole question feel
+answered. The dimension nobody measured was the one that can lose a unit outright. A cleared
+baseline is only cleared for the property you compared.
 
 - **Dependencies:** none. Independent of D6.
 
