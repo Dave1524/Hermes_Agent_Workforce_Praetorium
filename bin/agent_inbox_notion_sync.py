@@ -12,6 +12,11 @@ Direction: read-only on git, write-only on Notion (same contract as the old cron
      Notion itself rather than only behind the private-repo Box Link.
   1b. --backfill-bodies: the same body write for existing Status=New rows — the backlog
      still awaiting review. Decided rows are left alone; they have already been read.
+  1c. BRANCH ROWS: body-fill Status=New rows whose Filename is agents/<date>-<slug>, a
+     branch on the canonical vault clone (hand-registered by interactive sessions; the
+     globs above cannot see them). Sentinel keys on the branch tip (<branch>@<sha12>);
+     git access is best-effort — an unreachable remote or unresolvable ref is reported,
+     never fatal. Composition lives in agent_inbox_branch_rows.py.
   2. REFLECT: for DB rows whose proposal file is gone AND still New/Approved, read the
      box-safe approvals.tsv; if a promoted/rejected decision is recorded, set Status +
      Processed At so Notion mirrors what happened on the Mac. (Skipped if approvals.tsv absent.)
@@ -23,6 +28,7 @@ import argparse, json, os, re, sys, glob, datetime, urllib.request, urllib.error
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import notion_markdown  # noqa: E402  — sibling module owns markdown -> Notion blocks
+import agent_inbox_branch_rows  # noqa: E402  — sibling module owns branch-shaped rows
 
 DATA_SOURCE_ID = "ecb52f8e-2125-416f-b08e-824a7416e561"
 NOTION_VERSION = "2025-09-03"
@@ -102,17 +108,20 @@ def provenance_blocks(filename, box_link):
     ]}}, divider()]
 
 
+def sentinel_block(ident):
+    return {"object": "block", "type": "paragraph",
+            "paragraph": {"rich_text":
+                          notion_markdown.plain_rich_text(sentinel_text(ident))}}
+
+
 def body_blocks(filename, path, box_link):
     try:
         text = open(path, encoding="utf-8").read()
     except OSError:
         text = ""
-    sentinel = {"object": "block", "type": "paragraph",
-                "paragraph": {"rich_text":
-                              notion_markdown.plain_rich_text(sentinel_text(filename))}}
     return (provenance_blocks(filename, box_link)
             + notion_markdown.blocks_from_markdown(text)
-            + [divider(), sentinel])
+            + [divider(), sentinel_block(filename)])
 
 
 def batches(blocks):
@@ -156,17 +165,19 @@ def has_sentinel(children, filename):
             and m.group(3) == str(notion_markdown.FORMAT_VERSION))
 
 
-def write_body(call, page_id, filename, path, box_link, dry_run=False):
+def write_rendered_body(call, page_id, ident, build_blocks, dry_run=False):
     """Idempotent, crash-safe body write. Returns (written|repaired|skipped, blocks).
 
     The sentinel is the LAST block written, so it can only exist if every preceding
     batch landed — children without one are a partial write and get cleared, not
-    appended to.
+    appended to. `ident` is the sentinel's filename slot (an inbox filename, or
+    <branch>@<sha12> for branch rows); `build_blocks` must produce a body already
+    ending in sentinel_block(ident).
     """
     children = child_blocks(call, page_id)
-    if has_sentinel(children, filename):
+    if has_sentinel(children, ident):
         return "skipped", 0
-    blocks = body_blocks(filename, path, box_link)
+    blocks = build_blocks()
     outcome = "repaired" if children else "written"
     if dry_run:
         return outcome, len(blocks)
@@ -175,6 +186,11 @@ def write_body(call, page_id, filename, path, box_link, dry_run=False):
     for batch in batches(blocks):
         call("PATCH", "/blocks/%s/children" % page_id, {"children": batch})
     return outcome, len(blocks)
+
+
+def write_body(call, page_id, filename, path, box_link, dry_run=False):
+    return write_rendered_body(call, page_id, filename,
+                               lambda: body_blocks(filename, path, box_link), dry_run)
 
 
 def source_for(fn):
@@ -241,8 +257,8 @@ def all_rows(token):
 def prop_text(row, name):
     pv = row["properties"].get(name, {})
     t = pv.get("type")
-    if t == "rich_text":
-        return "".join(x.get("plain_text", "") for x in pv["rich_text"])
+    if t in ("rich_text", "title"):
+        return "".join(x.get("plain_text", "") for x in pv[t])
     if t in ("select", "status"):
         return (pv.get(t) or {}).get("name")
     if t == "date":
@@ -362,6 +378,36 @@ def main(argv=None):
                 bodies += 1
                 body_total += count
 
+    # 1c) BRANCH ROWS: body-fill hand-registered rows whose Filename names a canonical
+    # vault branch instead of an inbox file (agents/<date>-<slug> — see
+    # agent_inbox_branch_rows). Body only; their properties and lifecycle stay manual.
+    branch_lines = []
+    branch_pending = [(fn, r) for fn, r in sorted(by_fn.items())
+                      if agent_inbox_branch_rows.is_branch_row(fn)
+                      and prop_text(r, "Status") == "New"]
+    if branch_pending:
+        agent_inbox_branch_rows.fetch_branches()
+    for fn, row in branch_pending:
+        tip = agent_inbox_branch_rows.resolve_tip(fn)
+        if not tip:
+            branch_lines.append("! branch %s: no resolvable ref in the canonical clone"
+                                " — skipped" % fn)
+            continue
+        ref, sha = tip
+        ident = "%s@%s" % (fn, sha)
+        box_link = (row["properties"].get("Box Link") or {}).get("url")
+
+        def build(fn=fn, ref=ref, ident=ident, box_link=box_link):
+            return (agent_inbox_branch_rows.body_blocks(fn, ref, box_link)
+                    + [sentinel_block(ident)])
+        outcome, count = write_rendered_body(call, row["id"], ident, build, args.dry_run)
+        if outcome == "skipped":
+            continue
+        bodies += 1
+        body_total += count
+        branch_lines.append("branch %s: %s (%d blocks)%s"
+                            % (fn, outcome, count, " (DRY)" if args.dry_run else ""))
+
     # 2) REFLECT Mac-side outcomes back into Notion (file gone + approvals.tsv decision)
     today = datetime.date.today().isoformat()
     for fn, r in by_fn.items():
@@ -451,7 +497,7 @@ def main(argv=None):
         proc = parse_d(prop_text(r, "Processed At")) if r else None
         title = row_title(fn, r)
 
-        if status == "New" and on_git:
+        if status == "New" and (on_git or agent_inbox_branch_rows.is_branch_row(fn)):
             pending_review.append((title, pdate))
             if pdate and pdate >= d7:
                 this_week.append(("[new] → review in Notion", title, pdate))
@@ -488,6 +534,8 @@ def main(argv=None):
     if bodies:
         print("  bodies written this run: %d ({:,} blocks)%s".format(body_total)
               % (bodies, " (DRY)" if args.dry_run else ""))
+    for line in branch_lines:
+        print("  %s" % line)
     if reflected:
         print("  reflected this run: %s" % ", ".join(reflected))
     if backfilled:
