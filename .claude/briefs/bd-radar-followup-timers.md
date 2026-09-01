@@ -30,9 +30,13 @@ gaps, not greenfield.
 - `bin/run_bd_stall_radar_cc.sh` exists, follows the `run_m1_signal_scan_cc.sh` /
   `run_bd_followup_drafts_cc.sh` idiom (agent_propose.sh is the harness; this script is
   only the exec'd "brain").
-- `systemd/bd-stall-radar.service` carries `OnFailure=agent-alert@%n.service` (currently
-  MISSING; its sibling and every comparable job have it — without it a nightly failure is
-  silent).
+- `systemd/bd-stall-radar.service` carries `OnFailure=agent-alert@%n.service` (missing
+  **in the repo**; its sibling and every comparable job have it). CORRECTED 2026-09-01
+  (D2, `design/agent-model.md` §6.3): the LIVE `/etc/systemd/system/bd-stall-radar.service`
+  already has this line — the repo unit is BEHIND `/etc`, not ahead of it. The edit is
+  still right (the repo is the source of truth and must not regress `/etc` on the next
+  install), but nothing is silent today. Diff repo against `/etc` before deploying any
+  unit here, in both directions.
 - Both `.env.example` files live under `profiles/`, describe the CC runtime, and set
   `AGENT_PROFILE=claudius` — NOT a model-named profile. AGENT_PROFILE keys the episodic
   memory dir; a model-named profile logs `MEMORY: no per-profile store at …` (confirmed

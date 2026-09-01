@@ -1,0 +1,119 @@
+# marcus — chief of staff. Normative capability manifest (D2).
+# Descriptive of live state 2026-09-01; normative once design/agent-model.md §7 is wired.
+# Ownership comes from design/workflow-registry.md §2 (frozen D1). Do not re-decide it here.
+
+name    = "marcus"
+role    = "Chief of staff — dispatch, Dave's daily rhythm, fleet reporting"
+pubkey  = "abbc19ddcc22f6511183936a4993359d4d22c6ef5afc53c7dba65bdeb958916b"
+harness = "claude-agent-acp"
+status  = "live"
+
+# marcus is the DAG root: ~20 channels, and the only agent whose dispatch rules admit
+# nobody but Dave and praetorium. That is what keeps the fleet from looping, and it is
+# also why he alone hits the context ceiling (memory: marcus-context-overflow).
+[surfaces.interactive]
+present     = true
+governed_by = "~/.config/buzz-team/marcus.toml"
+admits      = ["owner", "praetorium"]
+channels    = "all"
+tools       = ["claude-code-builtins", "mcp__qmd-mcp__*", "notion_* (7, via broker)"]
+mcp         = ["qmd-mcp", "buzz-team-mcp"]
+notes       = """
+Also inherits every undenied claude.ai connector from ~/.claude/settings.json —
+Gmail, M365, Drive, Figma. See agent-model.md §6.1; this is a gap, not a grant.
+"""
+
+[surfaces.scheduled]
+present     = true
+governed_by = "bin/run_daily_rhythm_cc.sh, bin/run_overnight_morning_report_cc.sh, bin/run_weekly_pre_assembly_cc.sh"
+tools       = ["Bash", "Read", "Write", "Glob", "Grep"]
+mcp         = []                 # --strict-mcp-config --mcp-config '{"mcpServers":{}}'
+notes       = """
+Identical allowlist on all four of his workflows — no Edit, no WebSearch, no WebFetch.
+The daily-rhythm and weekly jobs run bin/vault_sync_guard.sh check as a pre-flight;
+overnight-morning-report deliberately does not (it reads systemd and journals, not the
+vault) and additionally sets umask 077.
+"""
+
+[surfaces.kanban]
+present     = true
+governed_by = "~/.hermes/profiles/marcus/config.yaml"
+skills      = 46                 # plugin-shared 7 + vault-business 16 + plugin-official 23
+notes       = "Widest skill offering on the box, on the surface that now carries the least work."
+
+[surfaces.buzz_dispatch]
+present = false
+
+[[workflows]]
+unit     = "praetorium-daily-plan"
+surface  = "scheduled"
+trigger  = "Mon..Fri 06:00 (+2min jitter)"
+model    = "claude-sonnet"       # from the run log, not the deny-listed env
+profile  = "profiles/daily_plan_task.md"
+runner   = "bin/run_daily_rhythm_cc.sh"
+route    = "ops"
+run_mode = "ops"
+contract = "design/contracts/praetorium-daily-plan.md"   # TODO Phase B
+
+[[workflows]]
+unit     = "overnight-morning-report"
+surface  = "scheduled"
+trigger  = "daily 06:15 (+5min jitter)"
+model    = "claude-sonnet"
+profile  = "profiles/overnight_morning_report_cc_task.md"
+runner   = "bin/run_overnight_morning_report_cc.sh"
+route    = "ops"
+run_mode = "ops"
+contract = "design/contracts/overnight-morning-report.md"  # TODO Phase B
+notes    = """
+Carries the recurring reporting-defect class (coverage globs, whitelist health checks).
+Registry §2 footnote 1 keeps it separate from daily-plan for now. Its acceptance checks
+are the highest-value target in D3.
+"""
+
+[[workflows]]
+unit     = "praetorium-eod-summary"
+surface  = "scheduled"
+trigger  = "daily 22:15 (+5min jitter)"
+model    = "claude-sonnet"
+profile  = "profiles/eod_summary_task.md"
+runner   = "bin/run_daily_rhythm_cc.sh"
+route    = "ops"
+run_mode = "ops"
+contract = "design/contracts/praetorium-eod-summary.md"   # TODO Phase B
+
+[[workflows]]
+unit     = "weekly-pre-assembly"
+surface  = "scheduled"
+trigger  = "Fri 22:00 (+5min jitter)"
+model    = "claude-sonnet"
+profile  = "profiles/weekly_pre_assembly_cc_task.md"
+runner   = "bin/run_weekly_pre_assembly_cc.sh"
+route    = "research"
+contract = "design/contracts/weekly-pre-assembly.md"      # TODO Phase B
+notes    = "Hermes-era claudius task; ownership moved to marcus 2026-09-01 (registry §7.2)."
+
+
+# Capability prohibitions. enforced = true means a mechanism blocks it today;
+# enforced = false means it is stated policy that nothing currently prevents.
+  # enforced = false means: stated here, not yet blocked by any mechanism.
+
+[[must_not]]
+rule     = "send email or any outward message"
+enforced = false
+why      = "charter; §6.1 leaves Gmail/M365 live on the interactive surface"
+
+[[must_not]]
+rule     = "write the vault outside _inbox/agents/**"
+enforced = true
+why      = "agent_propose.sh write boundary"
+
+[[must_not]]
+rule     = "write 07_daily/logs/ on any branch"
+enforced = false
+why      = "CLAUDE.md daily-rhythm rule; prose only"
+
+[[must_not]]
+rule     = "hand-roll HTTP against the Notion API in a task profile"
+enforced = false
+why      = "bin/notion_daily.py owns date-keyed idempotency"

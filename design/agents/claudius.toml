@@ -1,0 +1,149 @@
+# claudius — head of research. Normative capability manifest (D2).
+# Descriptive of live state 2026-09-01. Ownership from design/workflow-registry.md §2/§4.
+
+name    = "claudius"
+role    = "Head of research — standing research, knowledge distillation, BD analysis"
+pubkey  = "818238434309416fa7fd8cc482908e61f8ebcb6978ff974ccf2044d4ed014c7c"
+harness = "claude-agent-acp"
+status  = "live"
+
+[surfaces.interactive]
+present     = true
+governed_by = "~/.config/buzz-team/claudius.toml"
+admits      = ["owner", "praetorium", "marcus"]
+channels    = "all"
+tools       = ["claude-code-builtins", "mcp__qmd-mcp__*", "notion_* (7, via broker)"]
+mcp         = ["qmd-mcp", "buzz-team-mcp"]
+notes       = "Undenied claude.ai connectors present here too — agent-model.md §6.1."
+
+# The four scheduled workflows do NOT share one tool set. This is the clearest case on
+# the box of a capability that exists per-workflow rather than per-agent.
+[surfaces.scheduled]
+present     = true
+governed_by = "bin/run_knowledge_digest_cc.sh, bin/run_standing_research_cc.sh, bin/run_raw_ingest_cc.sh, bin/run_m1_signal_scan_cc.sh"
+tools       = ["Bash", "Read", "Write", "Edit", "Glob", "Grep"]   # the common floor
+tools_web   = ["WebSearch", "WebFetch"]                            # standing-research + m1 only
+mcp         = []
+notes       = """
+knowledge-digest and raw-ingest have NO web access; standing research and m1-signal-scan
+do. qmd is reached through Bash (the CLI), never MCP, on this surface. All four write only
+_inbox/agents/** and must end in a dated proposal or a literal DECLINE: sentinel —
+bin/proposal_or_decline.sh is the AGENT_VERIFY_CMD for every one of them.
+"""
+
+[surfaces.kanban]
+present     = true
+governed_by = "~/.hermes/profiles/claudius/config.yaml"
+skills      = 25                 # plugin-qmd 2 + vault-business 16 + plugin-shared 7
+notes       = "The only profile granted plugin-qmd. No github-* skills (disabled)."
+
+[surfaces.buzz_dispatch]
+present = false
+
+[[workflows]]
+unit     = "knowledge-digest"
+surface  = "scheduled"
+trigger  = "Sun 09:00 (+5min jitter)"
+model    = "claude-opus-5"
+profile  = "profiles/knowledge_digest_cc_task.md"
+runner   = "bin/run_knowledge_digest_cc.sh"
+route    = "research"
+web      = false
+contract = "design/contracts/knowledge-digest.md"         # worked example — written
+
+[[workflows]]
+unit     = "agent-proposal"
+surface  = "scheduled"
+trigger  = "Mon..Fri 04:30 (+5min jitter)"   # NOT daily — registry §2 said daily
+model    = "claude-opus-5"
+profile  = "profiles/standing_research_cc_task.md"
+runner   = "bin/run_standing_research_cc.sh"
+route    = "research"
+web      = true
+contract = "design/contracts/standing-research.md"        # TODO Phase B
+notes    = "Unit name is the generic one; the workflow is standing research."
+
+[[workflows]]
+unit     = "raw-ingest"
+surface  = "scheduled"
+trigger  = "Tue..Sat 03:00 (+5min jitter)"   # NOT daily — registry §2 said daily
+model    = "claude-opus-5"
+profile  = "profiles/raw_ingest_cc_task.md"
+runner   = "bin/run_raw_ingest_cc.sh"
+route    = "research"
+web      = false
+contract = "design/contracts/raw-ingest.md"               # TODO Phase B
+notes    = "Runs ahead of standing research so same-day ingest is visible to it."
+
+[[workflows]]
+unit     = "m1-signal-scan"
+surface  = "scheduled"
+trigger  = "Mon,Wed 05:30 (+5min jitter)"    # TWICE WEEKLY — registry §2 said daily
+model    = "claude-sonnet"
+profile  = "profiles/m1_signal_scan_cc_task.md"
+runner   = "bin/run_m1_signal_scan_cc.sh"
+route    = "signals"
+web      = true
+contract = "design/contracts/m1-signal-scan.md"           # TODO Phase B
+notes    = """
+Swapped off hermes/OpenRouter 2026-07-24 while the OpenRouter budget is paused. The task
+profile keeps a same-day idempotency check and no weekly-skip guard — the timer owns
+cadence.
+"""
+
+# Decided in registry §7.5, not yet wired. Both are Phase B briefs.
+[[workflows]]
+unit     = "bd-stall-radar"
+surface  = "scheduled"
+trigger  = "TBD — timer not yet installed"
+model    = "claude-opus-5"
+profile  = "profiles/bd_stall_radar_task.md"
+route    = "bd"
+status   = "planned"
+contract = "design/contracts/bd-stall-radar.md"           # TODO Phase B
+notes    = "Brief exists: .claude/briefs/bd-radar-followup-timers.md. Live /etc unit already has OnFailure; the repo copy does not (agent-model.md §6.3)."
+
+[[workflows]]
+unit     = "bd-followup-drafts"
+surface  = "scheduled"
+trigger  = "TBD — one slot after bd-stall-radar"
+model    = "claude-opus-5"
+profile  = "profiles/bd_followup_drafts_cc_task.md"
+runner   = "bin/run_bd_followup_drafts_cc.sh"
+route    = "bd"
+status   = "planned"
+contract = "design/contracts/bd-followup-drafts.md"       # TODO Phase B
+
+
+# Capability prohibitions. enforced = true means a mechanism blocks it today;
+# enforced = false means it is stated policy that nothing currently prevents.
+
+[[must_not]]
+rule     = "send email or any outward message"
+enforced = false
+why      = "charter; §6.1"
+
+[[must_not]]
+rule     = "write the vault outside _inbox/agents/**"
+enforced = true
+why      = "agent_propose.sh write boundary"
+
+[[must_not]]
+rule     = "write Notion pipeline state (Stage / Last contact / Next action date)"
+enforced = false
+why      = "BD boundary — Dave's call from the Mac"
+
+[[must_not]]
+rule     = "assert elapsed time or silence in a BD draft"
+enforced = false
+why      = "pipeline Last contact is known-unreliable; unverifiable claims must surface as an Unverified line"
+
+[[must_not]]
+rule     = "silently supersede a contradicted 05_knowledge/ claim"
+enforced = false
+why      = "Mechanism A — name both sides under ## Contradictions"
+
+[[must_not]]
+rule     = "route Tier-A judgment to the local Ollama tier"
+enforced = false
+why      = "local_inference_charter.md — mechanical work only"

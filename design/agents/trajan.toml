@@ -1,0 +1,185 @@
+# trajan — head of engineering. Normative capability manifest (D2).
+# Descriptive of live state 2026-09-01. Ownership from design/workflow-registry.md §3 + §7.1.
+#
+# trajan owns every PLATFORM JOB: deterministic scripts with no persona in the loop.
+# He is accountable for them being correct and alive, not for their output being good —
+# there is no LLM output to judge. That is the whole distinction from the other three.
+
+name    = "trajan"
+role    = "Head of engineering — platform jobs, box reliability, vpc-seo queue"
+pubkey  = "1212e9a7e5a2c41b4e56d266fe2b42bb1e528cfa58a482975b9e5ba4d389fab0"
+harness = "claude-agent-acp"
+status  = "live"
+
+[surfaces.interactive]
+present     = true
+governed_by = "~/.config/buzz-team/trajan.toml"
+admits      = ["owner", "praetorium", "marcus"]
+channels    = "all"
+tools       = ["claude-code-builtins", "mcp__qmd-mcp__*", "notion_* (7, via broker)"]
+mcp         = ["qmd-mcp", "buzz-team-mcp"]
+notes       = "Undenied claude.ai connectors present here too — agent-model.md §6.1."
+
+# No persona workflow runs on this surface for trajan. His jobs are shell scripts; the
+# scheduled LLM surface is not one he uses.
+[surfaces.scheduled]
+present = false
+notes   = "Platform jobs invoke scripts directly, not claude -p. If that ever changes, this block acquires an allowlist."
+
+[surfaces.kanban]
+present     = true
+governed_by = "~/.hermes/profiles/trajan/config.yaml"
+skills      = 44                 # plugin-official 23 + plugin-shared 7 + anthropic-generic 14
+board       = "vpc-seo"
+notes       = """
+The one-off queue under the rule adopted in registry §7.6: recurring work is a systemd
+timer, queued one-offs are kanban. Its 5 SEO cards were assigned to `engineer`, a profile
+NOT on disk, so they could never dispatch; reassigned to trajan 2026-09-01 and left
+`blocked` on purpose — unblocking makes the gateway dispatch within 60s, which is Dave's
+call. This is the only surface where a skills allowlist does real work.
+"""
+
+[surfaces.buzz_dispatch]
+present = false
+
+# --- Platform jobs. `alerted` records whether OnFailure= is present ON THE LIVE UNIT,
+# --- which is not the same question as whether the repo copy has it (agent-model.md §6.3).
+[[workflows]]
+unit = "fleet-turn-check"
+surface = "platform"
+trigger = "hourly (+2min jitter)"
+what = "proves an agent can COMPLETE a turn — the gate every other fleet signal missed for 4 days"
+alerted = true
+in_repo = false                  # agent-model.md §6.7
+
+[[workflows]]
+unit = "fleet-eval"
+surface = "platform"
+trigger = "daily 07:07 (+90s jitter)"
+what = "delivery conformance + vault grounding regression"
+alerted = false                  # genuinely missing everywhere — repo AND /etc
+in_repo = true
+
+[[workflows]]
+unit = "local-tier-eval"
+surface = "platform"
+trigger = "02,08,11,14,17,20:17 (no jitter)"
+what = "Ollama capability regression on the Arc iGPU"
+alerted = false
+in_repo = true
+
+[[workflows]]
+unit = "memory-consolidation"
+surface = "platform"
+trigger = "daily 03:30 (+5min jitter)"
+what = "working-memory prune across hermes profiles"
+alerted = false
+in_repo = true
+notes = """
+Prunes four PERSONA stores that nothing writes anymore — every scheduled job resolves a
+model-named AGENT_PROFILE and logs memory=no-store. Dead limb until registry §6.6's rename
+lands. Retire the timer or repoint MEM_DIR; do not do both.
+"""
+
+[[workflows]]
+unit = "agent-inbox-sync"
+surface = "platform"
+trigger = "every 30 min (+2min jitter)"
+what = "Notion <-> agent-inbox reconcile; auto-reject back"
+alerted = true
+in_repo = true
+
+[[workflows]]
+unit = "inbox-backlog-alert"
+surface = "platform"
+trigger = "daily 06:20 (+3min jitter)"
+what = "approvals aging past 2 days"
+route = "approvals"
+alerted = true
+in_repo = true
+
+[[workflows]]
+unit = "scorecard"
+surface = "platform"
+trigger = "Mon 07:00 (+5min jitter)"
+what = "weekly agent-run rollup"
+route = "ops"
+alerted = false
+in_repo = true
+
+[[workflows]]
+unit = "qmd-refresh"
+surface = "platform"
+trigger = "every 30 min (+2min jitter), 5min after boot"
+what = "vault pull + re-index + embed; calls bin/vault_sync_guard.sh sync"
+alerted = true
+in_repo = true
+notes = "Its repeat alerts are the exact case bin/agent_alert.sh was written to throttle — 19 of the last 60 alert-log lines. Unreachable until agent-model.md §6.2 is fixed."
+
+[[workflows]]
+unit = "agent-workforce-auto-sync"
+surface = "platform"
+trigger = "every 15 min (+2min jitter)"
+what = "git add -A + commit + push of this repo"
+alerted = true
+in_repo = true
+notes = "The one unit that execs from ~/dev/agent-workforce rather than the deployed copy (registry §7.8)."
+
+[[workflows]]
+unit = "ttm-pool-drain"
+surface = "platform"
+trigger = "every 2 min, 2min after boot"
+what = "drains the xe driver's GPU page pool by READING the shrink file"
+alerted = false
+in_repo = false                  # agent-model.md §6.7
+
+[[workflows]]
+unit = "overnight-pre-snapshot"
+surface = "platform"
+trigger = "daily 04:25 (+2min jitter)"
+what = "pre-snapshot state capture ahead of the morning report"
+alerted = true
+in_repo = true
+notes = """
+Live and healthy, but it appears in registry §3 nowhere — it is named only in a §4 row
+about an archived prompt file. It is the ancestor the reporting jobs copied their coverage
+glob from. Recorded here so it has an owner.
+"""
+
+[[workflows]]
+unit = "buzz-pr-watch"
+surface = "platform"
+trigger = "daily 09:23 (+20min jitter) — USER scope, not system"
+what = "watches block/buzz#3816, announces on close"
+alerted = false
+in_repo = false
+notes = "systemctl --user. Every other job here is system scope; do not debug it with sudo."
+
+
+# Capability prohibitions. enforced = true means a mechanism blocks it today;
+# enforced = false means it is stated policy that nothing currently prevents.
+
+[[must_not]]
+rule     = "push the vault main branch"
+enforced = true
+why      = "box holds no canonical vault credential; boxsafe pre-push hook"
+
+[[must_not]]
+rule     = "run publish_boxsafe.sh"
+enforced = false
+why      = "publishing is Mac-side only"
+
+[[must_not]]
+rule     = "use --no-verify on any push"
+enforced = false
+why      = "it is the same push with the record removed"
+
+[[must_not]]
+rule     = "unblock a vpc-seo card without Dave"
+enforced = false
+why      = "the gateway dispatches within 60s of ready"
+
+[[must_not]]
+rule     = "schedule recurring work on hermes cron"
+enforced = true
+why      = "retired, registry §7.6 — hermes cron list is empty"

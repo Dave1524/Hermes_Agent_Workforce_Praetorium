@@ -65,6 +65,21 @@ All run headless Claude Code via `bin/agent_propose.sh` + `AGENT_JOB_OVERRIDES`.
 "(env)" = pinned inside the deny-listed `*.env` override; D2 records it from
 `agent_propose.sh` run logs, not by reading the env.
 
+**CORRECTION 2026-09-01 (D2, `design/agent-model.md` §6.8).** The Trigger column above was
+read from `list-timers` next-elapse values, which fold in `RandomizedDelaySec` and show only
+the next occurrence. Three rows are wrong on the **day**, not just the minute:
+`agent-proposal` is **Mon–Fri** 04:30 (not daily), `raw-ingest` is **Tue–Sat** 03:00 (not
+daily), and `m1-signal-scan` is **Mon,Wed** 05:30 — twice weekly, not daily. The declared
+values are in `design/agents/*.toml`. Read a schedule from `systemctl cat`, never from
+`list-timers`. Ownership decisions are unaffected.
+
+**CORRECTION 2026-09-01 (D2 §6.5).** `praetorium-content-strategy-research` and
+`praetorium-faceless-content-research` are **not** daily timers. Each carries four absolute
+`OnCalendar` dates, the last being 2026-09-03 23:00 and 2026-09-04 01:30 respectively; after
+those they have no next elapse and stop silently. Both also exist only in `/etc` with no
+source in `systemd/` (§6.7). Owner and keep-decision are unaffected; the schedule is a
+Phase-B fix due before 2026-09-03.
+
 ## 3. Scheduled platform jobs (live, deterministic)
 
 | Unit | Trigger | What | Route |
@@ -80,6 +95,11 @@ All run headless Claude Code via `bin/agent_propose.sh` + `AGENT_JOB_OVERRIDES`.
 | agent-workforce-auto-sync | 15 min | git auto-commit/push of source repo | — |
 | ttm-pool-drain | 2 min | GPU page-pool drain | — |
 | buzz-pr-watch (user) | daily | watch block/buzz#3816, announce on close | — |
+
+**ADDITION 2026-09-01 (D2).** `overnight-pre-snapshot` (daily 04:25 +2min) is live and
+belongs in this table; it was named above only in a §4 row about an archived prompt file.
+Platform job, owner trajan per §7.1, recorded in `design/agents/trajan.toml`. Also note
+`fleet-turn-check` and `ttm-pool-drain` have no source unit in `systemd/` (§6.7).
 
 ## 4. Paused, dead, or dormant — every row needs a call
 

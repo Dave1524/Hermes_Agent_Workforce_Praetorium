@@ -1,0 +1,131 @@
+# augustus — editor-in-chief. Normative capability manifest (D2).
+# Descriptive of live state 2026-09-01. Ownership from design/workflow-registry.md §2/§4.
+#
+# augustus is the exception on every axis: the only codex-acp agent, the only one whose
+# namespace is narrowed by bwrap, and the only one who owns a workflow that runs by
+# DISPATCHING TO HIMSELF over Buzz rather than by invoking a model directly.
+
+name    = "augustus"
+role    = "Editor-in-chief — content pipeline, pitches and drafts"
+pubkey  = "d36e4b8b8c8c3c6424c884110c22fcbbed6fc2d55374f4576ee51d43145c7d01"
+harness = "codex-acp"
+status  = "live"
+
+[surfaces.interactive]
+present     = true
+governed_by = "~/.config/buzz-team/augustus.toml"
+admits      = ["owner", "praetorium", "marcus"]
+channels    = "all"
+tools       = ["codex-builtins", "mcp__qmd-mcp__*", "notion_* (7, via broker)"]
+mcp         = ["qmd-mcp", "buzz-team-mcp"]
+notes       = """
+His bwrap wrapper --tmpfs's ~/.ssh and ~/.config/agent-workforce, so he can never
+git fetch and never read a job credential. That is deliberate containment, and it is why
+the Notion path goes through buzz-notion-broker.py on the host namespace rather than
+through the bridge's own credential — see ~/CLAUDE.md, "The fleet MCP bridge".
+Consequence for ownership: augustus must never own a workflow that needs git fetch.
+Codex permission profiles do NOT reach an ACP session, so the deny-list that governs the
+other four does not govern him at all — his boundary is the namespace plus his charter.
+"""
+
+[surfaces.scheduled]
+present     = true
+governed_by = "bin/run_standing_research_topic_cc.sh"
+tools       = ["Bash", "Read", "Write", "Glob", "Grep", "WebSearch", "WebFetch"]
+mcp         = []
+notes       = """
+No Edit. AGENT_RUN_MODE=ops and no delivery step, by design — these two write their
+output and stop. The executor here is headless Claude Code on Opus 5, not codex; augustus
+is the accountable owner, not the runtime (registry §7.3).
+"""
+
+[surfaces.kanban]
+present     = true
+governed_by = "~/.hermes/profiles/augustus/config.yaml"
+skills      = 23                 # vault-business 16 + plugin-shared 7
+notes       = "Narrowest offering of the four. No plugin-official, no anthropic-generic."
+
+# The fourth surface exists for exactly one workflow.
+[surfaces.buzz_dispatch]
+present     = true
+governed_by = "bin/run_content_via_buzz.sh + bin/buzz_routes.env"
+tools       = "inherits surfaces.interactive entirely"
+notes       = """
+A timer triggers augustus over the content route and waits. Three-state exit contract,
+quoted from the script header:
+  4 (CRASH_EXIT)  the trigger never landed — nobody was asked
+  1               augustus was asked and produced nothing within the wait
+  0               the board moved, or augustus replied DECLINE:
+The distinction between 4 and 1 is the whole point: "nobody was asked" and "asked and
+declined" are different failures and were once the same exit code.
+bin/deliver.sh is the ONLY script permitted to call buzz messages send.
+"""
+
+[[workflows]]
+unit     = "augustus-content"
+surface  = "buzz_dispatch"
+trigger  = "daily 01:30 (RandomizedDelaySec=5min, Persistent=true)"
+model    = "n/a — dispatches to the live augustus session"
+runner   = "bin/agent_propose.sh -> bin/run_content_via_buzz.sh"
+route    = "content"
+contract = "design/contracts/augustus-content.md"          # TODO Phase B
+notes    = """
+Shares AGENT_JOB_OVERRIDES and DELIVERY_TASK with content-change-dispatch below: they are
+two triggers on ONE workflow, not two workflows. Collides at 01:30 with
+praetorium-faceless-content-research over the global propose lock — agent-model.md §6.6.
+"""
+
+[[workflows]]
+unit     = "content-change-dispatch"
+surface  = "buzz_dispatch"
+trigger  = "every 15 min"
+runner   = "bin/content_change_dispatch.sh"
+route    = "content"
+contract = "design/contracts/augustus-content.md"          # same contract, change-triggered
+notes    = "Polls Notion Picked rows; drafts only on a new row. Re-enabled 2026-09-01 (registry §7.4)."
+
+[[workflows]]
+unit     = "praetorium-content-strategy-research"
+surface  = "scheduled"
+trigger  = "EXPIRES 2026-09-03 23:00 — four absolute OnCalendar dates, not a recurring calendar"
+model    = "claude-opus-5"
+profile  = "profiles/standing_research_content_strategy_task.md"
+runner   = "bin/run_standing_research_topic_cc.sh"
+run_mode = "ops"
+contract = "design/contracts/content-strategy-research.md" # TODO Phase B
+notes    = "agent-model.md §6.5. Also has no source in systemd/ — §6.7."
+
+[[workflows]]
+unit     = "praetorium-faceless-content-research"
+surface  = "scheduled"
+trigger  = "EXPIRES 2026-09-04 01:30 — four absolute OnCalendar dates, not a recurring calendar"
+model    = "claude-opus-5"
+profile  = "profiles/standing_research_faceless_content_task.md"
+runner   = "bin/run_standing_research_topic_cc.sh"
+run_mode = "ops"
+contract = "design/contracts/faceless-content-research.md" # TODO Phase B
+notes    = "agent-model.md §6.5 and §6.7. Logged one silent lock-skip on 2026-08-31 (§6.6)."
+
+
+# Capability prohibitions. enforced = true means a mechanism blocks it today;
+# enforced = false means it is stated policy that nothing currently prevents.
+
+[[must_not]]
+rule     = "send email or any outward message"
+enforced = false
+why      = "charter"
+
+[[must_not]]
+rule     = "own any workflow requiring git fetch"
+enforced = true
+why      = "bwrap --tmpfs ~/.ssh strips the capability"
+
+[[must_not]]
+rule     = "call buzz messages send outside bin/deliver.sh"
+enforced = false
+why      = "single-publisher rule; prose in run_content_via_buzz.sh"
+
+[[must_not]]
+rule     = "read Tier-A vault context on an unpinned provider"
+enforced = false
+why      = "open gap — no ZDR provider pin on his hermes config; irrelevant on the CC surfaces"
