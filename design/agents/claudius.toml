@@ -51,6 +51,7 @@ route    = "research"
 web      = false
 contract = "design/contracts/knowledge-digest.md"         # worked example — written
 status   = "standing"
+suite    = ["tests/test_knowledge_digest_smoke.sh"]
 
 [[workflows]]
 unit     = "agent-proposal"
@@ -63,6 +64,7 @@ route    = "research"
 web      = true
 contract = "design/contracts/standing-research.md"        # TODO Phase B
 status   = "standing"
+suite    = ["tests/test_standing_research_smoke.sh"]
 notes    = "Unit name is the generic one; the workflow is standing research."
 
 [[workflows]]
@@ -76,6 +78,7 @@ route    = "research"
 web      = false
 contract = "design/contracts/raw-ingest.md"               # TODO Phase B
 status   = "standing"
+suite    = ["tests/test_raw_ingest_smoke.sh"]
 notes    = "Runs ahead of standing research so same-day ingest is visible to it."
 
 [[workflows]]
@@ -89,6 +92,7 @@ route    = "signals"
 web      = true
 contract = "design/contracts/m1-signal-scan.md"           # TODO Phase B
 status   = "standing"
+suite    = []
 notes    = """
 Swapped off hermes/OpenRouter 2026-07-24 while the OpenRouter budget is paused. The task
 profile keeps a same-day idempotency check and no weekly-skip guard — the timer owns
@@ -107,6 +111,7 @@ model    = "claude-opus-5"
 profile  = "profiles/bd_stall_radar_task.md"
 route    = "bd"
 status   = "dormant"
+suite    = []
 contract = "design/contracts/bd-stall-radar.md"           # TODO Phase B
 notes    = "Brief exists: .claude/briefs/bd-radar-followup-timers.md. Live /etc unit already has OnFailure; the repo copy does not (agent-model.md §6.3)."
 
@@ -119,6 +124,7 @@ profile  = "profiles/bd_followup_drafts_cc_task.md"
 runner   = "bin/run_bd_followup_drafts_cc.sh"
 route    = "bd"
 status   = "dormant"
+suite    = ["tests/test_bd_followup_drafts_smoke.sh"]
 contract = "design/contracts/bd-followup-drafts.md"       # TODO Phase B
 notes    = "23:30 clears the 04:30/05:30/06:00 jobs sharing agent_propose.sh's global flock — a collision there is a silent SKIP, not a failure (agent-model.md §6.6)."
 

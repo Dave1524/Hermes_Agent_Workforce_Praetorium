@@ -55,6 +55,7 @@ route    = "ops"
 run_mode = "ops"
 contract = "design/contracts/praetorium-daily-plan.md"   # TODO Phase B
 status   = "standing"
+suite    = ["tests/test_daily_plan_smoke.sh"]
 
 [[workflows]]
 unit     = "overnight-morning-report"
@@ -67,6 +68,7 @@ route    = "ops"
 run_mode = "ops"
 contract = "design/contracts/overnight-morning-report.md"  # TODO Phase B
 status   = "standing"
+suite    = []
 notes    = """
 Carries the recurring reporting-defect class (coverage globs, whitelist health checks).
 Registry §2 footnote 1 keeps it separate from daily-plan for now. Its acceptance checks
@@ -84,6 +86,7 @@ route    = "ops"
 run_mode = "ops"
 contract = "design/contracts/praetorium-eod-summary.md"   # TODO Phase B
 status   = "standing"
+suite    = ["tests/test_eod_summary_smoke.sh"]
 
 [[workflows]]
 unit     = "weekly-pre-assembly"
@@ -95,6 +98,7 @@ runner   = "bin/run_weekly_pre_assembly_cc.sh"
 route    = "research"
 contract = "design/contracts/weekly-pre-assembly.md"      # TODO Phase B
 status   = "standing"
+suite    = ["tests/test_weekly_pre_assembly_smoke.sh"]
 notes    = "Hermes-era claudius task; ownership moved to marcus 2026-09-01 (registry §7.2)."
 
 
