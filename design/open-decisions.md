@@ -420,7 +420,61 @@ defect** (§6.2 throttle, §6.3 unit drift).
 
 - **Recommend:** yes. Highest-yield single check available.
 
-**ANSWER:**
+**ANSWER (2026-09-01): YES — one script, three callers. Drift was worse than recorded, and bidirectional.**
+
+Measured before deciding. Both halves had live drift, in opposite directions:
+
+**Units (`systemd/` vs `/etc/systemd/system/`).** Three units carried
+`OnFailure=agent-alert@%n.service` in `/etc` and **not** in the source unit here —
+`bd-stall-radar`, `m1-signal-scan`, `weekly-pre-assembly`. Any redeploy from source would have
+silently removed alerting from three units and nothing would have gone red. Backported in
+`e0e4b25`; all 47 source units are now byte-identical to `/etc`.
+
+**Code (`bin/` vs `~/agent-workforce/bin/`).** Three files stale on the box and two never
+deployed at all:
+
+| file | drift | deployed copy dated | reaches |
+|---|---|---|---|
+| `agent_inbox_notion_sync.py` | **220 lines** | 2026-08-11 | `agent-inbox-sync`, `inbox-backlog-alert`, `overnight-pre-snapshot` |
+| `ops_page_publish.py` | 46 lines | 2026-07-23 (**6 weeks**) | `ops-view.sh` |
+| `notion_daily.py` | 24 lines | 2026-07-27 (5 weeks) | daily-rhythm Notion idempotency |
+| `agent_inbox_branch_rows.py` | never deployed | — | called by `agent_inbox_notion_sync.py` |
+| `notion_markdown.py` | never deployed | — | — |
+
+NUC-44 recorded this tree falling "6 days behind". It reached **six weeks**, and today's
+branch-rows work was committed to git and not running.
+
+**The finding that shapes the design: drift is bidirectional, and one direction is invisible
+to a commit-time check.** The three `OnFailure` lines were never committed by anyone — someone
+edited `/etc` by hand and the source never learned. A gate that only runs when a human commits
+cannot see that class at all. That is why the timer caller is not optional; it is the only one
+that catches it.
+
+**Shape:**
+
+- `bin/check_deploy_drift.sh` owns the comparison, once. Compares `bin/` against
+  `~/agent-workforce/bin/`, and `systemd/*.{service,timer}` against `/etc/systemd/system/`.
+  Ignores `__pycache__/` and `*.bak*`. Exits 1 on any differing or missing file.
+- `bin/verify.sh` calls it as a **hard fail** — you cannot commit a source change while the box
+  runs something else.
+- `bin/deploy` calls it as a **post-condition** — a deploy that did not converge is a failed
+  deploy, not a quiet one.
+- A daily timer calls it — the `/etc`-hand-edit case above.
+
+**Trap the script must not fall into: there are THREE unit trees, and only one comparison is
+meaningful.** Source `systemd/`, the deployed staging copy `~/agent-workforce/systemd/`, and
+live `/etc/systemd/system/`. **`bin/deploy` writes the staging copy and never writes `/etc`** —
+its own output says so ("systemd services exec from the runtime tree"), and the deployed-copy
+memory note records the same. So a check comparing source against the *staging* copy goes green
+the moment a unit is deployed, while `/etc` stays stale — a false green in precisely the
+direction that matters. Compare `systemd/` to `/etc` directly.
+
+**Baseline cleared 2026-09-01.** `bin/deploy` run with Dave's approval: 5 `bin/` files plus the
+profile/config archives. Post-deploy both halves measure zero drift, so the check **ships green**
+rather than red-on-arrival — unlike D6's coverage checker, which ships red with four named holes
+by design.
+
+- **Dependencies:** none. Independent of D6.
 
 ---
 
