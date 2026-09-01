@@ -18,9 +18,9 @@ ships    = "red"
 must_carry = [
   "There are FOUR unit trees, not three. D8 names source systemd/, the staging copy ~/agent-workforce/systemd/, and live /etc/systemd/system/. It never mentions ~/.config/systemd/user/, which holds NINE units with zero source counterpart in this repo: buzz-agent@.service, buzz-notion-broker.service, buzz-pr-watch.{service,timer}, hermes-gateway.service, nekovri-subsidy-kickoff.{service,timer}, nekovri-subsidy-watchdog.{service,timer}. Measured 2026-09-01.",
   "buzz-agent@.service is in that unsourced tree AND was edited on 2026-09-01 by brief 1 to add CLAUDE_CODE_EXECUTABLE. The fleet's core unit has no source of truth and would be invisible to the check exactly as D8 specs it.",
-  "systemd/ holds 47 units, all system-scope. The user tree is not a subset of it.",
+  "systemd/ is system-scope only; the user tree is not a subset of it. Do not trust a unit COUNT from this file — it was 47 before d72f562 added six and 53 after. Re-measure; the brief that consumed this entry did.",
   "bin/deploy never writes /etc — verified 2026-09-01 by grep, not by reading its output. Compare systemd/ to /etc directly; comparing against the staging copy goes green the moment a unit is deployed while /etc stays stale.",
-  "The units this very queue installs (praetorium-phaseb-brief@*) are themselves ephemeral /etc-only units. They must land on the dated exclusion list or be deleted, or the check they are writing goes red naming its own scaffolding.",
+  "CORRECTED 2026-09-01 19:45 by the brief-2 run that read this entry: praetorium-phaseb-brief@* are NOT /etc-only. d72f562 committed all six to systemd/, so they are present in both trees and the check passes them today. The trap moves to deletion day — removing them from /etc leaves them source-only, which is the same defect in the other direction. They need a dated exclusion entry or deletion from both trees, never one.",
 ]
 preconditions = [
   "Backport fleet-turn-check.{service,timer} into systemd/ from /etc BEFORE the check lands. Still /etc-only as of 2026-09-01 19:30.",
