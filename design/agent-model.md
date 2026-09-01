@@ -221,27 +221,51 @@ Genuinely missing on the live box, all platform jobs: `fleet-eval`, `local-tier-
 That is correct today (no route may address him; he is a sink), and the manifest records
 it as deliberate rather than leaving the next reader to wonder.
 
-### 6.5 Both content-research workflows stop in the next three days
+### 6.5 The two content-research timers expire BY DESIGN — do not make them recurring
 
-`praetorium-content-strategy-research.timer` and `praetorium-faceless-content-research.timer`
-do not carry a recurring calendar. Each carries **four absolute `OnCalendar` lines**:
+**This section originally claimed both workflows were about to fail silently and needed a
+one-line recurring-calendar fix. That was wrong, and the fix would have been harmful. The
+finding is retained, inverted, because the mistake is the instructive part.**
 
-```
-praetorium-content-strategy-research   … 2026-09-02 23:00 / 2026-09-03 23:00   (last)
-praetorium-faceless-content-research   … 2026-09-03 01:30 / 2026-09-04 01:30   (last)
-```
+What is mechanically true: `praetorium-content-strategy-research.timer` and
+`praetorium-faceless-content-research.timer` carry four **absolute** `OnCalendar` lines each,
+last firing 2026-09-03 23:00 and 2026-09-04 01:30, after which each has no next elapse and
+stops. Everything above that line was read from `systemctl cat` and is correct.
 
-After its last date each timer has **no next elapse** and the workflow silently stops —
-the same shape as the three spent one-shots D1 §4 removed, except these are live persona
-workflows with owners. `list-timers` shows both `active` today, so nothing will report it;
-the failure is an absence, and the reporting jobs check for failures, not for silence.
+What is false is the conclusion. Reading the units' own **comment headers** — which I did not
+do before writing the first version — settles it:
 
-**This also corrects `design/workflow-registry.md` §2**, which records them as "daily 23:00"
-and "daily 01:30". That is what they *do* this week and is not what they *are*. A footnote
-has been added there; the registry decision (keep, owner augustus) is unaffected.
+> Explicit per-night `OnCalendar` lines, not a recurring pattern, to guarantee exactly 4
+> firings and then stop on its own — same convention as the original.
 
-Phase-B fix is one line each — `OnCalendar=*-*-* 23:00` / `*-*-* 01:30` — but it is due
-**before 2026-09-03**, which makes it the only time-critical item in D2.
+These are **bounded research campaigns**, not standing workflows. Dave authorised six nights
+each on 2026-08-14 (via the marcus Buzz relay, thread `8364eb54…`) on two named topics — 2026
+content strategy, and faceless content as a digital product — to run while he was away. The
+2026-08-27 OAuth outage killed four nights of each; `Persistent=true` does not re-fire a slot
+that fired and failed, so on 2026-08-31 they were rescheduled for four make-up nights. Both
+campaigns are **healthy and mid-run** as of 2026-09-01: content-strategy last ran 08-31 23:00
+`OK`, next 09-01 23:00; faceless last ran 09-01 01:30 `OK`, next 09-02 01:30.
+
+Converting them to `OnCalendar=*-*-* 23:00` / `*-*-* 01:30` would therefore not preserve a
+capability — it would **create two permanent nightly Opus research jobs Dave never asked
+for**, on topics already researched eight times each, and it would pin
+`faceless-content-research` permanently at 01:30 against `augustus-content.timer` on the same
+minute through the single global propose lock of §6.6 — a collision already observed live
+(`2026-08-31T12:24:37 SKIP: previous run still active`).
+
+**Correct posture: leave both timers alone and let them expire.** Whether a *standing*
+content-research workflow should exist is a separate product decision for Dave, and if the
+answer is yes it needs its own topic rotation, its own slot (not 01:30) and its own registry
+row — not a one-line edit to a spent campaign.
+
+**Generalisable trap — a finite schedule is not evidence of a defect.** "No next elapse after
+date X" and "correctly-scoped one-shot campaign" are the same signal in `systemctl cat`. The
+only thing that separates them is intent, and intent was written in the unit's comment header
+the whole time. I read the `[Timer]` stanza and skipped the twelve lines above it. Before
+calling any schedule broken, read the unit's own comments and the journal for what it has
+been *producing* — a job doing exactly what it was built to do looks identical to one dying.
+Same class as the registry's next-elapse error in §6.8: both came from reading one mechanical
+field and not the object around it.
 
 ### 6.6 One global propose lock, and its collision exits 0 in silence
 

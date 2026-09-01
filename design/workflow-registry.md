@@ -74,11 +74,15 @@ values are in `design/agents/*.toml`. Read a schedule from `systemctl cat`, neve
 `list-timers`. Ownership decisions are unaffected.
 
 **CORRECTION 2026-09-01 (D2 §6.5).** `praetorium-content-strategy-research` and
-`praetorium-faceless-content-research` are **not** daily timers. Each carries four absolute
-`OnCalendar` dates, the last being 2026-09-03 23:00 and 2026-09-04 01:30 respectively; after
-those they have no next elapse and stop silently. Both also exist only in `/etc` with no
-source in `systemd/` (§6.7). Owner and keep-decision are unaffected; the schedule is a
-Phase-B fix due before 2026-09-03.
+`praetorium-faceless-content-research` are **not** daily timers, and they are **not standing
+workflows at all**. Each carries four absolute `OnCalendar` dates — last 2026-09-03 23:00 and
+2026-09-04 01:30 — because each is a **bounded research campaign** on one named topic,
+authorised by Dave for six nights on 2026-08-14 and rescheduled for four make-up nights after
+the 2026-08-27 OAuth outage. Expiry is the design, not a defect: leave them alone.
+An earlier draft of §6.5 called this a silent failure and proposed converting both to
+recurring calendars — that would have created two permanent nightly Opus jobs nobody asked
+for. Both also exist only in `/etc` with no source in `systemd/` (§6.7), which stands.
+Registry treatment: these are campaigns, not rows in the standing-workflow table.
 
 ## 3. Scheduled platform jobs (live, deterministic)
 
