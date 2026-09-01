@@ -1,0 +1,13 @@
+# One-shot: fires once at the dated slot below, then is spent. Not recurring — a daily
+# OnCalendar would rewrite the brief every night. Clear of bd-followup 23:30 and faceless 01:30.
+[Unit]
+Description=Phase-B brief 2 — one-shot at 2026-09-02 00:12:00
+
+[Timer]
+OnCalendar=2026-09-02 00:12:00
+AccuracySec=1min
+Persistent=true
+Unit=praetorium-phaseb-brief@2.service
+
+[Install]
+WantedBy=timers.target

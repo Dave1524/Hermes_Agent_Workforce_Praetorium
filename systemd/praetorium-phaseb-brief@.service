@@ -1,0 +1,18 @@
+# Phase-B brief writer (template) — one instance per brief id, %i = the id.
+# Queue: design/phaseb-brief-queue.toml. Method: profiles/phaseb_brief_cc_task.md.
+#
+# Ephemeral by design: these units exist to write five briefs on the night of 2026-09-02 and
+# are then spent. They are /etc-only scaffolding, so D8's forthcoming drift check must carry
+# them on its dated exclusion list or delete them — see the queue entry for brief 2.
+[Unit]
+Description=Write Phase-B implementation brief %i
+ConditionPathExists=/home/dave/dev/agent-workforce/.git
+OnFailure=agent-alert@%n.service
+
+[Service]
+Type=oneshot
+User=dave
+Environment=DELIVERY_JOB=%n
+ExecStart=/home/dave/agent-workforce/bin/run_phaseb_brief_cc.sh %i
+TimeoutStartSec=30min
+NoNewPrivileges=true

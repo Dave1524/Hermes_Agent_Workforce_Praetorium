@@ -1,0 +1,82 @@
+# Phase-B brief queue — what the overnight brief-writer builds, and in what order.
+#
+# Owner of the ORDER is design/open-decisions.md § "Phase-B brief order". This file is the
+# machine-readable queue that drives praetorium-phaseb-brief@<id>, and it exists for one
+# reason the prose cannot serve: a cold overnight run has none of the context the session
+# that scheduled it had. Every `must_carry` line below is a fact that was MEASURED on
+# 2026-09-01 and is either absent from open-decisions.md or contradicts what it still says.
+# Drop one and the brief regresses to what the doc already knows.
+#
+# Brief 1 (D1 + D9) shipped 2026-09-01 as b4e20a3 and is not in this queue.
+
+[[brief]]
+id       = 2
+slug     = "deploy-drift-check"
+title    = "D8's drift check, widened to every tree that can lose a unit"
+section  = "D8"
+ships    = "red"
+must_carry = [
+  "There are FOUR unit trees, not three. D8 names source systemd/, the staging copy ~/agent-workforce/systemd/, and live /etc/systemd/system/. It never mentions ~/.config/systemd/user/, which holds NINE units with zero source counterpart in this repo: buzz-agent@.service, buzz-notion-broker.service, buzz-pr-watch.{service,timer}, hermes-gateway.service, nekovri-subsidy-kickoff.{service,timer}, nekovri-subsidy-watchdog.{service,timer}. Measured 2026-09-01.",
+  "buzz-agent@.service is in that unsourced tree AND was edited on 2026-09-01 by brief 1 to add CLAUDE_CODE_EXECUTABLE. The fleet's core unit has no source of truth and would be invisible to the check exactly as D8 specs it.",
+  "systemd/ holds 47 units, all system-scope. The user tree is not a subset of it.",
+  "bin/deploy never writes /etc — verified 2026-09-01 by grep, not by reading its output. Compare systemd/ to /etc directly; comparing against the staging copy goes green the moment a unit is deployed while /etc stays stale.",
+  "The units this very queue installs (praetorium-phaseb-brief@*) are themselves ephemeral /etc-only units. They must land on the dated exclusion list or be deleted, or the check they are writing goes red naming its own scaffolding.",
+]
+preconditions = [
+  "Backport fleet-turn-check.{service,timer} into systemd/ from /etc BEFORE the check lands. Still /etc-only as of 2026-09-01 19:30.",
+  "Exclude praetorium-content-strategy-research.* and praetorium-faceless-content-research.* with a dated entry; they are still firing (last 09-03 23:00 and 09-04 01:30) and D5 deletes them after.",
+]
+
+[[brief]]
+id       = 3
+slug     = "workflow-coverage-checker"
+title    = "D6's workflow-coverage checker"
+section  = "D6"
+ships    = "red"
+must_carry = [
+  "W5 is DONE, though open-decisions.md § Carried work still lists it as outstanding and as D6's blocker. Measured 2026-09-01: all 26 [[workflows]] entries across design/agents/*.toml carry an explicit `status`, and all 26 carry `suite` or `suite_exempt`. Correct that row as part of this brief rather than working around it.",
+  "The `fleet` owner value landed with brief 1: design/fleet-suites.toml declares owner = \"fleet\" and design/eval-spec.md §7.1 requires the checker to read it. Without that the checker's first act is to flag tests/test_fleet_guards.sh as an orphan and recommend deleting the security suite.",
+  "The manifest key is `workflows` (plural), not `workflow`. A tomllib walk keyed on the singular silently returns zero entries and reports full coverage.",
+]
+preconditions = []
+
+[[brief]]
+id       = 4
+slug     = "skills-heading-extraction"
+title    = "D3 part 1 — heading-anchored extraction and its test"
+section  = "D3"
+ships    = "red"
+must_carry = [
+  "Part 1 is the live defect and is independent of part 2 (pointer skills). Do not couple them; open-decisions.md § Phase-B brief order item 4 says so explicitly.",
+  "The augustus extraction bug is the concrete failing case. Write the test against it first.",
+]
+preconditions = []
+
+[[brief]]
+id       = 5
+slug     = "hermes-kanban-retirement"
+title    = "D7's retirement of the Hermes kanban surface"
+section  = "D7"
+ships    = "green"
+must_carry = [
+  "The 5 SEO cards move off the board FIRST. That is a human action on the vpc-seo board and it is NOT something this brief or any agent performs — the brief sequences it and stops.",
+  "trajan's `schedule recurring work on hermes cron` must_not rule is currently test_exempt in design/agents/trajan.toml. Retirement makes it moot rather than standing; the brief must say which, and remove the exemption in the same change that removes the surface.",
+]
+preconditions = [
+  "Blocked on Dave moving the 5 SEO cards. Write the brief; do not assume the move has happened.",
+]
+
+[[brief]]
+id       = 6
+slug     = "carried-work-w1-w4-and-d5-cleanup"
+title    = "W1-W4, then D5's campaign-unit cleanup"
+section  = "Carried work"
+ships    = "green"
+must_carry = [
+  "W3 is the praetorium-* glob defect: it exists in SIX files, the best coverage is 9 of 19, and 8 timers are invisible to every report. It is correct by coincidence 5 days in 7, so never schedule its verification for a day its failing case cannot occur.",
+  "W5 is already done (see brief 3). Four items remain, not five.",
+  "D5's cleanup deletes praetorium-content-strategy-research.* and praetorium-faceless-content-research.* AFTER their last firings — 2026-09-03 23:00 and 2026-09-04 01:30. Both timers were still live and scheduled as of 2026-09-01 19:30. Deleting early destroys a campaign mid-flight.",
+]
+preconditions = [
+  "The D5 half cannot execute before 2026-09-04 01:30. The brief may be written now; it must state that gate.",
+]
