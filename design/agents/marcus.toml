@@ -54,6 +54,7 @@ runner   = "bin/run_daily_rhythm_cc.sh"
 route    = "ops"
 run_mode = "ops"
 contract = "design/contracts/praetorium-daily-plan.md"   # TODO Phase B
+status   = "standing"
 
 [[workflows]]
 unit     = "overnight-morning-report"
@@ -65,6 +66,7 @@ runner   = "bin/run_overnight_morning_report_cc.sh"
 route    = "ops"
 run_mode = "ops"
 contract = "design/contracts/overnight-morning-report.md"  # TODO Phase B
+status   = "standing"
 notes    = """
 Carries the recurring reporting-defect class (coverage globs, whitelist health checks).
 Registry §2 footnote 1 keeps it separate from daily-plan for now. Its acceptance checks
@@ -81,6 +83,7 @@ runner   = "bin/run_daily_rhythm_cc.sh"
 route    = "ops"
 run_mode = "ops"
 contract = "design/contracts/praetorium-eod-summary.md"   # TODO Phase B
+status   = "standing"
 
 [[workflows]]
 unit     = "weekly-pre-assembly"
@@ -91,6 +94,7 @@ profile  = "profiles/weekly_pre_assembly_cc_task.md"
 runner   = "bin/run_weekly_pre_assembly_cc.sh"
 route    = "research"
 contract = "design/contracts/weekly-pre-assembly.md"      # TODO Phase B
+status   = "standing"
 notes    = "Hermes-era claudius task; ownership moved to marcus 2026-09-01 (registry §7.2)."
 
 

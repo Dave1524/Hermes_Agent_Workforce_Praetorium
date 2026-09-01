@@ -93,6 +93,13 @@ outlived its boundary.
 
 ## Status
 
-Written: `knowledge-digest`. The remaining 25 workflows in the five manifests carry a
-`contract = "…"` pointer to a file that does not exist yet; writing them is Phase B, one
-brief per owner rather than one per workflow.
+Written: `knowledge-digest`. **Corrected 2026-09-01 (W5):** the other 25 entries do *not*
+all carry a pointer. Counted under `tomllib`, 14 of the 26 workflow entries have a
+`contract` field — marcus 4, claudius 6, augustus 4 — resolving to 13 distinct paths (the
+`augustus-content` / `content-change-dispatch` pair shares one, per rule 1). **Trajan's 12
+platform jobs carry no `contract` field at all**, which is an omission nobody decided: a
+deterministic job still promises an artifact and a cadence, and those are exactly the
+promises this box breaks silently. Writing the 12 remaining persona contracts is Phase B,
+one brief per owner. Whether the platform jobs get contracts too is open and belongs with
+the coverage checker (D6), because the checker must decide what an entry naming no
+contract means.

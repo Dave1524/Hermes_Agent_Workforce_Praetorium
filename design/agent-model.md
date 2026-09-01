@@ -122,7 +122,8 @@ profile     = "profiles/..."      # the task prompt
 runner      = "bin/run_*.sh"      # what actually execs
 route       = "research"          # key in bin/buzz_routes.env, or omitted
 contract    = "design/contracts/knowledge-digest.md"
-status      = "planned"           # omit when live
+status      = "standing"          # REQUIRED on every entry — see the table below (R15)
+expires     = "2026-09-03 23:00"  # campaign only: the last absolute OnCalendar date
 alerted     = true                # platform jobs: is OnFailure present ON THE LIVE UNIT
 in_repo     = false               # is there a source unit in systemd/ at all (§6.7)
 notes       = """..."""
@@ -132,6 +133,51 @@ rule        = "send email or any outward message"
 enforced    = false               # true = a mechanism blocks it TODAY
 why         = "charter; §6.1 leaves Gmail/M365 live on the interactive surface"
 ```
+
+### Workflow `status` — required on every entry (R15)
+
+`status` was previously "omit when live", which made absence carry meaning and left a
+coverage checker unable to tell an untested standing job from a campaign that was always
+meant to stop. It is now mandatory on all 26 entries. The vocabulary is the one this
+design already used in prose, and the last column is the whole reason the field exists:
+
+| value | means | on the box | needs an owning suite? |
+|---|---|---|---|
+| `standing` | recurring, enabled, no end date | timer enabled, next elapse in future | **yes** |
+| `campaign` | bounded run; a finite list of absolute dates | enabled, `expires` still ahead | no — assert `expires` is future |
+| `spent` | every date has fired; no next elapse | inert clutter, should be removed | no — flag for removal |
+| `dormant` | unit files installed, timer **disabled** | present in `/etc`, not enabled | no — assert still disabled |
+| `planned` | decided; no unit files on the box | nothing installed | no |
+
+Deliberately different words from the agent-level `status` (`live | read-only | retired`),
+so a grep for one never matches the other.
+
+Three rules follow:
+
+1. **`campaign` requires `expires`.** A bounded job with no stated end is how §6.5 nearly
+   became a "fix the timer" brief for a job that was expiring on purpose.
+2. **A status is a claim about the box and is checked against it, not against this file.**
+   The `dormant` entries here were written as `planned` / "timer not yet installed"; both
+   units turned out to be fully installed in `/etc` and merely disabled. Read
+   `systemctl is-enabled` before writing a status.
+3. **Two entries sharing a `contract` are one workflow.** `augustus-content` and
+   `content-change-dispatch` are two triggers on one workflow and point at one contract
+   file, so 26 entries resolve to 25 workflows. They are the only such pair today.
+
+   But do not build the dedup on `contract` alone: **only 14 of the 26 entries carry a
+   `contract` field at all.** Trajan's 12 platform jobs carry none, so the 14 resolve to 13
+   distinct paths and the other 12 resolve to nothing. `contract-schema.md` says "the
+   remaining 25 workflows carry a `contract` pointer to a file that does not exist yet" —
+   that is true of 13, not 25, and was written before the platform jobs were enumerated.
+   Whether a deterministic platform job should have a contract is a real question (its
+   promise is liveness and an artifact, not output quality) and it belongs to D6, since a
+   coverage checker has to decide what it does with an entry that names no contract.
+
+Note for whoever writes the checker: **do not read liveness from `NextElapseUSecRealtime`.**
+It is empty for every `OnUnitActiveSec` timer (monotonic, not realtime), and
+`NextElapseUSecMonotonic` reads `infinity` for the seconds a timer is mid-trigger —
+`ttm-pool-drain` showed exactly that during this audit and is entirely healthy. Use
+`is-enabled` plus `LastTriggerUSec`.
 
 `must_not` is the field that earns the file. Today "claudius must not act outward" is
 prose in a charter that S1's deny-list does not enforce (§6.1). Stated here once, a
@@ -143,8 +189,10 @@ boundary that does not exist.
 block — TOML would scope it into that workflow. Every manifest here parses under `tomllib`;
 the first Phase-B test asserts that it still does.
 
-Live totals: 26 workflows across five manifests — marcus 4, claudius 6 (4 live + 2 planned
-per registry §7.5), augustus 4, trajan 12, aurelian 0 (by design, §6.4).
+Live totals: 26 entries across five manifests — marcus 4, claudius 6, augustus 4, trajan 12,
+aurelian 0 (by design, §6.4) — resolving to **25 workflows** and, by status: 22 `standing`,
+2 `campaign`, 2 `dormant`, 0 `planned`, 0 `spent`. The two `dormant` are claudius's BD pair,
+which §7.5 recorded as "planned"; they are installed and disabled, not absent.
 
 ## 5. Governance rules
 

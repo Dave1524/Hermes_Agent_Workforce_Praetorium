@@ -69,6 +69,7 @@ model    = "n/a — dispatches to the live augustus session"
 runner   = "bin/agent_propose.sh -> bin/run_content_via_buzz.sh"
 route    = "content"
 contract = "design/contracts/augustus-content.md"          # TODO Phase B
+status   = "standing"
 notes    = """
 Shares AGENT_JOB_OVERRIDES and DELIVERY_TASK with content-change-dispatch below: they are
 two triggers on ONE workflow, not two workflows. Collides at 01:30 with
@@ -82,6 +83,7 @@ trigger  = "every 15 min"
 runner   = "bin/content_change_dispatch.sh"
 route    = "content"
 contract = "design/contracts/augustus-content.md"          # same contract, change-triggered
+status   = "standing"
 notes    = "Polls Notion Picked rows; drafts only on a new row. Re-enabled 2026-09-01 (registry §7.4)."
 
 [[workflows]]
@@ -93,6 +95,8 @@ profile  = "profiles/standing_research_content_strategy_task.md"
 runner   = "bin/run_standing_research_topic_cc.sh"
 run_mode = "ops"
 contract = "design/contracts/content-strategy-research.md" # TODO Phase B
+status   = "campaign"
+expires  = "2026-09-03 23:00"
 notes    = "agent-model.md §6.5. Also has no source in systemd/ — §6.7."
 
 [[workflows]]
@@ -104,6 +108,8 @@ profile  = "profiles/standing_research_faceless_content_task.md"
 runner   = "bin/run_standing_research_topic_cc.sh"
 run_mode = "ops"
 contract = "design/contracts/faceless-content-research.md" # TODO Phase B
+status   = "campaign"
+expires  = "2026-09-04 01:30"
 notes    = "agent-model.md §6.5 and §6.7. Logged one silent lock-skip on 2026-08-31 (§6.6)."
 
 

@@ -47,6 +47,7 @@ present = false
 [[workflows]]
 unit = "fleet-turn-check"
 surface = "platform"
+status = "standing"
 trigger = "hourly (+2min jitter)"
 what = "proves an agent can COMPLETE a turn — the gate every other fleet signal missed for 4 days"
 alerted = true
@@ -55,25 +56,37 @@ in_repo = false                  # agent-model.md §6.7
 [[workflows]]
 unit = "fleet-eval"
 surface = "platform"
+status = "standing"
 trigger = "daily 07:07 (+90s jitter)"
 what = "delivery conformance + vault grounding regression"
-alerted = false                  # genuinely missing everywhere — repo AND /etc
+alerted = false                  # DELIBERATE, not a gap — see notes
 in_repo = true
+notes = """
+The only platform job that must NOT carry OnFailure=, and the reason is in its own unit
+header: it exits 1 on a regression and `--deliver` has already posted the scorecard to
+#ops, so the alert path would give one problem two notifications on two surfaces. Verified
+rather than trusted before leaving it alone (D2): the 2026-09-01 p2 retrieval regression
+was delivered at 05:09:04Z, discord ok, buzz ok, outcome delivered. Its non-zero exit is
+the intended quiet second signal via `systemctl --failed`, and it clears on the next green
+run. Do not "fix" this.
+"""
 
 [[workflows]]
 unit = "local-tier-eval"
 surface = "platform"
+status = "standing"
 trigger = "02,08,11,14,17,20:17 (no jitter)"
 what = "Ollama capability regression on the Arc iGPU"
-alerted = false
+alerted = true                   # wired 2026-09-01 (D2)
 in_repo = true
 
 [[workflows]]
 unit = "memory-consolidation"
 surface = "platform"
+status = "standing"
 trigger = "daily 03:30 (+5min jitter)"
 what = "working-memory prune across hermes profiles"
-alerted = false
+alerted = true                   # wired 2026-09-01 (D2)
 in_repo = true
 notes = """
 Prunes four PERSONA stores that nothing writes anymore — every scheduled job resolves a
@@ -84,6 +97,7 @@ lands. Retire the timer or repoint MEM_DIR; do not do both.
 [[workflows]]
 unit = "agent-inbox-sync"
 surface = "platform"
+status = "standing"
 trigger = "every 30 min (+2min jitter)"
 what = "Notion <-> agent-inbox reconcile; auto-reject back"
 alerted = true
@@ -92,6 +106,7 @@ in_repo = true
 [[workflows]]
 unit = "inbox-backlog-alert"
 surface = "platform"
+status = "standing"
 trigger = "daily 06:20 (+3min jitter)"
 what = "approvals aging past 2 days"
 route = "approvals"
@@ -101,24 +116,27 @@ in_repo = true
 [[workflows]]
 unit = "scorecard"
 surface = "platform"
+status = "standing"
 trigger = "Mon 07:00 (+5min jitter)"
 what = "weekly agent-run rollup"
 route = "ops"
-alerted = false
+alerted = true                   # wired 2026-09-01 (D2)
 in_repo = true
 
 [[workflows]]
 unit = "qmd-refresh"
 surface = "platform"
+status = "standing"
 trigger = "every 30 min (+2min jitter), 5min after boot"
 what = "vault pull + re-index + embed; calls bin/vault_sync_guard.sh sync"
 alerted = true
 in_repo = true
-notes = "Its repeat alerts are the exact case bin/agent_alert.sh was written to throttle — 19 of the last 60 alert-log lines. Unreachable until agent-model.md §6.2 is fixed."
+notes = "Its repeat alerts are the case bin/agent_alert.sh was written to throttle — 19 of the last 60 alert-log lines. The throttle went live 2026-09-01 (D2), so a repeat now writes a log record and suppresses the outbound notify."
 
 [[workflows]]
 unit = "agent-workforce-auto-sync"
 surface = "platform"
+status = "standing"
 trigger = "every 15 min (+2min jitter)"
 what = "git add -A + commit + push of this repo"
 alerted = true
@@ -128,14 +146,16 @@ notes = "The one unit that execs from ~/dev/agent-workforce rather than the depl
 [[workflows]]
 unit = "ttm-pool-drain"
 surface = "platform"
+status = "standing"
 trigger = "every 2 min, 2min after boot"
 what = "drains the xe driver's GPU page pool by READING the shrink file"
-alerted = false
-in_repo = false                  # agent-model.md §6.7
+alerted = true                   # wired 2026-09-01 (D2)
+in_repo = true                   # adopted into systemd/ 2026-09-01 (D2)
 
 [[workflows]]
 unit = "overnight-pre-snapshot"
 surface = "platform"
+status = "standing"
 trigger = "daily 04:25 (+2min jitter)"
 what = "pre-snapshot state capture ahead of the morning report"
 alerted = true
@@ -149,11 +169,12 @@ glob from. Recorded here so it has an owner.
 [[workflows]]
 unit = "buzz-pr-watch"
 surface = "platform"
+status = "standing"          # standing by schedule, but its subject ends: see notes
 trigger = "daily 09:23 (+20min jitter) — USER scope, not system"
 what = "watches block/buzz#3816, announces on close"
 alerted = false
 in_repo = false
-notes = "systemctl --user. Every other job here is system scope; do not debug it with sudo."
+notes = "systemctl --user. Every other job here is system scope; do not debug it with sudo. It is `standing` because its cadence is recurring and open-ended, but it watches ONE pull request — when block/buzz#3816 closes it becomes a job with nothing to watch, and no status transition will announce that."
 
 
 # Capability prohibitions. enforced = true means a mechanism blocks it today;
