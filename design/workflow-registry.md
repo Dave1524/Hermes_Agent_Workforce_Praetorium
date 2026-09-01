@@ -127,14 +127,14 @@ All run headless Claude Code via `bin/agent_propose.sh` + `AGENT_JOB_OVERRIDES`.
 
 ## 7. Decisions required from Dave
 
-1. Platform jobs accountable owner: trajan, or leave Dave-owned?
-2. weekly-pre-assembly owner: marcus (proposed) or claudius (historical)?
-3. content-strategy + faceless-content research owner: claudius (proposed) or augustus?
-4. Re-enable augustus-content + content-change-dispatch now that the holiday is over?
-5. bd-stall-radar and bd-followup-drafts: wire to timers (owner claudius) or kill?
-6. Kanban posture: confirm "recurring = systemd, one-offs = kanban, vpc-seo stays"?
-7. Confirm the kill/archive list in §4.
-8. Confirm the deploy-path convention in §6.1.
+1. Platform jobs accountable owner: trajan, or leave Dave-owned? OWNED BY TRAJAN 
+2. weekly-pre-assembly owner: marcus (proposed) or claudius (historical)? MARCUS
+3. content-strategy + faceless-content research owner: claudius (proposed) or augustus? AUGUSTUS
+4. Re-enable augustus-content + content-change-dispatch now that the holiday is over? RE-ENABLE 
+5. bd-stall-radar and bd-followup-drafts: wire to timers (owner claudius) or kill? WIRE TO TIMERS
+6. Kanban posture: confirm "recurring = systemd, one-offs = kanban, vpc-seo stays"? LETS DISCUSS THIS 
+7. Confirm the kill/archive list in §4. LETS DISCUSS 
+8. Confirm the deploy-path convention in §6.1. AGREED
 
 Answer with numbers; the edits land as one commit that flips **Status: PROPOSED** to
 **Status: FROZEN (date)**, and D2 (contracts, manifests, skill/tool profiles) starts
