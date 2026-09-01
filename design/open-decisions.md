@@ -41,7 +41,83 @@ Notion, and nothing else.
   policy needs a wrapper injecting `--settings`.
 - **Recommend:** yes. The mechanism is proven — the Notion deny dropped tools mid-session.
 
-**ANSWER:**
+**ANSWER (2026-09-01): DENY ALL FOUR, AND SPLIT THE POLICY — agents strict, Dave open.**
+
+Measured across **479 transcripts, the box's entire history**, before deciding:
+
+| connector | tool schemas | invocations, ever |
+|---|---|---|
+| Figma | 33 | **0** |
+| Microsoft 365 | 41 | 8 — *all reads* |
+| Gmail | 29 | **0** |
+| Google Drive | 11 | **0** |
+
+The 8 M365 calls were `sharepoint_search` x3 + `read_resource` x4 (2026-08-03) and one
+`outlook_calendar_search` (2026-08-09). **No outward action has ever been invoked from this
+box** — no `send_message`, no `outlook_send_mail`, no `share_file`, not once. Method note: the
+first run of this measurement globbed `*/*.jsonl`, matched **zero files**, and returned a clean
+`0` for every connector. A count over a path that does not exist is not evidence of absence —
+assert the corpus is non-empty first, and keep a positive control (`mcp__qmd__*`, 85 calls) in
+the same query.
+
+**`permissions.deny` removes the tool definition from the prompt, not just the call.** Proven
+in the same corpus: Notion, denied 2026-08-03, contributes **0** definitions to today's
+transcripts, while undenied Figma contributes 198-495 each. So this pays twice — it closes the
+charter gap *and* drops **114 tool schemas** from every request on a fleet where marcus is
+actively failing `Prompt is too long` x258 as the 20-channel DAG root.
+
+**Capability loss is zero, because no capability this box depends on lives in the
+`mcp__claude_ai_*` namespace.** Notion is the worked control: denied 08-03, and the
+`buzz-notion-broker` was built for augustus on **08-10, seven days later, and works**. The two
+real paths are untouched — 7 `notion_*` tools via `buzz-team-mcp.py` -> `buzz-notion-broker.py`
+(`--user` unit, active since 08-17) for Buzz agents, and five REST helpers (`notion_rest.py`,
+`notion_daily.py`, `notion_research_page.py`, `notion_markdown.py`, `notion_content_migrate.py`)
+for scheduled jobs. The deny is what *enforces* the standing Notion-REST-only directive.
+Figma has never been called here and Figma work is Mac-side. M365/Gmail/Drive were tools without
+credentials — and could never serve a scheduled job anyway (zero MCP, 9/9 runners verified), so
+a real calendar fix has to be a scoped REST helper regardless.
+
+**General rule this establishes:** a capability this box depends on lives in a script or a
+broker it owns, never in an account-level OAuth connector. Connectors cannot reach the scheduled
+surface, cannot carry policy, and cannot be scoped per-agent.
+
+**Split policy — the obvious implementation is a silent no-op; use `CLAUDE_CODE_EXECUTABLE`.**
+Read from the installed `claude-agent-acp` 0.64.0:
+
+- `dist/acp-agent.js:4156` sets `settingSources: ["user","project","local"]` on the real session
+  query, so `~/.claude/settings.json` **does** govern agent sessions. (`dist/index.js:47`'s
+  `settingSources: []` is unrelated — it reads the managed-policy tier only, to hoist env vars.)
+- **`--settings` in `BUZZ_ACP_AGENT_ARGS` would have been accepted and ignored.** `index.js`
+  parses only `--version`/`-v` from argv; caller options arrive over ACP `_meta` as
+  `userProvidedOptions`. The flag would have looked configured and done nothing — the same
+  class as every "config edit is inert until the process reloads it" trap in `~/CLAUDE.md`.
+- The working seam is **`CLAUDE_CODE_EXECUTABLE`** (read 3x in `acp-agent.js`, alongside
+  `pathToClaudeCodeExecutable`): point it at a wrapper that execs the real `claude` with
+  `--settings <strict file>` appended. `claude --help` confirms `--settings <file-or-json>` and
+  that it is an *additional* source ("managed settings and --settings still apply"), so deny
+  lists union — a `--settings` file can only tighten, never loosen.
+- Rejected `CLAUDE_CONFIG_DIR` (the other candidate seam): it relocates credentials, projects
+  and the shared file-memory pool at `~/.claude/projects/-home-dave/memory/` that all four
+  agents and Dave's own sessions deliberately share. Too wide.
+
+Resulting shape:
+
+- `~/.claude/settings.json` — unchanged. Keeps the 10 secret-path denies and
+  `mcp__claude_ai_Notion` (the REST-only directive binds Dave too). Dave's interactive box
+  sessions keep Gmail/M365/Drive/Figma.
+- `~/.config/buzz-team/agent-settings.json` — new strict file, a **superset**: every deny above
+  plus `mcp__claude_ai_Gmail`, `mcp__claude_ai_Microsoft_365`, `mcp__claude_ai_Google_Drive`,
+  `mcp__claude_ai_Figma`. Written as a superset so it is correct whether `--settings` merges or
+  replaces.
+- `~/.config/buzz-team/claude-agent-wrapper.sh` — `exec claude --settings <strict> "$@"`.
+- `buzz-agent@.service` — `Environment="CLAUDE_CODE_EXECUTABLE=%h/.config/buzz-team/claude-agent-wrapper.sh"`.
+
+**Accepted cost, and its mitigation:** this creates a second policy file that can drift from the
+first — the exact class D8 exists to catch, now sitting in the security layer. Mitigate inside
+the D4(b)/D8 suite with one assertion: `agent-settings.deny` must be a **superset** of
+`settings.deny`. A deny added to the base file and not the strict file is then a red gate, not a
+silent hole. Verify the split the way `check-loaded.sh` verifies a `.env` — by what the running
+process loaded, not by what the file says.
 
 ---
 
