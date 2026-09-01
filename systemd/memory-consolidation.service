@@ -8,6 +8,7 @@ Description=Nightly working-memory consolidation/prune, all profiles — NUC-21
 After=network-online.target
 Wants=network-online.target
 ConditionPathIsDirectory=/home/dave/.hermes/profiles
+OnFailure=agent-alert@%n.service
 
 [Service]
 Type=oneshot

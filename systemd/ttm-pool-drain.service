@@ -1,0 +1,22 @@
+# Drains genuinely free TTM GPU pooled pages back to the kernel — the xe driver
+# hoards ~14GB invisibly after every ollama unload. The ExecStart binary lives at
+# /usr/local/bin/ttm-pool-drain and is NOT tracked in this repo; only the unit is.
+# Deploy: sudo cp to /etc/systemd/system/, then `sudo systemctl daemon-reload`.
+#
+# The paired timer fires every 2 minutes, so this unit must never carry OnFailure=
+# without bin/agent_alert.sh installed behind agent-alert@.service: a stuck drain
+# would otherwise emit ~720 notifications a day. The throttle collapses that to one
+# alert on the transition into failure plus one reminder per 24h.
+[Unit]
+Description=Drain the TTM GPU page pool back to the kernel
+Documentation=man:systemd.service(5)
+OnFailure=agent-alert@%n.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ttm-pool-drain
+# Only drains genuinely free pooled pages — never takes memory from a loaded
+# model — so this is safe to run at any time, including mid-inference.
+Environment=TTM_DRAIN_THRESHOLD_MB=1024
+Nice=10
+IOSchedulingClass=idle

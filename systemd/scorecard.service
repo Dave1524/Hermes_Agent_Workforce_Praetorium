@@ -8,6 +8,7 @@ Description=Weekly agent-run scorecard rollup — NUC-23
 After=network-online.target qmd-mcp.service
 Wants=network-online.target
 ConditionPathExists=/home/dave/agent-worktrees/inbox/.git
+OnFailure=agent-alert@%n.service
 
 [Service]
 Type=oneshot

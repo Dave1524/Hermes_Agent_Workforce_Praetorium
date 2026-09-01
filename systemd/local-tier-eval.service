@@ -2,6 +2,7 @@
 Description=Local-tier capability eval (Ollama, $0 — no OpenRouter egress)
 After=network-online.target ollama.service
 Wants=ollama.service
+OnFailure=agent-alert@%n.service
 
 [Service]
 Type=oneshot
