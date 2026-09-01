@@ -1,7 +1,9 @@
 # Workflow registry — ownership freeze (D1)
 
-**Status: PROPOSED** — drafted 2026-09-01 from live box state; every *Owner* and
-*Decision* below is a proposal until Dave confirms (open calls collected in §7).
+**Status: FROZEN 2026-09-01** — Dave decided §7.1–7.5 and §7.8 (ALL-CAPS answers
+recorded in §7, commit `ed568f8`; applied same day). Two exceptions remain OPEN and
+under discussion: §7.6 (kanban posture) and §7.7 (kill/archive list) — §4's kill
+proposals stand as proposals until §7.7 closes.
 Once confirmed, this file is the single source of truth for **which workflows exist
 and who is accountable for each** — build-order step 1 of the approved infrastructure
 review (Notion: "Proposal — Praetorium agent infrastructure review", decision section
@@ -19,8 +21,7 @@ Derived live 2026-09-01 from: `systemctl list-timers --all` (system + user scope
   even when the executor is headless Claude Code on a different model tier
   (decision doc amendment 7). The persona answers for output quality in eval reviews.
 - **Platform job** — deterministic script; no persona. Accountable to the platform
-  owner. Proposed: **trajan** (engineering persona); alternative is leaving platform
-  jobs Dave-owned. → §7.1
+  owner: **trajan** (decided 2026-09-01, §7.1).
 
 ## 1. Interactive layer (always-on, Buzz)
 
@@ -47,16 +48,17 @@ All run headless Claude Code via `bin/agent_propose.sh` + `AGENT_JOB_OVERRIDES`.
 | agent-proposal (standing research) | daily 04:31 | Opus 5 | standing_research_cc_task.md | research | claudius | keep |
 | raw-ingest | daily 03:00 | Opus 5 | raw_ingest_cc_task.md | research | claudius | keep |
 | m1-signal-scan | daily 05:30 | Sonnet | m1_signal_scan_cc_task.md | signals | claudius | keep |
-| praetorium-content-strategy-research | daily 23:00 | Opus 5 | standing_research_content_strategy_task.md | (env) | claudius ³ | keep |
-| praetorium-faceless-content-research | daily 01:30 | Opus 5 | standing_research_faceless_content_task.md | (env) | claudius ³ | keep |
+| praetorium-content-strategy-research | daily 23:00 | Opus 5 | standing_research_content_strategy_task.md | (env) | augustus ³ | keep |
+| praetorium-faceless-content-research | daily 01:30 | Opus 5 | standing_research_faceless_content_task.md | (env) | augustus ³ | keep |
 
 ¹ The recurring defect class lives here (coverage globs, whitelist health checks —
   memory `readiness-report-phantom-blockers`); merge-candidate with daily-plan later,
   not part of this freeze.
-² Historically a claudius task (hermes era); the content is chief-of-staff prep for
-  Dave's weekly review → proposed marcus. → §7.2
-³ Research *about* content, consumed by augustus — proposed claudius because the
-  output is research, not drafts. → §7.3
+² Historically a claudius task (hermes era); chief-of-staff prep for Dave's weekly
+  review. Confirmed marcus 2026-09-01 (§7.2).
+³ Proposed claudius (output is research, not drafts); Dave assigned **augustus**
+  2026-09-01 (§7.3) — accountability follows the content pipeline; executor stays
+  headless CC.
 
 "(env)" = pinned inside the deny-listed `*.env` override; D2 records it from
 `agent_propose.sh` run logs, not by reading the env.
@@ -81,13 +83,13 @@ All run headless Claude Code via `bin/agent_propose.sh` + `AGENT_JOB_OVERRIDES`.
 
 | Item | State | Proposed decision |
 |---|---|---|
-| augustus-content.timer | DISABLED (holiday pause; reminder fired 08-31) | re-enable, owner augustus → §7.4 |
-| content-change-dispatch.timer | DISABLED (NUC-35) | re-enable with augustus-content → §7.4 |
+| augustus-content.timer | RE-ENABLED 2026-09-01 08:15; Persistent=true fired an immediate catch-up run (healthy at launch) | done — owner augustus (§7.4) |
+| content-change-dispatch.timer | RE-ENABLED 2026-09-01 08:15; first poll tick clean (0 Picked, exit 0) | done (§7.4) |
 | content-inbox-finalize.{service,timer} | one-shot, completed 2026-08-15 | remove units |
 | holiday-content-reminder (user) | fired 2026-08-31, purpose served | remove |
 | marcus-morning-summary (user) | disabled; superseded by daily-plan + morning-report | remove |
-| profiles/bd_stall_radar_task.md | no scheduler; kernel built, never wired | wire or kill → §7.5 |
-| profiles/bd_followup_drafts_cc_task.md | no scheduler | schedule or kill → §7.5 |
+| profiles/bd_stall_radar_task.md | no scheduler; kernel built, never wired | DECIDED: wire to timer, owner claudius — Phase B brief (§7.5) |
+| profiles/bd_followup_drafts_cc_task.md | no scheduler | DECIDED: wire to timer, owner claudius — Phase B brief (§7.5) |
 | profiles/augustus_polish_task.md | hand-dispatched only, by design | keep as manual runbook |
 | profiles/{claudius,overnight_morning_report,weekly_pre_assembly,m1_signal_scan}_task.md | hermes-era variants, superseded by `_cc_task.md` | move to profiles/archive/ |
 | profiles/cron-overnight-pre-snapshot.prompt.md | hermes cron is empty; job gone | move to profiles/archive/ |
@@ -112,7 +114,7 @@ All run headless Claude Code via `bin/agent_propose.sh` + `AGENT_JOB_OVERRIDES`.
 1. **Deploy-path split.** `agent-inbox-sync` ExecStarts from the SOURCE repo
    (`~/dev/agent-workforce/bin`); every other unit from the deployed copy
    (`~/agent-workforce/bin`). Proposed: deployed copy everywhere except `auto-sync`
-   (which must run from source by definition).
+   (which must run from source by definition). AGREED 2026-09-01 (§7.8).
 2. **AGENT_PROFILE memory keying defect.** Model-named profiles log `memory=no-store`
    (66 runs) while memory-consolidation prunes four frozen persona stores nightly.
    The owner column here is the fix's spec: episodic memory keys on the OWNER
@@ -136,6 +138,7 @@ All run headless Claude Code via `bin/agent_propose.sh` + `AGENT_JOB_OVERRIDES`.
 7. Confirm the kill/archive list in §4. LETS DISCUSS 
 8. Confirm the deploy-path convention in §6.1. AGREED
 
-Answer with numbers; the edits land as one commit that flips **Status: PROPOSED** to
-**Status: FROZEN (date)**, and D2 (contracts, manifests, skill/tool profiles) starts
-from the frozen table.
+Decision log: §7.1–7.5 and §7.8 answered by Dave 2026-09-01 (ALL-CAPS above, commit
+`ed568f8`); applied and content timers re-enabled the same day. §7.6 and §7.7 remain
+OPEN — closing them drops the status exceptions, and D2 (contracts, manifests,
+skill/tool profiles) starts from the fully frozen table.
