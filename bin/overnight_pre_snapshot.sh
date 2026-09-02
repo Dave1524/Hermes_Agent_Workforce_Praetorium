@@ -81,10 +81,15 @@ fleet_units() {  # $1 = scope
   section "Systemd timers (fleet schedule)"
   # W3 (2026-09-02): units come from config/fleet-units.tsv. The glob this replaced
   # ('overnight-*' 'agent-*' 'augustus-*' 'bd-*' 'weekly-*' + three names) matched 11 of the
-  # 23 standing units — the BEST of the six copies, and still less than half. The shape of a
-  # glob is what hides that: a prefix nobody thought to add is not a visible omission.
-  # Measured 2026-09-02: daily_plan 10, eod_summary 9, morning_report 8, local_tier_eval 8,
-  # praetorium-status 11 (explicit 12-name list, one of them dormant).
+  # 23 standing units, and still less than half. The shape of a glob is what hides that: a
+  # prefix nobody thought to add is not a visible omission.
+  # Measured 2026-09-02, expanding each file's glob prefixes against the standing set:
+  # morning_report 8, eod_summary 9, daily_plan 10, and a three-way tie at 11 between
+  # local_tier_eval, praetorium-status and this file. THE METHOD CHANGES THE ANSWER — count
+  # literal names only and local_tier_eval scores 8, which is how an earlier revision of this
+  # comment came to name a single "best". State the method with the number or it is not one.
+  # Eight units were invisible to all six: buzz-pr-watch, content-change-dispatch, fleet-eval,
+  # fleet-turn-check, inbox-backlog-alert, knowledge-digest, m1-signal-scan, raw-ingest.
   if [ ! -r "$FLEET_UNITS" ]; then
     echo "(FATAL: cannot read $FLEET_UNITS — unit coverage unknown, not 'nothing to report')"
   else

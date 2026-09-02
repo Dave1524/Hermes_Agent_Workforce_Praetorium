@@ -62,9 +62,9 @@ You are running ON Praetorium. Read the box directly — never SSH to it.
 
 ```bash
 # The fleet unit list has ONE owner: ~/agent-workforce/config/fleet-units.tsv.
-# Do not substitute a glob. Six files each carried their own hand-written list, the best
-# covered 9 of 22 standing units, and eight units were invisible to every report on this
-# box. A prefix nobody thought to add is not a visible omission — that is why this reads a
+# Do not substitute a glob. Six files each carried their own hand-written list; measured
+# 2026-09-02 against the 23 standing units this file declares (22 system + 1 user), they
+# covered 8 to 11 each, and eight units were invisible to every one of them. A prefix nobody thought to add is not a visible omission — that is why this reads a
 # declared list instead. If a unit you expect is missing, fix design/agents/<persona>.toml
 # and re-materialise the list; do not add it here.
 U=~/agent-workforce/config/fleet-units.tsv
