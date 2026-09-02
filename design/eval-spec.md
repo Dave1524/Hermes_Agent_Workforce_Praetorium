@@ -207,7 +207,7 @@ Gate ownership by surface, from D2:
 |---|---|---|
 | S1 Buzz interactive | `verify-fleet.sh`, `check-loaded.sh` | L5 |
 | S2 Scheduled headless CC | `bin/verify.sh` | L2, L3 |
-| S3 Hermes kanban | `bin/verify.sh` | — (none; see §7) |
+| ~~S3 Hermes kanban~~ | — | — (surface **retired 2026-09-02**, D7; §7.2) |
 | S4 Buzz-dispatched scheduled | `bin/verify.sh` | L2, L5 |
 
 ### Suite ownership has two valid owners, not one
@@ -251,10 +251,20 @@ reports `tests/test_fleet_guards.sh` as an orphan, and an orphan's recommended f
 deletion — so the first act of the coverage checker would be to propose deleting the suite
 that asserts the fleet's security guards.
 
-**7.2 The Hermes kanban surface has no eval at all.** L2–L5 cover Buzz and the scheduled
-jobs. Nothing grades a kanban card's execution. This may be correct to leave — D2 §8.4
-already asks whether the S3 investment should be retired — but it should be a decision,
-not an omission.
+**7.2 The Hermes kanban surface has no eval at all — CLOSED 2026-09-02, by the surface
+going away.** L2–L5 cover Buzz and the scheduled jobs. Nothing ever graded a kanban card's
+execution, and now there are no cards: D7 retired S3, the gateway is disabled and stopped
+and the board is archived to `design/archive/hermes-kanban-board.md`.
+
+**Say plainly which kind of closure this is.** No eval was built. The gap closed because
+its subject was removed, and that is a legitimate way to close a gap only when the removal
+is deliberate and recorded — it is not evidence that anything got graded. The original
+sentence asked for "a decision, not an omission"; the decision is D7, and this is it.
+
+The measurement that made it easy: **0 of the board's 11 cards ever carried a non-empty
+`skills` field, and 5 of the 11 were never dispatched at all.** An eval built for this
+surface would have had 6 executions to grade, all completed before 2026-07-20, none of
+which recorded a `result`.
 
 **7.3 L1 grades the source tree; every other layer grades the deployed one.** `verify.sh`
 runs from the repo, L2 reads deployed config by design (R4). So a green `verify.sh` says
@@ -285,9 +295,17 @@ which is the defect this gap was opened for. Two consequences worth stating:
   survives the removal of the thing that actually holds it.
 - **A rule whose mechanism is the non-existence of a surface gets `test_exempt`, not a
   test.** Same shape as R15b's `suite_exempt`: an exemption is a declared hole that greps,
-  and silence is not. trajan's hermes-cron rule is the one instance — the cron list is
-  empty because the surface is retired, so there is nothing whose removal a test could
-  detect, and a test pinning it empty would go red the day D7 finishes the retirement.
+  and silence is not. trajan's hermes-cron rule was the one instance — the cron list was
+  empty because the surface was retired, so there was nothing whose removal a test could
+  detect, and a test pinning it empty would have gone red the day D7 finished.
+
+  **That day was 2026-09-02, and the rule left with it.** An exemption must not outlive the
+  thing it exempts: once there is no cron host, the rule is not a standing prohibition that
+  happens to be untestable, it is a statement about a surface nobody can reach. Rule and
+  `test_exempt` were removed together — `tests/test_fleet_guards.sh:209-218` requires each
+  `enforced = true` rule to name a `test` or a `test_exempt`, so removing both is clean and
+  removing either alone is red. There are now zero `test_exempt` instances in the fleet, and
+  the mechanism stays in the checker for the next one.
 
 Negative tests here **assert the absence of capability and never attempt the forbidden
 action.** You cannot test "must not send email" by sending email — the test would be the
@@ -300,8 +318,9 @@ is that it performs none. Every assertion reads the state of a mechanism instead
 
 1. **Build the coverage checker (7.1) as the first Phase-B item?** Recommended yes — it is
    small, and every later brief gets graded by it. It needs R15 first.
-2. **Leave S3/kanban unevaluated (7.2)?** Recommended yes for now, folded into the D2 §8.4
-   skills-posture decision rather than answered separately.
+2. **Leave S3/kanban unevaluated (7.2)?** ANSWERED yes, 2026-09-02 — and then made moot
+   the same day: D7 retired the surface, so §7.2 closed by removal rather than by an eval.
+   The fold into D2 §8.4 happened too; see that decision's (c).
 3. **Add a source-vs-deployed drift assertion to `verify.sh` (7.3)?** Recommended yes.
    Two of D2's eight gaps were this defect; it is the highest-yield single check available.
 4. **Negative tests for `enforced = true` must-nots (7.4)?** ANSWERED yes — done

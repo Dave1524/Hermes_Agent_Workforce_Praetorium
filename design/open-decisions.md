@@ -700,6 +700,64 @@ of false signal** — the journal line was a stale artefact of the override, not
 episodic-memory path. Those are entangled with the `AGENT_PROFILE` naming defect (six scheduled
 jobs logging `memory=no-store`) which is registry §6.6 work, and must not be bundled in here.
 
+**EXECUTED 2026-09-02 by Phase-B brief 5, against the sequence above. Five deviations, each
+with its reason.**
+
+| Step | Done | Deviation |
+|---|---|---|
+| 1 — move the 5 SEO cards | yes, by Dave | Destination is **Notion**, not the SEO task list this doc named. Full card bodies also written to `~/OUTBOX/` as a backstop. |
+| 2 — export the board | yes | **Split in two.** See below — the destination this step named would have published client content. |
+| 3 — disable the gateway | yes | Needed `reset-failed` as well. See below. |
+| 4 — remove the dead code | yes, one commit | Also removed `tests/test_agent_propose_smoke.sh` scenario 11, which this list missed and which goes red without it. |
+| 5 — drop S3 from the docs | yes | The `surface` enum keeps `kanban`; a `retired` key was added instead. Deleting the enum value would have made five existing manifest blocks unparseable against their own schema. |
+
+**Step 2's destination was unsafe as written, and the fix is a split, not an override.** D7 said
+`design/archive/`. This repo is **public** (verified 2026-09-02, unauthenticated
+`GET /repos/Dave1524/Hermes_Agent_Workforce_Praetorium` → 200, `"private": false`) and
+`agent-workforce-auto-sync.timer` pushes any dirty tree within 15 minutes. The 11 cards carry
+36,800 bytes of titles and bodies. So: content-free index in `design/archive/hermes-kanban-board.md`,
+full record in `~/OUTBOX/hermes-kanban-full-export-2026-09-02.{json,md}`, outside every repo.
+Nothing in D7 was wrong about durability — it did not ask the boundary question, and the two are
+separable.
+
+**Step 3 leaves the unit `failed`, not `inactive`, and that is the gateway's own bug.** It exits 1
+on SIGTERM (and prints its startup banner on the way out), so `systemctl --user disable --now`
+lands `Result=exit-code`. Cleared with `systemctl --user reset-failed hermes-gateway.service`;
+end state is `inactive` + `disabled`, `default.target.wants` symlink gone, unit file on disk,
+journal silent, no gateway process. Without the reset a retired unit sits in
+`systemctl --user --failed` forever — the exact readiness-report defect of asking a whitelist
+whether things are fine instead of asking the system what is wrong.
+
+**What was measured before deleting anything.** Criterion 4's proof came from journals, not from
+the deny-listed override files: every unit with a real `Environment=AGENT_JOB_OVERRIDES=` logs
+`run attempt N/M: <command>`, and **none of the 14 names `kanban_run_and_wait.sh`.** This doc and
+the brief both said *eleven* units; the measured figure is **14** (15 files match the grep;
+`inbox-backlog-alert.service` matches in a comment only and has no runtime selection at all).
+
+**The red-then-green step worked as designed.** Deleting `agent_propose.sh:267-270` alone turned
+`tests/test_agent_propose_smoke.sh` red on `FAIL: FAIL after exactly 1 attempt (kanban de-stack)`,
+which is the proof scenario 11 was really covering that block rather than passing incidentally.
+That is the only assertion in the whole gate that could speak about this brief.
+
+**Two claims in this answer were wrong, and both are corrected in place rather than deleted:**
+
+- *"The `skills:` field goes with the board"* and *"fold the measured 25 into the S1/S2 discussion
+  where it is actually true"* — **it is not true there.** `agent-model.md` §3 records that S1 and
+  S2 have no skill index at all and that `~/.claude/skills/` does not exist. The 46/44/25/23 are
+  `~/.hermes/shared-skills/` offerings resolved per hermes *profile*, and the profiles outlive the
+  board: `bin/local_tier_eval.sh:105` runs `hermes -p marcus` six times a day. The counts stayed in
+  the `[surfaces.kanban]` blocks, re-labelled as profile facts.
+- *"D3 (c) is answered NO by retirement"* — answered, but narrower than stated. It answers the
+  **offering** question. It is not licence to delete `bin/apply_skills_allowlist.sh`, which writes
+  a config a live platform job still reads. The measurement that actually settles (c) is one D7
+  did not have: **0 of the board's 11 cards ever carried a non-empty `skills` field**, so the
+  allowlist was never exercised once from the only surface that offered it.
+
+**Criterion 14's control passed.** The exact call `bin/local_tier_eval.sh:105` makes —
+`hermes -t terminal,file -z <prompt> -p marcus -m local` — returns exit 0 with correct output
+**after** the gateway stopped, and `hermes kanban list --json` still returns all 11 cards. The
+board never needed the gateway; only dispatch did.
+
 ---
 
 ### D8 — Add a source-vs-deployed drift assertion to `bin/verify.sh`?
