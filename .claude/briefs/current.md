@@ -1,6 +1,34 @@
 # Brief: Close the four carried work items, then retire the two content-research campaigns
 **Date:** 2026-09-02   **Verify:** `bash bin/verify.sh` from the repo root (syntax + shellcheck -S error over `bin/`, then every `tests/*.sh`)
 
+> ## STATE — 2026-09-02 16:20 CEST: W-half DONE, D5 half BLOCKED
+>
+> **This brief is deliberately not archived.** Its second half cannot run yet, and archiving it
+> would file an unexecuted blocker as finished.
+>
+> **Done and pushed** (`1713902..a27d577` on `feat/phaseb-implementation`): criteria 1-11 and
+> 14-15. W1 landed in code with a runtime handoff Dave must apply; W2, W3 and W4 landed complete;
+> `tests/test_fleet_ownership.sh` is new and registered in `design/fleet-suites.toml`; every new
+> assertion was demonstrated red against a broken input, and the W3 verification was run on a
+> Wednesday, when `m1-signal-scan`'s failing case can occur.
+>
+> **Criterion 16 is not met and cannot be on this branch.** `bash bin/verify.sh` exits 1 with the
+> two pre-existing W6 blockers plus 14 drift findings — the drift is the documented
+> feature-branch condition (`CLAUDE.md` § Verification: source `bin/` differs from the deployed
+> tree until `bin/deploy` runs, and deploying an unmerged branch to the live runtime is not this
+> brief's to do). Every delta from brief 5's recorded baseline is accounted for: 54 -> 55 suites
+> is the new test, 13 -> 14 drift findings is `bin/local_tier_eval.sh`, and the two FAILs are
+> unchanged. Nothing was weakened to get there.
+>
+> **Remaining — criteria 12 and 13 only.** Not executable before **2026-09-04 01:30**, and no
+> agent may move that date: `Persistent=true` does not re-fire a slot that fired and failed, so a
+> night deleted early is lost permanently. Before deleting anything, confirm
+> `~/agent-workforce/var/notion_research_pages.json` shows `run_count = 7` for both campaigns.
+> The four `/etc/systemd/system/praetorium-{content-strategy,faceless-content}-research.{service,timer}`
+> files are **Dave's action** (root-owned); this branch's part is the two `[[workflows]]` entries
+> going `status = "campaign"` -> `"spent"` and the registry note D5 item 3 requires.
+
+
 This is Phase-B brief 6, the last entry in `design/phaseb-brief-queue.toml`. It is two halves
 with a hard gate between them:
 
