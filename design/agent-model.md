@@ -137,7 +137,8 @@ Until a generator exists these are *aspirations*, and §7 says so plainly.
 ## 4. Manifest schema
 
 ```toml
-name        = "claudius"          # persona slug; matches the Buzz identity and (S3) the hermes profile dir
+name        = "claudius"          # persona slug; matches the Buzz identity and the hermes
+                                  # profile dir — the latter outlived S3's retirement
 role        = "..."               # one line, the accountable role from D1 §1
 pubkey      = "..."               # Nostr identity, public by construction (bin/buzz_agents.env)
 harness     = "claude-agent-acp"  # or "codex-acp"

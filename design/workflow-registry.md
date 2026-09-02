@@ -16,6 +16,9 @@ one file each under `design/contracts/` once the schema exists.
 Derived live 2026-09-01 from: `systemctl list-timers --all` (system + user scope),
 `systemctl cat <unit>` for every workflow unit, `profiles/*.md` headers,
 `hermes cron list` (empty), `hermes kanban boards list`, and `buzz-agent@*` unit state.
+**Two of those inputs no longer exist**: S3 was retired 2026-09-02 (§5), so a
+re-derivation drops the two `hermes` commands and gains nothing — they contributed only
+the surface §5 now records as retired.
 
 ## Ownership model (proposed)
 
