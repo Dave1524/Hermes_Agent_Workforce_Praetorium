@@ -156,6 +156,32 @@ assert 'the send carried --mention with augustus pubkey' \
 assert 'the send addressed the content channel' \
   "grep 'messages send' '$STUB_ARGV' | grep -q -- \"--channel $CHANNEL\""
 
+echo '--- the FOURTH outcome: augustus replied that he could not read the skill ---'
+# Three outcomes were specified: board moved (0), DECLINE: (0), asked and silent (1). A
+# section name that no longer resolves in the vault SKILL.md is none of them. Before this
+# branch existed the reply matched no pattern, the poll ran the full wait to its deadline,
+# and the run logged "no board movement and no reply" — which asserts the opposite of what
+# happened and throws away the one line naming the heading to fix.
+reset_case
+event "$AUGUSTUS" "SKILL-READ-FAILED: Step 3 — Draft the post"
+# run_dispatch redirects into $WORK/out; it returns nothing on its own stdout, so reading a
+# command substitution here gives an empty haystack — which passes every negated assertion
+# and fails every positive one, exactly as observed on this suite's first run.
+run_dispatch; rc=$?
+# `[ $rc -eq 1 ]` alone passed while the branch was DEAD — the runner reached its deadline
+# and exited 1 for the silent-reply reason instead. An exit code shared by two paths is
+# not evidence of which one ran; the log line is.
+assert 'a SKILL-READ-FAILED reply exits 1 — it is a failure, not a decline' \
+  "[ $rc -eq 1 ] && ! grep -q 'no board movement and no reply' '$WORK/out'"
+assert 'and is NOT reported as a decline' "! grep -qi 'declined' '$WORK/out'"
+assert 'and names the section that did not resolve' \
+  "grep -qF -- 'Step 3 — Draft the post' '$WORK/out'"
+assert 'and says plainly that it is a failure' "grep -qi 'FAILURE, not a decline' '$WORK/out'"
+# The profile is what tells augustus to send it. A sentinel the dispatcher understands and
+# the profile never emits is dead code; the reverse is the 20-minute stall.
+assert 'the profile instructs him to reply with the sentinel this branch reads' \
+  "grep -qF 'SKILL-READ-FAILED:' '$REPO_ROOT/profiles/augustus_content_task.md'"
+
 echo '--- the waiter reads the channel, never the thread ---'
 assert 'the waiter called `messages get`' "grep -q 'messages get' '$STUB_ARGV'"
 assert 'nothing called `messages thread` at runtime' "! grep -q 'messages thread' '$STUB_ARGV'"
