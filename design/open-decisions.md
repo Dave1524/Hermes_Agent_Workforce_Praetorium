@@ -761,10 +761,37 @@ That is the only assertion in the whole gate that could speak about this brief.
   did not have: **0 of the board's 11 cards ever carried a non-empty `skills` field**, so the
   allowlist was never exercised once from the only surface that offered it.
 
-**Criterion 14's control passed.** The exact call `bin/local_tier_eval.sh:105` makes —
-`hermes -t terminal,file -z <prompt> -p marcus -m local` — returns exit 0 with correct output
-**after** the gateway stopped, and `hermes kanban list --json` still returns all 11 cards. The
-board never needed the gateway; only dispatch did.
+**Criterion 14's control passed, and it was observed rather than assumed.** The exact call
+`bin/local_tier_eval.sh:105` makes — `hermes -t terminal,file -z <prompt> -p marcus -m local` —
+returns exit 0 with correct output **after** the gateway stopped, and `hermes kanban list --json`
+still returns all 11 cards. The board never needed the gateway; only dispatch did.
+
+The brief required the *scheduled* firing be read, not the probe. Observed 2026-09-02 14:17:01 →
+14:25:16, `Result=success`, and **outcome-identical to the 11:17 run taken while the gateway was
+still up**: 9/13 both times, the same four failures (t5, t7, t9, t10), the same *detail strings*
+on all four (`1/3 numbers kept, 328 chars`; `1/3 fields correct`; `1 missing, 1 extra`;
+`1 PII token(s) leaked`), and t1×3 deterministic both times. Those four FAILs are the local
+model's standing capability profile — they predate the retirement and are not regressions.
+
+**A one-sample regression scare, recorded because it nearly closed this criterion wrong.** A
+*manual* run at 13:17 (gateway already down) returned 8/13 with **t4 flipped to FAIL**, which
+reads exactly like the retirement breaking something. It was not:
+
+- t4's history was **253 consecutive passes and that one failure**, `transitions=1` — whereas
+  every genuinely flaky task here flaps constantly (t8: 90 transitions; t1_run1/2/3 and t11: 41;
+  t5: 22; t3: 16). A 1-transition task failing once is far likelier to be a sample than a cause.
+- The artifact was written **correctly** in the failing run (`READYOK`, 7 bytes). Only the model's
+  *verify* step failed, emitting "The file could not be verified as existing" and never `DONE`.
+  So the tool path — the part a retired gateway could plausibly have broken — demonstrably worked.
+- Three targeted t4 reproductions (shell/umask 002, systemd-like umask 022 + cwd `/`, shell
+  repeat) all passed, gateway still down.
+- The 14:17 scheduled run then passed t4 (`file correct`, 57s).
+
+**The manual run was never a clean control and saying so is the point.** Its artifact came out
+`-rw-rw-r--` (umask 002, my shell) against the scheduled run's `-rw-r--r--` (umask 022, systemd)
+— proof the two environments differed, which is exactly why the brief demands the *scheduled*
+firing and not a convenient hand-run. Had that 8/13 been reported as criterion 14's result, this
+retirement would carry a fabricated regression in its record forever.
 
 ---
 
