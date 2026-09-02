@@ -35,7 +35,7 @@ SUITE_DECL="$REPO_ROOT/design/fleet-suites.toml"
 # fleet as a broken one.
 # shellcheck source=tests/box_precondition.sh
 . "$(dirname "$0")/box_precondition.sh"
-box_only 'the live fleet state this suite asserts' \
+box_only_with 'the live fleet state this suite asserts' \
   "$BASE_SETTINGS" "$STRICT_SETTINGS" "$UNIT" || exit 77
 
 fail=0

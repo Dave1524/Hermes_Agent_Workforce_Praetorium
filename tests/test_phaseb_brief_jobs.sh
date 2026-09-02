@@ -67,7 +67,7 @@ assert 'the task profile exists' "[ -r '$TASK' ]"
 echo "-- units"
 assert 'the template service exists' "[ -f '$SERVICE' ]"
 assert 'its ExecStart names the deployed runner' "grep -q 'ExecStart=/home/dave/agent-workforce/bin/run_phaseb_brief_cc.sh %i' '$SERVICE'"
-if box_only 'the deployed runtime tree' "$DEPLOYED_RUNNER"; then
+if box_only_with 'the deployed runtime tree' "$DEPLOYED_RUNNER"; then
   assert 'the ExecStart target is deployed and executable' "[ -x '$DEPLOYED_RUNNER' ]"
 fi
 assert 'the service alerts on failure' "grep -q 'OnFailure=agent-alert@%n.service' '$SERVICE'"
@@ -79,7 +79,7 @@ for id in 2 3 4 5 6; do
 done
 
 echo "-- source matches /etc (D8's class, asserted early for these units)"
-if box_only 'the installed /etc unit tree' "$ETC/$(basename "$SERVICE")"; then
+if box_only_with 'the installed /etc unit tree' "$ETC/$(basename "$SERVICE")"; then
   for u in "$SERVICE" "$REPO_ROOT"/systemd/praetorium-phaseb-brief@[0-9].timer; do
     b="$(basename "$u")"
     assert "$b is installed in /etc" "[ -f '$ETC/$b' ]"

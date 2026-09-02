@@ -356,7 +356,7 @@ assert 'both tiers report into the same run' \
   "[ \$(cut -d'|' -f2 '$TMP/logs/history.psv' | sort -u | grep -c 'tier[12]') -eq 2 ]"
 assert 'each tier produced rows rather than an empty runner' \
   "! grep -q '|runner|FAIL|' '$TMP'/logs/*/results.psv"
-if box_only 'the live qmd index the anchors resolve against' "$QMD_INDEX"; then
+if box_only_with 'the live qmd index the anchors resolve against' "$QMD_INDEX"; then
   assert 'each anchor is reported by name, so a fallback resolution is visible' \
     "[ \$(grep -c '|anchor/' '$TMP'/logs/*/results.psv) -eq 2 ]"
   assert 'and every one of them resolves against the live index' \
