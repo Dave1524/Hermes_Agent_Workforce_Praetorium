@@ -176,13 +176,32 @@ why neither was deleted (`open-decisions.md:16-18`).
    (66 runs) while memory-consolidation prunes four frozen persona stores nightly.
    The owner column here is the fix's spec: episodic memory keys on the OWNER
    persona, not the runtime profile name.
+   **RESOLVED IN CODE 2026-09-02 (W1, `cc9f802`); NOT YET ON THE BOX.** `AGENT_OWNER`
+   keys `MEM_DIR`, `AGENT_PROFILE` keeps keying `cost.log`'s `profile=`. The "66 runs"
+   here is a snapshot that has since grown to **77** across six task slugs — a count in
+   prose ages, so re-derive it (`grep -c 'memory=no-store' ~/agent-workforce/logs/cost.log`)
+   rather than citing this number. The live jobs keep the old keying until the
+   `AGENT_OWNER` lines in `docs/runbook.md` § W1 handoff are applied to the deny-listed
+   `~/.config/agent-workforce/*.env`.
 3. **Persona framing is inconsistent in-prompt.** daily-plan/eod say "You are Marcus";
    the `_cc_task` variants are persona-less. After the freeze, every persona
    workflow's profile states its owner in one standard header line (a D2 manifest
    field).
+   **RESOLVED 2026-09-02 (W2, `a2d132e`).** All 12 profile-carrying entries open with
+   `Owner: <persona>`, derived from the declaring manifest and asserted by
+   `tests/test_fleet_ownership.sh`. The direction is load-bearing: prompt prose gets
+   `weekly_pre_assembly_cc_task.md` wrong.
 4. **Report input coverage is hand-maintained in N places.** The `praetorium-*` glob
    defect existed in six files. A unit list *generated from this registry* should
    replace every hand-maintained coverage list in the reporting jobs.
+   **RESOLVED 2026-09-02 (W3, `d86278a`).** `config/fleet-units.tsv` — a committed
+   literal in a tree `bin/deploy` ships, asserted against `design/agents/*.toml` in both
+   directions. Not *generated at run time*, deliberately: `design/` is not among
+   `bin/deploy`'s eight paths, so a runtime read works in the repo and empties silently
+   in `~/agent-workforce/`. Measured coverage of the six it replaced: 8–11 of 23 standing
+   units each. One side effect worth expecting — `bin/local_tier_eval.sh`'s t1 fixture
+   moves from 7 timers to 21, so eval scores either side of the deploy that ships this
+   are **not comparable**; the denominator is visible in t1's own detail string.
 5. **Job-override examples live in two homes, and the authoritative-looking one is the
    stale one.** Found 2026-09-01 while closing §7.7. `config/job-overrides/*.env.example`
    — the directory whose README correctly describes the mechanism — held only
@@ -195,6 +214,14 @@ why neither was deleted (`open-decisions.md:16-18`).
    done.** Method note: the live wiring was established without reading any deny-listed
    `~/.config/agent-workforce/*.env` — each unit's journal logs
    `run attempt N/M: <command>`, which is the effective `AGENT_RUNTIME_CMD`.
+   **RESOLVED 2026-09-02 (W4, `36f7242`).** One home: `profiles/*.env.example`.
+   `config/job-overrides/` keeps `archive/` plus a pointer README. The surviving defect
+   was an *instruction* rather than a file — `docs/runbook.md` still ran
+   `install -m 600 config/job-overrides/augustus-content.env.example` against a path that
+   had existed only under `archive/` since the 2026-09-01 move, so the half-fix recorded
+   above left a broken provisioning step reading as authoritative for a day. The new
+   assertion targets `install` commands, not prose. **Open:** `augustus-content` and
+   `bd-stall-radar` still have no example in either home.
 6. **Inconsistency 2 is wider than "66 m1 runs".** Measured 2026-09-01 from journals:
    `m1-signal-scan`, `weekly-pre-assembly`, `overnight-morning-report` and
    `praetorium-daily-plan` all run `profile=claude-sonnet`; `knowledge-digest` and
@@ -203,6 +230,14 @@ why neither was deleted (`open-decisions.md:16-18`).
    `MEMORY: no per-profile store at /home/dave/.her…` outright. So **no scheduled
    persona workflow currently accumulates episodic memory** — the fix is a fleet-wide
    rename to owner personas, not a one-job patch.
+   **PARTLY SUPERSEDED 2026-09-02 (W1).** The conclusion held for the wrong span. Six of
+   the ten jobs listed here are fixed by `AGENT_OWNER`; the other four
+   (`praetorium-daily-plan`, `praetorium-eod-summary`, `overnight-morning-report`, and
+   both campaigns) run `AGENT_RUN_MODE=ops`, which skips the memory path **by design**
+   (NUC-36) and logs `na`, not `no-store`. So "no scheduled persona workflow accumulates
+   episodic memory" stays true after the fix, for a reason that is deliberate rather than
+   defective — and a reader who treats the whole sentence as the bug will go looking for a
+   fault in the four jobs that do not have one.
 
 ## 7. Decisions required from Dave
 
