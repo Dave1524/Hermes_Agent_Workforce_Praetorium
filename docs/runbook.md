@@ -165,9 +165,11 @@ install -m 600 profiles/<job>.env.example ~/.config/agent-workforce/<job>.env
 `config/job-overrides/`, and the `install` example named
 `config/job-overrides/augustus-content.env.example` — a path that has existed only under
 `archive/` since 2026-09-01. Following it provisioned a retired runtime. That directory now
-holds history and a pointer; see `config/job-overrides/README.md`, including the two live
-jobs (`augustus-content`, `bd-stall-radar`) that still have no example and must be derived
-from their unit journal rather than from `archive/`.
+holds history and a pointer; see `config/job-overrides/README.md`, including the two jobs
+(`augustus-content`, standing and enabled; `bd-stall-radar`, dormant and disabled) with no
+example in the live home. `archive/` holds one each and neither is a template — augustus's
+still names `kanban_run_and_wait.sh`, retired with the Hermes kanban — so derive the wiring
+from the unit's own journal rather than from `archive/`.
 
 Supporting daemons (not override-driven):
 

@@ -221,7 +221,9 @@ why neither was deleted (`open-decisions.md:16-18`).
    had existed only under `archive/` since the 2026-09-01 move, so the half-fix recorded
    above left a broken provisioning step reading as authoritative for a day. The new
    assertion targets `install` commands, not prose. **Open:** `augustus-content` and
-   `bd-stall-radar` still have no example in either home.
+   `bd-stall-radar` have no example in the LIVE home. `config/job-overrides/archive/` holds one
+   each, but the augustus copy points at the retired `kanban_run_and_wait.sh`, so it is a record
+   of the old wiring rather than a template — see the W4 row in `design/open-decisions.md`.
 6. **Inconsistency 2 is wider than "66 m1 runs".** Measured 2026-09-01 from journals:
    `m1-signal-scan`, `weekly-pre-assembly`, `overnight-morning-report` and
    `praetorium-daily-plan` all run `profile=claude-sonnet`; `knowledge-digest` and

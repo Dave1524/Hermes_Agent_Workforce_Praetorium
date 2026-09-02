@@ -28,10 +28,12 @@ The nine live examples are `bd_followup_drafts`, `daily_plan`, `eod_summary`,
 `knowledge_digest`, `m1_signal_scan`, `overnight_morning_report`, `raw_ingest`,
 `standing_research`, `weekly_pre_assembly`.
 
-## Two live jobs have no example, and that gap is real
+## Two jobs have no example in the live home, and that gap is real
 
 `augustus-content` and `bd-stall-radar` have no `profiles/*.env.example`. Their only
-templates were the archived ones here, which name retired runtimes. Do not install from
+templates were the archived ones here, which name retired runtimes. **They are not both
+live** — `augustus-content` is `standing` and its timer is enabled; `bd-stall-radar` is
+`dormant` with its timer disabled, so its gap costs nothing until it is revived. Do not install from
 `archive/` to fill the gap — derive the wiring from the unit's own journal instead, which
 reveals the effective `AGENT_RUNTIME_CMD` without reading the deny-listed live `.env`:
 
