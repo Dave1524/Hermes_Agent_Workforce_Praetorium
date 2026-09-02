@@ -734,6 +734,14 @@ the deny-listed override files: every unit with a real `Environment=AGENT_JOB_OV
 the brief both said *eleven* units; the measured figure is **14** (15 files match the grep;
 `inbox-backlog-alert.service` matches in a comment only and has no runtime selection at all).
 
+Two cheaper proofs cover what the journal check cannot, and both were run before deleting:
+`grep -rl kanban_run_and_wait /etc/systemd/system/ ~/.config/systemd/user/` returns **nothing**,
+so no unit reaches the script by `ExecStart` either — the journal answers "what did the runtime
+resolve to", this answers "could anything invoke it at all". And nothing in either unit tree
+names `hermes-gateway` as a dependency, so stopping it breaks no ordering. A negative proven two
+independent ways is worth the second grep; the journal alone would have missed a direct
+`ExecStart`, which is exactly how the last unit-tree gap got in (D8).
+
 **The red-then-green step worked as designed.** Deleting `agent_propose.sh:267-270` alone turned
 `tests/test_agent_propose_smoke.sh` red on `FAIL: FAIL after exactly 1 attempt (kanban de-stack)`,
 which is the proof scenario 11 was really covering that block rather than passing incidentally.
