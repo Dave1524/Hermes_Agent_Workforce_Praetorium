@@ -7,7 +7,7 @@
 | `~/dev/agent-workforce/` (git, `main`) | **Source of truth.** Edit here; open PRs for non-trivial work. |
 | `~/agent-workforce/` | **Deployed runtime** (no `.git`). What systemd `ExecStart=` runs. Update by copying from the git tree after merge — not by editing in place. |
 | `/etc/systemd/system/*.service|.timer` | Installed units. Canonical unit *sources* live in this repo under `systemd/`; install with `sudo cp` + `daemon-reload`. |
-| `~/.config/agent-workforce/` | Secrets + per-job override env files (mode 600). **Never git.** Templates: `config/job-overrides/*.env.example`. |
+| `~/.config/agent-workforce/` | Secrets + per-job override env files (mode 600). **Never git.** Templates: `profiles/*.env.example` — **not** `config/job-overrides/`, which holds history only (W4, 2026-09-02). |
 
 If a reviewer only looks at git and concludes a path is "dead code", check `AGENT_RUNTIME_CMD` / `AGENT_JOB_OVERRIDES` under `~/.config/agent-workforce/` — production wiring often lives there.
 
@@ -155,13 +155,19 @@ Override files set only non-secret keys:
 - `AGENT_RUNTIME_CMD` (the actual runner invocation — `bin/run_*_cc.sh` or `bin/run_content_via_buzz.sh` today; paths point at the **deployed** tree `~/agent-workforce/`. It read "hermes / kanban invocation" until 2026-09-02; no live job has invoked either since 2026-08-13, proven from the `run attempt N/M:` journal line of all 14 units that set this key)
 - `AGENT_RUN_MODE` (`proposal` default, or `ops` for non-inbox LLM jobs — NUC-36)
 
-Templates (checked in): `config/job-overrides/*.env.example`. Install:
+Templates (checked in): `profiles/*.env.example`. Install:
 
 ```bash
-install -m 600 config/job-overrides/augustus-content.env.example \
-  ~/.config/agent-workforce/augustus-content.env
-# same for bd_stall_radar, weekly_pre_assembly, overnight_morning_report
+install -m 600 profiles/<job>.env.example ~/.config/agent-workforce/<job>.env
 ```
+
+**One home since 2026-09-02 (W4).** These five lines used to point at
+`config/job-overrides/`, and the `install` example named
+`config/job-overrides/augustus-content.env.example` — a path that has existed only under
+`archive/` since 2026-09-01. Following it provisioned a retired runtime. That directory now
+holds history and a pointer; see `config/job-overrides/README.md`, including the two live
+jobs (`augustus-content`, `bd-stall-radar`) that still have no example and must be derived
+from their unit journal rather than from `archive/`.
 
 Supporting daemons (not override-driven):
 
@@ -309,7 +315,7 @@ Because git rewrites `FETCH_HEAD` even when a fetch fails, the guard keeps its o
 | Service units (`--user`) | Every `.service`/`.timer` in this repo's `systemd/user/` that is installed under `~/.config/systemd/user/` — the nine Buzz-fleet and gateway units. Their drop-in `*.conf` files are **not** captured: three carry `BUZZ_AUTH_TAG` and this tarball is the no-secrets one | `backup_config.sh` tarball |
 | Service units (system) | Every deployed `.service`/`.timer` whose name matches a unit in this repo's `systemd/` (incl. `agent-workforce-auto-sync`, `overnight-*`, `agent-alert@`, `agent-inbox-sync` alongside the qmd/agent-proposal/augustus/bd-stall/brave/memory/scorecard/discord families) — enumerated automatically by `backup_config.sh` | `backup_config.sh` tarball |
 | Scripts & docs | `~/agent-workforce/{bin,docs,profiles}` | `backup_config.sh` tarball |
-| Job-override templates | this repo `config/job-overrides/` | git |
+| Job-override templates | this repo `profiles/*.env.example` | git |
 | Job-override runtime envs | `~/.config/agent-workforce/{augustus-content,bd_stall_radar,weekly_pre_assembly}.env` | **not secrets**, but recreate from templates if lost |
 | qmd config | `~/.config/qmd/index.yml` | `backup_config.sh` tarball |
 | Secrets template | `~/.config/agent-workforce/.env.example` + README | `backup_config.sh` tarball |
@@ -347,7 +353,7 @@ Run `~/agent-workforce/bin/backup_config.sh`, then pull the tarball to the Mac:
 6. Recreate secrets per `~/.config/agent-workforce/README.md` (new deploy key → register on repo,
    new OpenRouter key → re-apply spend cap, new Discord token). Then re-derive the Brave MCP env:
    `umask 077; grep -E '^BRAVE_API_KEY=' ~/.config/agent-workforce/secrets.env > ~/.config/agent-workforce/brave-mcp.env`.
-   Install job-override envs from `config/job-overrides/*.env.example` (mode 600) — see § Job wiring.
+   Install job-override envs from `profiles/*.env.example` (mode 600) — see § Job wiring.
 7. `~/agent-workforce/bin/finish_boxsafe_clone.sh` (clone, index, exclusion gates, enable services).
    - Enable the added units (NUC-21/22/23): `sudo systemctl enable --now brave-mcp.service
      memory-consolidation.timer scorecard.timer`. Leave `agent-proposal.timer` per its spend gate.

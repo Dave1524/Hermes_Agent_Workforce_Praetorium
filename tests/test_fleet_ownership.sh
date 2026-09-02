@@ -117,4 +117,26 @@ assert 'bin/deploy ships the config/ tree' \
 assert 'bin/deploy does NOT ship design/ (so nothing may read it at run time)' \
   "! grep -qE '^[^#]*DEPLOY_PATHS=.*\bdesign\b' '$REPO_ROOT/bin/deploy'"
 
+echo '--- W4: the job-override examples have exactly one home ---'
+# The invariant is a filesystem fact, not a prose fact. config/job-overrides/ holds a README
+# and archive/ only; the live templates are profiles/*.env.example. Asserted this way round
+# because the failure mode was an INSTRUCTION that stayed authoritative-looking after its
+# target moved: docs/runbook.md carried `install -m 600 config/job-overrides/augustus-content.env.example`
+# for a path that had existed only under archive/ since 2026-09-01.
+assert 'config/job-overrides/ holds no top-level *.env.example' \
+  "[ \"\$(find '$REPO_ROOT/config/job-overrides' -maxdepth 1 -name '*.env.example' | wc -l)\" -eq 0 ]"
+assert 'the live examples are in profiles/ (at least the nine live jobs)' \
+  "[ \"\$(find '$REPO_ROOT/profiles' -maxdepth 1 -name '*.env.example' | wc -l)\" -ge 9 ]"
+# Commands, not prose. A sentence explaining where templates USED to live is a correct
+# record; an `install` line pointing there is a broken instruction. Only the latter fails.
+assert 'no install command sources a template from config/job-overrides/' \
+  "! grep -rhE '^[[:space:]]*install[[:space:]].*config/job-overrides/' '$REPO_ROOT/docs' '$REPO_ROOT/config' | grep -q ."
+# Every install command in the docs must name a path that exists, or a <job> placeholder.
+while IFS= read -r line; do
+  src=$(printf '%s' "$line" | awk '{for(i=1;i<=NF;i++) if ($i ~ /\.env\.example$/) {print $i; exit}}')
+  [ -n "$src" ] || continue
+  case "$src" in *"<job>"*) continue ;; esac
+  assert "install command names an existing template: $src" "[ -f '$REPO_ROOT/'\"$src\" ]"
+done < <(grep -rhE '^[[:space:]]*install[[:space:]]' "$REPO_ROOT/docs" "$REPO_ROOT/config" 2>/dev/null)
+
 exit $fail
