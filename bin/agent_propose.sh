@@ -285,9 +285,13 @@ PROVIDER_ERROR_RE='^(HTTP [45][0-9]{2}:|API call failed after [0-9]+ retries:|Pr
 run_ended_on_provider_error() {
   tail -n "${AGENT_ERROR_TAIL_LINES:-5}" "$1" 2>/dev/null | grep -qE "$PROVIDER_ERROR_RE"
 }
-# NUC-29: stamp the real date once, exported so the kanban wrapper (and any future
-# direct hermes -z path) share ONE value — no midnight-rollover mismatch between the two
-# scripts. RUN_DATE feeds the proposal filename + day-count math; TODAY is the human form.
+# NUC-29: stamp the real date once, exported so this script and whatever it execs share ONE
+# value — no midnight-rollover mismatch between them. Written for the kanban wrapper, which
+# is gone (D7, 2026-09-02); it still matters because the AGENT_VERIFY_CMD and four task
+# profiles read it: proposal_or_decline.sh:25 builds the filename it asserts from RUN_DATE,
+# and daily_plan / eod_summary / both standing_research profiles take it with a `date`
+# fallback. So an unexported RUN_DATE does not fail — it silently disagrees across midnight.
+# TODAY is the human form and is read only here.
 export RUN_DATE="${RUN_DATE:-$(date +%Y-%m-%d)}"
 export TODAY="${TODAY:-$(date '+%A, %-d %B %Y')}"
 log "date: RUN_DATE=$RUN_DATE"
