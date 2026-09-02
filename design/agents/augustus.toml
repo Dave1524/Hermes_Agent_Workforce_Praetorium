@@ -70,7 +70,7 @@ runner   = "bin/agent_propose.sh -> bin/run_content_via_buzz.sh"
 route    = "content"
 contract = "design/contracts/augustus-content.md"          # TODO Phase B
 status   = "standing"
-suite    = ["tests/test_run_content_via_buzz.sh"]
+suite    = ["tests/test_run_content_via_buzz.sh", "tests/test_content_skill_extract.sh"]
 notes    = """
 Shares AGENT_JOB_OVERRIDES and DELIVERY_TASK with content-change-dispatch below: they are
 two triggers on ONE workflow, not two workflows. Collides at 01:30 with
