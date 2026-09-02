@@ -253,21 +253,18 @@ fi
 # test; real hermes never accepted it. Do not reintroduce it.
 run_cmd="$AGENT_RUNTIME_CMD"
 retry_base="${AGENT_RETRY_BASE_SECONDS:-30}"
+# No runtime produces exit 3 since the kanban path was retired (2026-09-02, D7). The
+# bucket stays because ~/agent-workforce/logs/cost.log holds one historical outcome=DEDUP
+# row (2026-08-13T01:33:57+02:00) that bin/scorecard.sh:51-56 must keep classifying.
 DEDUP_EXIT=3
-# NUC-44: kanban_run_and_wait.sh exits 4 when a card was parked at `blocked` by runs that
-# crashed rather than by an agent-authored decline. It is a hard failure, but it needs its
-# OWN cost.log vocab: recorded as NOPROPOSAL it read as "the agent had nothing to say" for
-# 20 consecutive augustus-content nights, and as a generic FAIL it would be indistinguish-
-# able from a runner/transport fault. Not retried here — hermes already burned its
-# --max-retries producing those crashed runs.
+# NUC-44: the live producer is bin/run_content_via_buzz.sh (:40,48 — `crash()`), which
+# exits 4 when the dispatch itself failed rather than the agent declining. Re-attributed
+# 2026-09-02: this said kanban_run_and_wait.sh, which no longer exists, and a boundary
+# credited to a deleted script is the §2/§6.1 defect D3 found. The vocab is the point —
+# recorded as NOPROPOSAL a crash read as "the agent had nothing to say" for 20 consecutive
+# augustus-content nights, and a generic FAIL is indistinguishable from a transport fault.
 CRASH_EXIT=4
-# NUC-38: the kanban path already carries hermes' own --max-retries, so stacking the
-# outer 3x retry just re-blocks the identical card — the kanban path gets ONE outer
-# attempt. Other (direct hermes -z) paths keep 3x. AGENT_MAX_ATTEMPTS overrides either.
-case "$run_cmd" in
-  *kanban_run_and_wait.sh*) max_attempts="${AGENT_MAX_ATTEMPTS:-1}" ;;
-  *)                        max_attempts="${AGENT_MAX_ATTEMPTS:-3}" ;;
-esac
+max_attempts="${AGENT_MAX_ATTEMPTS:-3}"
 ok=false; is_dedup=false; is_crash=false; rc=0
 # ── Silent-failure detection: a zero exit is NOT evidence the work happened ──
 # hermes exits 0 when the agent's FINAL RESPONSE is itself a provider error. The
