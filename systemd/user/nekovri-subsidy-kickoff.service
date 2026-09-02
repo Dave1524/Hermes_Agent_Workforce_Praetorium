@@ -1,0 +1,9 @@
+[Unit]
+Description=Post Marcus's NeKoVri subsidy kickoff brief so Claudius picks it up
+
+[Service]
+Type=oneshot
+EnvironmentFile=%h/.config/buzz-agents/marcus.env
+ExecStart=%h/.local/bin/nekovri-subsidy-kickoff
+StandardOutput=append:%h/logs/nekovri-subsidy-kickoff.log
+StandardError=append:%h/logs/nekovri-subsidy-kickoff.log

@@ -1,0 +1,18 @@
+[Unit]
+Description=Notion credential and policy broker for the Buzz fleet
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+# Deliberately a separate process from buzz-team-mcp.py. The bridge is spawned by
+# the agent, so augustus's copy runs inside codex-acp's bwrap namespace where
+# ~/.config/agent-workforce is a tmpfs. This unit stays on the host namespace and
+# is the only thing that reads the token; the agents reach it over a 0600 unix
+# socket in $XDG_RUNTIME_DIR and never see the credential.
+ExecStart=/usr/bin/python3 %h/.config/buzz-team/buzz-notion-broker.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

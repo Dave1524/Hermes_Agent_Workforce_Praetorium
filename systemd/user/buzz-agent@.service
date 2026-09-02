@@ -1,0 +1,56 @@
+[Unit]
+Description=Buzz agent %i (buzz-acp)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/buzz-agents/%i.env
+
+# Harness selection lives in Environment=, not on ExecStart: clap gives a CLI flag
+# precedence over its env twin, so a per-agent drop-in can only override these while
+# the flag is absent here. Drop-ins are applied after this file, so a later
+# assignment to the same name wins.
+Environment="BUZZ_ACP_AGENT_COMMAND=/usr/local/bin/claude-agent-acp"
+Environment="BUZZ_ACP_AGENT_ARGS=acp"
+Environment="BUZZ_ACP_PERMISSION_MODE=bypass-permissions"
+
+# Replayed scrollback, prepended to every prompt as [Context]. 100 is buzz-acp's
+# ceiling, not its default (12) — 14 replayed DM messages already cost ~5.2k tokens
+# per request, and the block includes the agent's own prior long-form answers.
+# Here for the same reason as the harness vars: a flag on ExecStart cannot be
+# overridden per agent.
+Environment="BUZZ_ACP_CONTEXT_MESSAGE_LIMIT=100"
+
+# Turns a session serves before proactive rotation. Here rather than on ExecStart for
+# the same reason as the vars above: aurelian needs 1 — a rotation after every turn is
+# what makes each verification request start from an empty session — and a flag on
+# ExecStart would make that unreachable from a drop-in. 50 is the value the other four
+# ran under when this moved, so their behaviour is unchanged.
+Environment="BUZZ_ACP_MAX_TURNS_PER_SESSION=50"
+
+# The connector deny for agent sessions (design/open-decisions.md D1). The Claude Agent
+# SDK spawns this path as `claude`, so the wrapper is the only place a --settings flag
+# reaches an agent session: buzz-acp parses nothing from BUZZ_ACP_AGENT_ARGS but
+# --version, so the flag there is accepted and inert. Dave's ~/.claude/settings.json is
+# not touched — the split IS this variable.
+#
+# Inert for augustus, whose drop-in swaps the harness to codex-acp; his connector absence
+# is a property of that harness, not of this line. Here rather than on ExecStart for the
+# same reason as the vars above.
+Environment="CLAUDE_CODE_EXECUTABLE=%h/.config/buzz-team/claude-agent-wrapper.sh"
+
+ExecStart=%h/.config/buzz-team/buzz-acp-launch.sh \
+  --respond-to owner-only \
+  --allowed-respond-to owner-only \
+  --subscribe config \
+  --config %h/.config/buzz-team/%i.toml \
+  --heartbeat-prompt-file %h/.config/buzz-team/heartbeat.prompt \
+  --idle-timeout 900 \
+  --mcp-command %h/.config/buzz-team/buzz-team-mcp.py \
+  --system-prompt-file %h/.config/buzz-agents/%i.prompt
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

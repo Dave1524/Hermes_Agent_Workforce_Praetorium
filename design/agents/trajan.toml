@@ -53,7 +53,9 @@ suite_exempt = "script lives at ~/.config/buzz-team/fleet-turn-check.sh, not in 
 trigger = "hourly (+2min jitter)"
 what = "proves an agent can COMPLETE a turn — the gate every other fleet signal missed for 4 days"
 alerted = true
-in_repo = false                  # agent-model.md §6.7
+in_repo = true                   # backported from /etc 2026-09-02 (brief 2). The UNIT is
+                                 # here now; the SCRIPT still is not — that is suite_exempt
+                                 # above, and in_repo has never described the script.
 
 [[workflows]]
 unit = "fleet-eval"
@@ -217,6 +219,61 @@ It was missing from this registry entirely until brief 3, which is the omission 
 coverage checker's unit-side assertion worth writing: five enabled timers ran against no
 declared owner. `tests/test_phaseb_brief_jobs.sh` already existed and was unclaimed; this is
 its owner.
+"""
+
+[[workflows]]
+unit = "agent-drift-check"
+surface = "platform"
+status = "standing"
+suite    = ["tests/test_deploy_drift.sh"]
+trigger = "daily 05:40 (+3min jitter)"
+runner = "bin/check_deploy_drift.sh"
+what = "source-vs-deployed drift across four unit trees, both membership directions"
+alerted = true
+in_repo = true
+notes = """
+D8. The commit-time gate cannot see a hand-edited /etc, and bin/auto-sync pushes every 15
+minutes without calling verify.sh — so the timer is not optional, it is the only caller that
+covers that class.
+
+Named `agent-*` so the reporting globs match it (bin/local_tier_eval.sh:51). A name outside
+'overnight-*' 'agent-*' 'augustus-*' 'bd-*' 'weekly-*' is invisible to every report here.
+"""
+
+[[workflows]]
+unit = "nekovri-subsidy-kickoff"
+surface = "platform"
+status = "spent"
+suite    = []
+trigger = "one-shot 2026-08-03 21:12, --user scope"
+what = "fired the NeKoVri subsidy kickoff once"
+alerted = false
+in_repo = true
+notes = """
+--user scope; source now at systemd/user/. Its one absolute OnCalendar fired 2026-08-03 and
+the timer is disabled and inactive, so it is `spent` rather than `dormant`: the schedule is
+exhausted, not merely switched off. Flag-for-removal, and it needs no owning suite.
+
+It is in this registry because brief 2 gave the --user tree a source home, and the coverage
+checker demands an owner for every timer family it can see. Before that it was a unit nine
+of whose siblings had no source of truth at all.
+"""
+
+[[workflows]]
+unit = "nekovri-subsidy-watchdog"
+surface = "platform"
+status = "spent"
+suite    = []
+trigger = "one-shot 2026-08-03, --user scope"
+what = "watched the NeKoVri subsidy kickoff"
+alerted = false
+in_repo = true
+notes = """
+Same shape as its kickoff sibling. Runs on TRAJAN's identity —
+EnvironmentFile=%h/.config/buzz-agents/trajan.env, and its drop-in
+nekovri-subsidy-watchdog.service.d/auth.conf is a SYMLINK to
+buzz-agent@trajan.service.d/auth.conf. Two credential paths, one file; both are declared
+never-commit in design/unit-ownership.toml.
 """
 
 # Capability prohibitions. enforced = true means a mechanism blocks it today;

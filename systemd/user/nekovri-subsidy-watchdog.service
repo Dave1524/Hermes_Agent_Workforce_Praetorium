@@ -1,0 +1,9 @@
+[Unit]
+Description=Escalate to Marcus if Claudius never answered the NeKoVri kickoff
+
+[Service]
+Type=oneshot
+EnvironmentFile=%h/.config/buzz-agents/trajan.env
+ExecStart=%h/.local/bin/nekovri-subsidy-watchdog
+StandardOutput=append:%h/logs/nekovri-subsidy-watchdog.log
+StandardError=append:%h/logs/nekovri-subsidy-watchdog.log

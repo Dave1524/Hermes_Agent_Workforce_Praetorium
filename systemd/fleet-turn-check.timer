@@ -1,0 +1,12 @@
+# Hourly. The 90-minute journal lookback in the script deliberately overlaps this
+# interval, so a fault occurring between runs is still inside the next window.
+[Unit]
+Description=Schedule the fleet turn check hourly
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=120
+Persistent=true
+
+[Install]
+WantedBy=timers.target

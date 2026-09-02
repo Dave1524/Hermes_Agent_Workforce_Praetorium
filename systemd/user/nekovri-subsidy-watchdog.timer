@@ -1,0 +1,11 @@
+[Unit]
+Description=Check at 23:14 on 2026-08-03 that Claudius answered the kickoff
+
+[Timer]
+OnCalendar=2026-08-03 23:14:00
+AccuracySec=1s
+RandomizedDelaySec=0
+Persistent=false
+
+[Install]
+WantedBy=timers.target

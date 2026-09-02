@@ -1,0 +1,18 @@
+# Source-vs-deployed drift, daily. The class a commit-time gate cannot see: /etc is
+# hand-edited (or a unit is installed and never committed) between commits, and
+# bin/auto-sync commits and pushes every 15 minutes without ever calling verify.sh
+# (bin/auto-sync:32-34), so "the gate runs when a human commits" is not true on this box.
+#
+# ExecStart points at the RUNTIME copy like every other job here. The consequence is
+# deliberate: an undeployed checker fails its own unit, and the alert is the signal.
+[Unit]
+Description=Source-vs-deployed drift check (four unit trees) — D8
+OnFailure=agent-alert@%n.service
+
+[Service]
+Type=oneshot
+User=dave
+Environment=DELIVERY_JOB=%n
+ExecStart=/home/dave/agent-workforce/bin/check_deploy_drift.sh
+TimeoutStartSec=5min
+NoNewPrivileges=true

@@ -1,0 +1,17 @@
+# Daily, after the overnight jobs and before the morning report reads the box.
+# Box timezone is Europe/Amsterdam (NUC-24); OnCalendar is local wall clock.
+#
+# Named agent-* on purpose: the reporting jobs glob 'overnight-*' 'agent-*' 'augustus-*'
+# 'bd-*' 'weekly-*' (bin/local_tier_eval.sh:51, bin/overnight_pre_snapshot.sh:81-82), and a
+# name outside those globs is invisible to every report on this box. The globs themselves
+# are W3's defect and are brief 6's to fix, not this unit's to work around.
+[Unit]
+Description=Schedule the source-vs-deployed drift check — D8
+
+[Timer]
+OnCalendar=*-*-* 05:40
+RandomizedDelaySec=3min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
