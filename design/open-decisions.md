@@ -1012,11 +1012,11 @@ briefs deliberately did not do, and W6 is the one that keeps the gate red.
 
 ### Pending actions reserved for Dave — the branch cannot clear these itself
 
-Not carried work; three concrete steps this box will not take from an unmerged branch. Every
-one is currently reported by `bin/check_deploy_drift.sh`, so none of them can be forgotten
-silently — but none clears until someone runs it.
+Not carried work; concrete steps this box will not take from an unmerged branch. Most are
+reported by `bin/check_deploy_drift.sh`, so they cannot be forgotten silently — but none
+clears until someone runs it, and item 4 is the one the check cannot see.
 
-1. **`bin/deploy`, after merge.** Seven `bin/` files are source-only or content-drifted,
+1. **`bin/deploy`, after merge.** Eight `bin/` files are source-only or content-drifted,
    including `check_deploy_drift.sh` itself and `skill_sections.sh`. **Until this runs,
    augustus reads the skill by the old pinned line ranges** (brief 4) — the runtime profile
    still carries them.
@@ -1025,6 +1025,43 @@ silently — but none clears until someone runs it.
    that inversion is deliberate — see the unit header.
 3. **Verify by RUNNING the job, not by `list-timers`.** `active` + `enabled` +
    a correct `next_elapse` say nothing about whether `ExecStart` exists.
+4. **`~/agent-workforce/bin/kanban_run_and_wait.sh` is still on disk** (7,599 B, 2026-08-12).
+   Brief 5 deleted it from source; a plain `bin/deploy` is additive and will not remove it.
+   **`--prune` is the documented remedy and brief 5 refused to run it — read the next block
+   before deciding.** Harmless in the meantime: no unit invokes it (proven from 14 journals),
+   and `check_deploy_drift.sh` now reports it as `runtime-only: has no source`, so it is
+   visible rather than forgotten.
+
+**`bin/deploy --prune` would delete twelve more files than the one you mean, and this is
+the stop-and-report the brief asked for.** Dry run, 2026-09-02:
+
+| Tree | Prune would delete | What it is |
+|---|---|---|
+| `bin/` | `kanban_run_and_wait.sh` | the one you want |
+| `profiles/` | 5 files | archived to `profiles/archive/` on 2026-09-01; runtime copies never removed |
+| `config/job-overrides/` | 4 `.env.example` | archived to `config/job-overrides/archive/` the same day |
+| `systemd/` | `content-inbox-finalize.{service,timer}` | archived to `systemd/archive/` the same day |
+| `systemd/` | `discord-bot.service` | in **no** source tree at all — staged in `~/deploy-staging/`, never installed (`~/CLAUDE.md`) |
+
+Eleven of the twelve are the 2026-09-01 archival landing in source and never reaching the
+runtime, because `bin/deploy` is additive: **`git mv` in this repo renames a file in source
+and leaves the old copy running.** That is a live instance of the D8 defect class in a tree
+D8 does not cover, and it is why the runtime still holds `profiles/claudius_task.md` — the
+hermes-era profile registry §4 recorded as archived. Pruning it is correct and is **not**
+brief 5's call: the same command that removes one dead script removes eleven other things on
+its own judgement, which is exactly the guard the brief wrote for itself.
+
+**W7 is now measured rather than suspected.** `bin/deploy` ships eight paths;
+`check_deploy_drift.sh` compares two (`bin/`, the unit trees). `profiles/`, `docs/`,
+`config/`, `CLAUDE.md`, `AGENTS.md` and `README.md` drift unwatched — which is how five
+archived profiles sat live in the runtime for a day with a green drift check.
+
+**One correction to brief 5's own text, found here.** It said `hermes-gateway.service` is one
+of nine `~/.config/systemd/user/` units with no source counterpart, and that adopting one you
+are retiring would be the wrong direction. Brief 2 already adopted it (`9e9c491`,
+`systemd/user/hermes-gateway.service`), for drift coverage rather than for ownership, and the
+source copy is byte-identical to the installed one. Nothing to undo — but the retired unit is
+now in this repo, which is the right place for it to be while it waits out its review cycle.
 
 ---
 
