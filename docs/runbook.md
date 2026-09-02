@@ -128,6 +128,32 @@ Supporting daemons (not override-driven):
 | `inbox-backlog-alert.timer` | Daily 06:20 approvals-aging Discord alert (>2d oldest pending) — NUC-30 |
 | `local-tier-eval.timer` | Tier-0 capability eval 6×/day (02,08,11,14,17,20:17) via `bin/local_tier_eval.sh`. No `EnvironmentFile` by design — it must never reach a paid provider |
 | `fleet-eval.timer` | Daily 07:07 drift check via `bin/fleet_eval.sh`: tier 1 grades receipts against `bin/buzz_routes.env`, tier 2 re-asks the vault questions the fleet got wrong — three assert which document wins, and `p4_kind_span` asserts the answer is still inside the anchor's own retrieved chunk, because prose added to a vault file re-cuts every chunk below it. Gates on **regression against the baselines in `bin/fleet_eval_probes.json`**, not on absolute state — two probes fail today by design, and re-recording a baseline is a deliberate fixture edit. Exits 1 and posts to `ops` only when something moved backwards; history spine at `~/logs/fleet-eval/history.psv` |
+| `agent-drift-check.timer` | Daily 05:40 source-vs-deployed drift via `bin/check_deploy_drift.sh` (D8). Compares FOUR trees — `bin/` ↔ runtime, `systemd/` ↔ `/etc`, `systemd/user/` ↔ `~/.config/systemd/user/` — in **both membership directions**, not just the bytes of units present in both. Ownership fails closed: an installed unit with no source is red unless declared in `design/unit-ownership.toml` (permanent) or by its manifest's `status = "campaign"` + `expires` (dated, and an expired entry still doing work is itself red). Reports only — no `/etc` writes, no `systemctl`, no deploy. The staging copy `~/agent-workforce/systemd/` is deliberately not a comparison side: systemd never reads it, so source-vs-staging goes green the moment a unit is deployed while `/etc` stays stale |
+
+## Deploy ordering — this inverts the usual loop
+
+`bin/verify.sh` hard-fails on deploy drift, so **verify is red until `bin/deploy` has run**.
+The order is:
+
+```
+edit source  ->  bin/deploy  ->  bash bin/verify.sh  ->  commit
+```
+
+not the usual edit → verify → commit → deploy. Adding or editing anything under `bin/` makes
+the gate red immediately, and the message names the file, so a red here is explainable rather
+than mysterious — but only if you know to expect it. `bin/deploy` warns when the source tree is
+dirty (it does not block), and refuses to deploy onto a git tree, so the source can never be its
+own destination.
+
+Two consequences that are correct and will still surprise:
+
+- **`bin/deploy` itself exits non-zero while any `/etc` unit is missing**, because its
+  post-condition runs the same full four-tree check and installing a unit needs `sudo` —
+  which no script here does. A successful rsync plus a non-zero exit means "the runtime
+  converged, the box has not". Install the unit and re-run.
+- **A campaign exclusion expiring turns the gate red on a calendar, with no commit.** The two
+  content-research campaigns expire 2026-09-03 23:00 and 2026-09-04 01:30; after that their
+  `/etc` units are red until they are deleted from `/etc` (brief 6 owns that).
 
 Deploy a unit after changing `systemd/`:
 
@@ -135,6 +161,16 @@ Deploy a unit after changing `systemd/`:
 sudo cp systemd/<unit> /etc/systemd/system/
 sudo systemctl daemon-reload
 # timers: sudo systemctl enable --now <name>.timer
+```
+
+**`systemd/user/` is NOT installed this way.** Those nine units are `--user` scope; copying one
+into `/etc/systemd/system` installs it system-wide under the wrong manager and it will not find
+`%h`. They go to `~/.config/systemd/user/` with no `sudo` at all:
+
+```bash
+cp systemd/user/<unit> ~/.config/systemd/user/
+systemctl --user daemon-reload
+# timers: systemctl --user enable --now <name>.timer
 ```
 
 Deploy scripts/profiles after merge:
@@ -221,7 +257,8 @@ Because git rewrites `FETCH_HEAD` even when a fetch fails, the guard keeps its o
 
 | Asset | Where | Backup path |
 |---|---|---|
-| Service units | Every deployed `.service`/`.timer` whose name matches a unit in this repo's `systemd/` (incl. `agent-workforce-auto-sync`, `overnight-*`, `agent-alert@`, `agent-inbox-sync` alongside the qmd/agent-proposal/augustus/bd-stall/brave/memory/scorecard/discord families) — enumerated automatically by `backup_config.sh` | `backup_config.sh` tarball |
+| Service units (`--user`) | Every `.service`/`.timer` in this repo's `systemd/user/` that is installed under `~/.config/systemd/user/` — the nine Buzz-fleet and gateway units. Their drop-in `*.conf` files are **not** captured: three carry `BUZZ_AUTH_TAG` and this tarball is the no-secrets one | `backup_config.sh` tarball |
+| Service units (system) | Every deployed `.service`/`.timer` whose name matches a unit in this repo's `systemd/` (incl. `agent-workforce-auto-sync`, `overnight-*`, `agent-alert@`, `agent-inbox-sync` alongside the qmd/agent-proposal/augustus/bd-stall/brave/memory/scorecard/discord families) — enumerated automatically by `backup_config.sh` | `backup_config.sh` tarball |
 | Scripts & docs | `~/agent-workforce/{bin,docs,profiles}` | `backup_config.sh` tarball |
 | Job-override templates | this repo `config/job-overrides/` | git |
 | Job-override runtime envs | `~/.config/agent-workforce/{augustus-content,bd_stall_radar,weekly_pre_assembly}.env` | **not secrets**, but recreate from templates if lost |
@@ -247,8 +284,17 @@ Run `~/agent-workforce/bin/backup_config.sh`, then pull the tarball to the Mac:
      bootstrapped. Install local headless Chromium once (credential-free): `npx --yes
      agent-browser@latest install` (as `dave`) then `sudo npx --yes playwright install-deps chromium`.
 5. Restore the config tarball over `$HOME` and `/etc/systemd/system/` (or rsync from this repo of scripts).
-   Install units from `systemd/` including job timers (`augustus-content`, `bd-stall-radar`,
-   `weekly-pre-assembly`) and `qmd-mcp.service.d/gpu.conf`.
+   Install **system** units from `systemd/` including job timers (`augustus-content`,
+   `bd-stall-radar`, `weekly-pre-assembly`) and `qmd-mcp.service.d/gpu.conf`.
+   Then install the **`--user`** units from `systemd/user/` into `~/.config/systemd/user/`
+   (`systemctl --user daemon-reload`, then `enable --now` the timers). This step is the whole
+   reason D8 exists: it restores `/etc` from the tarball and `systemd/`, so any unit with no
+   source in this repo is simply gone afterwards and nothing reports its absence. Until
+   2026-09-02 that was the entire Buzz fleet.
+   Re-create the drop-in `*.conf` files under `~/.config/systemd/user/*.d/` by hand — they are
+   not in the tarball and not in git. The three `auth.conf` files are credentials and are
+   re-issued, not restored (`~/.config/buzz-agents/PROVISIONING.md`).
+   Finish with `bash bin/check_deploy_drift.sh` — a rebuild is not done until it is clean.
 6. Recreate secrets per `~/.config/agent-workforce/README.md` (new deploy key → register on repo,
    new OpenRouter key → re-apply spend cap, new Discord token). Then re-derive the Brave MCP env:
    `umask 077; grep -E '^BRAVE_API_KEY=' ~/.config/agent-workforce/secrets.env > ~/.config/agent-workforce/brave-mcp.env`.

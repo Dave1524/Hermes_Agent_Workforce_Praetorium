@@ -2,8 +2,10 @@
 # Queue: design/phaseb-brief-queue.toml. Method: profiles/phaseb_brief_cc_task.md.
 #
 # Ephemeral by design: these units exist to write five briefs on the night of 2026-09-02 and
-# are then spent. They are /etc-only scaffolding, so D8's forthcoming drift check must carry
-# them on its dated exclusion list or delete them — see the queue entry for brief 2.
+# are then spent. They are NOT /etc-only — d72f562 committed all six here, so source and /etc
+# are byte-identical and the drift check passes them. The trap moved rather than closed: on
+# the day they are removed from /etc they become source-only, which is red in the other
+# direction. Delete from BOTH trees or neither. Brief 6 owns that cleanup.
 [Unit]
 Description=Write Phase-B implementation brief %i
 ConditionPathExists=/home/dave/dev/agent-workforce/.git

@@ -406,18 +406,32 @@ manifest therefore records the lock as a per-workflow field so the answer stops 
 unreadable, and Phase B should give every workflow a slug-derived lock by default rather
 than an opt-out global one.
 
-### 6.7 Four live units exist only in `/etc` and are in no repo
+### 6.7 Live units exist only in `/etc` and are in no repo — CORRECTED, and CLOSED 2026-09-02
 
-Diffing every non-OS unit in `/etc/systemd/system` against `systemd/` and `systemd/archive/`:
-**`fleet-turn-check`, `ttm-pool-drain`, `praetorium-content-strategy-research` and
-`praetorium-faceless-content-research`** (service + timer each) have no source anywhere in
-this repo. Two are trajan's platform jobs, two are augustus's persona workflows. They are
-unreviewed, unversioned, and would not survive a rebuild — and §6.5 is a defect in one of
-them that a repo diff would have caught in review.
+**The count was four families and it was three — `ttm-pool-drain` does not belong on this
+list, and this same file contradicts it at line 167** (`in_repo = true` since D2 adopted its
+unit into `systemd/`). The confusion is the one D6 already names: `in_repo` describes the
+UNIT FILE, while ttm-pool-drain's *script* is `/usr/local/bin/ttm-pool-drain` and is not
+here. One word, two referents. Measured 2026-09-02, the real list was three families / six
+files: `fleet-turn-check`, `praetorium-content-strategy-research` and
+`praetorium-faceless-content-research` (service + timer each).
 
-Together with §6.2 and §6.3, `systemd/` now has three distinct relationships to reality:
-ahead of `/etc` (agent-alert), behind it (three OnFailure lines), and absent from it (these
-four). Treat the repo as a partial mirror, never as an inventory.
+**And it was never only `/etc`.** D8 named three unit trees; there are four. Nine `--user`
+units in `~/.config/systemd/user/` had no source anywhere in this repo — including
+`buzz-agent@.service`, the unit the whole Buzz fleet runs on, which brief 1 edited on
+2026-09-01. `tests/test_fleet_guards.sh` asserts a line in it, so a rebuild from source
+would have turned that guard red with nothing here to restore from.
+
+Closed by brief 2 (D8): `fleet-turn-check.{service,timer}` backported byte-for-byte, the
+nine `--user` units sourced at `systemd/user/`, and the two campaigns given dated exclusions
+that expire on their own last firings. `bin/check_deploy_drift.sh` now asserts all of it in
+both membership directions, so this section describes a closed defect rather than a standing
+one — and the next instance goes red instead of being rediscovered by audit.
+
+Together with §6.2 and §6.3, `systemd/` had three distinct relationships to reality: ahead of
+`/etc` (agent-alert), behind it (three OnFailure lines), and absent from it. Treat the repo as
+a partial mirror, never as an inventory — and note that "partial" was itself understated,
+because a whole tree was missing from the comparison.
 
 ### 6.8 Registry §2 recorded next-elapse times, so three schedules are wrong by day
 

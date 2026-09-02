@@ -721,13 +721,45 @@ that catches it.
   deploy, not a quiet one.
 - A daily timer calls it — the `/etc`-hand-edit case above.
 
-**Trap the script must not fall into: there are THREE unit trees, and only one comparison is
+**Trap the script must not fall into: only one unit comparison against `/etc` is
 meaningful.** Source `systemd/`, the deployed staging copy `~/agent-workforce/systemd/`, and
 live `/etc/systemd/system/`. **`bin/deploy` writes the staging copy and never writes `/etc`** —
 its own output says so ("systemd services exec from the runtime tree"), and the deployed-copy
 memory note records the same. So a check comparing source against the *staging* copy goes green
 the moment a unit is deployed, while `/etc` stays stale — a false green in precisely the
 direction that matters. Compare `systemd/` to `/etc` directly.
+
+**BUILT 2026-09-02 (brief 2). Three corrections to the shape above, all measured:**
+
+- **There are FOUR unit trees, not three.** `~/.config/systemd/user/` is never mentioned above
+  and held **nine** units with no source counterpart in this repo — `buzz-agent@.service`,
+  `buzz-notion-broker.service`, `buzz-pr-watch.{service,timer}`, `hermes-gateway.service`,
+  `nekovri-subsidy-{kickoff,watchdog}.{service,timer}`. That is the whole Buzz fleet's unit
+  layer, including the file brief 1 edited on 2026-09-01 to add `CLAUDE_CODE_EXECUTABLE`. They
+  now have a source home at `systemd/user/`, and the check compares it as a third pair.
+
+- **Content drift was the cheap half; EXISTENCE drift is the expensive one, and the shape
+  above only specified content.** "Exits 1 on any differing or missing file" reads as covering
+  it, but a set-difference has two directions and only one of them was being taken: `/etc`-only
+  (a rebuild from source loses the unit) and source-only (the box is not running what the repo
+  says). Both are red now. The chain that makes the first direction expensive: no source =>
+  `bin/backup_config.sh:17` cannot enumerate it => it is in no tarball => the rebuild checklist
+  restores `/etc` from the tarball and `systemd/` => the unit is gone, and nothing anywhere
+  reports its absence.
+
+- **Ownership needs a declaration, and it must fail closed.** A bare set-difference returns OS
+  units. Restricting to regular `*.service`/`*.timer` files drops the 8 OS symlinks and the 6
+  `*.bak*` files, leaving exactly `ollama.service` — but "unknown => ignore" is R12's defect
+  class, so the answer is `design/unit-ownership.toml` (permanent) plus the manifests'
+  `status = "campaign"` + `expires` (dated), READ from the manifests rather than re-keyed. No
+  heuristic decides ownership: the obvious one, "references `/home/dave`" or "`User=dave`",
+  misclassifies `systemd/ttm-pool-drain.service`, which is ours and has neither.
+
+**Method note, and it is this decision's own lesson turned on itself:** `e0e4b25` backported
+three `OnFailure` lines and declared all 47 source units byte-identical to `/etc`. That was
+true, and it was a cleared baseline for CONTENT only — existence drift went unmeasured on both
+sides of it, and a whole tree went unnamed. A cleared baseline is only cleared for the property
+you compared.
 
 **Baseline cleared 2026-09-01 for CONTENT drift only — CORRECTED while measuring D5.** `bin/deploy`
 run with Dave's approval: 5 `bin/` files plus the profile/config archives. Post-deploy both halves
