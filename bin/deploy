@@ -90,4 +90,15 @@ fi
 if [[ $DRY_RUN -eq 0 ]]; then
     echo "deploy: note — systemd services exec from the runtime tree; long-running units"
     echo "        pick this up on their next timer fire, not immediately."
+
+    # A deploy that did not converge is a failed deploy, not a quiet one. This reports; it
+    # never writes /etc, so it cannot "fix" what it finds — the /etc half of any finding is
+    # a sudo install and stays a human action.
+    echo "deploy: post-condition — checking source vs deployed"
+    if "$SRC/bin/check_deploy_drift.sh"; then
+        echo "deploy: converged."
+    else
+        echo "deploy: DRIFT REMAINS after deploy — see above." >&2
+        exit 1
+    fi
 fi

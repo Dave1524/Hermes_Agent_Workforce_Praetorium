@@ -57,6 +57,22 @@ findings=0
 report() { echo "  DRIFT [$1] $2"; findings=$((findings + 1)); }
 info()   { echo "  info: $*"; }
 
+# OFF THE BOX THERE IS NOTHING DEPLOYED TO COMPARE AGAINST, and reporting all 55 units as
+# missing would make a hosted runner red for reasons unrelated to the diff — which is how a
+# PR gate gets muted. Skip whole, OUT LOUD, in the format tests/box_precondition.sh prints
+# and .github/workflows/verify.yml diffs against tests/ci-expected-skips.txt.
+#
+# The predicate is BOTH trees absent, not either. On this box a deleted runtime tree is
+# itself drift and must stay red, and ~/.config/systemd/user survives that — so only a
+# checkout with neither can reach the skip. /etc is not part of the predicate: a hosted
+# runner has an /etc/systemd/system full of its own units, so its presence proves nothing.
+if [ ! -d "$RUNTIME_BIN" ] && [ ! -d "$USER_TREE" ]; then
+  printf 'SKIP: %s — %s (absent: %s %s)\n' "$(basename "$0")" \
+    'the deployed trees this check compares against' \
+    "${RUNTIME_BIN/#$HOME/\~}" "${USER_TREE/#$HOME/\~}"
+  exit 0
+fi
+
 # LC_ALL=C on every sort feeding comm. comm compares bytes; sort collates by locale, and on
 # this tree they disagree over '@' (praetorium-phaseb-brief@2.timer), so a locale sort makes
 # comm emit "not in sorted order" on stderr and SKIP LINES — the diff then fails toward
