@@ -236,14 +236,20 @@ assert 'the timer runs the checker from the SOURCE repo, never the runtime copy'
   "! grep -q '^ExecStart=/home/dave/agent-workforce/' '$REPO/systemd/agent-drift-check.service'"
 assert 'its ExecStart names a script that exists in this repo' \
   "[ -n '$execstart' ] && [ -f '$REPO/$execstart' ]"
-assert 'the timer name matches the reporting globs, or no report can see it' \
-  "grep -q \"'agent-\\*'\" '$REPO/bin/local_tier_eval.sh'"
-# praetorium-status.sh enumerates by hand rather than by glob, so the glob assertion above
-# says nothing about it. Both of its lists, because they are two: the is-active loop, which
-# is the only one that can report a timer as ABSENT, and list-timers, which cannot — it
-# never prints a unit systemd has not loaded.
-assert 'praetorium-status.sh lists the timer in BOTH of its hand-maintained lists' \
-  "[ \"\$(grep -c 'agent-drift-check.timer' '$REPO/bin/praetorium-status.sh')\" -eq 2 ]"
+# RETARGETED 2026-09-02 (W3), not relaxed. The invariant is unchanged — this timer must be
+# visible to the reports, because a drift checker nothing reports on is a checker that can
+# die unnoticed. What moved is where visibility is decided: it used to be six hand-written
+# lists and globs, so this asserted against two of them by name; it is now one declared list.
+# Asserting the old shape after the shape changed is how a check starts certifying nothing.
+assert 'the timer is in the fleet unit list, or no report can see it' \
+  "awk -F'\t' '!/^#/ && \$1==\"agent-drift-check\" && \$2==\"system\" && \$3==\"standing\"' '$REPO/config/fleet-units.tsv' | grep -q ."
+# Two consumption sites in praetorium-status.sh, not one, and the distinction is the point:
+# the is-active loop is the only one that can report a timer as ABSENT, while list-timers
+# cannot — it never prints a unit systemd has not loaded. Both must be fed by the list.
+# That the OTHER five consumers read the list is asserted once, in tests/test_fleet_ownership.sh;
+# re-asserting it here would be a second copy of the fact this list exists to remove.
+assert 'praetorium-status.sh feeds the derived list to BOTH of its sites' \
+  "[ \"\$(grep -c 'fleet_units system' '$REPO/bin/praetorium-status.sh')\" -eq 2 ]"
 
 registered=$(python3 - <<'PY'
 import pathlib, tomllib
