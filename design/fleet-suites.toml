@@ -33,3 +33,24 @@ wrapper in /usr/local/bin, a --user unit — which is exactly why it exists: thi
 commits cannot see those files move, so a test is the only thing that fails loudly when
 the far side does.
 """
+
+# The coverage checker itself. Same shape as the guard suite above and for the same reason:
+# it is scheduled by nothing, so no registry entry can claim it, and without this block it
+# reports ITSELF as an orphan on its first run.
+[[suite]]
+path    = "tests/test_workflow_coverage.sh"
+owner   = "fleet"
+asserts = [
+  "parse-integrity",        # a coverage figure computed from zero parsed entries is refused
+  "standing-has-suite",     # status = "standing" and no suite_exempt => len(suite) >= 1
+  "suite-paths-exist",      # every declared suite path is a file on disk
+  "exempt-named",           # every suite_exempt workflow is printed by name, never skipped
+  "no-orphan-suite",        # both join directions: workflow -> suite, and this file's owners
+  "timer-family-declared",  # every *.timer family in systemd/ has a manifest entry
+]
+why_no_workflow = """
+It grades the registry, not a job. Nothing execs it and nothing ever should — its subject is
+design/agents/*.toml plus this file, both of which change only when a human edits them, so a
+timer would run it against an unchanged input every night and prove nothing that bin/verify.sh
+does not already prove on the commit that changes it.
+"""
