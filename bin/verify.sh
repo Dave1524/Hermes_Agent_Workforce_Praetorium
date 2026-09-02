@@ -35,6 +35,13 @@ shellcheck -S error "${scripts[@]}" || fail=1
 echo "--- shellcheck (full, advisory only) ---"
 shellcheck "${scripts[@]}" || true
 
+# Source-vs-deployed drift (D8). A hard fail: a green gate that says nothing about what is
+# RUNNING has already produced two live outages (eval-spec.md 7.3). Note the ordering this
+# imposes — see docs/runbook.md § Deploy ordering: adding a bin/ script makes this red until
+# bin/deploy runs, so the loop is edit -> deploy -> verify -> commit, not the usual order.
+echo "--- deploy drift (source vs deployed) ---"
+bash bin/check_deploy_drift.sh || fail=1
+
 if [ -d tests ]; then
   # Most tests mktemp fixtures without a cleanup trap. Owning one temp root here
   # beats 30 traps a new test can forget: on 2026-08-13 the accumulated leak hit

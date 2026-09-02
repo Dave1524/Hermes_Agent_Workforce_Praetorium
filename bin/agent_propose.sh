@@ -35,6 +35,7 @@ export AGENT_RUN_STARTED_AT="$run_started"
 attempt=0
 # NUC-23 metrics fields (resolved after secrets are sourced); NUC-21 memory field.
 run_profile="unknown"
+run_owner="unknown"
 run_model="unknown"
 run_task="standing"
 run_proposal="none"
@@ -181,6 +182,19 @@ if [ -z "$run_profile" ]; then
 fi
 run_profile="${run_profile:-unknown}"
 run_task="${AGENT_TASK_SLUG:-standing}"
+# W1 (2026-09-02): the episodic store keys on the OWNING PERSONA; the cost record keys on
+# the RUNTIME. They were one variable, and that is why six jobs logged memory=no-store on
+# every run for months — AGENT_PROFILE has been model-named (claude-opus / claude-sonnet)
+# since the 2026-07-30 migration, and ~/.hermes/profiles/claude-opus/ has never existed.
+# Do NOT merge them back: `profile=` in cost.log is what makes a model regression visible,
+# and bin/run_record.sh:37 reads it back as the runtime.
+# The fallback is the runtime name on purpose — it reproduces today's behaviour rather than
+# inventing a store. A job keeps logging no-store until its env sets AGENT_OWNER.
+run_owner="${AGENT_OWNER:-$run_profile}"
+# Deliberately still keyed on the RUNTIME: this resolves the model from a hermes profile
+# config, and a headless Claude Code job takes its model from its runner's --model flag,
+# not from any hermes config. Keying this on the owner would resolve claudius's OpenRouter
+# model for a job running Opus 5 — a confidently wrong answer in place of an honest unknown.
 profile_cfg="$HOME/.hermes/profiles/$run_profile/config.yaml"
 if [ -r "$profile_cfg" ]; then
   # Every profile on the box (marcus/trajan/augustus/claudius) keys its model as
@@ -189,7 +203,7 @@ if [ -r "$profile_cfg" ]; then
   run_model=$(awk '/^model:/{m=1;next} /^[^[:space:]]/{m=0} m && /^[[:space:]]+(name|default):/{sub(/#.*/,"");sub(/^[[:space:]]+(name|default):[[:space:]]*/,"");gsub(/[[:space:]]/,"");print;exit}' "$profile_cfg")
 fi
 run_model="${run_model:-unknown}"
-log "mode: AGENT_RUN_MODE=$run_mode task=$run_task profile=$run_profile"
+log "mode: AGENT_RUN_MODE=$run_mode task=$run_task profile=$run_profile owner=$run_owner"
 
 # ── NUC-31: preflight MCP tool-health gate (advisory by default) ──
 # Placed AFTER profile/model resolution so a warn/block record carries the real
@@ -234,7 +248,7 @@ fi
 # ── NUC-21 working memory: snapshot the episodic store BEFORE the run so we can
 #    tell afterward whether the agent recorded its own entry (fail-soft glue).
 #    NUC-36 ops mode skips memory entirely (mem_status stays na). ──
-MEM_DIR="${RA_MEMORY_DIR:-$HOME/.hermes/profiles/$run_profile/memories}"
+MEM_DIR="${RA_MEMORY_DIR:-$HOME/.hermes/profiles/$run_owner/memories}"
 MEM_FILE="$MEM_DIR/MEMORY.md"
 mem_before="absent"
 if [ "$run_mode" = proposal ]; then
@@ -253,21 +267,18 @@ fi
 # test; real hermes never accepted it. Do not reintroduce it.
 run_cmd="$AGENT_RUNTIME_CMD"
 retry_base="${AGENT_RETRY_BASE_SECONDS:-30}"
+# No runtime produces exit 3 since the kanban path was retired (2026-09-02, D7). The
+# bucket stays because ~/agent-workforce/logs/cost.log holds one historical outcome=DEDUP
+# row (2026-08-13T01:33:57+02:00) that bin/scorecard.sh:51-56 must keep classifying.
 DEDUP_EXIT=3
-# NUC-44: kanban_run_and_wait.sh exits 4 when a card was parked at `blocked` by runs that
-# crashed rather than by an agent-authored decline. It is a hard failure, but it needs its
-# OWN cost.log vocab: recorded as NOPROPOSAL it read as "the agent had nothing to say" for
-# 20 consecutive augustus-content nights, and as a generic FAIL it would be indistinguish-
-# able from a runner/transport fault. Not retried here — hermes already burned its
-# --max-retries producing those crashed runs.
+# NUC-44: the live producer is bin/run_content_via_buzz.sh (:40,48 — `crash()`), which
+# exits 4 when the dispatch itself failed rather than the agent declining. Re-attributed
+# 2026-09-02: this said kanban_run_and_wait.sh, which no longer exists, and a boundary
+# credited to a deleted script is the §2/§6.1 defect D3 found. The vocab is the point —
+# recorded as NOPROPOSAL a crash read as "the agent had nothing to say" for 20 consecutive
+# augustus-content nights, and a generic FAIL is indistinguishable from a transport fault.
 CRASH_EXIT=4
-# NUC-38: the kanban path already carries hermes' own --max-retries, so stacking the
-# outer 3x retry just re-blocks the identical card — the kanban path gets ONE outer
-# attempt. Other (direct hermes -z) paths keep 3x. AGENT_MAX_ATTEMPTS overrides either.
-case "$run_cmd" in
-  *kanban_run_and_wait.sh*) max_attempts="${AGENT_MAX_ATTEMPTS:-1}" ;;
-  *)                        max_attempts="${AGENT_MAX_ATTEMPTS:-3}" ;;
-esac
+max_attempts="${AGENT_MAX_ATTEMPTS:-3}"
 ok=false; is_dedup=false; is_crash=false; rc=0
 # ── Silent-failure detection: a zero exit is NOT evidence the work happened ──
 # hermes exits 0 when the agent's FINAL RESPONSE is itself a provider error. The
@@ -288,9 +299,13 @@ PROVIDER_ERROR_RE='^(HTTP [45][0-9]{2}:|API call failed after [0-9]+ retries:|Pr
 run_ended_on_provider_error() {
   tail -n "${AGENT_ERROR_TAIL_LINES:-5}" "$1" 2>/dev/null | grep -qE "$PROVIDER_ERROR_RE"
 }
-# NUC-29: stamp the real date once, exported so the kanban wrapper (and any future
-# direct hermes -z path) share ONE value — no midnight-rollover mismatch between the two
-# scripts. RUN_DATE feeds the proposal filename + day-count math; TODAY is the human form.
+# NUC-29: stamp the real date once, exported so this script and whatever it execs share ONE
+# value — no midnight-rollover mismatch between them. Written for the kanban wrapper, which
+# is gone (D7, 2026-09-02); it still matters because the AGENT_VERIFY_CMD and four task
+# profiles read it: proposal_or_decline.sh:25 builds the filename it asserts from RUN_DATE,
+# and daily_plan / eod_summary / both standing_research profiles take it with a `date`
+# fallback. So an unexported RUN_DATE does not fail — it silently disagrees across midnight.
+# TODAY is the human form and is read only here.
 export RUN_DATE="${RUN_DATE:-$(date +%Y-%m-%d)}"
 export TODAY="${TODAY:-$(date '+%A, %-d %B %Y')}"
 log "date: RUN_DATE=$RUN_DATE"
@@ -397,7 +412,7 @@ elif [ "$mem_after" != "$mem_before" ]; then
   mem_status="recorded"
   log "MEMORY: agent recorded its own episodic entry"
 else
-  entry="[run:$(date -Is)] task=standing claudius scheduled run; proposal=${proposal_file:-none}; note=runner auto-record (agent emitted no memory entry this run); findings/decisions/gaps=see agent_run.log / proposal"
+  entry="[run:$(date -Is)] task=$run_task $run_owner scheduled run; proposal=${proposal_file:-none}; note=runner auto-record (agent emitted no memory entry this run); findings/decisions/gaps=see agent_run.log / proposal"
   if (
         exec 8>"$MEM_FILE.lock" 2>/dev/null || exit 1
         flock -w 10 8 || exit 1

@@ -1,0 +1,66 @@
+# One owner for the fleet unit list.
+#
+# WHY THIS FILE EXISTS. The same list of units was hand-maintained in six places
+# (profiles/daily_plan_task.md, profiles/eod_summary_task.md,
+# profiles/overnight_morning_report_cc_task.md, bin/overnight_pre_snapshot.sh,
+# bin/praetorium-status.sh, bin/local_tier_eval.sh) and the six disagreed in six ways.
+# The best of them covered 9 standing units; eight units appeared in NONE of them, so
+# `raw-ingest`, `knowledge-digest`, `m1-signal-scan`, `content-change-dispatch`,
+# `fleet-eval`, `fleet-turn-check`, `inbox-backlog-alert` and `buzz-pr-watch` were
+# invisible to every report on the box. This file replaces those six lists. It must not
+# become a seventh: a consumer that needs a different subset FILTERS this file, and a
+# consumer that needs a unit not declared in design/agents/*.toml is telling you the
+# manifest is wrong, not that it needs its own list.
+#
+# WHY IT IS A COMMITTED LITERAL AND NOT GENERATED AT RUN TIME. bin/deploy ships
+# `bin profiles docs CLAUDE.md AGENTS.md README.md config systemd` — `design/` is NOT
+# among them and ~/agent-workforce/design does not exist. Anything reading the manifests
+# at run time works in the repo and silently empties in the tree systemd actually execs.
+# So the manifests stay the source, this file is their materialised projection, and
+# tests/test_fleet_ownership.sh asserts the two are equal. That is open-decisions.md D4's
+# answer (b) — literals kept, asserted against the manifest — applied to a second list.
+#
+# HOW TO CHANGE IT. Edit design/agents/<persona>.toml first, then re-materialise here.
+# The test fails in both directions, so neither half can drift alone.
+#
+# SCOPE IS LOAD-BEARING. `user` units are invisible to system-scope systemctl. A consumer
+# that ignores this column reports a live user timer as missing. Until 2026-09-02 scope was
+# stated in prose only, which is exactly why buzz-pr-watch and both nekovri entries were
+# counted as system-scope by everything that did not read their notes.
+#
+# STATUS FILTER IS THE CONSUMER'S CALL, AND IT MUST BE STATED WHERE IT IS MADE.
+#   standing = 23 (22 system + 1 user)   <- what the reporting jobs report on
+#   campaign = 3, dormant = 2, spent = 2 <- deliberately excluded from routine reports
+# Do not hardcode those counts anywhere; derive them from this file.
+#
+#unit	scope	status	owner
+agent-drift-check	system	standing	trajan
+agent-inbox-sync	system	standing	trajan
+agent-proposal	system	standing	claudius
+agent-workforce-auto-sync	system	standing	trajan
+augustus-content	system	standing	augustus
+bd-followup-drafts	system	dormant	claudius
+bd-stall-radar	system	dormant	claudius
+buzz-pr-watch	user	standing	trajan
+content-change-dispatch	system	standing	augustus
+fleet-eval	system	standing	trajan
+fleet-turn-check	system	standing	trajan
+inbox-backlog-alert	system	standing	trajan
+knowledge-digest	system	standing	claudius
+local-tier-eval	system	standing	trajan
+m1-signal-scan	system	standing	claudius
+memory-consolidation	system	standing	trajan
+nekovri-subsidy-kickoff	user	spent	trajan
+nekovri-subsidy-watchdog	user	spent	trajan
+overnight-morning-report	system	standing	marcus
+overnight-pre-snapshot	system	standing	trajan
+praetorium-content-strategy-research	system	campaign	augustus
+praetorium-daily-plan	system	standing	marcus
+praetorium-eod-summary	system	standing	marcus
+praetorium-faceless-content-research	system	campaign	augustus
+praetorium-phaseb-brief@	system	campaign	trajan
+qmd-refresh	system	standing	trajan
+raw-ingest	system	standing	claudius
+scorecard	system	standing	trajan
+ttm-pool-drain	system	standing	trajan
+weekly-pre-assembly	system	standing	marcus

@@ -39,10 +39,11 @@ vault) and additionally sets umask 077.
 """
 
 [surfaces.kanban]
-present     = true
+present     = false
+retired     = "2026-09-02"       # D7. Block kept, not deleted — see agent-model.md §3.
 governed_by = "~/.hermes/profiles/marcus/config.yaml"
 skills      = 46                 # plugin-shared 7 + vault-business 16 + plugin-official 23
-notes       = "Widest skill offering on the box, on the surface that now carries the least work."
+notes       = "Widest skill offering on the box, on the surface that carried the least work — and in the end none: 0 of the board's 11 cards ever set `skills`. The count outlives the surface because it measures the hermes PROFILE, which `hermes -p marcus` oneshots still use."
 
 [surfaces.buzz_dispatch]
 present = false

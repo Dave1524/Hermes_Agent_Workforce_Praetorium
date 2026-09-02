@@ -1,0 +1,17 @@
+# Proves the agent fleet can ANSWER, not merely that its supervisors are alive.
+# Installed 2026-08-31 after the 08-27 OAuth outage, in which every existing
+# signal on this box stayed green for four days while nothing could complete a
+# turn. This unit exists to be the thing that goes red in that situation.
+[Unit]
+Description=Fleet turn check — assert the agent fleet can complete a real turn
+After=network-online.target
+Wants=network-online.target
+OnFailure=agent-alert@%n.service
+
+[Service]
+Type=oneshot
+User=dave
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+ExecStart=/home/dave/.config/buzz-team/fleet-turn-check.sh
+TimeoutStartSec=5min
+NoNewPrivileges=true

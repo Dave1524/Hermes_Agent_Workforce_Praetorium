@@ -1,3 +1,6 @@
+Owner: marcus — this workflow is declared in design/agents/marcus.toml. This line is the
+canonical owner statement; anything below is voice, not a second declaration.
+
 Standing task: Weekly Review Pre-Assembly (NUC-24), Claude Code runtime variant.
 You are running as headless Claude Code (Sonnet) on Praetorium, the box's own
 Claude subscription — NOT hermes/claudius on OpenRouter. This is a fresh session

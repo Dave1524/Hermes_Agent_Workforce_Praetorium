@@ -1,0 +1,11 @@
+[Unit]
+Description=Fire the NeKoVri subsidy kickoff once at 21:12 on 2026-08-03
+
+[Timer]
+OnCalendar=2026-08-03 21:12:00
+AccuracySec=1s
+RandomizedDelaySec=0
+Persistent=false
+
+[Install]
+WantedBy=timers.target

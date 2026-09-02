@@ -278,6 +278,38 @@ vault** — two repos with no shared gate, so no commit here can ever see the ta
 drift is 2 lines today and only grows. This is the live defect; a skill registration would not
 have touched it.
 
+**CORRECTED 2026-09-02, re-measuring the same unchanged file (453 lines, mtime 2026-08-14
+18:44). The measurement above is right about the two ranges it names and wrong about the
+count: three of six are off, not two.** The reading above is kept rather than rewritten,
+because the way an incomplete measurement gets caught next time is by leaving both readings
+visible with their dates.
+
+| pinned range | intended section(s) | actual extent | consequence |
+|---|---|---|---|
+| `168,235p` | Step 2.7 + Step 3 + Step 4 | 168-236 | **drops line 236 — self-check item 11, the AI-tell scan** |
+
+**The third miss is the most consequential of the three, and it is the one an off-by-two
+framing hides.** The other two lose a line of guidance at a section edge. This one makes the
+profile lie about itself: `augustus_content_task.md` tells augustus that `ai_tells.md` carries
+"11 structural AI tells + the de-slop pass + **self-check #11**", while the extraction had been
+handing him a Step 4 that stops at item 10. The profile promised a check the skill read
+silently withheld — for the whole time the pins were live.
+
+**`augustus_polish_task.md` has nothing to fix.** Part 1's decision below says to fix it too;
+measured 2026-09-02 it carries no pinned ranges at all — it reads `references/voice.md` and
+`references/ai_tells.md` in full, by exact path (`profiles/augustus_polish_task.md:26-28`).
+Converting a whole-file read into a section extraction for symmetry would add the failure mode
+this decision exists to remove, so it was deliberately left alone.
+
+**BUILT 2026-09-02 (brief 4), part 1 only.** `bin/skill_sections.sh` resolves by heading text —
+whole-string equality, never a prefix; extent to the next heading of the same or higher level so
+a section carries its subsections; all-or-nothing output so an unresolved name cannot leave a
+partial read on stdout. It lives in `bin/` and not inside the profile because `bin/verify.sh`
+lints and syntax-checks `bin/` and **nothing in this repo ever parses, lints or executes a shell
+line embedded in profile markdown** — that asymmetry is why the pins rotted unobserved.
+`tests/test_content_skill_extract.sh` is the shared gate, and it executes the profile's own
+command rather than pattern-matching it. Part 2 (pointer skills) is untouched and still open.
+
 **Decision, in two parts.**
 
 1. **Fix the extraction (the real fix).** Replace the six pinned ranges in
@@ -668,6 +700,99 @@ of false signal** — the journal line was a stale artefact of the override, not
 episodic-memory path. Those are entangled with the `AGENT_PROFILE` naming defect (six scheduled
 jobs logging `memory=no-store`) which is registry §6.6 work, and must not be bundled in here.
 
+**EXECUTED 2026-09-02 by Phase-B brief 5, against the sequence above. Five deviations, each
+with its reason.**
+
+| Step | Done | Deviation |
+|---|---|---|
+| 1 — move the 5 SEO cards | yes, by Dave | Destination is **Notion**, not the SEO task list this doc named. Full card bodies also written to `~/OUTBOX/` as a backstop. |
+| 2 — export the board | yes | **Split in two.** See below — the destination this step named would have published client content. |
+| 3 — disable the gateway | yes | Needed `reset-failed` as well. See below. |
+| 4 — remove the dead code | yes, one commit | Also removed `tests/test_agent_propose_smoke.sh` scenario 11, which this list missed and which goes red without it. |
+| 5 — drop S3 from the docs | yes | The `surface` enum keeps `kanban`; a `retired` key was added instead. Deleting the enum value would have made five existing manifest blocks unparseable against their own schema. |
+
+**Step 2's destination was unsafe as written, and the fix is a split, not an override.** D7 said
+`design/archive/`. This repo is **public** (verified 2026-09-02, unauthenticated
+`GET /repos/Dave1524/Hermes_Agent_Workforce_Praetorium` → 200, `"private": false`) and
+`agent-workforce-auto-sync.timer` pushes any dirty tree within 15 minutes. The 11 cards carry
+36,800 bytes of titles and bodies. So: content-free index in `design/archive/hermes-kanban-board.md`,
+full record in `~/OUTBOX/hermes-kanban-full-export-2026-09-02.{json,md}`, outside every repo.
+Nothing in D7 was wrong about durability — it did not ask the boundary question, and the two are
+separable.
+
+**Step 3 leaves the unit `failed`, not `inactive`, and that is the gateway's own bug.** It exits 1
+on SIGTERM (and prints its startup banner on the way out), so `systemctl --user disable --now`
+lands `Result=exit-code`. Cleared with `systemctl --user reset-failed hermes-gateway.service`;
+end state is `inactive` + `disabled`, `default.target.wants` symlink gone, unit file on disk,
+journal silent, no gateway process. Without the reset a retired unit sits in
+`systemctl --user --failed` forever — the exact readiness-report defect of asking a whitelist
+whether things are fine instead of asking the system what is wrong.
+
+**What was measured before deleting anything.** Criterion 4's proof came from journals, not from
+the deny-listed override files: every unit with a real `Environment=AGENT_JOB_OVERRIDES=` logs
+`run attempt N/M: <command>`, and **none of the 14 names `kanban_run_and_wait.sh`.** This doc and
+the brief both said *eleven* units; the measured figure is **14** (15 files match the grep;
+`inbox-backlog-alert.service` matches in a comment only and has no runtime selection at all).
+
+Two cheaper proofs cover what the journal check cannot, and both were run before deleting:
+`grep -rl kanban_run_and_wait /etc/systemd/system/ ~/.config/systemd/user/` returns **nothing**,
+so no unit reaches the script by `ExecStart` either — the journal answers "what did the runtime
+resolve to", this answers "could anything invoke it at all". And nothing in either unit tree
+names `hermes-gateway` as a dependency, so stopping it breaks no ordering. A negative proven two
+independent ways is worth the second grep; the journal alone would have missed a direct
+`ExecStart`, which is exactly how the last unit-tree gap got in (D8).
+
+**The red-then-green step worked as designed.** Deleting `agent_propose.sh:267-270` alone turned
+`tests/test_agent_propose_smoke.sh` red on `FAIL: FAIL after exactly 1 attempt (kanban de-stack)`,
+which is the proof scenario 11 was really covering that block rather than passing incidentally.
+That is the only assertion in the whole gate that could speak about this brief.
+
+**Two claims in this answer were wrong, and both are corrected in place rather than deleted:**
+
+- *"The `skills:` field goes with the board"* and *"fold the measured 25 into the S1/S2 discussion
+  where it is actually true"* — **it is not true there.** `agent-model.md` §3 records that S1 and
+  S2 have no skill index at all and that `~/.claude/skills/` does not exist. The 46/44/25/23 are
+  `~/.hermes/shared-skills/` offerings resolved per hermes *profile*, and the profiles outlive the
+  board: `bin/local_tier_eval.sh:105` runs `hermes -p marcus` six times a day. The counts stayed in
+  the `[surfaces.kanban]` blocks, re-labelled as profile facts.
+- *"D3 (c) is answered NO by retirement"* — answered, but narrower than stated. It answers the
+  **offering** question. It is not licence to delete `bin/apply_skills_allowlist.sh`, which writes
+  a config a live platform job still reads. The measurement that actually settles (c) is one D7
+  did not have: **0 of the board's 11 cards ever carried a non-empty `skills` field**, so the
+  allowlist was never exercised once from the only surface that offered it.
+
+**Criterion 14's control passed, and it was observed rather than assumed.** The exact call
+`bin/local_tier_eval.sh:105` makes — `hermes -t terminal,file -z <prompt> -p marcus -m local` —
+returns exit 0 with correct output **after** the gateway stopped, and `hermes kanban list --json`
+still returns all 11 cards. The board never needed the gateway; only dispatch did.
+
+The brief required the *scheduled* firing be read, not the probe. Observed 2026-09-02 14:17:01 →
+14:25:16, `Result=success`, and **outcome-identical to the 11:17 run taken while the gateway was
+still up**: 9/13 both times, the same four failures (t5, t7, t9, t10), the same *detail strings*
+on all four (`1/3 numbers kept, 328 chars`; `1/3 fields correct`; `1 missing, 1 extra`;
+`1 PII token(s) leaked`), and t1×3 deterministic both times. Those four FAILs are the local
+model's standing capability profile — they predate the retirement and are not regressions.
+
+**A one-sample regression scare, recorded because it nearly closed this criterion wrong.** A
+*manual* run at 13:17 (gateway already down) returned 8/13 with **t4 flipped to FAIL**, which
+reads exactly like the retirement breaking something. It was not:
+
+- t4's history was **253 consecutive passes and that one failure**, `transitions=1` — whereas
+  every genuinely flaky task here flaps constantly (t8: 90 transitions; t1_run1/2/3 and t11: 41;
+  t5: 22; t3: 16). A 1-transition task failing once is far likelier to be a sample than a cause.
+- The artifact was written **correctly** in the failing run (`READYOK`, 7 bytes). Only the model's
+  *verify* step failed, emitting "The file could not be verified as existing" and never `DONE`.
+  So the tool path — the part a retired gateway could plausibly have broken — demonstrably worked.
+- Three targeted t4 reproductions (shell/umask 002, systemd-like umask 022 + cwd `/`, shell
+  repeat) all passed, gateway still down.
+- The 14:17 scheduled run then passed t4 (`file correct`, 57s).
+
+**The manual run was never a clean control and saying so is the point.** Its artifact came out
+`-rw-rw-r--` (umask 002, my shell) against the scheduled run's `-rw-r--r--` (umask 022, systemd)
+— proof the two environments differed, which is exactly why the brief demands the *scheduled*
+firing and not a convenient hand-run. Had that 8/13 been reported as criterion 14's result, this
+retirement would carry a fabricated regression in its record forever.
+
 ---
 
 ### D8 — Add a source-vs-deployed drift assertion to `bin/verify.sh`?
@@ -721,13 +846,55 @@ that catches it.
   deploy, not a quiet one.
 - A daily timer calls it — the `/etc`-hand-edit case above.
 
-**Trap the script must not fall into: there are THREE unit trees, and only one comparison is
+**Trap the script must not fall into: only one unit comparison against `/etc` is
 meaningful.** Source `systemd/`, the deployed staging copy `~/agent-workforce/systemd/`, and
 live `/etc/systemd/system/`. **`bin/deploy` writes the staging copy and never writes `/etc`** —
 its own output says so ("systemd services exec from the runtime tree"), and the deployed-copy
 memory note records the same. So a check comparing source against the *staging* copy goes green
 the moment a unit is deployed, while `/etc` stays stale — a false green in precisely the
 direction that matters. Compare `systemd/` to `/etc` directly.
+
+**BUILT 2026-09-02 (brief 2). Three corrections to the shape above, all measured:**
+
+- **There are FOUR unit trees, not three.** `~/.config/systemd/user/` is never mentioned above
+  and held **nine** units with no source counterpart in this repo — `buzz-agent@.service`,
+  `buzz-notion-broker.service`, `buzz-pr-watch.{service,timer}`, `hermes-gateway.service`,
+  `nekovri-subsidy-{kickoff,watchdog}.{service,timer}`. That is the whole Buzz fleet's unit
+  layer, including the file brief 1 edited on 2026-09-01 to add `CLAUDE_CODE_EXECUTABLE`. They
+  now have a source home at `systemd/user/`, and the check compares it as a third pair.
+
+- **Content drift was the cheap half; EXISTENCE drift is the expensive one, and the shape
+  above only specified content.** "Exits 1 on any differing or missing file" reads as covering
+  it, but a set-difference has two directions and only one of them was being taken: `/etc`-only
+  (a rebuild from source loses the unit) and source-only (the box is not running what the repo
+  says). Both are red now. The chain that makes the first direction expensive: no source =>
+  `bin/backup_config.sh:17` cannot enumerate it => it is in no tarball => the rebuild checklist
+  restores `/etc` from the tarball and `systemd/` => the unit is gone, and nothing anywhere
+  reports its absence.
+
+- **Ownership needs a declaration, and it must fail closed.** A bare set-difference returns OS
+  units. Restricting to regular `*.service`/`*.timer` files drops the 8 OS symlinks and the 6
+  `*.bak*` files, leaving exactly `ollama.service` — but "unknown => ignore" is R12's defect
+  class, so the answer is `design/unit-ownership.toml` (permanent) plus the manifests'
+  `status = "campaign"` + `expires` (dated), READ from the manifests rather than re-keyed. No
+  heuristic decides ownership: the obvious one, "references `/home/dave`" or "`User=dave`",
+  misclassifies `systemd/ttm-pool-drain.service`, which is ours and has neither.
+
+- **A unit file cannot carry its own drift commentary — the comment IS drift.** The stale
+  "/etc-only scaffolding" line in `systemd/praetorium-phaseb-brief@.service` was wrong after
+  `d72f562` committed all six, and correcting it in place made the file differ from `/etc` for
+  a comment, turning a green byte-identity assertion red and requiring a `sudo` install to
+  clear — the note asserting "source and /etc are byte-identical" falsified itself by
+  existing. Unit prose belongs where nothing compares bytes. Recorded here instead: **the
+  phaseb-brief trap moved rather than closed.** They pass today; on the day they are removed
+  from `/etc` they become source-only, which is the same defect in the other direction. Delete
+  from BOTH trees or neither, and note no brief in the queue currently owns that cleanup.
+
+**Method note, and it is this decision's own lesson turned on itself:** `e0e4b25` backported
+three `OnFailure` lines and declared all 47 source units byte-identical to `/etc`. That was
+true, and it was a cleared baseline for CONTENT only — existence drift went unmeasured on both
+sides of it, and a whole tree went unnamed. A cleared baseline is only cleared for the property
+you compared.
 
 **Baseline cleared 2026-09-01 for CONTENT drift only — CORRECTED while measuring D5.** `bin/deploy`
 run with Dave's approval: 5 `bin/` files plus the profile/config archives. Post-deploy both halves
@@ -860,15 +1027,81 @@ aspirational.
 
 ## Carried work — decided in principle, not done
 
-Not questions. D1 settled the direction; nobody has implemented them.
+Not questions. W1-W5 are D1's: it settled the direction and nobody implemented them.
+W6-W10 were opened by Phase-B briefs 2-4 (2026-09-02) — four of them are things those
+briefs deliberately did not do, and W6 is the one that keeps the gate red.
 
 | | Item | Source | Note |
 |---|---|---|---|
-| W1 | Episodic memory keys on the OWNER persona, not the runtime profile name | D1 §6.2, §6.6 | No scheduled persona workflow accumulates episodic memory today. Fleet-wide rename, six jobs. |
-| W2 | Every persona workflow's profile states its owner in one standard header line | D1 §6.3 | daily-plan/eod say "You are Marcus"; the `_cc_task` variants are persona-less. |
-| W3 | Generate the reporting jobs' unit lists from the registry | D1 §6.4 | The `praetorium-*` glob defect exists in six files; 8 timers are invisible to every report. |
-| W4 | Consolidate the two job-override example homes | D1 §6.5 | Stale directory archived 2026-09-01; the consolidation itself is not done. |
-| W5 | Every workflow entry carries an explicit `status` | D3 §5 R15 | Manifest edit, not code. Blocks D6. |
+| W1 | Episodic memory keys on the OWNER persona, not the runtime profile name | D1 §6.2, §6.6 | **CODE DONE 2026-09-02 (`cc9f802`); RUNTIME PENDING DAVE.** `AGENT_OWNER` now keys `MEM_DIR` while `AGENT_PROFILE` keeps keying cost.log's `profile=` — the two were one variable, which is why `~/.hermes/profiles/claude-opus/` was looked up and 77 runs logged `no-store`. **The row's old claim was half right and stays half right, for a different reason.** The fix reaches six jobs — `standing-research` (22 no-store runs), `raw-ingest` (22), `m1-signal-scan` (13), `bd-followup-drafts` (11), `weekly-pre-assembly` (5), `knowledge-digest` (4) — but `praetorium-daily-plan`, `praetorium-eod-summary`, `overnight-morning-report` and both campaigns run `AGENT_RUN_MODE=ops`, which skips memory by design (NUC-36, `agent_propose.sh:236,368-372`) and logs `na`, never `no-store`. Those four are **not** fixed by this and must not be: making ops mode record memory is a separate decision with its own evidence. Nothing changes on the box until the `AGENT_OWNER` lines in `docs/runbook.md` § W1 handoff are added to `~/.config/agent-workforce/*.env` — deny-listed, so Dave's action. |
+| W2 | Every persona workflow's profile states its owner in one standard header line | D1 §6.3 | **DONE 2026-09-02 (`a2d132e`).** All 12 `[[workflows]]` entries carrying a `profile` now open with `Owner: <persona>`, taken from the manifest that declares them. Asserted by `tests/test_fleet_ownership.sh` in that direction only — a header derived from prompt prose gets `weekly_pre_assembly_cc_task.md` wrong, because it reads "NOT hermes/claudius" while `design/agents/marcus.toml` declares it, and the two claudius-owned files either side of it make the same mistake look correct. A second assertion catches prose drift (`You are <other persona>`), so the header being canonical is a mechanism rather than a convention. |
+| W3 | Generate the reporting jobs' unit lists from the registry | D1 §6.4 | **DONE 2026-09-02 (`d86278a`).** `config/fleet-units.tsv` is the manifests' materialised projection, in a tree `bin/deploy` ships — `design/` is not deployed, so a runtime read of the manifests works in the repo and silently empties in `~/agent-workforce/`. Six lists became one. **Coverage was worse than this row recorded and the denominator was never named:** measured against the derived set of 23 standing units, the six covered 8–11 each — and *which* file is "best" depends on the method, so the number needs one stated: expanding each file's glob prefixes gives a three-way tie at 11 (`local_tier_eval`, `praetorium-status`, `overnight_pre_snapshot`), while counting literal names only drops `local_tier_eval` to 8. Either way it is not the daily-plan glob, and the queue's "9 of 19" could not be reproduced because 19 named no set. Eight units were invisible to all six: `buzz-pr-watch`, `content-change-dispatch`, `fleet-eval`, `fleet-turn-check`, `inbox-backlog-alert`, `knowledge-digest`, `m1-signal-scan`, `raw-ingest`. **VERIFIED ON A FAILING-CASE DAY — Wed 2026-09-02 16:03 CEST.** `m1-signal-scan` is the narrowest-scheduled invisible unit (`Mon,Wed 05:30`, read from `claudius.toml`'s `trigger` field and confirmed against `systemctl cat`'s `OnCalendar=` — the manifest field is named `trigger`, not `schedule`, so a checker looking for the latter finds nothing and reports no schedule rather than a missing one). It genuinely fired this morning (`LastTriggerUSec=Wed 2026-09-02 05:30:16`, `ExecMainStatus=0`), so a report omitting it today omits a unit that ran. Run side by side: the old `praetorium-*` glob returned 9 units and **zero** m1-signal-scan lines; the new list returns 22 system + 1 user and both `bin/praetorium-status.sh` and `bin/overnight_pre_snapshot.sh` name it. On any of the other five days both outputs would have been indistinguishable. `scope` is now a declared field: `buzz-pr-watch` **and both `nekovri-subsidy-*` entries** are `--user`, stated in prose only until now, so anything that did not read their notes counted them as system-scope. |
+| W4 | Consolidate the two job-override example homes | D1 §6.5 | **DONE 2026-09-02 (`36f7242`).** One home: `profiles/*.env.example`. `config/job-overrides/` keeps `archive/` and a pointer README. The live defect was an *instruction*, not a file: `docs/runbook.md` carried `install -m 600 config/job-overrides/augustus-content.env.example` for a path that had existed only under `archive/` since 2026-09-01, so following the runbook provisioned a retired runtime while looking authoritative. The assertion therefore targets `install` **commands**, not prose — a sentence recording where templates used to live is a correct record. **Open gap:** `augustus-content` and `bd-stall-radar` have no example at all; their runners are recoverable from the `run attempt N/M:` journal line (`run_content_via_buzz.sh` at 1/1; `bd_stall_radar_kernel.py` at 1/3) but the remaining keys are not, so writing them is its own task rather than a copy-paste. |
+| ~~W5~~ | ~~Every workflow entry carries an explicit `status`~~ | D3 §5 R15 | **DONE 2026-09-01 (`3a52d42`)** — all 26 entries carry one, and all 26 carry `suite` or `suite_exempt` (R15b, `6e4fb34`). Recorded done at line 571 and in `eval-spec.md` §5; this row was the one stale copy. D6 unblocked and built. |
+| W6 | Four standing workflows name no suite, and one suite has no owner | D6, brief 3 | **THE PR GATE BLOCKER.** `m1-signal-scan`, `overnight-morning-report`, `agent-workforce-auto-sync`, `overnight-pre-snapshot` carry `status = "standing"` with neither `suite` nor `suite_exempt`; `tests/test_content_inbox_finalize.sh` is claimed by no workflow and no fleet owner. Brief 3 shipped red on exactly these five by design (its criterion 11) — but **no brief in the queue closes them**, so `bash bin/verify.sh` cannot go green and every PR on this branch is red. Each needs a suite or a named `suite_exempt` reason; the orphan needs an owner or deletion. |
+| W7 | The drift check compares 2 of the 8 paths `bin/deploy` ships | D8, briefs 2+4 | `bin/deploy:20` ships `bin profiles docs CLAUDE.md AGENTS.md README.md config systemd`; `bin/check_deploy_drift.sh` compares `bin` and the three unit trees. **`profiles/` is the gap that has already bitten**: brief 4 fixed `augustus_content_task.md`, the runtime copy still carries the pinned line ranges, and the drift check says nothing about it — it flags the undeployed `bin/skill_sections.sh` beside it, so the deploy is not missed *this* time, but a profile-only change would land silently. Same defect class D8 exists to close, one tree over. |
+| W8 | The six `praetorium-phaseb-brief@*` units have no cleanup owner | D8, brief 2 | They pass today (source and `/etc` byte-identical). On the day they are removed from `/etc` they become source-only, which is the same defect in the other direction. **Delete from BOTH trees or neither** — and no brief in the queue sequences that. D5's cleanup covers the two campaign families only. |
+| W9 | `design/fleet-suites.toml`'s `asserts` list has no join to the assertions it names | D6, brief 1 | The six `asserts` strings and `tests/test_workflow_coverage.sh`'s six `check <id>` calls are related by convention only: `test_workflow_coverage.py` reads `path` and `owner` and never `asserts`, and `test_fleet_guards.sh` only checks the list is non-empty. Renaming an id in one place leaves the other silently stale — one fact in two places, which is the class D6 exists to detect. Raised by review 2026-09-02 and deliberately not fixed inside brief 4: it predates that work and joining it properly is its own change. |
+| W10 | Two bespoke off-box predicates, neither able to use `box_only_with` | brief 2, brief 4 | `bin/check_deploy_drift.sh` and `tests/test_content_skill_extract.sh` each hand-roll a guard whose predicate is "this is not Praetorium", because `box_only_with` means "skip if a path is absent" — the opposite of what both need, which is a **missing subject on the box staying RED**. Raised by review 2026-09-02 and declined there: a shared helper would have to span `bin/` ↔ `tests/`, and the naive consolidation costs the fail-closed property. If a third site appears, that is the signal to design the helper properly rather than copy it again. |
+| W11 | `bin/praetorium-status.sh` has no suite of its own | brief 5 | It is the box's most-read health view and nothing asserts it. `tests/test_ops_view.sh` looks like coverage and is not — it **stubs** `praetorium-status.sh` to prove `ops-view.sh` embeds *something*. Brief 5 rewrote its user-services block (a `--failed` query replacing a two-unit whitelist) and proved both branches by hand — reachable bus prints the failed set or `none`, unreachable prints `UNKNOWN` rather than a false `none`. By hand is where that proof stays. A suite needs a `systemctl` stub on `PATH`, which is real work and not a subtraction brief's. |
+| W12 | `no-orphan-suite` is narrower than its name and cannot see most orphans | brief 6 | The assertion reads *every suite is claimed by a workflow or by `design/fleet-suites.toml`*, but `tests/test_workflow_coverage.py:188-198` only reports an unclaimed suite when its subject is exec'd **solely by an archived unit** (`dead` non-empty). An unclaimed suite whose subject is live is not reported at all. Measured by adding `tests/test_fleet_ownership.sh` in brief 6: it was unclaimed and the checker stayed silent — nothing would have flagged its absence, so registering it in `fleet-suites.toml` was deliberate rather than gate-driven. Same family as W9 and as the whitelist defect in `readiness-report-phantom-blockers`: a check that asks a narrow list whether it is fine cannot fail. Widening it would change what green means for the whole gate — every unclaimed suite would surface at once — so it is a brief of its own, not a line inside one. |
+
+
+### Pending actions reserved for Dave — the branch cannot clear these itself
+
+Not carried work; concrete steps this box will not take from an unmerged branch. Most are
+reported by `bin/check_deploy_drift.sh`, so they cannot be forgotten silently — but none
+clears until someone runs it, and item 4 is the one the check cannot see.
+
+1. **`bin/deploy`, after merge.** Ten `bin/` files are source-only or content-drifted,
+   including `check_deploy_drift.sh` itself and `skill_sections.sh`. **Until this runs,
+   augustus reads the skill by the old pinned line ranges** (brief 4) — the runtime profile
+   still carries them. (Eight until 2026-09-02; brief 5 edited `agent_propose.sh` and
+   `overnight_pre_snapshot.sh`, and this count is re-measured, not incremented — it is a
+   property of the tree at merge time, so re-run `bin/check_deploy_drift.sh` rather than
+   trusting this number, which every later brief moves without noticing.)
+2. **`sudo` install of `agent-drift-check.{service,timer}`.** Written to `systemd/`, absent
+   from `/etc`. Note the unit's `ExecStart` names the SOURCE repo, not the runtime tree, and
+   that inversion is deliberate — see the unit header.
+3. **Verify by RUNNING the job, not by `list-timers`.** `active` + `enabled` +
+   a correct `next_elapse` say nothing about whether `ExecStart` exists.
+4. **`~/agent-workforce/bin/kanban_run_and_wait.sh` is still on disk** (7,599 B, 2026-08-12).
+   Brief 5 deleted it from source; a plain `bin/deploy` is additive and will not remove it.
+   **`--prune` is the documented remedy and brief 5 refused to run it — read the next block
+   before deciding.** Harmless in the meantime: no unit invokes it (proven from 14 journals),
+   and `check_deploy_drift.sh` now reports it as `runtime-only: has no source`, so it is
+   visible rather than forgotten.
+
+**`bin/deploy --prune` would delete twelve more files than the one you mean, and this is
+the stop-and-report the brief asked for.** Dry run, 2026-09-02:
+
+| Tree | Prune would delete | What it is |
+|---|---|---|
+| `bin/` | `kanban_run_and_wait.sh` | the one you want |
+| `profiles/` | 5 files | archived to `profiles/archive/` on 2026-09-01; runtime copies never removed |
+| `config/job-overrides/` | 4 `.env.example` | archived to `config/job-overrides/archive/` the same day |
+| `systemd/` | `content-inbox-finalize.{service,timer}` | archived to `systemd/archive/` the same day |
+| `systemd/` | `discord-bot.service` | in **no** source tree at all — staged in `~/deploy-staging/`, never installed (`~/CLAUDE.md`) |
+
+Eleven of the twelve are the 2026-09-01 archival landing in source and never reaching the
+runtime, because `bin/deploy` is additive: **`git mv` in this repo renames a file in source
+and leaves the old copy running.** That is a live instance of the D8 defect class in a tree
+D8 does not cover, and it is why the runtime still holds `profiles/claudius_task.md` — the
+hermes-era profile registry §4 recorded as archived. Pruning it is correct and is **not**
+brief 5's call: the same command that removes one dead script removes eleven other things on
+its own judgement, which is exactly the guard the brief wrote for itself.
+
+**W7 is now measured rather than suspected.** `bin/deploy` ships eight paths;
+`check_deploy_drift.sh` compares two (`bin/`, the unit trees). `profiles/`, `docs/`,
+`config/`, `CLAUDE.md`, `AGENTS.md` and `README.md` drift unwatched — which is how five
+archived profiles sat live in the runtime for a day with a green drift check.
+
+**One correction to brief 5's own text, found here.** It said `hermes-gateway.service` is one
+of nine `~/.config/systemd/user/` units with no source counterpart, and that adopting one you
+are retiring would be the wrong direction. Brief 2 already adopted it (`9e9c491`,
+`systemd/user/hermes-gateway.service`), for drift coverage rather than for ownership, and the
+source copy is byte-identical to the installed one. Nothing to undo — but the retired unit is
+now in this repo, which is the right place for it to be while it waits out its review cycle.
 
 ---
 

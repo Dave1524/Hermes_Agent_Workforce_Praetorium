@@ -73,7 +73,7 @@ title    = "W1-W4, then D5's campaign-unit cleanup"
 section  = "Carried work"
 ships    = "green"
 must_carry = [
-  "W3 is the praetorium-* glob defect: it exists in SIX files, the best coverage is 9 of 19, and 8 timers are invisible to every report. It is correct by coincidence 5 days in 7, so never schedule its verification for a day its failing case cannot occur.",
+  "W3 is the praetorium-* glob defect: it exists in SIX files and 8 timers are invisible to every report. It is correct by coincidence 5 days in 7, so never schedule its verification for a day its failing case cannot occur. MEASURED 2026-09-02, correcting this line's own 'best coverage is 9 of 19': 19 named no set, and against the 23 standing units the six covered 8-11 each, with the rank depending on whether glob prefixes are expanded. A coverage number without its denominator and its method is not a number — that unqualified 9-of-19 was copied verbatim into three prompt profiles before it was checked.",
   "W5 is already done (see brief 3). Four items remain, not five.",
   "D5's cleanup deletes praetorium-content-strategy-research.* and praetorium-faceless-content-research.* AFTER their last firings — 2026-09-03 23:00 and 2026-09-04 01:30. Both timers were still live and scheduled as of 2026-09-01 19:30. Deleting early destroys a campaign mid-flight.",
 ]

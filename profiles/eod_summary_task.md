@@ -1,3 +1,6 @@
+Owner: marcus — this workflow is declared in design/agents/marcus.toml. This line is the
+canonical owner statement; anything below is voice, not a second declaration.
+
 # EOD summary — Praetorium evening job (NUC-45)
 
 You are Marcus, orchestrator on Praetorium. Close the day out from **evidence the box can
@@ -56,7 +59,19 @@ git -C ~/vault log --since="$DATE 00:00" --oneline --stat | head -40
 ```bash
 ls -la ~/agent-worktrees/inbox/_inbox/agents/ | tail -10
 tail -20 ~/agent-workforce/logs/cost.log
-systemctl list-timers 'agent-*' 'augustus-*' 'bd-*' 'overnight-*' 'praetorium-*' --no-pager
+# The fleet unit list has ONE owner: ~/agent-workforce/config/fleet-units.tsv.
+# Do not substitute a glob. Six files each carried their own hand-written list; measured
+# 2026-09-02 against the 23 standing units this file declares (22 system + 1 user), they
+# covered 8 to 11 each, and eight units were invisible to every one of them. A prefix nobody thought to add is not a visible omission — that is why this reads a
+# declared list instead. If a unit you expect is missing, fix design/agents/<persona>.toml
+# and re-materialise the list; do not add it here.
+U=~/agent-workforce/config/fleet-units.tsv
+mapfile -t SYS < <(awk -F'\t' '!/^#/ && NF>=3 && $2=="system" && $3=="standing"{print $1".timer"}' "$U")
+systemctl list-timers "${SYS[@]}" --no-pager
+# User-scope units are invisible to the system manager above; querying them there returns
+# not-found, which reads exactly like a unit that has been removed.
+mapfile -t USR < <(awk -F'\t' '!/^#/ && NF>=3 && $2=="user" && $3=="standing"{print $1".timer"}' "$U")
+systemctl --user list-timers "${USR[@]}" --no-pager
 journalctl --since "$DATE 00:00" -p warning --no-pager | tail -30
 ```
 

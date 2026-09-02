@@ -124,14 +124,16 @@ log "trigger published to $ROUTE (channel $channel, mention $augustus)"
 # No --kinds filter either — praetorium publishes 45001 but augustus answers as 45003
 # (forum comment), so a filter set from the route table would drop every reply he
 # writes. Author + epoch are the gates; the kind is not.
-decline_event() {  # decline_event <since-epoch>
+# ONE reader, two sentinels. They differ only in the prefix they look for, and a second
+# copy of the relay call is a second place for the author/epoch gates to drift.
+sentinel_reply() {  # sentinel_reply <since-epoch> <prefix> -> "<event-id> <line>"
   local json
   json=$("$HELPER" "$IDENTITY" messages get --channel "$channel" \
            --since "$1" --limit 50 2>/dev/null) || return 1
   printf '%s' "$json" | python3 -c '
 import json, sys
 
-author, since = sys.argv[1], int(sys.argv[2])
+author, since, prefix = sys.argv[1], int(sys.argv[2]), sys.argv[3]
 try:
     events = json.load(sys.stdin)
 except ValueError:
@@ -140,11 +142,11 @@ for event in events if isinstance(events, list) else []:
     if event.get("pubkey") != author or int(event.get("created_at", 0)) < since:
         continue
     for line in (event.get("content") or "").splitlines():
-        if line.strip().startswith("DECLINE:"):
-            sys.stdout.write(event.get("id", "") + "\n")
+        if line.strip().startswith(prefix):
+            sys.stdout.write(event.get("id", "") + " " + line.strip() + "\n")
             sys.exit(0)
 sys.exit(1)
-' "$augustus" "$1"
+' "$augustus" "$1" "$2"
 }
 
 deadline=$(( dispatch_epoch + wait_secs ))
@@ -155,7 +157,22 @@ while :; do
     exit 0
   fi
 
-  if event_id=$(decline_event "$dispatch_epoch") && [ -n "$event_id" ]; then
+  # THE FOURTH OUTCOME, checked before the decline branch. The three the header names are
+  # board-moved (0), DECLINE: (0) and asked-but-silent (1). A skill read that could not
+  # resolve a named section is none of them: augustus DID reply, and the reply names the
+  # heading that moved. Falling through left it to the deadline, so the run burned the full
+  # wait and then logged "no reply" — asserting the opposite of what happened and discarding
+  # the only line that says which heading to fix.
+  if skill_reply=$(sentinel_reply "$dispatch_epoch" 'SKILL-READ-FAILED:') \
+     && [ -n "$skill_reply" ]; then
+    log "augustus could not read the skill — ${skill_reply#* }"
+    log "  (event ${skill_reply%% *}) a named section did not resolve in the vault SKILL.md;"
+    log "  this is a FAILURE, not a decline. Fix the section name or the heading, not the run."
+    exit 1
+  fi
+
+  if reply=$(sentinel_reply "$dispatch_epoch" 'DECLINE:') && [ -n "$reply" ]; then
+    event_id=${reply%% *}
     # Recorded so content_moved.sh can pass an unmoved board without re-reading the
     # relay, and so the claim stays checkable: `buzz social event --event <id>`.
     printf 'decline_event=%s\n' "$event_id" >>"$SNAPSHOT"

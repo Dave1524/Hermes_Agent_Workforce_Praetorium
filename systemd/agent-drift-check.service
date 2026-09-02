@@ -1,0 +1,23 @@
+# Source-vs-deployed drift, daily. The class a commit-time gate cannot see: /etc is
+# hand-edited (or a unit is installed and never committed) between commits, and
+# bin/auto-sync commits and pushes every 15 minutes without ever calling verify.sh
+# (bin/auto-sync:32-34), so "the gate runs when a human commits" is not true on this box.
+#
+# ExecStart points at the SOURCE repo, which inverts the convention every other job here
+# follows, deliberately. This job's subject IS the relationship between the trees, so a copy
+# of it exec'd out of the runtime tree resolves its own REPO to that tree: source and runtime
+# become one directory, the bin comparison reports zero findings whatever the repo contains,
+# and design/ — which bin/deploy does not ship — is absent, so every /etc-only unit reads as
+# undeclared drift. Measured 2026-09-02: a tautology in one half and 11 false findings in the
+# other, alerting daily. The checker now refuses both shapes rather than trusting this line.
+[Unit]
+Description=Source-vs-deployed drift check (four unit trees) — D8
+OnFailure=agent-alert@%n.service
+
+[Service]
+Type=oneshot
+User=dave
+Environment=DELIVERY_JOB=%n
+ExecStart=/home/dave/dev/agent-workforce/bin/check_deploy_drift.sh
+TimeoutStartSec=5min
+NoNewPrivileges=true

@@ -48,7 +48,27 @@ log() { echo "$(date -Is) $*"; }
 capture_inputs() {
   # Keep the header row: NEXT and LAST are both timestamps, so without column
   # names the task is unanswerable and the model is graded on a coin flip.
-  systemctl list-timers 'overnight-*' 'agent-*' 'augustus-*' 'bd-*' 'weekly-*' \
+  # W3 (2026-09-02): the timer set comes from config/fleet-units.tsv, not the five-prefix
+  # glob that stood here. Two consequences, both deliberate.
+  #   1. t1's denominator moves from 7 units to every system-scope standing unit (21 today).
+  #      That is a DIFFICULTY CHANGE, not a model change: history.psv scores either side of
+  #      the deploy that ships this are not comparable. t1's detail string carries the
+  #      denominator ("7/7 units" -> "21/21 units"), so the discontinuity is visible in the
+  #      scorecard itself rather than needing to be remembered.
+  #   2. The set now grows when the fleet grows. That is the point — a model that can
+  #      transcribe the box's real timer list is what this measures — but it does mean a
+  #      future unit addition moves the score. Read a t1 drop against the denominator first.
+  # The services list below is deliberately NOT derived: it mixes workflow units with
+  # daemons (ollama, qmd-mcp) that are declared in no manifest, and it is test data rather
+  # than fleet coverage.
+  mapfile -t _fleet_timers < <(
+    awk -F'\t' '!/^#/ && NF>=3 && $2=="system" && $3=="standing" {print $1".timer"}' \
+      "$REPO_BIN/../config/fleet-units.tsv" 2>/dev/null)
+  if [ ${#_fleet_timers[@]} -eq 0 ]; then
+    log "FATAL: config/fleet-units.tsv unreadable or empty — refusing to grade on a fixture"
+    return 1
+  fi
+  systemctl list-timers "${_fleet_timers[@]}" \
     --no-pager 2>/dev/null | grep -E '^NEXT|\.timer' > "$work/timers.txt" || true
 
   : > "$work/services.txt"

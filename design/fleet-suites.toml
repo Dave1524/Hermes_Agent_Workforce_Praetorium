@@ -33,3 +33,58 @@ wrapper in /usr/local/bin, a --user unit — which is exactly why it exists: thi
 commits cannot see those files move, so a test is the only thing that fails loudly when
 the far side does.
 """
+
+# The coverage checker itself. Same shape as the guard suite above and for the same reason:
+# it is scheduled by nothing, so no registry entry can claim it, and without this block it
+# reports ITSELF as an orphan on its first run.
+[[suite]]
+path    = "tests/test_workflow_coverage.sh"
+owner   = "fleet"
+asserts = [
+  "parse-integrity",        # a coverage figure computed from zero parsed entries is refused
+  "standing-has-suite",     # status = "standing" and no suite_exempt => len(suite) >= 1
+  "suite-paths-exist",      # every declared suite path is a file on disk
+  "exempt-named",           # every suite_exempt workflow is printed by name, never skipped
+  "no-orphan-suite",        # both join directions: workflow -> suite, and this file's owners
+  "timer-family-declared",  # every *.timer family in systemd/ has a manifest entry
+]
+why_no_workflow = """
+It grades the registry, not a job. Nothing execs it and nothing ever should — its subject is
+design/agents/*.toml plus this file, both of which change only when a human edits them, so a
+timer would run it against an unchanged input every night and prove nothing that bin/verify.sh
+does not already prove on the commit that changes it.
+"""
+
+# The manifest -> list -> consumer join (W2/W3, brief 6). Same shape and same reason as the
+# two above: nothing schedules it, so no registry entry can claim it, and its subject is the
+# agreement BETWEEN artifacts rather than any one job's output. Claiming it from a workflow
+# would be worse than leaving it here — tests/test_fleet_ownership.sh asserts one narrow
+# property of bin/overnight_pre_snapshot.sh (that it sources the unit list), and hanging it
+# off that workflow's `suite` would credit the coverage figure with a suite that does not
+# cover the workflow. `standing-has-suite` is still red for that job, correctly.
+#
+# WORTH KNOWING WHILE READING THIS FILE: `no-orphan-suite` is narrower than its name. It
+# reports an unclaimed suite only when that suite's subject is exec'd solely by an archived
+# unit; an unclaimed suite with a live subject is not reported at all. So this entry is not
+# what kept the gate green — nothing would have flagged its absence. Registering it is
+# deliberate, not gate-driven. Widening the rule is out of brief 6's scope and is recorded
+# as an open item in design/open-decisions.md.
+[[suite]]
+path    = "tests/test_fleet_ownership.sh"
+owner   = "fleet"
+asserts = [
+  "list-schema",            # four columns, no duplicate units, scope in {system,user}, non-empty
+  "list-equals-manifests",  # both join directions: no manifest unit missing, no unit invented
+  "row-matches-manifest",   # scope/status/owner agree with the declaring design/agents/*.toml
+  "profile-owner-header",   # every [[workflows]] profile exists and line 1 names its owner
+  "no-prose-owner-drift",   # no profile's prose claims a persona other than its declared owner
+  "consumers-name-the-list",# all six reporting consumers read config/fleet-units.tsv
+  "deployable-not-design",  # bin/deploy ships config/ and does NOT ship design/
+  "one-example-home",       # W4: templates live in profiles/, and no install command says otherwise
+]
+why_no_workflow = """
+It grades an agreement between four artifacts — design/agents/*.toml, config/fleet-units.tsv,
+profiles/*.md and the six consumers — none of which is a job's output. A timer would run it
+nightly against inputs that change only when a human edits them, which is precisely when
+bin/verify.sh already runs it.
+"""

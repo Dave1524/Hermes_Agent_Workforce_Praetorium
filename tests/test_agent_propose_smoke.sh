@@ -210,19 +210,6 @@ assert "cost.log attempts=1 (not retried)" "grep -q 'attempts=1' '$h10/agent-wor
 assert "cost.log memory=na (dedup skips the memory block)" "grep -q 'memory=na' '$h10/agent-workforce/logs/cost.log'"
 assert "no runner memory fallback written" "! grep -q 'wrote runner fallback entry' '$h10/agent-workforce/logs/agent_propose.log'"
 
-echo "--- scenario 11: kanban path de-stacks outer retry to 1 attempt (NUC-38) ---"
-h11=$(sandbox)
-# A kanban-NAMED runtime that always fails: run_cmd contains 'kanban_run_and_wait.sh',
-# so max_attempts must collapse to 1 (hermes already retries internally — no 3x outer).
-kmock="$h11/kanban_run_and_wait.sh"
-printf '#!/usr/bin/env bash\nexit 1\n' > "$kmock"; chmod +x "$kmock"
-sed -i "s#^AGENT_RUNTIME_CMD=.*#AGENT_RUNTIME_CMD=$kmock#" "$h11/.config/agent-workforce/secrets.env"
-rc=$(run_scenario "$h11" 0 0)
-assert "exits 1 (FAIL)" "[ '$rc' = 1 ]"
-assert "FAIL after exactly 1 attempt (kanban de-stack)" "grep -q 'FAIL: runtime failed after 1 attempts' '$h11/agent-workforce/logs/agent_propose.log'"
-assert "cost.log attempts=1" "grep -q 'attempts=1' '$h11/agent-workforce/logs/cost.log'"
-assert "NOT the old 3-attempt behavior" "! grep -q 'after 3 attempts' '$h11/agent-workforce/logs/agent_propose.log'"
-
 echo "--- scenario 12: AGENT_RUN_MODE=ops success (NUC-36) ---"
 h12=$(sandbox)
 # Ops mode: no inbox required; mock writes outside inbox must NOT trip write-boundary.

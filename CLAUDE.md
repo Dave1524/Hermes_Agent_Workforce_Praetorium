@@ -13,7 +13,7 @@ the vault holds *what they know*.
 
   | Persona | Role | Model | Tier | Scheduled jobs |
   |---|---|---|---|---|
-  | **Marcus** | Chief of Staff / orchestrator | `deepseek/deepseek-v4-flash` | B | none — interactive + kanban owner |
+  | **Marcus** | Chief of Staff / orchestrator | `deepseek/deepseek-v4-flash` | B | none — interactive only (was "+ kanban owner"; S3 retired 2026-09-02, D7) |
   | **Claudius** | Head of Research | `anthropic/claude-sonnet-5` | A (ZDR-pinned) | bd-stall-radar, weekly-pre-assembly, overnight-morning-report |
   | **Augustus** | Editor-in-Chief | `openai/gpt-5.5` | A (**unpinned — open gap**) | augustus-content + content-change-dispatch |
   | **Trajan** | Head of Engineering | `deepseek/deepseek-v4-flash` | B | none |
@@ -150,8 +150,23 @@ Rules that are easy to get wrong:
 ## Verification
 Run: `bash bin/verify.sh` from the repo root.
 Gate = bash syntax check + shellcheck (error-severity, must be clean) over every script in
-`bin/`, plus any test scripts under `tests/*.sh` if present. Full shellcheck output (style/info)
-is printed but does not fail the gate.
+`bin/`, **plus `bin/check_deploy_drift.sh`**, plus any test scripts under `tests/*.sh` if
+present. Full shellcheck output (style/info) is printed but does not fail the gate.
+
+**The drift check inverts the usual loop, and that is the one thing to know before editing.**
+It compares source against what is actually deployed — `bin/` against `~/agent-workforce/bin/`,
+`systemd/` against `/etc/systemd/system/`, `systemd/user/` against `~/.config/systemd/user/` —
+in both membership directions. So **adding or editing a `bin/` script makes the gate red until
+`bin/deploy` runs**: the loop here is edit → deploy → verify → commit, not edit → verify →
+commit. Details and the failure table: `docs/runbook.md` § Deploy ordering.
+
+Two consequences that look like bugs and are not:
+- **On a feature branch the gate cannot be green** if the branch adds a `bin/` script or a
+  unit, because deploying an unmerged branch to the live runtime is not something to do
+  casually and installing a unit needs `sudo`. Report the drift; do not soften the check.
+- **Off the box the check skips**, out loud, and CI diffs that skip line against
+  `tests/ci-expected-skips.txt`. A suite that starts or stops skipping fails CI rather than
+  quietly changing what "green" means.
 
 **Never end a pipeline in an early-exiting reader while `pipefail` is on.** `grep -q` and
 `head` exit the moment they succeed, so the upstream stage dies of SIGPIPE and the pipeline

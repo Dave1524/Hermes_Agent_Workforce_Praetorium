@@ -1,3 +1,6 @@
+Owner: marcus — this workflow is declared in design/agents/marcus.toml. This line is the
+canonical owner statement; anything below is voice, not a second declaration.
+
 # Overnight morning report (NUC-36) — Claude Code runtime variant
 
 You are the Praetorium orchestrator compiling a morning report on overnight activity.
@@ -22,10 +25,23 @@ ls -t ~/logs/overnight/pre-snapshot-*.log | head -1
 Read it. This is BEFORE state.
 
 ### 2. Capture post-state (now, ~04:15 UTC / 06:15 Amsterdam)
-Run the same checks the pre-snapshot covers (kanban, inbox files, MCP endpoints,
-gateway, systemd timers, disk/clock). Prefer:
+Run the same checks the pre-snapshot covers (inbox files, MCP endpoints, systemd
+timers, disk/clock). **Kanban and gateway are no longer among them** — S3 was retired
+2026-09-02 (open-decisions.md D7) and the pre-snapshot stopped capturing both in the
+same commit. Do not reintroduce them and do not report their absence as a fault.
+Prefer:
 
-- `systemctl list-timers 'overnight-*' 'agent-*' 'augustus-*' 'bd-*' 'weekly-*' --no-pager`
+- The fleet timer list, from its one owner — never a glob (see
+  `~/agent-workforce/config/fleet-units.tsv`; six hand-written copies disagreed six ways
+  and left eight standing units invisible to every report):
+
+  ```bash
+  U=~/agent-workforce/config/fleet-units.tsv
+  mapfile -t SYS < <(awk -F'\t' '!/^#/ && NF>=3 && $2=="system" && $3=="standing"{print $1".timer"}' "$U")
+  systemctl list-timers "${SYS[@]}" --no-pager
+  mapfile -t USR < <(awk -F'\t' '!/^#/ && NF>=3 && $2=="user" && $3=="standing"{print $1".timer"}' "$U")
+  systemctl --user list-timers "${USR[@]}" --no-pager
+  ```
 - `journalctl -u overnight-pre-snapshot.service -u agent-proposal.service -u agent-inbox-sync.service --since '12 hours ago' --no-pager | tail -80`
 - `ls -la ~/agent-worktrees/inbox/_inbox/agents/`
 - `tail -20 ~/agent-workforce/logs/cost.log`

@@ -7,7 +7,7 @@
 | `~/dev/agent-workforce/` (git, `main`) | **Source of truth.** Edit here; open PRs for non-trivial work. |
 | `~/agent-workforce/` | **Deployed runtime** (no `.git`). What systemd `ExecStart=` runs. Update by copying from the git tree after merge — not by editing in place. |
 | `/etc/systemd/system/*.service|.timer` | Installed units. Canonical unit *sources* live in this repo under `systemd/`; install with `sudo cp` + `daemon-reload`. |
-| `~/.config/agent-workforce/` | Secrets + per-job override env files (mode 600). **Never git.** Templates: `config/job-overrides/*.env.example`. |
+| `~/.config/agent-workforce/` | Secrets + per-job override env files (mode 600). **Never git.** Templates: `profiles/*.env.example` — **not** `config/job-overrides/`, which holds history only (W4, 2026-09-02). |
 
 If a reviewer only looks at git and concludes a path is "dead code", check `AGENT_RUNTIME_CMD` / `AGENT_JOB_OVERRIDES` under `~/.config/agent-workforce/` — production wiring often lives there.
 
@@ -29,12 +29,54 @@ Scheduled **proposal** agent jobs share `bin/agent_propose.sh` (lock, preflight,
 | Content change-dispatch (poll) | every **15 min** | `content-change-dispatch.{service,timer}` | `~/.config/agent-workforce/augustus-content.env` (reused) | *(triggers the augustus run)* | inherits the row above |
 | BD stall radar | **Sun–Thu 23:00** | `bd-stall-radar.{service,timer}` | `~/.config/agent-workforce/bd_stall_radar.env` | `profiles/bd_stall_radar_task.md` | `claudius` |
 | BD follow-up drafts | **Sun–Thu 23:30** | `bd-followup-drafts.{service,timer}` | `~/.config/agent-workforce/bd_followup_drafts.env` | `profiles/bd_followup_drafts_cc_task.md` | *(headless Claude Code)* |
-| Weekly pre-assembly | **Fri 22:00** | `weekly-pre-assembly.{service,timer}` | `~/.config/agent-workforce/weekly_pre_assembly.env` | `profiles/weekly_pre_assembly_task.md` | `claudius` |
+| Weekly pre-assembly | **Fri 22:00** | `weekly-pre-assembly.{service,timer}` | `~/.config/agent-workforce/weekly_pre_assembly.env` | `profiles/weekly_pre_assembly_cc_task.md` | *(headless Claude Code; owner **marcus**)* |
 | Overnight pre-snapshot (no LLM) | daily **04:25** | `overnight-pre-snapshot.{service,timer}` | n/a | `bin/overnight_pre_snapshot.sh` | n/a |
-| Overnight morning report (ops) | daily **06:15** | `overnight-morning-report.{service,timer}` | `~/.config/agent-workforce/overnight_morning_report.env` | `profiles/overnight_morning_report_task.md` | `claudius` |
+| Overnight morning report (ops) | daily **06:15** | `overnight-morning-report.{service,timer}` | `~/.config/agent-workforce/overnight_morning_report.env` | `profiles/overnight_morning_report_cc_task.md` | *(headless Claude Code; owner **marcus**)* |
 | Daily plan (ops) | **Mon–Fri 06:00** | `praetorium-daily-plan.{service,timer}` | `~/.config/agent-workforce/daily_plan.env` | `profiles/daily_plan_task.md` | *(headless Claude Code)* |
 | EOD summary (ops) | daily **22:15** | `praetorium-eod-summary.{service,timer}` | `~/.config/agent-workforce/eod_summary.env` | `profiles/eod_summary_task.md` | *(headless Claude Code)* |
 | Agent inbox → Notion sync | `agent-inbox-sync.timer` | `agent-inbox-sync.{service,timer}` | *(service embeds the pipeline cmd)* | n/a | n/a |
+
+**Two rows above were corrected 2026-09-02 (W1).** They named `profiles/weekly_pre_assembly_task.md`
+and `profiles/overnight_morning_report_task.md` — both archived to `profiles/archive/` on 2026-09-01 —
+and attributed both to `claudius`, when `design/agents/marcus.toml` declares both. Following the old
+rows installed a job pointing at an archived profile under an owner that does not own it.
+
+### W1 handoff — `AGENT_OWNER` must be added to each live override env (Dave's action)
+
+`~/.config/agent-workforce/` is mode-600 and outside this repo; an agent cannot read or write it.
+Until these lines are added, **the six jobs below keep logging `memory=no-store` exactly as they do
+today** — the code change alone does not fix them, because `AGENT_OWNER` falls back to the runtime
+name on purpose rather than inventing a store.
+
+Add one line to each file. Nothing else changes; do not edit `AGENT_PROFILE`, which still names the
+runtime and still keys `cost.log`'s `profile=` column.
+
+| Add to | Line to add | Store it selects |
+|---|---|---|
+| `~/.config/agent-workforce/standing_research.env` | `AGENT_OWNER=claudius` | `~/.hermes/profiles/claudius/memories` |
+| `~/.config/agent-workforce/raw_ingest.env` | `AGENT_OWNER=claudius` | `~/.hermes/profiles/claudius/memories` |
+| `~/.config/agent-workforce/m1_signal_scan.env` | `AGENT_OWNER=claudius` | `~/.hermes/profiles/claudius/memories` |
+| `~/.config/agent-workforce/knowledge_digest.env` | `AGENT_OWNER=claudius` | `~/.hermes/profiles/claudius/memories` |
+| `~/.config/agent-workforce/bd_followup_drafts.env` | `AGENT_OWNER=claudius` | `~/.hermes/profiles/claudius/memories` |
+| `~/.config/agent-workforce/weekly_pre_assembly.env` | `AGENT_OWNER=marcus` | `~/.hermes/profiles/marcus/memories` |
+| `~/.config/agent-workforce/daily_plan.env` | `AGENT_OWNER=marcus` | *(ops mode — stays `memory=na`, see below)* |
+| `~/.config/agent-workforce/eod_summary.env` | `AGENT_OWNER=marcus` | *(ops mode — stays `memory=na`)* |
+| `~/.config/agent-workforce/overnight_morning_report.env` | `AGENT_OWNER=marcus` | *(ops mode — stays `memory=na`)* |
+
+The four store directories already exist; nothing needs creating. `bin/consolidate_memory.sh:149`
+discovers `*/memories` under `~/.hermes/profiles/` dynamically, so a store that starts filling is
+pruned nightly with no further wiring.
+
+**The last three rows will not change their `memory=` value, and that is correct.**
+`AGENT_RUN_MODE=ops` skips the memory path entirely by design (NUC-36,
+`bin/agent_propose.sh:236,368-372`), so they log `na`, never `no-store`. Set `AGENT_OWNER` on them
+anyway so the record is uniform and the value is right the day ops mode is revisited — but do not
+read a persisting `na` as the handoff having failed.
+
+Verify after applying: the next run of any of the first six logs
+`mode: … owner=<persona>` in `agent_run.log` and `memory=recorded` or `memory=fallback` in
+`cost.log`. `bd-followup-drafts` and `bd-stall-radar` are `dormant` (timers disabled) and will
+produce no firing — do not enable a timer to create evidence.
 
 **Research pipeline brief (2026-07-30).** The standing research run was hard-down for ten
 days on hermes/claudius via OpenRouter (HTTP 402 "Insufficient credits" landing in the
@@ -71,14 +113,21 @@ AGENT_VERIFY_CMD='~/agent-workforce/bin/content_moved.sh'
 AGENT_MAX_ATTEMPTS=1
 ```
 
-`AGENT_MAX_ATTEMPTS=1` is not optional. The non-kanban default is 3, and a timeout exits 1 —
-retried — so a slow-but-working augustus would be re-triggered up to three times and could
-draft the same row twice. The old `kanban_run_and_wait.sh` line got its 1 from
-`agent_propose.sh`'s path match; this one does not.
+`AGENT_MAX_ATTEMPTS=1` is not optional, and since 2026-09-02 it is the **only** thing
+setting it. The default is 3, and a timeout exits 1 — retried — so a slow-but-working
+augustus would be re-triggered up to three times and could draft the same row twice. Until
+the S3 retirement (D7) there was a second source: `agent_propose.sh` matched
+`*kanban_run_and_wait.sh*` in the runtime command and collapsed to 1 attempt implicitly.
+That path match is deleted, so **every** job now gets 3 unless its own override says
+otherwise. Any job that was relying on the implicit 1 must set it explicitly.
 
-**Revert** is the same file: restore the `AGENT_RUNTIME_CMD` from
-`config/job-overrides/augustus-content.env.example` (hermes/kanban → OpenRouter), drop
-`AGENT_VERIFY_CMD`, and the job is back on the pre-NUC-46 path. Nothing else changes — the
+**Revert is no longer available, and must not be improvised.** It used to mean: restore the
+`AGENT_RUNTIME_CMD` from `config/job-overrides/archive/augustus-content.env.example`. That
+line invokes `kanban_run_and_wait.sh`, which was deleted 2026-09-02 — installing it now
+gives the unit a runner that does not exist, i.e. a green timer that is structurally
+incapable of producing anything. The archived example stays as history and is correct as
+history. If augustus-content needs backing out, the target is the Buzz-dispatch wiring in
+`bin/run_content_via_buzz.sh`, not the kanban era. Nothing else changes — the
 15-min `content-change-dispatch` poller reuses this same env, so both jobs move and revert
 together, which is deliberate: two Augustuses drafting one board is the double-hosting hazard.
 Overlap between the 20-minute wait and the 15-minute tick is a clean SKIP on
@@ -103,16 +152,22 @@ Override files set only non-secret keys:
 
 - `AGENT_PROFILE` (optional; else parsed from `AGENT_RUNTIME_CMD -p …`)
 - `AGENT_TASK_SLUG` (metrics / cost.log label)
-- `AGENT_RUNTIME_CMD` (actual hermes / kanban invocation; paths point at the **deployed** tree `~/agent-workforce/`)
+- `AGENT_RUNTIME_CMD` (the actual runner invocation — `bin/run_*_cc.sh` or `bin/run_content_via_buzz.sh` today; paths point at the **deployed** tree `~/agent-workforce/`. It read "hermes / kanban invocation" until 2026-09-02; no live job has invoked either since 2026-08-13, proven from the `run attempt N/M:` journal line of all 14 units that set this key)
 - `AGENT_RUN_MODE` (`proposal` default, or `ops` for non-inbox LLM jobs — NUC-36)
 
-Templates (checked in): `config/job-overrides/*.env.example`. Install:
+Templates (checked in): `profiles/*.env.example`. Install:
 
 ```bash
-install -m 600 config/job-overrides/augustus-content.env.example \
-  ~/.config/agent-workforce/augustus-content.env
-# same for bd_stall_radar, weekly_pre_assembly, overnight_morning_report
+install -m 600 profiles/<job>.env.example ~/.config/agent-workforce/<job>.env
 ```
+
+**One home since 2026-09-02 (W4).** These five lines used to point at
+`config/job-overrides/`, and the `install` example named
+`config/job-overrides/augustus-content.env.example` — a path that has existed only under
+`archive/` since 2026-09-01. Following it provisioned a retired runtime. That directory now
+holds history and a pointer; see `config/job-overrides/README.md`, including the two live
+jobs (`augustus-content`, `bd-stall-radar`) that still have no example and must be derived
+from their unit journal rather than from `archive/`.
 
 Supporting daemons (not override-driven):
 
@@ -128,6 +183,32 @@ Supporting daemons (not override-driven):
 | `inbox-backlog-alert.timer` | Daily 06:20 approvals-aging Discord alert (>2d oldest pending) — NUC-30 |
 | `local-tier-eval.timer` | Tier-0 capability eval 6×/day (02,08,11,14,17,20:17) via `bin/local_tier_eval.sh`. No `EnvironmentFile` by design — it must never reach a paid provider |
 | `fleet-eval.timer` | Daily 07:07 drift check via `bin/fleet_eval.sh`: tier 1 grades receipts against `bin/buzz_routes.env`, tier 2 re-asks the vault questions the fleet got wrong — three assert which document wins, and `p4_kind_span` asserts the answer is still inside the anchor's own retrieved chunk, because prose added to a vault file re-cuts every chunk below it. Gates on **regression against the baselines in `bin/fleet_eval_probes.json`**, not on absolute state — two probes fail today by design, and re-recording a baseline is a deliberate fixture edit. Exits 1 and posts to `ops` only when something moved backwards; history spine at `~/logs/fleet-eval/history.psv` |
+| `agent-drift-check.timer` | Daily 05:40 source-vs-deployed drift via `bin/check_deploy_drift.sh` (D8). Compares FOUR trees — `bin/` ↔ runtime, `systemd/` ↔ `/etc`, `systemd/user/` ↔ `~/.config/systemd/user/` — in **both membership directions**, not just the bytes of units present in both. Ownership fails closed: an installed unit with no source is red unless declared in `design/unit-ownership.toml` (permanent) or by its manifest's `status = "campaign"` + `expires` (dated, and an expired entry still doing work is itself red). Reports only — no `/etc` writes, no `systemctl`, no deploy. The staging copy `~/agent-workforce/systemd/` is deliberately not a comparison side: systemd never reads it, so source-vs-staging goes green the moment a unit is deployed while `/etc` stays stale |
+
+## Deploy ordering — this inverts the usual loop
+
+`bin/verify.sh` hard-fails on deploy drift, so **verify is red until `bin/deploy` has run**.
+The order is:
+
+```
+edit source  ->  bin/deploy  ->  bash bin/verify.sh  ->  commit
+```
+
+not the usual edit → verify → commit → deploy. Adding or editing anything under `bin/` makes
+the gate red immediately, and the message names the file, so a red here is explainable rather
+than mysterious — but only if you know to expect it. `bin/deploy` warns when the source tree is
+dirty (it does not block), and refuses to deploy onto a git tree, so the source can never be its
+own destination.
+
+Two consequences that are correct and will still surprise:
+
+- **`bin/deploy` itself exits non-zero while any `/etc` unit is missing**, because its
+  post-condition runs the same full four-tree check and installing a unit needs `sudo` —
+  which no script here does. A successful rsync plus a non-zero exit means "the runtime
+  converged, the box has not". Install the unit and re-run.
+- **A campaign exclusion expiring turns the gate red on a calendar, with no commit.** The two
+  content-research campaigns expire 2026-09-03 23:00 and 2026-09-04 01:30; after that their
+  `/etc` units are red until they are deleted from `/etc` (brief 6 owns that).
 
 Deploy a unit after changing `systemd/`:
 
@@ -135,6 +216,16 @@ Deploy a unit after changing `systemd/`:
 sudo cp systemd/<unit> /etc/systemd/system/
 sudo systemctl daemon-reload
 # timers: sudo systemctl enable --now <name>.timer
+```
+
+**`systemd/user/` is NOT installed this way.** Those nine units are `--user` scope; copying one
+into `/etc/systemd/system` installs it system-wide under the wrong manager and it will not find
+`%h`. They go to `~/.config/systemd/user/` with no `sudo` at all:
+
+```bash
+cp systemd/user/<unit> ~/.config/systemd/user/
+systemctl --user daemon-reload
+# timers: systemctl --user enable --now <name>.timer
 ```
 
 Deploy scripts/profiles after merge:
@@ -221,9 +312,10 @@ Because git rewrites `FETCH_HEAD` even when a fetch fails, the guard keeps its o
 
 | Asset | Where | Backup path |
 |---|---|---|
-| Service units | Every deployed `.service`/`.timer` whose name matches a unit in this repo's `systemd/` (incl. `agent-workforce-auto-sync`, `overnight-*`, `agent-alert@`, `agent-inbox-sync` alongside the qmd/agent-proposal/augustus/bd-stall/brave/memory/scorecard/discord families) — enumerated automatically by `backup_config.sh` | `backup_config.sh` tarball |
+| Service units (`--user`) | Every `.service`/`.timer` in this repo's `systemd/user/` that is installed under `~/.config/systemd/user/` — the nine Buzz-fleet and gateway units. Their drop-in `*.conf` files are **not** captured: three carry `BUZZ_AUTH_TAG` and this tarball is the no-secrets one | `backup_config.sh` tarball |
+| Service units (system) | Every deployed `.service`/`.timer` whose name matches a unit in this repo's `systemd/` (incl. `agent-workforce-auto-sync`, `overnight-*`, `agent-alert@`, `agent-inbox-sync` alongside the qmd/agent-proposal/augustus/bd-stall/brave/memory/scorecard/discord families) — enumerated automatically by `backup_config.sh` | `backup_config.sh` tarball |
 | Scripts & docs | `~/agent-workforce/{bin,docs,profiles}` | `backup_config.sh` tarball |
-| Job-override templates | this repo `config/job-overrides/` | git |
+| Job-override templates | this repo `profiles/*.env.example` | git |
 | Job-override runtime envs | `~/.config/agent-workforce/{augustus-content,bd_stall_radar,weekly_pre_assembly}.env` | **not secrets**, but recreate from templates if lost |
 | qmd config | `~/.config/qmd/index.yml` | `backup_config.sh` tarball |
 | Secrets template | `~/.config/agent-workforce/.env.example` + README | `backup_config.sh` tarball |
@@ -247,12 +339,21 @@ Run `~/agent-workforce/bin/backup_config.sh`, then pull the tarball to the Mac:
      bootstrapped. Install local headless Chromium once (credential-free): `npx --yes
      agent-browser@latest install` (as `dave`) then `sudo npx --yes playwright install-deps chromium`.
 5. Restore the config tarball over `$HOME` and `/etc/systemd/system/` (or rsync from this repo of scripts).
-   Install units from `systemd/` including job timers (`augustus-content`, `bd-stall-radar`,
-   `weekly-pre-assembly`) and `qmd-mcp.service.d/gpu.conf`.
+   Install **system** units from `systemd/` including job timers (`augustus-content`,
+   `bd-stall-radar`, `weekly-pre-assembly`) and `qmd-mcp.service.d/gpu.conf`.
+   Then install the **`--user`** units from `systemd/user/` into `~/.config/systemd/user/`
+   (`systemctl --user daemon-reload`, then `enable --now` the timers). This step is the whole
+   reason D8 exists: it restores `/etc` from the tarball and `systemd/`, so any unit with no
+   source in this repo is simply gone afterwards and nothing reports its absence. Until
+   2026-09-02 that was the entire Buzz fleet.
+   Re-create the drop-in `*.conf` files under `~/.config/systemd/user/*.d/` by hand — they are
+   not in the tarball and not in git. The three `auth.conf` files are credentials and are
+   re-issued, not restored (`~/.config/buzz-agents/PROVISIONING.md`).
+   Finish with `bash bin/check_deploy_drift.sh` — a rebuild is not done until it is clean.
 6. Recreate secrets per `~/.config/agent-workforce/README.md` (new deploy key → register on repo,
    new OpenRouter key → re-apply spend cap, new Discord token). Then re-derive the Brave MCP env:
    `umask 077; grep -E '^BRAVE_API_KEY=' ~/.config/agent-workforce/secrets.env > ~/.config/agent-workforce/brave-mcp.env`.
-   Install job-override envs from `config/job-overrides/*.env.example` (mode 600) — see § Job wiring.
+   Install job-override envs from `profiles/*.env.example` (mode 600) — see § Job wiring.
 7. `~/agent-workforce/bin/finish_boxsafe_clone.sh` (clone, index, exclusion gates, enable services).
    - Enable the added units (NUC-21/22/23): `sudo systemctl enable --now brave-mcp.service
      memory-consolidation.timer scorecard.timer`. Leave `agent-proposal.timer` per its spend gate.

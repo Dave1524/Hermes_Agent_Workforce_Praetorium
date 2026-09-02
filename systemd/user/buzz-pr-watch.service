@@ -1,0 +1,6 @@
+[Unit]
+Description=Watch block/buzz#3816 (Desktop @-mention fix) and announce on close
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/buzz-pr-watch

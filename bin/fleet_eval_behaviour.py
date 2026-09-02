@@ -93,7 +93,18 @@ def check_route_table(report, routes, agents):
 
 
 def check_deploy_drift(report, deployed, source):
-    """An edited source table means nothing until bin/deploy has run."""
+    """One file's deploy state, inside the fleet-eval report. NOT the general check.
+
+    bin/check_deploy_drift.sh owns "is the box running what this repo says" across all four
+    unit trees, in both membership directions. This is the deliberately narrower case: it
+    compares bin/buzz_routes.env alone and scores it as `route-table-deployed`, because an
+    edited route table means nothing until bin/deploy has run and the fleet-eval scorecard
+    wants that as one graded row rather than as a gate.
+
+    The name is shared and the question looks the same, which is exactly the drift the
+    general checker exists to catch — so if you are adding a tree, a direction or an
+    exclusion, it goes THERE. Nothing here should grow past this one file.
+    """
     if not source.is_file():
         report.add("route-table-deployed", "WARN", "", f"no source copy at {source} to compare")
         return

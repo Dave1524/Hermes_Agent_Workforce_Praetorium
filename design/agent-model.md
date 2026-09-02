@@ -17,7 +17,8 @@ persona runs on more than one execution surface and each surface has a different
 set, governed in a different file, written by a different mechanism. Nothing today
 states any agent's full capability in one place. That is the design gap D2 closes.
 
-Concretely, claudius is four different things depending on how you reach him:
+Concretely, claudius was four different things depending on how you reach him, and is
+now three:
 
 - over Buzz he has Claude Code's full built-in toolset, qmd over MCP, and seven Notion
   tools through the broker — and, until 2026-09-01, Gmail, Outlook and Drive as well
@@ -25,20 +26,39 @@ Concretely, claudius is four different things depending on how you reach him:
 - inside `knowledge-digest` he has exactly `Bash,Read,Write,Edit,Glob,Grep` and **no
   MCP server at all**;
 - inside `m1-signal-scan` he additionally has `WebSearch,WebFetch`;
-- on a kanban card he has the Hermes toolset plus a 30-entry skills allowlist.
+- on a kanban card he had the Hermes toolset plus his hermes profile's 25-skill
+  offering (§3) — **S3 retired 2026-09-02 (D7)**.
 
-None of those four facts is derivable from the other three, and no file names them
-together. A capability decision ("claudius may not act outward") is therefore made
-four times, in four syntaxes, and can silently hold in three places while failing in
-the fourth. §6.1 is exactly that failure, live today.
+None of those facts is derivable from the others, and no file names them together. A
+capability decision ("claudius may not act outward") is therefore made three times — it
+was four — in as many syntaxes, and can silently hold in two places while failing in the
+third. §6.1 is exactly that failure, live today.
 
-## 2. The four execution surfaces
+**Retirement did not weaken this finding. It is the finding.** The fourth bullet sat here
+describing a live capability for the six weeks after the board's last card completed
+(2026-07-20), because nothing joined "claudius has a toolset here" to "anything still
+dispatches here". A capability statement with no liveness check outlives its surface and
+reads identically either way — which is the same defect class D8 found in the deploy gate
+and §6.1 found in the connector deny-list. **S4 keeps its number**: the identifiers name
+surfaces, not positions in a count.
+
+That fourth bullet also said *"a 30-entry skills allowlist"* until 2026-09-02. It was
+never a 30-entry allowlist: 30 is claudius's 3 `skills.external_dirs` plus 27
+`skills.disabled`, and §3 records those as disjoint mechanisms — the second is a deny
+list. The offered count is 25.
+
+## 2. The four execution surfaces — three live since 2026-09-02
+
+S3 is retired but keeps its identifier and its row. The identifiers name surfaces, not
+positions in a count, and a table that renumbers on retirement silently invalidates every
+"S4" written before the edit.
+
 
 | # | Surface | Runtime | Who runs here | Tool set | Governed by |
 |---|---|---|---|---|---|
 | **S1** | Buzz interactive | `claude-agent-acp` (marcus, claudius, trajan, aurelian); `codex-acp` in bwrap (augustus) | all five personas | Claude Code built-ins + `mcp__qmd-mcp__*` + 7 `notion_*` (broker) + **whatever `~/.claude/settings.json` does not deny** | `~/.config/systemd/user/buzz-agent@.service` (flags), `~/.config/buzz-team/<name>.toml` (who may wake whom), `~/.claude/settings.json` (`permissions.deny`) |
 | **S2** | Scheduled headless CC | `claude -p` from `bin/run_*_cc.sh`, wrapped by `bin/agent_propose.sh` | nobody — the owner persona is *accountability*, the executor is anonymous | explicit `--allowedTools`; **no MCP** (`--strict-mcp-config --mcp-config '{"mcpServers":{}}'`) | the wrapper script, one per workflow, in `bin/` |
-| **S3** | Hermes kanban dispatch | `hermes-gateway` auto-dispatches `ready` cards every 60s | marcus, claudius, augustus, trajan (profiles on disk). **Not aurelian** | Hermes toolsets + a real skills index with a per-profile allowlist | `~/.hermes/profiles/<p>/config.yaml`, written by `bin/apply_skills_allowlist.sh` |
+| ~~**S3**~~ | ~~Hermes kanban dispatch~~ — **RETIRED 2026-09-02 (D7)** | ~~`hermes-gateway` auto-dispatches `ready` cards every 60s~~; the gateway is disabled+stopped, the board is archived (`design/archive/hermes-kanban-board.md`), `bin/kanban_run_and_wait.sh` is deleted | ~~marcus, claudius, augustus, trajan~~ — nobody | ~~Hermes toolsets + a real skills index with a per-profile allowlist~~ | `~/.hermes/profiles/<p>/config.yaml` and `bin/apply_skills_allowlist.sh` **both survive** — the CLI still reads them (§3) |
 | **S4** | Buzz-dispatched scheduled | `bin/run_content_via_buzz.sh` — a timer that triggers **S1** and waits | augustus only | inherits S1 entirely | `bin/buzz_routes.env` (destination, kind, who to wake) + the profile augustus is told to read |
 
 **S2 is the surface that does nearly all the unattended work and it has no persona at
@@ -60,19 +80,37 @@ capability you do not want used must be *absent*, not *discouraged*.
   `capture-learning`, `codex`, `ddd-design`, `quality-check`, `task-manage`,
   `task-triage`). The vault's **32** `08_skills/*/SKILL.md` are markdown reachable by
   path or qmd — an agent reads them, nothing offers them.
-- **S3 has a real skill index**: 148 `SKILL.md` across nine `~/.hermes/shared-skills/`
-  subdirectories, with `skills.external_dirs` + `skills.disabled` applied per profile.
-  Measured 2026-09-01 — offered counts are **marcus 46, trajan 44, claudius 25,
-  augustus 23**. Note the two lists are disjoint: **`disabled` removes zero of the
-  allowlisted skills** (0 name collisions on all four profiles — it suppresses Hermes's
-  *bundled* set, `apple-notes`, `imessage`, `computer-use` and friends). So the effective
-  offering is exactly the `external_dirs` total; `disabled` is a separate hygiene list and
-  should not be read as narrowing the allowlist.
+- **The hermes profiles have a real skill index**: 148 `SKILL.md` across nine
+  `~/.hermes/shared-skills/` subdirectories, with `skills.external_dirs` +
+  `skills.disabled` applied per profile. Measured 2026-09-01 — offered counts are
+  **marcus 46, trajan 44, claudius 25, augustus 23**. Note the two lists are disjoint:
+  **`disabled` removes zero of the allowlisted skills** (0 name collisions on all four
+  profiles — it suppresses Hermes's *bundled* set, `apple-notes`, `imessage`,
+  `computer-use` and friends). So the effective offering is exactly the `external_dirs`
+  total; `disabled` is a separate hygiene list and should not be read as narrowing the
+  allowlist.
 
-So the NUC-42 skills-allowlist work governs **only S3**, which D1 §7.6 just reduced to
-a queue for one-offs. This is not a bug — but it means "which skills per agent" has a
-precise answer only on the surface that now carries the least work, and a *positional*
-answer ("whatever is on disk at a path the agent happens to read") everywhere else.
+  **These are profile facts, not S3 facts, and that distinction is why they survive
+  2026-09-02.** The index is resolved per `~/.hermes/profiles/<p>/`, and a profile is
+  reachable from any `hermes -p <profile>` invocation — S3 was one caller, and it is not
+  the last one: `bin/local_tier_eval.sh:105` runs `-p marcus` six times a day. Do not
+  relocate these counts into an S1/S2 claim, where the bullet above records that no skill
+  index exists at all; a number moved somewhere it is false is worse than a number with a
+  retired owner.
+
+So the NUC-42 skills-allowlist work governed **only S3**, and S3 is retired
+(2026-09-02, D7). The measurement that settles what it was worth is in
+`design/archive/hermes-kanban-board.md`: **0 of the board's 11 cards ever carried a
+non-empty `skills` field.** The allowlist mechanism was never exercised once from the
+only surface that offered it. So "which skills per agent" now has a precise answer on
+**no** surface at all, and a *positional* answer ("whatever is on disk at a path the
+agent happens to read") everywhere — which is a cleaner statement of the same gap, not
+a new one.
+
+That is an argument for deciding §8.4 deliberately, not for deleting the mechanism.
+`bin/apply_skills_allowlist.sh` writes the config a live platform job reads; whether the
+allowlist affects a `-z` oneshot is **unverified**, and "S3 is gone" is not evidence
+either way.
 **Deciding what to do about that is §8, decision 3.**
 
 ## 3. What a manifest is
@@ -99,7 +137,8 @@ Until a generator exists these are *aspirations*, and §7 says so plainly.
 ## 4. Manifest schema
 
 ```toml
-name        = "claudius"          # persona slug; matches the Buzz identity and (S3) the hermes profile dir
+name        = "claudius"          # persona slug; matches the Buzz identity and the hermes
+                                  # profile dir — the latter outlived S3's retirement
 role        = "..."               # one line, the accountable role from D1 §1
 pubkey      = "..."               # Nostr identity, public by construction (bin/buzz_agents.env)
 harness     = "claude-agent-acp"  # or "codex-acp"
@@ -107,11 +146,18 @@ status      = "live"              # live | read-only | retired
 
 [surfaces.<interactive|scheduled|kanban|buzz_dispatch>]
 present     = true                # false = this persona does not exist on this surface
+retired     = "2026-09-02"        # optional: the SURFACE is gone, not just this persona's
+                                  # place on it. Set on all five `kanban` blocks by D7.
+                                  # `present = false` alone cannot say which of the two it
+                                  # means — aurelian's kanban block was already false while
+                                  # the surface was live.
 governed_by = "path"              # the ONE file that decides the below
 tools       = [...]               # what it may call HERE
 mcp         = [...]               # MCP servers reachable HERE ([] = --strict-mcp-config)
 admits      = [...]               # interactive only: whose mentions this agent answers
-skills      = 25                  # kanban only: offered count, measured
+skills      = 25                  # kanban blocks only: the offered count of the hermes
+                                  # PROFILE named by governed_by, measured. Outlives the
+                                  # retired surface — see §3 before moving this number.
 notes       = """..."""
 
 [[workflows]]                     # one per workflow this persona OWNS (D1 §2/§3/§4)
@@ -119,8 +165,19 @@ unit        = "knowledge-digest"  # systemd unit, no suffix — the join key to 
 surface     = "scheduled"
 trigger     = "Sun 09:00 (+5min jitter)"   # DECLARED OnCalendar, never next-elapse (§6.8)
 model       = "claude-opus-5"
-profile     = "profiles/..."      # the task prompt
+profile     = "profiles/..."      # the task prompt. Its FIRST line must read
+                                  # `Owner: <name>` naming the persona whose manifest
+                                  # declares this entry (W2, 2026-09-02) — asserted by
+                                  # tests/test_fleet_ownership.sh. The direction matters:
+                                  # the manifest is the source and the header is checked
+                                  # against it, never the reverse. Deriving the owner from
+                                  # prompt prose gets weekly_pre_assembly_cc_task.md wrong,
+                                  # which says "NOT hermes/claudius" while marcus owns it.
 runner      = "bin/run_*.sh"      # what actually execs
+scope       = "user"              # systemd scope: "user" or omitted for the default,
+                                  # "system". Prose-only until 2026-09-02, which is why
+                                  # buzz-pr-watch and both nekovri entries were counted as
+                                  # system-scope by anything that did not read their notes.
 route       = "research"          # key in bin/buzz_routes.env, or omitted
 contract    = "design/contracts/knowledge-digest.md"
 status      = "standing"          # REQUIRED on every entry — see the table below (R15)
@@ -205,9 +262,15 @@ Three rules follow:
    distinct paths and the other 12 resolve to nothing. `contract-schema.md` says "the
    remaining 25 workflows carry a `contract` pointer to a file that does not exist yet" —
    that is true of 13, not 25, and was written before the platform jobs were enumerated.
-   Whether a deterministic platform job should have a contract is a real question (its
-   promise is liveness and an artifact, not output quality) and it belongs to D6, since a
-   coverage checker has to decide what it does with an entry that names no contract.
+   Whether a deterministic platform job should have a contract was parked here for D6,
+   since a coverage checker has to decide what it does with an entry that names no
+   contract. **ANSWERED 2026-09-02: the checker does not require `contract`, and a
+   platform job does not need one.** Coverage is suite ownership; contracts are D3's
+   acceptance-check layer, and the two are separate questions about a workflow. Only 14 of
+   the 26 entries carry a contract, trajan's 12 platform jobs carry none, and that is
+   correct rather than a backlog — a deterministic job's promise is liveness and an
+   artifact, which a suite asserts, not output quality, which is what a contract grades.
+   `tests/test_workflow_coverage.sh` therefore never reads the field.
 
 Note for whoever writes the checker: **do not read liveness from `NextElapseUSecRealtime`.**
 It is empty for every `OnUnitActiveSec` timer (monotonic, not realtime), and
@@ -400,18 +463,32 @@ manifest therefore records the lock as a per-workflow field so the answer stops 
 unreadable, and Phase B should give every workflow a slug-derived lock by default rather
 than an opt-out global one.
 
-### 6.7 Four live units exist only in `/etc` and are in no repo
+### 6.7 Live units exist only in `/etc` and are in no repo — CORRECTED, and CLOSED 2026-09-02
 
-Diffing every non-OS unit in `/etc/systemd/system` against `systemd/` and `systemd/archive/`:
-**`fleet-turn-check`, `ttm-pool-drain`, `praetorium-content-strategy-research` and
-`praetorium-faceless-content-research`** (service + timer each) have no source anywhere in
-this repo. Two are trajan's platform jobs, two are augustus's persona workflows. They are
-unreviewed, unversioned, and would not survive a rebuild — and §6.5 is a defect in one of
-them that a repo diff would have caught in review.
+**The count was four families and it was three — `ttm-pool-drain` does not belong on this
+list, and this same file contradicts it at line 167** (`in_repo = true` since D2 adopted its
+unit into `systemd/`). The confusion is the one D6 already names: `in_repo` describes the
+UNIT FILE, while ttm-pool-drain's *script* is `/usr/local/bin/ttm-pool-drain` and is not
+here. One word, two referents. Measured 2026-09-02, the real list was three families / six
+files: `fleet-turn-check`, `praetorium-content-strategy-research` and
+`praetorium-faceless-content-research` (service + timer each).
 
-Together with §6.2 and §6.3, `systemd/` now has three distinct relationships to reality:
-ahead of `/etc` (agent-alert), behind it (three OnFailure lines), and absent from it (these
-four). Treat the repo as a partial mirror, never as an inventory.
+**And it was never only `/etc`.** D8 named three unit trees; there are four. Nine `--user`
+units in `~/.config/systemd/user/` had no source anywhere in this repo — including
+`buzz-agent@.service`, the unit the whole Buzz fleet runs on, which brief 1 edited on
+2026-09-01. `tests/test_fleet_guards.sh` asserts a line in it, so a rebuild from source
+would have turned that guard red with nothing here to restore from.
+
+Closed by brief 2 (D8): `fleet-turn-check.{service,timer}` backported byte-for-byte, the
+nine `--user` units sourced at `systemd/user/`, and the two campaigns given dated exclusions
+that expire on their own last firings. `bin/check_deploy_drift.sh` now asserts all of it in
+both membership directions, so this section describes a closed defect rather than a standing
+one — and the next instance goes red instead of being rediscovered by audit.
+
+Together with §6.2 and §6.3, `systemd/` had three distinct relationships to reality: ahead of
+`/etc` (agent-alert), behind it (three OnFailure lines), and absent from it. Treat the repo as
+a partial mirror, never as an inventory — and note that "partial" was itself understated,
+because a whole tree was missing from the comparison.
 
 ### 6.8 Registry §2 recorded next-elapse times, so three schedules are wrong by day
 
@@ -471,6 +548,17 @@ The minimum wiring that makes them load-bearing, in the order it should be built
    remembered; (c) retire the S3 allowlist investment now that hermes is a one-off queue.
    These are not exclusive. Recommended (b) for the four skills the content and research
    workflows actually name, and leave (c) alone until a card actually fails.
+
+   **(c) ANSWERED 2026-09-02 by D7, for the *offering* question only.** No card will ever
+   fail, because there are no more cards — and the retirement measured the thing this
+   decision was waiting on: 0 of the board's 11 cards ever set a non-empty `skills` field,
+   so the allowlist was never exercised from a card in the surface's whole life. The S3
+   *offering* is retired with the surface.
+
+   **This is explicitly NOT licence to delete `bin/apply_skills_allowlist.sh` or
+   `docs/skills_allowlist.md`.** They write and document
+   `~/.hermes/profiles/<p>/config.yaml`, which `bin/local_tier_eval.sh:105` reads six
+   times a day via `hermes -p marcus`. (a) and (b) are untouched and still open.
 5. **Confirm the manifest is the source of truth** for tools/owner/coverage, i.e. that
    Phase B may generate the wrappers' `--allowedTools` from it rather than the reverse.
 6. **Do you want a *standing* content-research workflow at all?** (Replaces the withdrawn

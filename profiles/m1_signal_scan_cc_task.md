@@ -1,3 +1,6 @@
+Owner: claudius — this workflow is declared in design/agents/claudius.toml. This line is the
+canonical owner statement; anything below is voice, not a second declaration.
+
 Standing task: M1 — Market Signal Scan (NUC-32), Claude Code runtime variant.
 You are running as headless Claude Code (Sonnet) on Praetorium, the box's own
 Claude subscription — NOT hermes/claudius on OpenRouter. This is a fresh session

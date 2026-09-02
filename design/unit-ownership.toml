@@ -1,0 +1,112 @@
+# Units that are on this box legitimately and will NEVER have a source copy here.
+#
+# bin/check_deploy_drift.sh fails closed: a unit installed on the box with no source
+# counterpart in this repo is RED unless something declares it. This file is that
+# declaration, and it is deliberately small — it answers two questions and no others:
+# "is this ours?" and "may this ever be committed?". It is not a second registry.
+#
+# WHY A DECLARATION AND NOT A HEURISTIC. The obvious test for "is this unit ours" —
+# references /home/dave, or carries User=dave — misclassifies one of our own:
+# systemd/ttm-pool-drain.service has neither, because it runs as root and execs
+# /usr/local/bin/ttm-pool-drain. A heuristic that is wrong about a unit we wrote will be
+# wrong about one we did not. And "unknown => ignore" is the defect class this repo keeps
+# rediscovering: a check that asks a list whether it is fine cannot fail (eval-spec.md R12).
+#
+# THE DATED HALF IS NOT HERE. A unit that is ephemeral ON PURPOSE is declared in its
+# owner's manifest as status = "campaign" with an `expires` date (agent-model.md:126-127),
+# and check_deploy_drift.sh reads it there. Re-keying those dates into this file would put
+# one fact in two places, which is the thing this brief exists to detect.
+
+# --- third party: installed by something other than us, never sourced here -------------
+
+[[third_party]]
+unit = "ollama.service"
+tree = "etc"
+why  = """
+Installed by the Ollama upstream installer, which also owns /etc/systemd/system/ollama.service.d.
+It is the local inference tier's server (CLAUDE.md § local inference); we configure it and
+depend on it, but we do not author its unit and must not commit a copy that would then rot
+against whatever the installer writes on the next upgrade.
+"""
+
+[[third_party]]
+unit = "chronyd.service"
+tree = "etc"
+symlink = true
+why = "OS-managed alias symlink into /lib/systemd/system. Not a regular file."
+
+[[third_party]]
+unit = "iscsi.service"
+tree = "etc"
+symlink = true
+why = "OS-managed alias symlink into /lib/systemd/system. Not a regular file."
+
+[[third_party]]
+unit = "syslog.service"
+tree = "etc"
+symlink = true
+why = "OS-managed alias symlink into /lib/systemd/system. Not a regular file."
+
+[[third_party]]
+unit = "vmtoolsd.service"
+tree = "etc"
+symlink = true
+why = "OS-managed alias symlink into /lib/systemd/system. Not a regular file."
+
+[[third_party]]
+unit = "dbus-fi.w1.wpa_supplicant1.service"
+tree = "etc"
+symlink = true
+why = "OS-managed D-Bus activation alias. Not a regular file."
+
+[[third_party]]
+unit = "dbus-org.freedesktop.ModemManager1.service"
+tree = "etc"
+symlink = true
+why = "OS-managed D-Bus activation alias. Not a regular file."
+
+[[third_party]]
+unit = "dbus-org.freedesktop.resolve1.service"
+tree = "etc"
+symlink = true
+why = "OS-managed D-Bus activation alias. Not a regular file."
+
+[[third_party]]
+unit = "dbus-org.freedesktop.thermald.service"
+tree = "etc"
+symlink = true
+why = "OS-managed D-Bus activation alias. Not a regular file."
+
+# The eight `symlink = true` rows above drop out of the comparison on the regular-file
+# restriction alone, before this file is consulted. They are declared anyway so that the
+# restriction is not the ONLY thing standing between an OS unit and a red — remove it and
+# the check still knows whose they are. If one is ever replaced by a real file, that is a
+# change worth noticing by hand; the declaration will silence it, which is the one hole in
+# this list and is cheaper than a heuristic over unit contents.
+
+# --- credentials: present on the box, must never enter this repo -----------------------
+#
+# Drop-in *.conf files under ~/.config/systemd/user/ carrying BUZZ_AUTH_TAG. The unit files
+# they extend ARE sourced (systemd/user/); these are not, and the reason is not "we forgot"
+# — it is that committing them would publish an owner attestation over an agent pubkey.
+# tests/test_deploy_drift.sh asserts each path is absent from `git ls-files`.
+#
+# THE THIRD PATH IS A SYMLINK TO THE SECOND, and that is why it is listed rather than
+# derived. Measured 2026-09-02: nekovri-subsidy-watchdog.service.d/auth.conf is a symlink to
+# ../buzz-agent@trajan.service.d/auth.conf (the watchdog runs on trajan's identity —
+# EnvironmentFile=%h/.config/buzz-agents/trajan.env). So there are two credential FILES and
+# three credential PATHS, and `grep -rl` does not follow symlinks during recursion: it
+# reports two and silently misses the third. Any scan that enumerates these must dereference
+# (`find -exec grep`, or grep -R) or it will certify a path it never read.
+
+[[never_commit]]
+path = "~/.config/systemd/user/buzz-agent@augustus.service.d/auth.conf"
+why  = "carries BUZZ_AUTH_TAG — an owner attestation over augustus's pubkey"
+
+[[never_commit]]
+path = "~/.config/systemd/user/buzz-agent@trajan.service.d/auth.conf"
+why  = "carries BUZZ_AUTH_TAG — an owner attestation over trajan's pubkey"
+
+[[never_commit]]
+path = "~/.config/systemd/user/nekovri-subsidy-watchdog.service.d/auth.conf"
+why  = "SYMLINK to buzz-agent@trajan.service.d/auth.conf; same credential, second path"

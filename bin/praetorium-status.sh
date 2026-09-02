@@ -3,51 +3,79 @@
 set -uo pipefail
 
 echo "══ Praetorium status $(date -Is) ══"
+
+# ── W3 (2026-09-02): the unit list comes from config/fleet-units.tsv, not from a literal
+#    here. This block used to carry 12 hand-picked units; eight standing units existed that
+#    it — and the other five copies of the same list — never named. Resolved relative to the
+#    script so it works from the repo and from ~/agent-workforce/ alike; design/ is NOT
+#    deployed, so reading the manifests directly would empty this silently in the runtime.
+FLEET_UNITS="$(dirname "$0")/../config/fleet-units.tsv"
+# Fail LOUD, not empty. A missing list must not render as a clean short report — that is the
+# whitelist defect in its worst form, where the check reports nothing wrong because it
+# checked nothing.
+if [ ! -r "$FLEET_UNITS" ]; then
+  echo "  FATAL: cannot read $FLEET_UNITS — unit coverage unknown, not 'fine'"
+  exit 1
+fi
+fleet_units() {  # $1 = scope
+  awk -F'\t' -v want="$1" '!/^#/ && NF>=3 && $2==want && $3=="standing" {print $1}' "$FLEET_UNITS"
+}
+
 echo; echo "── Services"
-for svc in qmd-mcp.service brave-mcp.service qmd-refresh.timer agent-proposal.timer \
-           overnight-pre-snapshot.timer overnight-morning-report.timer \
-           memory-consolidation.timer scorecard.timer \
-           agent-inbox-sync.timer augustus-content.timer weekly-pre-assembly.timer \
-           agent-workforce-auto-sync.timer bd-stall-radar.timer; do
+# The two MCP daemons are not workflows and are declared in no manifest, so they stay named
+# here on purpose; everything below them is derived.
+for svc in qmd-mcp.service brave-mcp.service; do
   state=$(systemctl is-active "$svc" 2>/dev/null || true)
   enabled=$(systemctl is-enabled "$svc" 2>/dev/null || true)
   printf "  %-32s active=%-10s enabled=%s\n" "$svc" "$state" "$enabled"
 done
+while read -r u; do
+  [ -n "$u" ] || continue
+  state=$(systemctl is-active "$u.timer" 2>/dev/null || true)
+  enabled=$(systemctl is-enabled "$u.timer" 2>/dev/null || true)
+  printf "  %-32s active=%-10s enabled=%s\n" "$u.timer" "$state" "$enabled"
+done < <(fleet_units system)
+
 echo; echo "── Timers (next runs)"
-systemctl list-timers qmd-refresh.timer agent-proposal.timer \
-  overnight-pre-snapshot.timer overnight-morning-report.timer \
-  memory-consolidation.timer scorecard.timer \
-  agent-inbox-sync.timer augustus-content.timer weekly-pre-assembly.timer \
-  agent-workforce-auto-sync.timer bd-stall-radar.timer --no-pager 2>/dev/null | head -16
-# ── User services (hermes-gateway): the dispatcher + cron host runs as a --user
-#    unit, so a dead gateway (no proposals, no cron) is invisible to system-scope
-#    systemctl. Query the user manager explicitly. Fail-soft (|| true); set -uo
-#    pipefail contract preserved (no -e).
-echo; echo "── User services (hermes-gateway)"
-rt="/run/user/$(id -u)"
-hg_active=$(XDG_RUNTIME_DIR="$rt" systemctl --user is-active hermes-gateway.service 2>/dev/null || true)
-hg_enabled=$(XDG_RUNTIME_DIR="$rt" systemctl --user is-enabled hermes-gateway.service 2>/dev/null || true)
-printf "  %-32s active=%-10s enabled=%s\n" "hermes-gateway.service" "${hg_active:-unknown}" "${hg_enabled:-unknown}"
-# ── Hermes cron (last run): count scheduled jobs and flag any 'Last run:' that did
-#    NOT end 'ok', plus any job that has never run. Guarded by command -v + timeout
-#    so an absent/hung hermes never breaks the status run.
-echo; echo "── Hermes cron (last run)"
-if command -v hermes >/dev/null 2>&1; then
-  cron_out=$(XDG_RUNTIME_DIR="$rt" timeout 20 hermes cron list 2>/dev/null || true)
-  if [ -n "$cron_out" ]; then
-    printf '%s\n' "$cron_out" | awk '
-      /^[[:space:]]*Name:/     { jobs++ }
-      /^[[:space:]]*Last run:/ { seen++; if ($NF != "ok") fails++ }
-      END {
-        never = jobs - seen; if (never < 0) never = 0
-        printf "  jobs: %d  last-run failures: %d  never-run: %d\n", jobs+0, fails+0, never
-      }'
-  else
-    echo "  cron: no jobs listed / gateway unreachable"
-  fi
+mapfile -t _sys < <(fleet_units system)
+systemctl list-timers "${_sys[@]/%/.timer}" --no-pager 2>/dev/null | head -30
+
+# User-scope standing units are invisible to the system manager above. Reported separately
+# rather than merged, because "not-found" from the wrong manager is indistinguishable from
+# a unit that is genuinely gone.
+echo; echo "── User timers (scope=user, next runs)"
+mapfile -t _usr < <(fleet_units user)
+if [ ${#_usr[@]} -eq 0 ]; then
+  echo "  none declared"
 else
-  echo "  hermes CLI not found — cron status unavailable"
+  XDG_RUNTIME_DIR="/run/user/$(id -u)" \
+    systemctl --user list-timers "${_usr[@]/%/.timer}" --no-pager 2>/dev/null | head -10 \
+    || echo "  UNKNOWN — could not reach the user manager"
 fi
+# ── User services: fleet units run in the --user manager, so their state is invisible
+#    to system-scope systemctl. Ask the user manager what is WRONG rather than asking a
+#    hand-maintained list whether it is fine — a whitelist cannot report a unit nobody
+#    thought to add, which is how an 8-day failure went unnamed twice a day.
+#    Fail-soft (|| true); set -uo pipefail contract preserved (no -e).
+echo; echo "── User services (failed units)"
+rt="/run/user/$(id -u)"
+# `|| true` on the assignment alone would print "none" when the USER BUS is unreachable,
+# which is the same false green this block replaced. Keep the rc.
+user_rc=0
+user_failed=$(XDG_RUNTIME_DIR="$rt" systemctl --user --failed --no-legend --no-pager 2>/dev/null) || user_rc=$?
+if [ "$user_rc" -ne 0 ]; then
+  echo "  UNKNOWN — could not reach the user manager (rc=$user_rc); this is not 'nothing failed'"
+elif [ -n "$user_failed" ]; then
+  printf '%s\n' "$user_failed" | sed 's/^/  /'
+else
+  echo "  none"
+fi
+# The hermes-gateway and hermes-cron blocks that stood here were removed 2026-09-02 with
+# the S3 retirement (open-decisions.md D7). Both would now report a retired surface on
+# every run — `active=inactive enabled=disabled` forever, and a cron count against a host
+# that no longer exists — and a status view that reports a retired surface every run
+# trains its reader to skip it. The gateway unit is still on disk for one review cycle;
+# if it is ever restarted it will appear above by failing, not by being whitelisted here.
 echo; echo "── qmd index"
 qmd status 2>/dev/null | head -8 || echo "  qmd index not built yet (finish_boxsafe_clone.sh)"
 echo; echo "── qmd MCP daemon (agent transport, NUC-16)"
