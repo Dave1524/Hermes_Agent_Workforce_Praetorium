@@ -755,6 +755,16 @@ direction that matters. Compare `systemd/` to `/etc` directly.
   heuristic decides ownership: the obvious one, "references `/home/dave`" or "`User=dave`",
   misclassifies `systemd/ttm-pool-drain.service`, which is ours and has neither.
 
+- **A unit file cannot carry its own drift commentary — the comment IS drift.** The stale
+  "/etc-only scaffolding" line in `systemd/praetorium-phaseb-brief@.service` was wrong after
+  `d72f562` committed all six, and correcting it in place made the file differ from `/etc` for
+  a comment, turning a green byte-identity assertion red and requiring a `sudo` install to
+  clear — the note asserting "source and /etc are byte-identical" falsified itself by
+  existing. Unit prose belongs where nothing compares bytes. Recorded here instead: **the
+  phaseb-brief trap moved rather than closed.** They pass today; on the day they are removed
+  from `/etc` they become source-only, which is the same defect in the other direction. Delete
+  from BOTH trees or neither, and note no brief in the queue currently owns that cleanup.
+
 **Method note, and it is this decision's own lesson turned on itself:** `e0e4b25` backported
 three `OnFailure` lines and declared all 47 source units byte-identical to `/etc`. That was
 true, and it was a cleared baseline for CONTENT only — existence drift went unmeasured on both
