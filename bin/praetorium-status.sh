@@ -28,8 +28,13 @@ systemctl list-timers qmd-refresh.timer agent-proposal.timer \
 #    Fail-soft (|| true); set -uo pipefail contract preserved (no -e).
 echo; echo "── User services (failed units)"
 rt="/run/user/$(id -u)"
-user_failed=$(XDG_RUNTIME_DIR="$rt" systemctl --user --failed --no-legend --no-pager 2>/dev/null || true)
-if [ -n "$user_failed" ]; then
+# `|| true` on the assignment alone would print "none" when the USER BUS is unreachable,
+# which is the same false green this block replaced. Keep the rc.
+user_rc=0
+user_failed=$(XDG_RUNTIME_DIR="$rt" systemctl --user --failed --no-legend --no-pager 2>/dev/null) || user_rc=$?
+if [ "$user_rc" -ne 0 ]; then
+  echo "  UNKNOWN — could not reach the user manager (rc=$user_rc); this is not 'nothing failed'"
+elif [ -n "$user_failed" ]; then
   printf '%s\n' "$user_failed" | sed 's/^/  /'
 else
   echo "  none"
