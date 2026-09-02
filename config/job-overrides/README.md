@@ -31,6 +31,12 @@ invoked retired runtimes — `~/.local/bin/hermes -z …` (hermes cron era) and
 `bin/run_*_cc.sh` headless Claude Code runner. Provisioning a live `.env` from one of
 them installed a runtime that no longer works.
 
+Since 2026-09-02 that is literal rather than figurative for the kanban one:
+`bin/kanban_run_and_wait.sh` was **deleted** with the S3 retirement (open-decisions.md
+D7), so `archive/augustus-content.env.example` names a path that is not on disk. The
+archived files stay — a retired mention in an archived file is a correct record — but
+nothing may cite them as a revert path.
+
 Until the two homes are consolidated, the **current** examples are
 `profiles/<job>.env.example`. Verified against live behaviour by reading each unit's
 journal (`run attempt N/M: <cmd>`), which reveals the effective `AGENT_RUNTIME_CMD`

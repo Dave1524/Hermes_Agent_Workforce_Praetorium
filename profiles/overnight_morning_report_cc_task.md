@@ -22,8 +22,11 @@ ls -t ~/logs/overnight/pre-snapshot-*.log | head -1
 Read it. This is BEFORE state.
 
 ### 2. Capture post-state (now, ~04:15 UTC / 06:15 Amsterdam)
-Run the same checks the pre-snapshot covers (kanban, inbox files, MCP endpoints,
-gateway, systemd timers, disk/clock). Prefer:
+Run the same checks the pre-snapshot covers (inbox files, MCP endpoints, systemd
+timers, disk/clock). **Kanban and gateway are no longer among them** — S3 was retired
+2026-09-02 (open-decisions.md D7) and the pre-snapshot stopped capturing both in the
+same commit. Do not reintroduce them and do not report their absence as a fault.
+Prefer:
 
 - `systemctl list-timers 'overnight-*' 'agent-*' 'augustus-*' 'bd-*' 'weekly-*' --no-pager`
 - `journalctl -u overnight-pre-snapshot.service -u agent-proposal.service -u agent-inbox-sync.service --since '12 hours ago' --no-pager | tail -80`

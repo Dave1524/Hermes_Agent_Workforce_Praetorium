@@ -13,7 +13,7 @@ the vault holds *what they know*.
 
   | Persona | Role | Model | Tier | Scheduled jobs |
   |---|---|---|---|---|
-  | **Marcus** | Chief of Staff / orchestrator | `deepseek/deepseek-v4-flash` | B | none — interactive + kanban owner |
+  | **Marcus** | Chief of Staff / orchestrator | `deepseek/deepseek-v4-flash` | B | none — interactive only (was "+ kanban owner"; S3 retired 2026-09-02, D7) |
   | **Claudius** | Head of Research | `anthropic/claude-sonnet-5` | A (ZDR-pinned) | bd-stall-radar, weekly-pre-assembly, overnight-morning-report |
   | **Augustus** | Editor-in-Chief | `openai/gpt-5.5` | A (**unpinned — open gap**) | augustus-content + content-change-dispatch |
   | **Trajan** | Head of Engineering | `deepseek/deepseek-v4-flash` | B | none |

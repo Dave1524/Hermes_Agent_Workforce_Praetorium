@@ -21,35 +21,25 @@ systemctl list-timers qmd-refresh.timer agent-proposal.timer \
   agent-inbox-sync.timer augustus-content.timer weekly-pre-assembly.timer \
   agent-workforce-auto-sync.timer bd-stall-radar.timer \
   agent-drift-check.timer --no-pager 2>/dev/null | head -17
-# ── User services (hermes-gateway): the dispatcher + cron host runs as a --user
-#    unit, so a dead gateway (no proposals, no cron) is invisible to system-scope
-#    systemctl. Query the user manager explicitly. Fail-soft (|| true); set -uo
-#    pipefail contract preserved (no -e).
-echo; echo "── User services (hermes-gateway)"
+# ── User services: fleet units run in the --user manager, so their state is invisible
+#    to system-scope systemctl. Ask the user manager what is WRONG rather than asking a
+#    hand-maintained list whether it is fine — a whitelist cannot report a unit nobody
+#    thought to add, which is how an 8-day failure went unnamed twice a day.
+#    Fail-soft (|| true); set -uo pipefail contract preserved (no -e).
+echo; echo "── User services (failed units)"
 rt="/run/user/$(id -u)"
-hg_active=$(XDG_RUNTIME_DIR="$rt" systemctl --user is-active hermes-gateway.service 2>/dev/null || true)
-hg_enabled=$(XDG_RUNTIME_DIR="$rt" systemctl --user is-enabled hermes-gateway.service 2>/dev/null || true)
-printf "  %-32s active=%-10s enabled=%s\n" "hermes-gateway.service" "${hg_active:-unknown}" "${hg_enabled:-unknown}"
-# ── Hermes cron (last run): count scheduled jobs and flag any 'Last run:' that did
-#    NOT end 'ok', plus any job that has never run. Guarded by command -v + timeout
-#    so an absent/hung hermes never breaks the status run.
-echo; echo "── Hermes cron (last run)"
-if command -v hermes >/dev/null 2>&1; then
-  cron_out=$(XDG_RUNTIME_DIR="$rt" timeout 20 hermes cron list 2>/dev/null || true)
-  if [ -n "$cron_out" ]; then
-    printf '%s\n' "$cron_out" | awk '
-      /^[[:space:]]*Name:/     { jobs++ }
-      /^[[:space:]]*Last run:/ { seen++; if ($NF != "ok") fails++ }
-      END {
-        never = jobs - seen; if (never < 0) never = 0
-        printf "  jobs: %d  last-run failures: %d  never-run: %d\n", jobs+0, fails+0, never
-      }'
-  else
-    echo "  cron: no jobs listed / gateway unreachable"
-  fi
+user_failed=$(XDG_RUNTIME_DIR="$rt" systemctl --user --failed --no-legend --no-pager 2>/dev/null || true)
+if [ -n "$user_failed" ]; then
+  printf '%s\n' "$user_failed" | sed 's/^/  /'
 else
-  echo "  hermes CLI not found — cron status unavailable"
+  echo "  none"
 fi
+# The hermes-gateway and hermes-cron blocks that stood here were removed 2026-09-02 with
+# the S3 retirement (open-decisions.md D7). Both would now report a retired surface on
+# every run — `active=inactive enabled=disabled` forever, and a cron count against a host
+# that no longer exists — and a status view that reports a retired surface every run
+# trains its reader to skip it. The gateway unit is still on disk for one review cycle;
+# if it is ever restarted it will appear above by failing, not by being whitelisted here.
 echo; echo "── qmd index"
 qmd status 2>/dev/null | head -8 || echo "  qmd index not built yet (finish_boxsafe_clone.sh)"
 echo; echo "── qmd MCP daemon (agent transport, NUC-16)"

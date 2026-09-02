@@ -71,14 +71,21 @@ AGENT_VERIFY_CMD='~/agent-workforce/bin/content_moved.sh'
 AGENT_MAX_ATTEMPTS=1
 ```
 
-`AGENT_MAX_ATTEMPTS=1` is not optional. The non-kanban default is 3, and a timeout exits 1 —
-retried — so a slow-but-working augustus would be re-triggered up to three times and could
-draft the same row twice. The old `kanban_run_and_wait.sh` line got its 1 from
-`agent_propose.sh`'s path match; this one does not.
+`AGENT_MAX_ATTEMPTS=1` is not optional, and since 2026-09-02 it is the **only** thing
+setting it. The default is 3, and a timeout exits 1 — retried — so a slow-but-working
+augustus would be re-triggered up to three times and could draft the same row twice. Until
+the S3 retirement (D7) there was a second source: `agent_propose.sh` matched
+`*kanban_run_and_wait.sh*` in the runtime command and collapsed to 1 attempt implicitly.
+That path match is deleted, so **every** job now gets 3 unless its own override says
+otherwise. Any job that was relying on the implicit 1 must set it explicitly.
 
-**Revert** is the same file: restore the `AGENT_RUNTIME_CMD` from
-`config/job-overrides/augustus-content.env.example` (hermes/kanban → OpenRouter), drop
-`AGENT_VERIFY_CMD`, and the job is back on the pre-NUC-46 path. Nothing else changes — the
+**Revert is no longer available, and must not be improvised.** It used to mean: restore the
+`AGENT_RUNTIME_CMD` from `config/job-overrides/archive/augustus-content.env.example`. That
+line invokes `kanban_run_and_wait.sh`, which was deleted 2026-09-02 — installing it now
+gives the unit a runner that does not exist, i.e. a green timer that is structurally
+incapable of producing anything. The archived example stays as history and is correct as
+history. If augustus-content needs backing out, the target is the Buzz-dispatch wiring in
+`bin/run_content_via_buzz.sh`, not the kanban era. Nothing else changes — the
 15-min `content-change-dispatch` poller reuses this same env, so both jobs move and revert
 together, which is deliberate: two Augustuses drafting one board is the double-hosting hazard.
 Overlap between the 20-minute wait and the 15-minute tick is a clean SKIP on
@@ -103,7 +110,7 @@ Override files set only non-secret keys:
 
 - `AGENT_PROFILE` (optional; else parsed from `AGENT_RUNTIME_CMD -p …`)
 - `AGENT_TASK_SLUG` (metrics / cost.log label)
-- `AGENT_RUNTIME_CMD` (actual hermes / kanban invocation; paths point at the **deployed** tree `~/agent-workforce/`)
+- `AGENT_RUNTIME_CMD` (the actual runner invocation — `bin/run_*_cc.sh` or `bin/run_content_via_buzz.sh` today; paths point at the **deployed** tree `~/agent-workforce/`. It read "hermes / kanban invocation" until 2026-09-02; no live job has invoked either since 2026-08-13, proven from the `run attempt N/M:` journal line of all 14 units that set this key)
 - `AGENT_RUN_MODE` (`proposal` default, or `ops` for non-inbox LLM jobs — NUC-36)
 
 Templates (checked in): `config/job-overrides/*.env.example`. Install:

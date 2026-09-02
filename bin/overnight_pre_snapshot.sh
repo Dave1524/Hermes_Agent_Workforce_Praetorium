@@ -47,19 +47,12 @@ run_or_note() {
   echo "qmd_mcp_8765: $qmd_ep"
   echo "brave_mcp_8766: $brave_ep"
 
-  section "Gateway health"
-  if command -v hermes >/dev/null 2>&1; then
-    run_or_note hermes gateway status
-  else
-    echo "hermes not on PATH"
-  fi
-
-  section "Kanban state"
-  if command -v hermes >/dev/null 2>&1; then
-    run_or_note hermes kanban list --json
-  else
-    echo "hermes not on PATH"
-  fi
+  # "Gateway health" and "Kanban state" sections removed 2026-09-02 with the S3
+  # retirement (open-decisions.md D7). Both were wrapped in run_or_note, so they would
+  # not have broken the snapshot — they would have captured a dead surface every night
+  # at 04:25 and handed the morning report a diff of nothing, indefinitely. The morning
+  # report's profile stops asking for a kanban diff in the same commit; a consumer left
+  # asking for a section the producer no longer emits is the other half of this defect.
 
   section "Inbox files"
   inbox="$HOME/agent-worktrees/inbox/_inbox/agents"
