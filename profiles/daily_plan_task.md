@@ -61,7 +61,19 @@ got here the tree is current. Read what is relevant, skip what is not:
 You are running ON Praetorium. Read the box directly — never SSH to it.
 
 ```bash
-systemctl list-timers 'agent-*' 'augustus-*' 'bd-*' 'overnight-*' 'praetorium-*' 'weekly-*' --no-pager
+# The fleet unit list has ONE owner: ~/agent-workforce/config/fleet-units.tsv.
+# Do not substitute a glob. Six files each carried their own hand-written list, the best
+# covered 9 of 22 standing units, and eight units were invisible to every report on this
+# box. A prefix nobody thought to add is not a visible omission — that is why this reads a
+# declared list instead. If a unit you expect is missing, fix design/agents/<persona>.toml
+# and re-materialise the list; do not add it here.
+U=~/agent-workforce/config/fleet-units.tsv
+mapfile -t SYS < <(awk -F'\t' '!/^#/ && NF>=3 && $2=="system" && $3=="standing"{print $1".timer"}' "$U")
+systemctl list-timers "${SYS[@]}" --no-pager
+# User-scope units are invisible to the system manager above; querying them there returns
+# not-found, which reads exactly like a unit that has been removed.
+mapfile -t USR < <(awk -F'\t' '!/^#/ && NF>=3 && $2=="user" && $3=="standing"{print $1".timer"}' "$U")
+systemctl --user list-timers "${USR[@]}" --no-pager
 journalctl --since '14 hours ago' -p warning --no-pager | tail -40
 tail -15 ~/agent-workforce/logs/cost.log
 ls -t ~/logs/overnight/morning-report-*.md 2>/dev/null | head -1

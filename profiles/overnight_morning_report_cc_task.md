@@ -31,7 +31,17 @@ timers, disk/clock). **Kanban and gateway are no longer among them** — S3 was 
 same commit. Do not reintroduce them and do not report their absence as a fault.
 Prefer:
 
-- `systemctl list-timers 'overnight-*' 'agent-*' 'augustus-*' 'bd-*' 'weekly-*' --no-pager`
+- The fleet timer list, from its one owner — never a glob (see
+  `~/agent-workforce/config/fleet-units.tsv`; six hand-written copies disagreed six ways
+  and left eight standing units invisible to every report):
+
+  ```bash
+  U=~/agent-workforce/config/fleet-units.tsv
+  mapfile -t SYS < <(awk -F'\t' '!/^#/ && NF>=3 && $2=="system" && $3=="standing"{print $1".timer"}' "$U")
+  systemctl list-timers "${SYS[@]}" --no-pager
+  mapfile -t USR < <(awk -F'\t' '!/^#/ && NF>=3 && $2=="user" && $3=="standing"{print $1".timer"}' "$U")
+  systemctl --user list-timers "${USR[@]}" --no-pager
+  ```
 - `journalctl -u overnight-pre-snapshot.service -u agent-proposal.service -u agent-inbox-sync.service --since '12 hours ago' --no-pager | tail -80`
 - `ls -la ~/agent-worktrees/inbox/_inbox/agents/`
 - `tail -20 ~/agent-workforce/logs/cost.log`

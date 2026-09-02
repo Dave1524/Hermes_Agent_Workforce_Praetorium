@@ -196,6 +196,7 @@ glob from. Recorded here so it has an owner.
 [[workflows]]
 unit = "buzz-pr-watch"
 surface = "platform"
+scope = "user"       # --user manager; invisible to system-scope systemctl (W3, 2026-09-02)
 status = "standing"          # standing by schedule, but its subject ends: see notes
 suite    = []
 suite_exempt = "--user unit running ~/.local/bin/buzz-pr-watch, not in this repo"
@@ -254,6 +255,7 @@ Named `agent-*` so the reporting globs match it (bin/local_tier_eval.sh:51). A n
 [[workflows]]
 unit = "nekovri-subsidy-kickoff"
 surface = "platform"
+scope = "user"       # --user manager; invisible to system-scope systemctl (W3, 2026-09-02)
 status = "spent"
 suite    = []
 trigger = "one-shot 2026-08-03 21:12, --user scope"
@@ -273,6 +275,7 @@ of whose siblings had no source of truth at all.
 [[workflows]]
 unit = "nekovri-subsidy-watchdog"
 surface = "platform"
+scope = "user"       # --user manager; invisible to system-scope systemctl (W3, 2026-09-02)
 status = "spent"
 suite    = []
 trigger = "one-shot 2026-08-03, --user scope"
