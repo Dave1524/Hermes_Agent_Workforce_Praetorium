@@ -8,7 +8,8 @@ for svc in qmd-mcp.service brave-mcp.service qmd-refresh.timer agent-proposal.ti
            overnight-pre-snapshot.timer overnight-morning-report.timer \
            memory-consolidation.timer scorecard.timer \
            agent-inbox-sync.timer augustus-content.timer weekly-pre-assembly.timer \
-           agent-workforce-auto-sync.timer bd-stall-radar.timer; do
+           agent-workforce-auto-sync.timer bd-stall-radar.timer \
+           agent-drift-check.timer; do
   state=$(systemctl is-active "$svc" 2>/dev/null || true)
   enabled=$(systemctl is-enabled "$svc" 2>/dev/null || true)
   printf "  %-32s active=%-10s enabled=%s\n" "$svc" "$state" "$enabled"
@@ -18,7 +19,8 @@ systemctl list-timers qmd-refresh.timer agent-proposal.timer \
   overnight-pre-snapshot.timer overnight-morning-report.timer \
   memory-consolidation.timer scorecard.timer \
   agent-inbox-sync.timer augustus-content.timer weekly-pre-assembly.timer \
-  agent-workforce-auto-sync.timer bd-stall-radar.timer --no-pager 2>/dev/null | head -16
+  agent-workforce-auto-sync.timer bd-stall-radar.timer \
+  agent-drift-check.timer --no-pager 2>/dev/null | head -17
 # ── User services (hermes-gateway): the dispatcher + cron host runs as a --user
 #    unit, so a dead gateway (no proposals, no cron) is invisible to system-scope
 #    systemctl. Query the user manager explicitly. Fail-soft (|| true); set -uo

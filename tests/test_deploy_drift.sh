@@ -234,6 +234,12 @@ assert 'its ExecStart names a script that exists in this repo' \
   "[ -n '$execstart' ] && [ -f '$REPO/$execstart' ]"
 assert 'the timer name matches the reporting globs, or no report can see it' \
   "grep -q \"'agent-\\*'\" '$REPO/bin/local_tier_eval.sh'"
+# praetorium-status.sh enumerates by hand rather than by glob, so the glob assertion above
+# says nothing about it. Both of its lists, because they are two: the is-active loop, which
+# is the only one that can report a timer as ABSENT, and list-timers, which cannot — it
+# never prints a unit systemd has not loaded.
+assert 'praetorium-status.sh lists the timer in BOTH of its hand-maintained lists' \
+  "[ \"\$(grep -c 'agent-drift-check.timer' '$REPO/bin/praetorium-status.sh')\" -eq 2 ]"
 
 registered=$(python3 - <<'PY'
 import pathlib, tomllib
