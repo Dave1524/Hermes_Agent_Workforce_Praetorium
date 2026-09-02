@@ -278,6 +278,38 @@ vault** — two repos with no shared gate, so no commit here can ever see the ta
 drift is 2 lines today and only grows. This is the live defect; a skill registration would not
 have touched it.
 
+**CORRECTED 2026-09-02, re-measuring the same unchanged file (453 lines, mtime 2026-08-14
+18:44). The measurement above is right about the two ranges it names and wrong about the
+count: three of six are off, not two.** The reading above is kept rather than rewritten,
+because the way an incomplete measurement gets caught next time is by leaving both readings
+visible with their dates.
+
+| pinned range | intended section(s) | actual extent | consequence |
+|---|---|---|---|
+| `168,235p` | Step 2.7 + Step 3 + Step 4 | 168-236 | **drops line 236 — self-check item 11, the AI-tell scan** |
+
+**The third miss is the most consequential of the three, and it is the one an off-by-two
+framing hides.** The other two lose a line of guidance at a section edge. This one makes the
+profile lie about itself: `augustus_content_task.md` tells augustus that `ai_tells.md` carries
+"11 structural AI tells + the de-slop pass + **self-check #11**", while the extraction had been
+handing him a Step 4 that stops at item 10. The profile promised a check the skill read
+silently withheld — for the whole time the pins were live.
+
+**`augustus_polish_task.md` has nothing to fix.** Part 1's decision below says to fix it too;
+measured 2026-09-02 it carries no pinned ranges at all — it reads `references/voice.md` and
+`references/ai_tells.md` in full, by exact path (`profiles/augustus_polish_task.md:26-28`).
+Converting a whole-file read into a section extraction for symmetry would add the failure mode
+this decision exists to remove, so it was deliberately left alone.
+
+**BUILT 2026-09-02 (brief 4), part 1 only.** `bin/skill_sections.sh` resolves by heading text —
+whole-string equality, never a prefix; extent to the next heading of the same or higher level so
+a section carries its subsections; all-or-nothing output so an unresolved name cannot leave a
+partial read on stdout. It lives in `bin/` and not inside the profile because `bin/verify.sh`
+lints and syntax-checks `bin/` and **nothing in this repo ever parses, lints or executes a shell
+line embedded in profile markdown** — that asymmetry is why the pins rotted unobserved.
+`tests/test_content_skill_extract.sh` is the shared gate, and it executes the profile's own
+command rather than pattern-matching it. Part 2 (pointer skills) is untouched and still open.
+
 **Decision, in two parts.**
 
 1. **Fix the extraction (the real fix).** Replace the six pinned ranges in
