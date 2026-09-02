@@ -934,7 +934,9 @@ aspirational.
 
 ## Carried work — decided in principle, not done
 
-Not questions. D1 settled the direction; nobody has implemented them.
+Not questions. W1-W5 are D1's: it settled the direction and nobody implemented them.
+W6-W10 were opened by Phase-B briefs 2-4 (2026-09-02) — four of them are things those
+briefs deliberately did not do, and W6 is the one that keeps the gate red.
 
 | | Item | Source | Note |
 |---|---|---|---|
@@ -943,6 +945,28 @@ Not questions. D1 settled the direction; nobody has implemented them.
 | W3 | Generate the reporting jobs' unit lists from the registry | D1 §6.4 | The `praetorium-*` glob defect exists in six files; 8 timers are invisible to every report. |
 | W4 | Consolidate the two job-override example homes | D1 §6.5 | Stale directory archived 2026-09-01; the consolidation itself is not done. |
 | ~~W5~~ | ~~Every workflow entry carries an explicit `status`~~ | D3 §5 R15 | **DONE 2026-09-01 (`3a52d42`)** — all 26 entries carry one, and all 26 carry `suite` or `suite_exempt` (R15b, `6e4fb34`). Recorded done at line 571 and in `eval-spec.md` §5; this row was the one stale copy. D6 unblocked and built. |
+| W6 | Four standing workflows name no suite, and one suite has no owner | D6, brief 3 | **THE PR GATE BLOCKER.** `m1-signal-scan`, `overnight-morning-report`, `agent-workforce-auto-sync`, `overnight-pre-snapshot` carry `status = "standing"` with neither `suite` nor `suite_exempt`; `tests/test_content_inbox_finalize.sh` is claimed by no workflow and no fleet owner. Brief 3 shipped red on exactly these five by design (its criterion 11) — but **no brief in the queue closes them**, so `bash bin/verify.sh` cannot go green and every PR on this branch is red. Each needs a suite or a named `suite_exempt` reason; the orphan needs an owner or deletion. |
+| W7 | The drift check compares 2 of the 8 paths `bin/deploy` ships | D8, briefs 2+4 | `bin/deploy:20` ships `bin profiles docs CLAUDE.md AGENTS.md README.md config systemd`; `bin/check_deploy_drift.sh` compares `bin` and the three unit trees. **`profiles/` is the gap that has already bitten**: brief 4 fixed `augustus_content_task.md`, the runtime copy still carries the pinned line ranges, and the drift check says nothing about it — it flags the undeployed `bin/skill_sections.sh` beside it, so the deploy is not missed *this* time, but a profile-only change would land silently. Same defect class D8 exists to close, one tree over. |
+| W8 | The six `praetorium-phaseb-brief@*` units have no cleanup owner | D8, brief 2 | They pass today (source and `/etc` byte-identical). On the day they are removed from `/etc` they become source-only, which is the same defect in the other direction. **Delete from BOTH trees or neither** — and no brief in the queue sequences that. D5's cleanup covers the two campaign families only. |
+| W9 | `design/fleet-suites.toml`'s `asserts` list has no join to the assertions it names | D6, brief 1 | The six `asserts` strings and `tests/test_workflow_coverage.sh`'s six `check <id>` calls are related by convention only: `test_workflow_coverage.py` reads `path` and `owner` and never `asserts`, and `test_fleet_guards.sh` only checks the list is non-empty. Renaming an id in one place leaves the other silently stale — one fact in two places, which is the class D6 exists to detect. Raised by review 2026-09-02 and deliberately not fixed inside brief 4: it predates that work and joining it properly is its own change. |
+| W10 | Two bespoke off-box predicates, neither able to use `box_only_with` | brief 2, brief 4 | `bin/check_deploy_drift.sh` and `tests/test_content_skill_extract.sh` each hand-roll a guard whose predicate is "this is not Praetorium", because `box_only_with` means "skip if a path is absent" — the opposite of what both need, which is a **missing subject on the box staying RED**. Raised by review 2026-09-02 and declined there: a shared helper would have to span `bin/` ↔ `tests/`, and the naive consolidation costs the fail-closed property. If a third site appears, that is the signal to design the helper properly rather than copy it again. |
+
+
+### Pending actions reserved for Dave — the branch cannot clear these itself
+
+Not carried work; three concrete steps this box will not take from an unmerged branch. Every
+one is currently reported by `bin/check_deploy_drift.sh`, so none of them can be forgotten
+silently — but none clears until someone runs it.
+
+1. **`bin/deploy`, after merge.** Seven `bin/` files are source-only or content-drifted,
+   including `check_deploy_drift.sh` itself and `skill_sections.sh`. **Until this runs,
+   augustus reads the skill by the old pinned line ranges** (brief 4) — the runtime profile
+   still carries them.
+2. **`sudo` install of `agent-drift-check.{service,timer}`.** Written to `systemd/`, absent
+   from `/etc`. Note the unit's `ExecStart` names the SOURCE repo, not the runtime tree, and
+   that inversion is deliberate — see the unit header.
+3. **Verify by RUNNING the job, not by `list-timers`.** `active` + `enabled` +
+   a correct `next_elapse` say nothing about whether `ExecStart` exists.
 
 ---
 
