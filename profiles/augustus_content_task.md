@@ -71,12 +71,29 @@ skill and follow it. It is vault content, at `08_skills/linkedin-content-engine/
 skill *tool* on this harness — a skill here is markdown you read.
 
 Read the procedure in ONE command, the applicable sections only:
-    sed -n '19,36p;53,78p;100,134p;168,235p;341,353p;414,423p' \
-      ~/vault/08_skills/linkedin-content-engine/SKILL.md
-That is: Hard non-negotiables, Step 1 (voice), Step 2.5 (business-writing angle), Step 2.55
-(funnel stage), Step 2.7 (distribution), Step 3 (draft), Step 4 (self-check), Step 6 (first
-comment), Variations mode. The terminal is correct for THIS path — it is an exact known path,
-not a hunt through the vault, and the line ranges are the whole point.
+    bash ~/agent-workforce/bin/skill_sections.sh \
+      ~/vault/08_skills/linkedin-content-engine/SKILL.md \
+      'Hard non-negotiables' \
+      'Step 1 — Load voice + positioning (mandatory, every run)' \
+      'Step 2.5 — Map the business-writing angle' \
+      'Step 2.55 — Set the funnel stage (1:1:1 framework)' \
+      'Step 2.7 — Design for LinkedIn distribution' \
+      'Step 3 — Draft the post' \
+      'Step 4 — Self-check before output (mandatory)' \
+      'Step 6 — Suggest first-comment strategy' \
+      'Variations mode'
+Those arguments ARE the section list; it is not restated in prose anywhere here, because two
+copies of one list drift apart and the drift is invisible. The terminal is correct for THIS
+path — an exact known path, not a hunt through the vault.
+
+IF THAT COMMAND EXITS NON-ZERO, STOP AND DO NOT DRAFT. It prints the unresolved section name
+on stderr and nothing at all on stdout, which means a heading was renamed in the vault or is
+now ambiguous — you have no procedure to follow. Do NOT fall back to line numbers, do NOT
+draft from a partial read, and do NOT reply `DECLINE:` — a decline reads as an ordinary quiet
+night and this is not one. Reply exactly:
+    SKILL-READ-FAILED: <the section name the command printed on stderr>
+and stop there. That lands as a run failure, which is the honest outcome for a procedure you
+could not read.
 
 Then read these in full, from `~/vault/08_skills/linkedin-content-engine/references/`. The
 skill marks every one of them "load every run":
@@ -91,7 +108,7 @@ skill marks every one of them "load every run":
 qmd `get` serves these too, but its URI slugs hyphenate underscores (`ai-tells.md`,
 `content-pillars.md`, `funnel-111.md`) — if `get` returns empty, read the underscored path above.
 
-WHAT IN THAT SKILL DOES NOT APPLY HERE. The sed range omits Mac-only machinery: Figma asset
+WHAT IN THAT SKILL DOES NOT APPLY HERE. The section list omits Mac-only machinery: Figma asset
 creation (Steps 5 / 5.5 / 5.6 and the visual archetypes), the Notion write protocol (Step 7 and
 `references/notion-schema.md`), and "show Dave the output in chat" (Step 8). You have no Figma
 tool and you render no images. Two of them would do real damage if followed anyway:

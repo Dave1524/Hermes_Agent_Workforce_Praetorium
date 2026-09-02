@@ -222,9 +222,13 @@ echo "--- 4b. the command in the profile is the command that works ---"
 cmd=$(awk '
   /skill_sections\.sh/ { collecting = 1 }
   collecting {
+    # Whether the line continues must be read BEFORE the backslash is stripped — testing
+    # the already-substituted $0 is always true, which silently truncates the command to
+    # its first line and then reports the truncation as the profile being broken.
+    cont = ($0 ~ /\\[ \t]*$/)
     sub(/\\[ \t]*$/, "")
     buf = buf " " $0
-    if ($0 !~ /\\[ \t]*$/ && NR > 0) { print buf; exit }
+    if (!cont) { print buf; exit }
   }
 ' "$PROFILE" | sed "s|~/agent-workforce/bin/|$REPO_ROOT/bin/|; s|~/vault|${VAULT_ROOT:-$HOME/vault}|")
 assert 'the profile carries a runnable extraction command' "[ -n \"\$cmd\" ]"
