@@ -13,6 +13,9 @@ TASK="$REPO_ROOT/profiles/phaseb_brief_cc_task.md"
 SERVICE="$REPO_ROOT/systemd/praetorium-phaseb-brief@.service"
 DEPLOYED_RUNNER="$HOME/agent-workforce/bin/run_phaseb_brief_cc.sh"
 ETC=/etc/systemd/system
+
+# shellcheck source=tests/box_precondition.sh
+. "$(dirname "$0")/box_precondition.sh"
 fail=0
 
 assert() {
@@ -64,7 +67,9 @@ assert 'the task profile exists' "[ -r '$TASK' ]"
 echo "-- units"
 assert 'the template service exists' "[ -f '$SERVICE' ]"
 assert 'its ExecStart names the deployed runner' "grep -q 'ExecStart=/home/dave/agent-workforce/bin/run_phaseb_brief_cc.sh %i' '$SERVICE'"
-assert 'the ExecStart target is deployed and executable' "[ -x '$DEPLOYED_RUNNER' ]"
+if box_only 'the deployed runtime tree' "$DEPLOYED_RUNNER"; then
+  assert 'the ExecStart target is deployed and executable' "[ -x '$DEPLOYED_RUNNER' ]"
+fi
 assert 'the service alerts on failure' "grep -q 'OnFailure=agent-alert@%n.service' '$SERVICE'"
 for id in 2 3 4 5 6; do
   t="$REPO_ROOT/systemd/praetorium-phaseb-brief@${id}.timer"
@@ -74,10 +79,12 @@ for id in 2 3 4 5 6; do
 done
 
 echo "-- source matches /etc (D8's class, asserted early for these units)"
-for u in "$SERVICE" "$REPO_ROOT"/systemd/praetorium-phaseb-brief@[0-9].timer; do
-  b="$(basename "$u")"
-  assert "$b is installed in /etc" "[ -f '$ETC/$b' ]"
-  assert "$b is byte-identical in source and /etc" "etc_matches_source '$u'"
-done
+if box_only 'the installed /etc unit tree' "$ETC/$(basename "$SERVICE")"; then
+  for u in "$SERVICE" "$REPO_ROOT"/systemd/praetorium-phaseb-brief@[0-9].timer; do
+    b="$(basename "$u")"
+    assert "$b is installed in /etc" "[ -f '$ETC/$b' ]"
+    assert "$b is byte-identical in source and /etc" "etc_matches_source '$u'"
+  done
+fi
 
 [ "$fail" -eq 0 ] || exit 1

@@ -44,11 +44,28 @@ if [ -d tests ]; then
   trap 'rm -rf "$run_tmp"' EXIT
   export TMPDIR="$run_tmp"
 
+  # Buffered rather than streamed so the SKIP lines can be collected. A suite that opts out
+  # of a box precondition (tests/box_precondition.sh) has to be counted somewhere; the
+  # alternative is a gate that shrinks silently off the box. 77 is the whole-file skip
+  # convention, so it is not a failure — anything else non-zero is.
+  gate_out="$run_tmp/.verify-current"
+  skips=()
   for t in tests/*.sh; do
     [ -e "$t" ] || continue
     echo "test: $t"
-    bash "$t" || fail=1
+    rc=0
+    bash "$t" >"$gate_out" 2>&1 || rc=$?
+    cat "$gate_out"
+    [ "$rc" = 0 ] || [ "$rc" = 77 ] || fail=1
+    while IFS= read -r line; do skips+=("$line"); done < <(grep '^SKIP: ' "$gate_out")
   done
+
+  # Printed unconditionally when non-empty: the CI gate diffs this set against
+  # tests/ci-expected-skips.txt, which is what stops a skip from becoming invisible.
+  if [ ${#skips[@]} -gt 0 ]; then
+    echo "--- skipped (${#skips[@]}) ---"
+    printf '%s\n' "${skips[@]}"
+  fi
 fi
 
 exit $fail
