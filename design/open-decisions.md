@@ -868,7 +868,7 @@ Not questions. D1 settled the direction; nobody has implemented them.
 | W2 | Every persona workflow's profile states its owner in one standard header line | D1 §6.3 | daily-plan/eod say "You are Marcus"; the `_cc_task` variants are persona-less. |
 | W3 | Generate the reporting jobs' unit lists from the registry | D1 §6.4 | The `praetorium-*` glob defect exists in six files; 8 timers are invisible to every report. |
 | W4 | Consolidate the two job-override example homes | D1 §6.5 | Stale directory archived 2026-09-01; the consolidation itself is not done. |
-| W5 | Every workflow entry carries an explicit `status` | D3 §5 R15 | Manifest edit, not code. Blocks D6. |
+| ~~W5~~ | ~~Every workflow entry carries an explicit `status`~~ | D3 §5 R15 | **DONE 2026-09-01 (`3a52d42`)** — all 26 entries carry one, and all 26 carry `suite` or `suite_exempt` (R15b, `6e4fb34`). Recorded done at line 571 and in `eval-spec.md` §5; this row was the one stale copy. D6 unblocked and built. |
 
 ---
 

@@ -205,9 +205,15 @@ Three rules follow:
    distinct paths and the other 12 resolve to nothing. `contract-schema.md` says "the
    remaining 25 workflows carry a `contract` pointer to a file that does not exist yet" —
    that is true of 13, not 25, and was written before the platform jobs were enumerated.
-   Whether a deterministic platform job should have a contract is a real question (its
-   promise is liveness and an artifact, not output quality) and it belongs to D6, since a
-   coverage checker has to decide what it does with an entry that names no contract.
+   Whether a deterministic platform job should have a contract was parked here for D6,
+   since a coverage checker has to decide what it does with an entry that names no
+   contract. **ANSWERED 2026-09-02: the checker does not require `contract`, and a
+   platform job does not need one.** Coverage is suite ownership; contracts are D3's
+   acceptance-check layer, and the two are separate questions about a workflow. Only 14 of
+   the 26 entries carry a contract, trajan's 12 platform jobs carry none, and that is
+   correct rather than a backlog — a deterministic job's promise is liveness and an
+   artifact, which a suite asserts, not output quality, which is what a contract grades.
+   `tests/test_workflow_coverage.sh` therefore never reads the field.
 
 Note for whoever writes the checker: **do not read liveness from `NextElapseUSecRealtime`.**
 It is empty for every `OnUnitActiveSec` timer (monotonic, not realtime), and

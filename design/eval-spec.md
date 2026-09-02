@@ -132,9 +132,17 @@ returns a clean `0`. Assert the input exists before asserting what it does not c
 
 ---
 
-## 5. Coverage, measured 2026-09-01 (revised under D6)
+## 5. Coverage — computed, not recorded (D6, 2026-09-02)
 
-**16 of 26 have an owning suite. 10 do not**, and they are not all holes:
+**The headline count lives in `tests/test_workflow_coverage.sh`'s output, not in this
+paragraph.** Run `bash tests/test_workflow_coverage.sh` for the current figure; the gate
+runs it on every commit. A number written here was wrong three ways in one document
+(`open-decisions.md:548-551`) before anything computed it, and the checker exists precisely
+so this section stops rotting the day it is written.
+
+The table below stays, because it carries the *why* — which no checker computes. Each row
+says whether a gap is a hole worth a brief or a bounded thing that needs no suite, and that
+judgement is the part a coverage figure cannot express.
 
 | Workflow | Owner | Status | Why uncovered |
 |---|---|---|---|
@@ -150,7 +158,10 @@ returns a clean `0`. Assert the input exists before asserting what it does not c
 | `bd-stall-radar` | claudius | dormant | installed but disabled; its sibling `bd-followup-drafts` has a suite |
 
 So the honest backlog is **four suites** — not fifteen, and not the two this section previously
-concluded. Every other gap is bounded, disabled, or code this repo does not own.
+concluded. Every other gap is bounded, disabled, or code this repo does not own. Those four
+are what `tests/test_workflow_coverage.sh` ships red naming; it is not passing until each
+has a suite, and `suite_exempt` is not the way to close one — it means the code is not in
+this repo, and all four are in-repo and writable.
 
 Two qualifications, both load-bearing:
 
@@ -220,10 +231,19 @@ deleting it. The declaration exists so that recommendation cannot be made.
 
 ## 7. Gaps
 
-**7.1 Nothing computes workflow coverage.** §1. Fix is a suite that reads
-`design/agents/*.toml`, resolves each `status = "live"` workflow to a suite, and fails on
-an unowned one. It is the only new mechanism D3 asks for, and it makes §5 self-maintaining
-instead of a number that rots the day it is written.
+**7.1 Nothing computes workflow coverage — CLOSED 2026-09-02.** §1. Fixed by
+`tests/test_workflow_coverage.sh`, which reads `design/agents/*.toml`, resolves each
+`status = "standing"` workflow to a suite, and fails on an unowned one. It is the only new
+mechanism D3 asks for, and it makes §5 self-maintaining instead of a number that rots the
+day it is written.
+
+**The filter is `standing`, not `live`.** This sentence read `status = "live"` until
+2026-09-02, and no workflow entry has ever had that value: `live | read-only | retired` is
+the *agent-level* vocabulary (`agent-model.md:106`), deliberately different words so a grep
+for one never matches the other (`agent-model.md:187-188`). Workflow status is
+`standing | campaign | spent | dormant | planned`. An implementer following the old sentence
+literally selects **zero** entries and reports full coverage, which is why the checker
+refuses a figure computed from an empty selection.
 
 It must read `design/fleet-suites.toml` as a second source of ownership and treat
 `owner = "fleet"` as owned (§6). A checker that knows only the workflow→suite direction
