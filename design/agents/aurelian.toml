@@ -38,7 +38,8 @@ notes   = "By calibration pin. A scheduled aurelian would be a co-author of the 
 
 [surfaces.kanban]
 present = false
-notes   = "No ~/.hermes/profiles/aurelian — the on-disk profiles are marcus, claudius, augustus, trajan, base0, leantest, default."
+retired = "2026-09-02"           # D7. Was already `false`; the surface it was false ABOUT is now gone too.
+notes   = "No ~/.hermes/profiles/aurelian — the on-disk profiles are marcus, claudius, augustus, trajan, base0, leantest, default. That list still holds after the retirement: D7 retired the board and the gateway, not the hermes profiles."
 
 [surfaces.buzz_dispatch]
 present = false

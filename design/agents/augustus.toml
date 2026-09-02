@@ -40,10 +40,11 @@ is the accountable owner, not the runtime (registry §7.3).
 """
 
 [surfaces.kanban]
-present     = true
+present     = false
+retired     = "2026-09-02"       # D7. Block kept, not deleted — see agent-model.md §3.
 governed_by = "~/.hermes/profiles/augustus/config.yaml"
 skills      = 23                 # vault-business 16 + plugin-shared 7
-notes       = "Narrowest offering of the four. No plugin-official, no anthropic-generic."
+notes       = "Narrowest offering of the four. No plugin-official, no anthropic-generic. Augustus's live work moved to S4 (buzz_dispatch) long before the board was retired; he authored 4 of its 11 cards, all `done`, all before 2026-07-20."
 
 # The fourth surface exists for exactly one workflow.
 [surfaces.buzz_dispatch]

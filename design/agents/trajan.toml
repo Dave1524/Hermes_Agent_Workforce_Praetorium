@@ -27,16 +27,27 @@ present = false
 notes   = "Platform jobs invoke scripts directly, not claude -p. If that ever changes, this block acquires an allowlist."
 
 [surfaces.kanban]
-present     = true
+present     = false
+retired     = "2026-09-02"       # D7. Block kept, not deleted — see agent-model.md §3.
 governed_by = "~/.hermes/profiles/trajan/config.yaml"
 skills      = 44                 # plugin-official 23 + plugin-shared 7 + anthropic-generic 14
-board       = "vpc-seo"
+board       = "vpc-seo"          # historical; the SEO queue lives in Notion since 2026-09-02
 notes       = """
-The one-off queue under the rule adopted in registry §7.6: recurring work is a systemd
-timer, queued one-offs are kanban. Its 5 SEO cards were assigned to `engineer`, a profile
-NOT on disk, so they could never dispatch; reassigned to trajan 2026-09-01 and left
-`blocked` on purpose — unblocking makes the gateway dispatch within 60s, which is Dave's
-call. This is the only surface where a skills allowlist does real work.
+Retired 2026-09-02 (D7). It held the one-off queue under the rule registry §7.6 adopted on
+2026-09-01 — recurring work is a systemd timer, queued one-offs are kanban — and D7 concluded
+retire the same day. §7.6 now records both, in that order.
+
+Its 5 SEO cards were assigned to `engineer`, a profile NOT on disk, so they could never
+dispatch: no `started_at`, on any of them, ever. Reassigned to trajan 2026-09-01 and left
+`blocked` on purpose, then moved to Notion by Dave before the retirement. The full card
+bodies are in ~/OUTBOX/hermes-kanban-full-export-2026-09-02.md as a backstop.
+
+This block used to claim "the only surface where a skills allowlist does real work". That was
+never the whole truth and is now false in both halves: 0 of the board's 11 cards ever set a
+non-empty `skills` field, so the allowlist did no work HERE either — and the config.yaml it
+writes is still read by `hermes -p <profile>` oneshots, which bin/local_tier_eval.sh:105 runs
+six times a day. The allowlist survives the surface. Do not delete
+bin/apply_skills_allowlist.sh on the strength of this retirement.
 """
 
 [surfaces.buzz_dispatch]
@@ -296,12 +307,6 @@ enforced = false
 why      = "it is the same push with the record removed"
 
 [[must_not]]
-rule     = "unblock a vpc-seo card without Dave"
+rule     = "advance a vpc-seo item without Dave"
 enforced = false
-why      = "the gateway dispatches within 60s of ready"
-
-[[must_not]]
-rule     = "schedule recurring work on hermes cron"
-enforced = true
-why      = "retired, registry §7.6 — hermes cron list is empty"
-test_exempt = "the mechanism is a surface that no longer exists, so there is nothing whose removal a test could detect (D9). A test pinning an empty cron list would assert the absence of a retired thing and would go red the day D7 finishes removing it. Folds into D7's retirement"
+why      = "re-pointed 2026-09-02: the queue moved to Notion with the board's retirement, so the 60s-dispatch mechanism this rule named is gone. What remains is judgement — the SEO work is Dave's to sequence — and nothing prevents it, which is what enforced = false says"
