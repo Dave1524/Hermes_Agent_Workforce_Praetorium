@@ -1025,10 +1025,13 @@ Not carried work; concrete steps this box will not take from an unmerged branch.
 reported by `bin/check_deploy_drift.sh`, so they cannot be forgotten silently — but none
 clears until someone runs it, and item 4 is the one the check cannot see.
 
-1. **`bin/deploy`, after merge.** Eight `bin/` files are source-only or content-drifted,
+1. **`bin/deploy`, after merge.** Ten `bin/` files are source-only or content-drifted,
    including `check_deploy_drift.sh` itself and `skill_sections.sh`. **Until this runs,
    augustus reads the skill by the old pinned line ranges** (brief 4) — the runtime profile
-   still carries them.
+   still carries them. (Eight until 2026-09-02; brief 5 edited `agent_propose.sh` and
+   `overnight_pre_snapshot.sh`, and this count is re-measured, not incremented — it is a
+   property of the tree at merge time, so re-run `bin/check_deploy_drift.sh` rather than
+   trusting this number, which every later brief moves without noticing.)
 2. **`sudo` install of `agent-drift-check.{service,timer}`.** Written to `systemd/`, absent
    from `/etc`. Note the unit's `ExecStart` names the SOURCE repo, not the runtime tree, and
    that inversion is deliberate — see the unit header.
