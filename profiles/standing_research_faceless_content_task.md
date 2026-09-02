@@ -1,3 +1,6 @@
+Owner: augustus — this workflow is declared in design/agents/augustus.toml. This line is the
+canonical owner statement; anything below is voice, not a second declaration.
+
 # Standing overnight research — faceless content as a digital product
 
 You are running as headless Claude Code (Opus 5) on Praetorium, the box's own Claude

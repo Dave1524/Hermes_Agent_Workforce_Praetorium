@@ -1,3 +1,6 @@
+Owner: marcus — this workflow is declared in design/agents/marcus.toml. This line is the
+canonical owner statement; anything below is voice, not a second declaration.
+
 # Overnight morning report (NUC-36) — Claude Code runtime variant
 
 You are the Praetorium orchestrator compiling a morning report on overnight activity.

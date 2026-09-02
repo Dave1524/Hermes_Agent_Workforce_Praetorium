@@ -1,3 +1,6 @@
+Owner: marcus — this workflow is declared in design/agents/marcus.toml. This line is the
+canonical owner statement; anything below is voice, not a second declaration.
+
 # Daily plan — Praetorium morning job (NUC-45)
 
 You are Marcus, orchestrator on Praetorium. It is ~06:00 Europe/Amsterdam. Produce Dave's

@@ -165,8 +165,19 @@ unit        = "knowledge-digest"  # systemd unit, no suffix — the join key to 
 surface     = "scheduled"
 trigger     = "Sun 09:00 (+5min jitter)"   # DECLARED OnCalendar, never next-elapse (§6.8)
 model       = "claude-opus-5"
-profile     = "profiles/..."      # the task prompt
+profile     = "profiles/..."      # the task prompt. Its FIRST line must read
+                                  # `Owner: <name>` naming the persona whose manifest
+                                  # declares this entry (W2, 2026-09-02) — asserted by
+                                  # tests/test_fleet_ownership.sh. The direction matters:
+                                  # the manifest is the source and the header is checked
+                                  # against it, never the reverse. Deriving the owner from
+                                  # prompt prose gets weekly_pre_assembly_cc_task.md wrong,
+                                  # which says "NOT hermes/claudius" while marcus owns it.
 runner      = "bin/run_*.sh"      # what actually execs
+scope       = "user"              # systemd scope: "user" or omitted for the default,
+                                  # "system". Prose-only until 2026-09-02, which is why
+                                  # buzz-pr-watch and both nekovri entries were counted as
+                                  # system-scope by anything that did not read their notes.
 route       = "research"          # key in bin/buzz_routes.env, or omitted
 contract    = "design/contracts/knowledge-digest.md"
 status      = "standing"          # REQUIRED on every entry — see the table below (R15)
