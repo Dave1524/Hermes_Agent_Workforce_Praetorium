@@ -191,7 +191,7 @@ suite_exempt = "--user unit running ~/.local/bin/buzz-pr-watch, not in this repo
 trigger = "daily 09:23 (+20min jitter) — USER scope, not system"
 what = "watches block/buzz#3816, announces on close"
 alerted = false
-in_repo = false
+in_repo = true   # systemd/user/buzz-pr-watch.{service,timer}, backported 2026-09-02
 notes = "systemctl --user. Every other job here is system scope; do not debug it with sudo. It is `standing` because its cadence is recurring and open-ended, but it watches ONE pull request — when block/buzz#3816 closes it becomes a job with nothing to watch, and no status transition will announce that."
 
 

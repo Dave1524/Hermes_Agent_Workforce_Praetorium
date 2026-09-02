@@ -94,8 +94,12 @@ if [[ $DRY_RUN -eq 0 ]]; then
     # A deploy that did not converge is a failed deploy, not a quiet one. This reports; it
     # never writes /etc, so it cannot "fix" what it finds — the /etc half of any finding is
     # a sudo install and stays a human action.
-    echo "deploy: post-condition — checking source vs deployed"
-    if "$SRC/bin/check_deploy_drift.sh"; then
+    # --scope bin, because deploy owns exactly one of the four trees. Gating its exit status
+    # on /etc and ~/.config/systemd/user made a fully converged deploy return 1 for state
+    # only a human with sudo can change — and this repo currently HAS that state, so every
+    # `bin/deploy && <next step>` would have broken.
+    echo "deploy: post-condition — checking source vs deployed (bin tree, the one deploy owns)"
+    if "$SRC/bin/check_deploy_drift.sh" --scope bin; then
         echo "deploy: converged."
     else
         echo "deploy: DRIFT REMAINS after deploy — see above." >&2

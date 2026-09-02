@@ -5,7 +5,7 @@
 # Lines beginning with # and blank lines are stripped before the diff; everything else must
 # match a printed `SKIP:` line verbatim. Paths are $HOME-relative (tests/box_precondition.sh).
 #
-# Five lines are box state a checkout cannot carry: four from three suites (phaseb_brief_jobs
+# Six lines are box state a checkout cannot carry: five from four suites (phaseb_brief_jobs
 # declares two preconditions, so lines and suites are not the same count) plus
 # bin/check_deploy_drift.sh, which the gate calls directly rather than through tests/ and
 # which prints the same SKIP shape for the same reason. One is the mirror — test_fetch_status's negative case needs NO
@@ -15,6 +15,7 @@
 
 SKIP: check_deploy_drift.sh — the deployed trees this check compares against (absent: ~/agent-workforce/bin ~/.config/systemd/user)
 SKIP: live OpenCode agent contract tests (set OPENCODE_LIVE_TESTS=1 to spend model tokens)
+SKIP: test_content_skill_extract.sh — the vault the content job reads (absent: ~/vault/08_skills/linkedin-content-engine/SKILL.md)
 SKIP: test_fetch_status.sh — the negative case needs no system chrome on PATH (probed: google-chrome chromium chromium-browser chrome)
 SKIP: test_fleet_eval.sh — the live qmd index the anchors resolve against (absent: ~/.cache/qmd/index.sqlite)
 SKIP: test_fleet_guards.sh — the live fleet state this suite asserts (absent: ~/.claude/settings.json ~/.config/buzz-team/agent-settings.json ~/.config/systemd/user/buzz-agent@.service)

@@ -229,7 +229,11 @@ assert 'the service unit exists in systemd/' \
 # runtime copy would make this suite depend on whether bin/deploy has run — box state, which
 # CI does not have — and runtime existence is already the drift check's own job: it reports
 # an undeployed script as `source-only`, which is the correct owner of that question.
-execstart=$(sed -n 's|^ExecStart=/home/dave/agent-workforce/||p' "$REPO/systemd/agent-drift-check.service")
+# The SOURCE repo, not the runtime tree — this is the one job that must not run from the
+# deployed copy of itself (see the unit's header and group 11).
+execstart=$(sed -n 's|^ExecStart=/home/dave/dev/agent-workforce/||p' "$REPO/systemd/agent-drift-check.service")
+assert 'the timer runs the checker from the SOURCE repo, never the runtime copy' \
+  "! grep -q '^ExecStart=/home/dave/agent-workforce/' '$REPO/systemd/agent-drift-check.service'"
 assert 'its ExecStart names a script that exists in this repo' \
   "[ -n '$execstart' ] && [ -f '$REPO/$execstart' ]"
 assert 'the timer name matches the reporting globs, or no report can see it' \
@@ -251,5 +255,90 @@ PY
 )
 assert 'it has a [[workflows]] entry whose suite names this file' \
   "grep -q 'tests/test_deploy_drift.sh' <<<'$registered'"
+
+echo "--- 11. the checker refuses the shapes that make it lie ---"
+fixture
+# Source==runtime: REPO is resolved from $0, so the deployed copy of this script compares a
+# tree with itself and reports zero findings whatever the repo contains.
+out=$(DRIFT_SRC_BIN="$root/run_bin" DRIFT_RUNTIME_BIN="$root/run_bin" \
+      DRIFT_SRC_SYSTEM="$root/src_sys" DRIFT_ETC="$root/etc" \
+      DRIFT_SRC_USER="$root/src_user" DRIFT_USER="$root/user" \
+      DRIFT_OWNERSHIP="$root/ownership.toml" DRIFT_MANIFESTS="$root/manifests" \
+      bash "$CHECK" 2>&1); rc=$?
+assert 'source and runtime resolving to one tree is refused, not reported clean' "[ $rc -eq 2 ]"
+assert 'and says which tree collapsed' "saw 'same tree'"
+
+# design/ is not in bin/deploy's PATHS, so the runtime tree has none. Reading that as "no
+# exclusions" turned a clean box into 11 findings including ollama.service.
+out=$(DRIFT_SRC_BIN="$root/src_bin" DRIFT_RUNTIME_BIN="$root/run_bin" \
+      DRIFT_SRC_SYSTEM="$root/src_sys" DRIFT_ETC="$root/etc" \
+      DRIFT_SRC_USER="$root/src_user" DRIFT_USER="$root/user" \
+      DRIFT_OWNERSHIP="$root/nope.toml" DRIFT_MANIFESTS="$root/manifests" \
+      bash "$CHECK" 2>&1); rc=$?
+assert 'absent ownership declarations are refused, never an empty exclusion set' "[ $rc -eq 2 ]"
+assert 'and the refusal explains what would have gone wrong' "saw 'undeclared drift'"
+rm -rf "$root"
+
+echo "--- 12. a TEMPLATED campaign family is declared once and excludes every instance ---"
+fixture
+echo '[Unit]' > "$root/etc/praetorium-phaseb-brief@2.timer"
+cat > "$root/manifests/trajan.toml" <<'TOML'
+[[workflows]]
+unit    = "praetorium-phaseb-brief@"
+status  = "campaign"
+expires = "2026-12-31 00:00"
+TOML
+capture
+# The manifest declares the family; the instance stem is praetorium-phaseb-brief@2. Keying
+# on the stem alone matched nothing, so the only campaign family in the repo could never be
+# excluded — and group 6 above never noticed, because its fixture name has no `@`.
+assert 'the family entry silences an instance' "saw 'praetorium-phaseb-brief@2.timer — campaign'"
+assert 'and nothing is reported' "clean"
+rm -rf "$root"
+
+echo "--- 13. scope: deploy owns one tree and its exit code says only that ---"
+fixture
+echo '[Unit]' > "$root/etc/hand-installed.timer"
+out=$(DRIFT_SRC_BIN="$root/src_bin" DRIFT_RUNTIME_BIN="$root/run_bin" \
+      DRIFT_SRC_SYSTEM="$root/src_sys" DRIFT_ETC="$root/etc" \
+      DRIFT_SRC_USER="$root/src_user" DRIFT_USER="$root/user" \
+      DRIFT_OWNERSHIP="$root/ownership.toml" DRIFT_MANIFESTS="$root/manifests" \
+      bash "$CHECK" --scope bin 2>&1); rc=$?
+assert '--scope bin ignores an /etc-only unit deploy cannot install' "[ $rc -eq 0 ]"
+assert 'and says so rather than implying the units were checked' "saw 'NOT compared'"
+assert 'an unknown scope is refused' \
+  "bash '$CHECK' --scope sideways >/dev/null 2>&1; [ \$? -eq 2 ]"
+rm -rf "$root"
+
+echo "--- 14. the user tree has the same escape hatch as /etc ---"
+fixture
+echo '[Unit]' > "$root/user/not-ours.service"
+cat > "$root/ownership.toml" <<'TOML'
+[[third_party]]
+unit = "not-ours.service"
+tree = "user"
+why  = "app-installed --user override"
+TOML
+capture
+assert 'a declared user-tree unit produces no finding' "clean"
+assert 'and is named rather than silently skipped' "saw 'live-only: not-ours.service — declared'"
+# tree is read, not decorative: the same declaration scoped to etc must NOT silence a user
+# unit, or one list would silence two trees and the field would mean nothing.
+sed -i 's/tree = "user"/tree = "etc"/' "$root/ownership.toml"
+capture
+assert 'the same entry scoped to etc does NOT silence it' \
+  "saw 'DRIFT \[user\] live-only: not-ours.service'"
+rm -rf "$root"
+
+echo "--- 15. a .conf outside a *.d directory is not a drop-in ---"
+fixture
+mkdir -p "$root/src_sys/user"
+echo 'x' > "$root/src_sys/user/model.conf"
+capture
+# systemd/user/ and systemd/archive/ are excluded from the UNIT comparison by -maxdepth 1;
+# the drop-in scan must exclude them the same way or it emits a finding no declaration can
+# silence.
+assert 'systemd/user/*.conf is not reported as an uninstalled drop-in' "! saw 'user/model.conf'"
+rm -rf "$root"
 
 exit $fail

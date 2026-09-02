@@ -40,14 +40,54 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 # Every tree is overridable so the suite can build synthetic ones. A test that pointed at the
 # live box would be red for reasons unrelated to the code under test, and everyone would learn
 # to ignore it.
+RUNTIME_ROOT="${AGENT_WORKFORCE_RUNTIME:-$HOME/agent-workforce}"
 SRC_BIN="${DRIFT_SRC_BIN:-$REPO/bin}"
-RUNTIME_BIN="${DRIFT_RUNTIME_BIN:-$HOME/agent-workforce/bin}"
+# bin/deploy:17 reads AGENT_WORKFORCE_RUNTIME for its destination. Hardcoding $HOME here
+# made a redirected deploy compare against a tree it never wrote and fail its own
+# post-condition on every file.
+RUNTIME_BIN="${DRIFT_RUNTIME_BIN:-$RUNTIME_ROOT/bin}"
 SRC_SYSTEM="${DRIFT_SRC_SYSTEM:-$REPO/systemd}"
 ETC="${DRIFT_ETC:-/etc/systemd/system}"
 SRC_USER="${DRIFT_SRC_USER:-$REPO/systemd/user}"
 USER_TREE="${DRIFT_USER:-$HOME/.config/systemd/user}"
 OWNERSHIP="${DRIFT_OWNERSHIP:-$REPO/design/unit-ownership.toml}"
 MANIFESTS="${DRIFT_MANIFESTS:-$REPO/design/agents}"
+# THIS SCRIPT CANNOT RUN FROM THE DEPLOYED COPY OF ITSELF, and the failure is silent, so it
+# is a guard rather than a note. REPO is resolved from $0, so a copy exec'd out of the
+# runtime tree sets SRC_BIN to that same tree and compares it with itself — the bin half
+# becomes a tautology that reports zero findings whatever the repo contains, and SRC_SYSTEM
+# becomes the staging copy this file's own header forbids as a comparison side. That was the
+# shipped state of agent-drift-check.service until it was pointed at the source tree.
+same_dir() {
+  local a b
+  a=$(cd "$1" 2>/dev/null && pwd -P) || return 1
+  b=$(cd "$2" 2>/dev/null && pwd -P) || return 1
+  [ -n "$a" ] && [ "$a" = "$b" ]
+}
+if same_dir "$SRC_BIN" "$RUNTIME_BIN"; then
+  echo "$(basename "$0"): refusing to run — source and runtime resolve to the same tree" >&2
+  echo "  ($SRC_BIN). Run it from the source repo, not from $RUNTIME_ROOT." >&2
+  exit 2
+fi
+if same_dir "$SRC_SYSTEM" "$RUNTIME_ROOT/systemd"; then
+  echo "$(basename "$0"): refusing to run — the unit source is the STAGING copy" >&2
+  echo "  ($SRC_SYSTEM). systemd reads $ETC and never staging, so this comparison" >&2
+  echo "  goes green the moment a unit is deployed while /etc stays stale." >&2
+  exit 2
+fi
+
+# Scope. bin/deploy owns exactly one of the four trees, so gating its exit status on the
+# other three makes a converged deploy return 1 for /etc state only a human with sudo can
+# change. `--scope bin` is what a caller passes when its exit code should mean what it can
+# actually control.
+SCOPE=all
+case "${1:-}" in
+  --scope) SCOPE="${2:-all}"; shift 2 ;;
+  "") ;;
+  *) echo "usage: $(basename "$0") [--scope all|bin]" >&2; exit 2 ;;
+esac
+case "$SCOPE" in all|bin) ;; *) echo "$(basename "$0"): unknown scope: $SCOPE" >&2; exit 2 ;; esac
+
 # Fixture clock. A dated exclusion asserted against `date` is correct only until the date
 # passes, at which point the assertion changes meaning with nobody touching it.
 NOW="${DRIFT_NOW:-$(date '+%Y-%m-%d %H:%M:%S')}"
@@ -87,12 +127,28 @@ names() { # dir, then find-args; prints basenames, byte-sorted
 # Read once, in python, because the sources are TOML. Emits one line per declared exclusion:
 #   third_party <unit>
 #   campaign <unit-stem> <expires>            (from the owning manifest, not re-keyed here)
+# Absent declarations are a REFUSAL, not an empty exclusion set. With design/ missing, every
+# /etc-only unit reports as undeclared drift — measured 2026-09-02 at 11 findings including
+# ollama.service and both live campaigns, on a box with no drift at all. A daily alert that
+# is wrong every day is worse than no check, and the failure is invisible from the output.
+if [ "$SCOPE" = all ]; then
+  for d in "$OWNERSHIP:file" "$MANIFESTS:dir"; do
+    path=${d%:*}; kind=${d##*:}
+    if { [ "$kind" = file ] && [ ! -f "$path" ]; } || { [ "$kind" = dir ] && [ ! -d "$path" ]; }; then
+      echo "$(basename "$0"): refusing to run — ownership declarations not found at $path" >&2
+      echo "  Without them every /etc-only unit reads as undeclared drift. Run from the" >&2
+      echo "  source repo (design/ is not in bin/deploy's PATHS and never reaches runtime)." >&2
+      exit 2
+    fi
+  done
+fi
+
 declarations=$(OWNERSHIP="$OWNERSHIP" MANIFESTS="$MANIFESTS" python3 <<'PY'
 import os, pathlib, tomllib
 own = pathlib.Path(os.environ["OWNERSHIP"])
 if own.is_file():
     for row in tomllib.loads(own.read_text()).get("third_party", []):
-        print("third_party", row.get("unit", ""))
+        print("third_party", row.get("tree", "etc"), row.get("unit", ""))
 manifests = pathlib.Path(os.environ["MANIFESTS"])
 if manifests.is_dir():
     for m in sorted(manifests.glob("*.toml")):
@@ -102,16 +158,38 @@ if manifests.is_dir():
 PY
 )
 
-declared_third_party() { grep -qx "third_party $1" <<<"$declarations"; }
+# Field comparison, never `grep "^third_party $1"`: a unit name is data, and `.` in a basic
+# regex matches any character — dbus-orgXfreedesktop.resolve1.service would match the
+# declared dbus-org.freedesktop.resolve1.service and be silenced. Fail-open in a checker
+# whose contract is that ownership fails closed.
+declared_third_party() { # unit, tree (default etc)
+  local want_tree=${2:-etc} kind tree unit
+  while read -r kind tree unit; do
+    [ "$kind" = third_party ] || continue
+    [ "$tree" = "$want_tree" ] && [ "$unit" = "$1" ] && return 0
+  done <<<"$declarations"
+  return 1
+}
 
 # A dated exclusion is consulted only when it is actually silencing a membership difference.
 # Its date must then be in the future: an expired entry still doing work is how a list teaches
 # everyone to ignore a red. Entries for units with no drift are not checked, because a unit
 # present in both trees needs no exclusion at all.
 campaign_expiry() { # unit file -> expires, or empty
-  local stem=${1%.*} line
-  line=$(grep -m1 "^campaign ${stem} " <<<"$declarations") || return 1
-  cut -d' ' -f3- <<<"$line"
+  local stem=${1%.*} family kind unit rest
+  # A templated family is declared ONCE — trajan.toml carries `unit = "praetorium-phaseb-brief@"`
+  # for all six instances, deliberately. Keying only on the instance stem
+  # (praetorium-phaseb-brief@2) matches nothing, so the exclusion could never fire for the
+  # only campaign family in the repo. test_workflow_coverage.py:221 normalises the same
+  # registry the same way; two consumers disagreeing on the join key is the defect this
+  # checker exists to catch, one level up.
+  family=${stem%%@*}
+  [ "$family" != "$stem" ] && family="${family}@"
+  while read -r kind unit rest; do
+    [ "$kind" = campaign ] || continue
+    if [ "$unit" = "$stem" ] || [ "$unit" = "$family" ]; then printf '%s\n' "$rest"; return 0; fi
+  done <<<"$declarations"
+  return 1
 }
 
 # --- bin/ <-> runtime ------------------------------------------------------------------
@@ -131,6 +209,12 @@ while IFS= read -r f; do
   [ -n "$f" ] || continue
   cmp -s "$SRC_BIN/$f" "$RUNTIME_BIN/$f" || report bin "content differs: $f"
 done < <(comm -12 <(echo "$bin_src") <(echo "$bin_run"))
+
+if [ "$SCOPE" = bin ]; then
+  info "scope=bin — the three unit trees are NOT compared by this invocation"
+  if [ "$findings" -eq 0 ]; then echo "drift: clean (bin only)"; else echo "drift: $findings finding(s) (bin only)"; fi
+  exit $(( findings > 0 ))
+fi
 
 # --- systemd/ <-> /etc -----------------------------------------------------------------
 # maxdepth 1 and -type f: systemd/user/ and systemd/archive/ are NOT part of this comparison,
@@ -189,7 +273,12 @@ echo "system drop-ins: $SRC_SYSTEM/*.d <-> $ETC/*.d"
 dropins() {
   local root=$1
   [ -d "$root" ] || return 0
-  find "$root" -mindepth 2 -maxdepth 2 -type f -name '*.conf' -printf '%P\n' 2>/dev/null \
+  # -path '*.d/*.conf' and not just -name: the unit comparison above uses -maxdepth 1 to
+  # keep systemd/user/ and systemd/archive/ out, and this scan must exclude them the same
+  # way or a systemd/user/<x>.conf becomes `source-only: user/<x>.conf` — a finding no
+  # [[third_party]] entry can silence, because ${f%%.d/*} on a path with no `.d/` returns
+  # the whole string and matches no declared unit name.
+  find "$root" -mindepth 2 -maxdepth 2 -type f -path '*.d/*.conf' -printf '%P\n' 2>/dev/null \
     | LC_ALL=C sort
 }
 di_src=$(dropins "$SRC_SYSTEM")
@@ -214,7 +303,24 @@ echo "user units: $SRC_USER <-> $USER_TREE"
 usr_src=$(names "$SRC_USER" \( -name '*.service' -o -name '*.timer' \))
 usr_live=$(names "$USER_TREE" \( -name '*.service' -o -name '*.timer' \))
 while IFS= read -r f; do
-  [ -n "$f" ] && report user "live-only: $f runs on this box with no source here"
+  [ -n "$f" ] || continue
+  # Same escape hatch as /etc, scoped by the declaration's own `tree`. Without it a --user
+  # unit that is genuinely not ours (a distro or app-installed override) is red forever and
+  # the only way to clear it is committing someone else's unit into this repo.
+  if declared_third_party "$f" user; then
+    info "live-only: $f — declared third-party, not ours"
+    continue
+  fi
+  expires=$(campaign_expiry "$f")
+  if [ -n "$expires" ]; then
+    if [[ "$NOW" > "$expires" ]]; then
+      report user "live-only: $f — its campaign exclusion EXPIRED at $expires"
+    else
+      info "live-only: $f — campaign, excluded until $expires"
+    fi
+    continue
+  fi
+  report user "live-only: $f runs on this box with no source here"
 done < <(comm -13 <(echo "$usr_src") <(echo "$usr_live"))
 while IFS= read -r f; do
   [ -n "$f" ] && report user "source-only: $f is in this repo and not installed"
@@ -235,7 +341,7 @@ if [ -d "$USER_TREE" ]; then
 fi
 
 # The staging copy, named so the next reader does not add it as a comparison side.
-info "staging ${AGENT_WORKFORCE_RUNTIME:-$HOME/agent-workforce}/systemd/ is inert — systemd reads $ETC, never it"
+info "staging $RUNTIME_ROOT/systemd/ is inert — systemd reads $ETC, never it"
 
 if [ "$findings" -eq 0 ]; then
   echo "drift: clean"

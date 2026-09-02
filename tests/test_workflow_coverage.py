@@ -51,8 +51,13 @@ def bin_refs(text):
     return found
 
 
-def units(subdir):
+def units(archived):
     """*.service under systemd/, with systemd/archive/ split off by an EXPLICIT filter.
+
+    Takes the boolean, not a path. The parameter used to be a directory string that was
+    only ever inspected for the word "archive" and never scoped the glob, so
+    units("systemd/user") would have returned the whole non-archive set and read as
+    correct.
 
     Stated rather than inherited from a `*` someone widens later. It is still only a
     convention — measured 2026-09-02, counting archive/ as live empties the retired set and
@@ -60,7 +65,6 @@ def units(subdir):
     exclusion is not left to hold on its own: see the archive-exclusion guard below, which
     is what turns that mutation into a red instead of a quiet green.
     """
-    archived = "archive" in pathlib.Path(subdir).parts
     return [p for p in sorted(ROOT.glob("systemd/**/*.service"))
             if ("archive" in p.relative_to(ROOT).parts) == archived]
 
@@ -155,8 +159,8 @@ claimed |= fleet_owned
 # positives — libraries, interactive tools, and bin/verify.sh itself, which no unit execs.
 # So the subject comes from the archived unit's own ExecStart line instead: moving a unit
 # into systemd/archive/ is the act that retires its script, and it is recorded in-repo.
-archived_subjects = exec_subjects(units("systemd/archive"))
-retired = archived_subjects - exec_subjects(units("systemd"))
+archived_subjects = exec_subjects(units(archived=True))
+retired = archived_subjects - exec_subjects(units(archived=False))
 
 # The archive-exclusion guard. Subtracting live execs is the correct rule and it is also
 # the rule's single point of failure: let archive/ into the live set and `retired` empties,
