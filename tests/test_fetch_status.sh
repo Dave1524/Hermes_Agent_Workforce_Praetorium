@@ -8,6 +8,9 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SCRIPT="$REPO_ROOT/bin/praetorium-status.sh"
 
+# shellcheck source=tests/box_precondition.sh
+. "$(dirname "$0")/box_precondition.sh"
+
 fail=0
 assert() {
   local desc=$1 cond=$2
@@ -69,11 +72,14 @@ assert "mode local-headless-chromium" "grep -q -- 'mode    : local-headless-chro
 assert "chromium installed" "grep -q -- 'chromium: installed' '$out1'"
 assert "runner npx-fallback" "grep -q -- 'runner  : npx-fallback' '$out1'"
 
-echo "--- scenario 2: Chromium absent ---"
-IFS=: read -r h2 s2 <<<"$(sandbox)"
-IFS=: read -r rc2 out2 <<<"$(run_scenario "$h2" "$s2")"
-assert "exits 0" "[ '$rc2' = 0 ]"
-assert "chromium MISSING" "grep -q -- 'chromium: MISSING' '$out2'"
-assert "runner npx-fallback" "grep -q -- 'runner  : npx-fallback' '$out2'"
+if box_only_without 'the negative case needs no system chrome on PATH' \
+     google-chrome chromium chromium-browser chrome; then
+  echo "--- scenario 2: Chromium absent ---"
+  IFS=: read -r h2 s2 <<<"$(sandbox)"
+  IFS=: read -r rc2 out2 <<<"$(run_scenario "$h2" "$s2")"
+  assert "exits 0" "[ '$rc2' = 0 ]"
+  assert "chromium MISSING" "grep -q -- 'chromium: MISSING' '$out2'"
+  assert "runner npx-fallback" "grep -q -- 'runner  : npx-fallback' '$out2'"
+fi
 
 exit $fail

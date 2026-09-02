@@ -24,6 +24,10 @@ BEHAVIOUR="$REPO_ROOT/bin/fleet_eval_behaviour.py"
 GROUNDING="$REPO_ROOT/bin/fleet_eval_grounding.py"
 ORCHESTRATOR="$REPO_ROOT/bin/fleet_eval.sh"
 PROBES="$REPO_ROOT/bin/fleet_eval_probes.json"
+QMD_INDEX="$HOME/.cache/qmd/index.sqlite"
+
+# shellcheck source=tests/box_precondition.sh
+. "$(dirname "$0")/box_precondition.sh"
 
 fail=0
 TMP="$(mktemp -d)"
@@ -352,10 +356,12 @@ assert 'both tiers report into the same run' \
   "[ \$(cut -d'|' -f2 '$TMP/logs/history.psv' | sort -u | grep -c 'tier[12]') -eq 2 ]"
 assert 'each tier produced rows rather than an empty runner' \
   "! grep -q '|runner|FAIL|' '$TMP'/logs/*/results.psv"
-assert 'each anchor is reported by name, so a fallback resolution is visible' \
-  "[ \$(grep -c '|anchor/' '$TMP'/logs/*/results.psv) -eq 2 ]"
-assert 'and every one of them resolves against the live index' \
-  "! grep -q '|anchor/[a-z]*|FAIL|' '$TMP'/logs/*/results.psv"
+if box_only_with 'the live qmd index the anchors resolve against' "$QMD_INDEX"; then
+  assert 'each anchor is reported by name, so a fallback resolution is visible' \
+    "[ \$(grep -c '|anchor/' '$TMP'/logs/*/results.psv) -eq 2 ]"
+  assert 'and every one of them resolves against the live index' \
+    "! grep -q '|anchor/[a-z]*|FAIL|' '$TMP'/logs/*/results.psv"
+fi
 
 before=$(wc -l <"$TMP/logs/history.psv")
 FLEET_EVAL_LOG_ROOT="$TMP/logs" FLEET_EVAL_LOCK="$TMP/lock" \

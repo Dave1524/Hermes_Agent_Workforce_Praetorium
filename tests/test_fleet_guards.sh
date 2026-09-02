@@ -30,6 +30,14 @@ AGENT_TABLE="$REPO_ROOT/bin/buzz_agents.env"
 PROPOSE="$REPO_ROOT/bin/agent_propose.sh"
 SUITE_DECL="$REPO_ROOT/design/fleet-suites.toml"
 
+# Every group below reads a file outside this repo (see the header). Off the box there is
+# nothing to assert against, so the suite skips whole rather than reporting the absent
+# fleet as a broken one.
+# shellcheck source=tests/box_precondition.sh
+. "$(dirname "$0")/box_precondition.sh"
+box_only_with 'the live fleet state this suite asserts' \
+  "$BASE_SETTINGS" "$STRICT_SETTINGS" "$UNIT" || exit 77
+
 fail=0
 
 # pipefail has no place inside a boolean condition. `grep -q` exits on its first match, so

@@ -1,0 +1,56 @@
+name: verify
+
+# This repo's own gate (bin/verify.sh), run on the one surface that is not Praetorium.
+#
+# Nothing here may reach outward: no secrets, no Notion token, no relay, no vault. Every
+# suite that needs box state skips via tests/box_precondition.sh, and the skip set is
+# pinned in tests/ci-expected-skips.txt — a gate that silently shrinks off the box would
+# be worse than no gate, because it reports green for a smaller claim than it appears to.
+#
+# Deliberately NOT wired to `push`. agent-workforce-auto-sync.timer commits and pushes main
+# every 15 minutes whenever the tree is dirty, so a push trigger would bill a run per
+# housekeeping commit and train everyone to ignore the result. PRs only.
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Tool versions
+        shell: bash
+        run: |
+          if ! command -v shellcheck >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq shellcheck
+          fi
+          bash --version | head -1
+          shellcheck --version | sed -n '2p'
+          python3 --version
+
+      - name: bash bin/verify.sh
+        shell: bash
+        run: bash bin/verify.sh 2>&1 | tee gate.log
+
+      # Runs even on a red gate: skip drift is its own finding, and hiding it behind an
+      # unrelated failure is how the set would rot unnoticed.
+      - name: The skip set must be exactly what the repo declares
+        if: always()
+        shell: bash
+        run: |
+          grep '^SKIP: ' gate.log | LC_ALL=C sort -u > actual-skips.txt || true
+          grep -vE '^[[:space:]]*(#|$)' tests/ci-expected-skips.txt \
+            | LC_ALL=C sort -u > expected-skips.txt
+          if ! diff -u expected-skips.txt actual-skips.txt; then
+            echo "::error::the gate's skip set changed — a suite started or stopped skipping. Update tests/ci-expected-skips.txt in the same commit as the cause."
+            exit 1
+          fi
+          echo "skip set matches ($(wc -l < expected-skips.txt) declared)"
