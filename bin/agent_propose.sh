@@ -35,6 +35,7 @@ export AGENT_RUN_STARTED_AT="$run_started"
 attempt=0
 # NUC-23 metrics fields (resolved after secrets are sourced); NUC-21 memory field.
 run_profile="unknown"
+run_owner="unknown"
 run_model="unknown"
 run_task="standing"
 run_proposal="none"
@@ -181,6 +182,19 @@ if [ -z "$run_profile" ]; then
 fi
 run_profile="${run_profile:-unknown}"
 run_task="${AGENT_TASK_SLUG:-standing}"
+# W1 (2026-09-02): the episodic store keys on the OWNING PERSONA; the cost record keys on
+# the RUNTIME. They were one variable, and that is why six jobs logged memory=no-store on
+# every run for months — AGENT_PROFILE has been model-named (claude-opus / claude-sonnet)
+# since the 2026-07-30 migration, and ~/.hermes/profiles/claude-opus/ has never existed.
+# Do NOT merge them back: `profile=` in cost.log is what makes a model regression visible,
+# and bin/run_record.sh:37 reads it back as the runtime.
+# The fallback is the runtime name on purpose — it reproduces today's behaviour rather than
+# inventing a store. A job keeps logging no-store until its env sets AGENT_OWNER.
+run_owner="${AGENT_OWNER:-$run_profile}"
+# Deliberately still keyed on the RUNTIME: this resolves the model from a hermes profile
+# config, and a headless Claude Code job takes its model from its runner's --model flag,
+# not from any hermes config. Keying this on the owner would resolve claudius's OpenRouter
+# model for a job running Opus 5 — a confidently wrong answer in place of an honest unknown.
 profile_cfg="$HOME/.hermes/profiles/$run_profile/config.yaml"
 if [ -r "$profile_cfg" ]; then
   # Every profile on the box (marcus/trajan/augustus/claudius) keys its model as
@@ -189,7 +203,7 @@ if [ -r "$profile_cfg" ]; then
   run_model=$(awk '/^model:/{m=1;next} /^[^[:space:]]/{m=0} m && /^[[:space:]]+(name|default):/{sub(/#.*/,"");sub(/^[[:space:]]+(name|default):[[:space:]]*/,"");gsub(/[[:space:]]/,"");print;exit}' "$profile_cfg")
 fi
 run_model="${run_model:-unknown}"
-log "mode: AGENT_RUN_MODE=$run_mode task=$run_task profile=$run_profile"
+log "mode: AGENT_RUN_MODE=$run_mode task=$run_task profile=$run_profile owner=$run_owner"
 
 # ── NUC-31: preflight MCP tool-health gate (advisory by default) ──
 # Placed AFTER profile/model resolution so a warn/block record carries the real
@@ -234,7 +248,7 @@ fi
 # ── NUC-21 working memory: snapshot the episodic store BEFORE the run so we can
 #    tell afterward whether the agent recorded its own entry (fail-soft glue).
 #    NUC-36 ops mode skips memory entirely (mem_status stays na). ──
-MEM_DIR="${RA_MEMORY_DIR:-$HOME/.hermes/profiles/$run_profile/memories}"
+MEM_DIR="${RA_MEMORY_DIR:-$HOME/.hermes/profiles/$run_owner/memories}"
 MEM_FILE="$MEM_DIR/MEMORY.md"
 mem_before="absent"
 if [ "$run_mode" = proposal ]; then
@@ -398,7 +412,7 @@ elif [ "$mem_after" != "$mem_before" ]; then
   mem_status="recorded"
   log "MEMORY: agent recorded its own episodic entry"
 else
-  entry="[run:$(date -Is)] task=standing claudius scheduled run; proposal=${proposal_file:-none}; note=runner auto-record (agent emitted no memory entry this run); findings/decisions/gaps=see agent_run.log / proposal"
+  entry="[run:$(date -Is)] task=$run_task $run_owner scheduled run; proposal=${proposal_file:-none}; note=runner auto-record (agent emitted no memory entry this run); findings/decisions/gaps=see agent_run.log / proposal"
   if (
         exec 8>"$MEM_FILE.lock" 2>/dev/null || exit 1
         flock -w 10 8 || exit 1
