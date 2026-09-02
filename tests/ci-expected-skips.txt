@@ -5,9 +5,10 @@
 # Lines beginning with # and blank lines are stripped before the diff; everything else must
 # match a printed `SKIP:` line verbatim. Paths are $HOME-relative (tests/box_precondition.sh).
 #
-# Five are box state a checkout cannot carry — four suites plus bin/check_deploy_drift.sh,
-# which is called directly by the gate rather than through tests/ and prints the same SKIP
-# shape for the same reason. One is the mirror — test_fetch_status's negative case needs NO
+# Five lines are box state a checkout cannot carry: four from three suites (phaseb_brief_jobs
+# declares two preconditions, so lines and suites are not the same count) plus
+# bin/check_deploy_drift.sh, which the gate calls directly rather than through tests/ and
+# which prints the same SKIP shape for the same reason. One is the mirror — test_fetch_status's negative case needs NO
 # system chrome on PATH, which its own header calls out as true on Praetorium; the runner
 # image ships one. The OpenCode line is a cost opt-in that predates this file and skips
 # everywhere, including on the box.
