@@ -29,12 +29,54 @@ Scheduled **proposal** agent jobs share `bin/agent_propose.sh` (lock, preflight,
 | Content change-dispatch (poll) | every **15 min** | `content-change-dispatch.{service,timer}` | `~/.config/agent-workforce/augustus-content.env` (reused) | *(triggers the augustus run)* | inherits the row above |
 | BD stall radar | **Sun–Thu 23:00** | `bd-stall-radar.{service,timer}` | `~/.config/agent-workforce/bd_stall_radar.env` | `profiles/bd_stall_radar_task.md` | `claudius` |
 | BD follow-up drafts | **Sun–Thu 23:30** | `bd-followup-drafts.{service,timer}` | `~/.config/agent-workforce/bd_followup_drafts.env` | `profiles/bd_followup_drafts_cc_task.md` | *(headless Claude Code)* |
-| Weekly pre-assembly | **Fri 22:00** | `weekly-pre-assembly.{service,timer}` | `~/.config/agent-workforce/weekly_pre_assembly.env` | `profiles/weekly_pre_assembly_task.md` | `claudius` |
+| Weekly pre-assembly | **Fri 22:00** | `weekly-pre-assembly.{service,timer}` | `~/.config/agent-workforce/weekly_pre_assembly.env` | `profiles/weekly_pre_assembly_cc_task.md` | *(headless Claude Code; owner **marcus**)* |
 | Overnight pre-snapshot (no LLM) | daily **04:25** | `overnight-pre-snapshot.{service,timer}` | n/a | `bin/overnight_pre_snapshot.sh` | n/a |
-| Overnight morning report (ops) | daily **06:15** | `overnight-morning-report.{service,timer}` | `~/.config/agent-workforce/overnight_morning_report.env` | `profiles/overnight_morning_report_task.md` | `claudius` |
+| Overnight morning report (ops) | daily **06:15** | `overnight-morning-report.{service,timer}` | `~/.config/agent-workforce/overnight_morning_report.env` | `profiles/overnight_morning_report_cc_task.md` | *(headless Claude Code; owner **marcus**)* |
 | Daily plan (ops) | **Mon–Fri 06:00** | `praetorium-daily-plan.{service,timer}` | `~/.config/agent-workforce/daily_plan.env` | `profiles/daily_plan_task.md` | *(headless Claude Code)* |
 | EOD summary (ops) | daily **22:15** | `praetorium-eod-summary.{service,timer}` | `~/.config/agent-workforce/eod_summary.env` | `profiles/eod_summary_task.md` | *(headless Claude Code)* |
 | Agent inbox → Notion sync | `agent-inbox-sync.timer` | `agent-inbox-sync.{service,timer}` | *(service embeds the pipeline cmd)* | n/a | n/a |
+
+**Two rows above were corrected 2026-09-02 (W1).** They named `profiles/weekly_pre_assembly_task.md`
+and `profiles/overnight_morning_report_task.md` — both archived to `profiles/archive/` on 2026-09-01 —
+and attributed both to `claudius`, when `design/agents/marcus.toml` declares both. Following the old
+rows installed a job pointing at an archived profile under an owner that does not own it.
+
+### W1 handoff — `AGENT_OWNER` must be added to each live override env (Dave's action)
+
+`~/.config/agent-workforce/` is mode-600 and outside this repo; an agent cannot read or write it.
+Until these lines are added, **the six jobs below keep logging `memory=no-store` exactly as they do
+today** — the code change alone does not fix them, because `AGENT_OWNER` falls back to the runtime
+name on purpose rather than inventing a store.
+
+Add one line to each file. Nothing else changes; do not edit `AGENT_PROFILE`, which still names the
+runtime and still keys `cost.log`'s `profile=` column.
+
+| Add to | Line to add | Store it selects |
+|---|---|---|
+| `~/.config/agent-workforce/standing_research.env` | `AGENT_OWNER=claudius` | `~/.hermes/profiles/claudius/memories` |
+| `~/.config/agent-workforce/raw_ingest.env` | `AGENT_OWNER=claudius` | `~/.hermes/profiles/claudius/memories` |
+| `~/.config/agent-workforce/m1_signal_scan.env` | `AGENT_OWNER=claudius` | `~/.hermes/profiles/claudius/memories` |
+| `~/.config/agent-workforce/knowledge_digest.env` | `AGENT_OWNER=claudius` | `~/.hermes/profiles/claudius/memories` |
+| `~/.config/agent-workforce/bd_followup_drafts.env` | `AGENT_OWNER=claudius` | `~/.hermes/profiles/claudius/memories` |
+| `~/.config/agent-workforce/weekly_pre_assembly.env` | `AGENT_OWNER=marcus` | `~/.hermes/profiles/marcus/memories` |
+| `~/.config/agent-workforce/daily_plan.env` | `AGENT_OWNER=marcus` | *(ops mode — stays `memory=na`, see below)* |
+| `~/.config/agent-workforce/eod_summary.env` | `AGENT_OWNER=marcus` | *(ops mode — stays `memory=na`)* |
+| `~/.config/agent-workforce/overnight_morning_report.env` | `AGENT_OWNER=marcus` | *(ops mode — stays `memory=na`)* |
+
+The four store directories already exist; nothing needs creating. `bin/consolidate_memory.sh:149`
+discovers `*/memories` under `~/.hermes/profiles/` dynamically, so a store that starts filling is
+pruned nightly with no further wiring.
+
+**The last three rows will not change their `memory=` value, and that is correct.**
+`AGENT_RUN_MODE=ops` skips the memory path entirely by design (NUC-36,
+`bin/agent_propose.sh:236,368-372`), so they log `na`, never `no-store`. Set `AGENT_OWNER` on them
+anyway so the record is uniform and the value is right the day ops mode is revisited — but do not
+read a persisting `na` as the handoff having failed.
+
+Verify after applying: the next run of any of the first six logs
+`mode: … owner=<persona>` in `agent_run.log` and `memory=recorded` or `memory=fallback` in
+`cost.log`. `bd-followup-drafts` and `bd-stall-radar` are `dormant` (timers disabled) and will
+produce no firing — do not enable a timer to create evidence.
 
 **Research pipeline brief (2026-07-30).** The standing research run was hard-down for ten
 days on hermes/claudius via OpenRouter (HTTP 402 "Insufficient credits" landing in the
