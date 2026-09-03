@@ -21,7 +21,23 @@ if ! git pull --ff-only origin "$PRIMARY"; then
 fi
 
 # Nothing to commit?
-if git diff --quiet && git diff --cached --quiet; then
+#
+# This has to agree with the `git add -A` below, and only `git status --porcelain` does.
+# `git diff` / `git diff --cached` see TRACKED paths only, so a tree holding nothing but NEW
+# files reported "working tree clean. Nothing to do" here every 15 minutes, indefinitely, while
+# add -A would have committed them on the very next line. The cost was a delayed sync with a
+# wrong author story: the file waited for some unrelated tracked edit, then got swept in under
+# an `Auto-sync:` subject dated days after it was written. (W16, fixed 2026-09-03.)
+#
+# --porcelain and add -A honour the same exclusions (.gitignore, .git/info/exclude,
+# assume-unchanged/skip-worktree), so an ignored file still reads clean and no empty commit is
+# attempted. Neither is asked about ignored paths: --porcelain lists them only under --ignored.
+#
+# Assigned on its own line, NOT inline in the `if`: `set -e` is suspended inside a condition, so
+# a command substitution there would swallow a git failure and report a broken repo as clean.
+# Out here a non-zero git exits the script loudly, which is the direction this job should fail.
+pending=$(git status --porcelain)
+if [ -z "$pending" ]; then
     echo "auto-sync: working tree clean. Nothing to do."
     exit 0
 fi
