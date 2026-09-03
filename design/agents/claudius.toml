@@ -93,7 +93,7 @@ route    = "signals"
 web      = true
 contract = "design/contracts/m1-signal-scan.md"           # TODO Phase B
 status   = "standing"
-suite    = []
+suite    = ["tests/test_m1_signal_scan_smoke.sh"]
 notes    = """
 Swapped off hermes/OpenRouter 2026-07-24 while the OpenRouter budget is paused. The task
 profile keeps a same-day idempotency check and no weekly-skip guard — the timer owns
