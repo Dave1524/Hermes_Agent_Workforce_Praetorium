@@ -234,9 +234,27 @@ for manifest in sorted((repo / "design" / "agents").glob("*.toml")):
         elif f"::{assertion}" not in target.read_text():
             problems.append(f"{manifest.name}: '{rule}' names absent assertion ::{assertion} in {rel}")
 
-# design/fleet-suites.toml gives D6's coverage checker a second valid owner value. Without
+# design/fleet-suites.toml gives D6's coverage checker a second source of ownership. Without
 # it, brief 3's checker classifies this suite as an orphan and its first act is to
 # recommend deleting the security tests.
+#
+# OWNER IS AN ENUM, AND THIS IS THE SITE THAT ENFORCES IT. The checker's own test is
+# `if suite.get("owner")` (tests/test_workflow_coverage.py:150) — any truthy string
+# confers ownership. That was harmless while every entry said "fleet" and one value cannot
+# be mistyped into another; it stopped being harmless when a second value arrived
+# (2026-09-03), because `owner = "retiredtool"` now reads as owned, silences the orphan
+# rule for that suite, and looks exactly like a correct entry. Same shape as the whitelist
+# defect the readiness reports carry: a field that accepts anything cannot fail.
+#
+# The set lives HERE and nowhere else. design/eval-spec.md §6 describes what an owner
+# means and points at this line rather than restating the values, so the two cannot drift
+# — which is the W9 hazard, one file over.
+# fleet       — asserts state of the fleet itself; nothing schedules it and nothing can.
+# retired-tool — covers a one-shot whose unit is in systemd/archive/ and whose reversal
+#                path is still live; see the block in design/fleet-suites.toml for the
+#                deletion trigger, which is a decision rather than a date.
+OWNERS = {"fleet", "retired-tool"}
+
 if not decl.is_file():
     problems.append(f"{decl.name}: missing")
 else:
@@ -251,8 +269,14 @@ else:
         path = suite.get("path", "")
         if not path or not (repo / path).is_file():
             problems.append(f"{decl.name}: declares missing path '{path}'")
-        if not suite.get("owner"):
+        owner = suite.get("owner")
+        if not owner:
             problems.append(f"{decl.name}: '{path}' declares no owner")
+        elif owner not in OWNERS:
+            problems.append(
+                f"{decl.name}: '{path}' declares owner {owner!r}, which is not one of "
+                f"{sorted(OWNERS)} — D6's checker credits ANY truthy owner, so a value "
+                "outside this set silences the orphan rule while looking correct")
         if not suite.get("asserts"):
             problems.append(f"{decl.name}: '{path}' declares no asserts")
     this_suite = "tests/test_fleet_guards.sh"
