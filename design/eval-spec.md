@@ -250,16 +250,32 @@ D6's join runs workflow → suite: every registry entry hand-declares the suites
 (`suite = [...]`, R15b), and the coverage checker of §7.1 reads that join in both
 directions — an unowned workflow is red, and so is a suite no workflow claims.
 
-**A suite can also be owned by the fleet rather than by a workflow.** Those are declared in
-`design/fleet-suites.toml`, one `[[suite]]` table per file, carrying `owner = "fleet"`
-alongside `path` and the `asserts` list. `owner = "fleet"` is the second value the §7.1
-checker must accept as ownership.
+**A suite can also be owned by something other than a workflow.** Those are declared in
+`design/fleet-suites.toml`, one `[[suite]]` table per file, carrying `owner` alongside
+`path` and the `asserts` list. That file is the second source of ownership the §7.1 checker
+must accept.
+
+**`owner` is an enum, and this section deliberately does not list its values.** The set is
+enforced in one place — `OWNERS` in `tests/test_fleet_guards.sh` — and restating it here
+would put one fact in two files, which is the W9 hazard applied to the very join D6 exists
+to keep honest. Read the enforcing line for the current values and the block above each
+entry in `design/fleet-suites.toml` for why that entry has the owner it does. What matters
+at this level is the *rule*: the §7.1 checker credits any entry carrying an owner, so an
+owner value outside the enforced set silences the orphan rule for that suite while looking
+entirely correct — which is why the set is enforced at all rather than merely documented.
 
 This is not a formality. `tests/test_fleet_guards.sh` asserts the guards on the agents
 themselves — a settings deny, a git hook, an absent slug, a namespace without a credential.
 Nothing schedules it, so no registry entry can ever claim it, and a checker that knows only
 the workflow→suite direction would classify the security suite as an orphan and recommend
 deleting it. The declaration exists so that recommendation cannot be made.
+
+The same reasoning reaches a case that is not fleet state at all. A **one-shot whose unit
+has moved to `systemd/archive/`** is precisely what the orphan rule detects, and deletion is
+its first recommendation — correctly, most of the time. It is wrong while the one-shot's
+*reversal* is still live, because the suite is then the only thing verifying the path
+someone may still need to take. `tests/test_content_inbox_finalize.sh` is that case
+(2026-09-03), and deleting it would have left an untested `undo` aimed at Dave's own board.
 
 ---
 
@@ -279,8 +295,8 @@ for one never matches the other (`agent-model.md:187-188`). Workflow status is
 literally selects **zero** entries and reports full coverage, which is why the checker
 refuses a figure computed from an empty selection.
 
-It must read `design/fleet-suites.toml` as a second source of ownership and treat
-`owner = "fleet"` as owned (§6). A checker that knows only the workflow→suite direction
+It must read `design/fleet-suites.toml` as a second source of ownership and treat any
+declared `owner` as owned (§6). A checker that knows only the workflow→suite direction
 reports `tests/test_fleet_guards.sh` as an orphan, and an orphan's recommended fix is
 deletion — so the first act of the coverage checker would be to propose deleting the suite
 that asserts the fleet's security guards.

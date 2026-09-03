@@ -89,3 +89,54 @@ profiles/*.md and the six consumers — none of which is a job's output. A timer
 nightly against inputs that change only when a human edits them, which is precisely when
 bin/verify.sh already runs it.
 """
+
+# --- A SECOND OWNER KIND, and the first entry here that is not fleet state --------------
+#
+# owner = "retired-tool". Read this before adding a third value, and before assuming the
+# three entries above set the pattern: they assert live fleet state and always will. This
+# one covers a ONE-SHOT that has already run.
+#
+# WHY IT IS NOT A DELETION, which is the orphan rule's own first recommendation.
+# bin/content_inbox_finalize.py performed steps 4-5 of the 2026-08-14 Content DB migration
+# — it froze the retired Agent Content Inbox and archived that database into Notion's
+# trash. Its unit is in systemd/archive/, nothing execs it, and by every static measure it
+# is dead code. It is not, for one reason: the pass is REVERSIBLE and has not been
+# reversed. ~/agent-workforce/var/content_inbox_finalize.json exists, dated 2026-08-15
+# 22:00, and has not been renamed to .undone — so `content_inbox_finalize.py undo` is still
+# a live path against Dave's own board, restoring the database from trash, putting the
+# original title and description back, and deleting the freeze callout.
+#
+# tests/test_content_inbox_finalize.sh is the only thing that verifies that path. Its
+# "undo puts the board back" group asserts the restore, the title, the description, the
+# callout deletion, and that the receipt is retired rather than left to be replayed.
+# Deleting the suite as an orphan would leave an untested reversal tool aimed at live
+# content — strictly worse than either keeping both or deleting both.
+#
+# WHEN TO DELETE. Not on a date — this entry deliberately names no expiry, because the
+# window is not a clock this box can read: whether the trashed database is still
+# restorable is Notion's retention behaviour, not something asserted here, and inventing a
+# date would be a bounded window whose boundary is a guess. The trigger is a decision:
+# once Dave confirms the 2026-08-14 migration will never be reversed, delete
+# bin/content_inbox_finalize.py, both test files, systemd/archive/content-inbox-finalize.service
+# and this block together. Deleting any subset re-opens the gap this entry closes.
+[[suite]]
+path    = "tests/test_content_inbox_finalize.sh"
+owner   = "retired-tool"
+asserts = [
+  "check-writes-nothing",      # the preflight pass touches Notion not at all
+  "apply-freeze-then-archive", # order is load-bearing: a note inside a trashed database is visible to nobody
+  "receipt-reverses-both",     # the receipt carries the callout id and prior title `undo` needs
+  "undo-restores-the-board",   # THE REASON THIS ENTRY EXISTS — restore, title, description, callout, receipt retired
+  "any-guard-refuses",         # each of the six guards, alone, stops the pass with Notion untouched
+  "partial-failure-reversible",# a failure between freeze and archive still writes a usable receipt
+  "archive-must-stick",        # an archive that silently did not take is a failure, not a success
+  "systemctl-parsed-by-key",   # KEY=VALUE, never positional — the same trap the pre-snapshot carries
+  "notify-cannot-fail-the-run",# a broken delivery surfaces on stderr and does not fail the pass
+]
+why_no_workflow = """
+It has no workflow because its subject already ran. systemd/archive/content-inbox-finalize.service
+is the retirement record, and the orphan rule reads exactly that — subject exec'd only by an
+archived unit — which is why this suite is the one the checker names. The registry cannot claim
+it without inventing a `[[workflows]]` entry for a job that must never fire again, and a
+status = "spent" entry would still have to name a unit that is deliberately not installed.
+"""
