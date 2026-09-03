@@ -185,8 +185,50 @@ fleet_or_die() {  # scope, kind -> prints units, or refuses
   run_or_note free -h
 
   section "Alerts (last 10)"
-  if [ -f "$HOME/logs/agent-alert.log" ]; then
-    tail -10 "$HOME/logs/agent-alert.log" || true
+  # W17 (2026-09-03): the tail is DATED. A bare `tail -10` renders an eight-day-dead alert log
+  # identically to a live one — presence is not freshness — and the consumer downstream is a
+  # morning report whose whole job is to say what is wrong. Mirror-image of the readiness-report
+  # trap already recorded against the readers, this time in the PRODUCER.
+  #
+  # "Print a timestamp" is NOT the fix, and that is the easy mistake here: every line
+  # bin/agent_alert.sh writes already carries `failed at <ISO>Z` (:122), and ten such lines
+  # from eight days ago still read as last night's to an LLM skimming the section. So the marker
+  # states the AGE IN DAYS and labels the verdict in a word — `FRESH` / `STALE` — and a stale log
+  # carries an explicit instruction not to report its lines as current. mtime is the authority
+  # rather than the line text: the log is append-only (`>>`), so its mtime IS the moment the
+  # newest entry was written, and it needs no parser that a reworded alert could break.
+  #
+  # Fail-soft like every other section: an unreadable mtime degrades to a stated UNKNOWN, never
+  # to a crash and never to a silent blank — a blank here would read as freshness, which is the
+  # defect being fixed. The `case` guards the arithmetic, because `$(( ))` on a non-numeric
+  # value under `set -u` is an error, not a zero.
+  alert_log="$HOME/logs/agent-alert.log"
+  if [ -f "$alert_log" ]; then
+    alert_mtime=$(stat -c %Y "$alert_log" 2>/dev/null || true)
+    case "$alert_mtime" in
+      ''|*[!0-9]*)
+        echo "newest entry: UNKNOWN — could not read the mtime of $alert_log"
+        echo "  The age of the lines below is UNVERIFIED. Do not report them as current."
+        ;;
+      *)
+        alert_age=$(( ( $(date +%s) - alert_mtime ) / 86400 ))
+        alert_when=$(date -d "@$alert_mtime" -Is 2>/dev/null || echo unknown)
+        # This snapshot runs nightly, so last night's alert is 0 or 1 days old. Two days means
+        # nothing has been written since before the PREVIOUS run — whatever is below is history.
+        if [ "$alert_age" -ge 2 ]; then
+          echo "newest entry: $alert_when ($alert_age days ago) — STALE"
+          echo "  Nothing has been written to this log for $alert_age days. The lines below are"
+          echo "  HISTORY, not last night's alerts — do not report them as current."
+        else
+          echo "newest entry: $alert_when ($alert_age days ago) — FRESH"
+        fi
+        ;;
+    esac
+    if [ -s "$alert_log" ]; then
+      tail -10 "$alert_log" || true
+    else
+      echo "  (the log exists but is empty — no alerts recorded)"
+    fi
   else
     echo "no agent-alert.log yet"
   fi

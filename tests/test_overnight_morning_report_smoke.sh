@@ -249,6 +249,43 @@ run_block ""
 assert 'an empty file refuses too (missing and empty are the same failure)' \
   "grep -q FATAL '$stub/out.log' && [ ! -s '$stub/calls.log' ]"
 
+echo "--- overnight-morning-report: the alert log is DATED, never bare-tailed (W17) ---"
+# The producer's `## Alerts (last 10)` section now prints `newest entry: <ts> (N days ago) —
+# FRESH|STALE` (bin/overnight_pre_snapshot.sh, tests/test_overnight_pre_snapshot.sh). But this
+# consumer reads ~/logs/agent-alert.log DIRECTLY as well, so fixing only the producer would have
+# left the defect intact on the path Dave actually reads every morning. Both ends of one concept,
+# asserted from both suites.
+#
+# Keyed on the AGE, not on a timestamp: every line bin/agent_alert.sh writes already carries
+# `failed at <ISO>Z`, so an eight-day-dead log has always been full of dates and has always read
+# as live. Stating the mtime is the minimum; being told to CALL IT STALE is the fix.
+assert 'the profile dates the alert log before reading it' \
+  "grep -qF 'alert log newest entry' '$TASK'"
+assert 'and no longer asks for an undated tail of it' \
+  "! grep -qE '^- .tail -[0-9]+ ~/logs/agent-alert\\.log' '$TASK'"
+assert 'it is pointed at the pre-snapshot marker by its exact rendered shape' \
+  "grep -qF 'newest entry: <ts> (N days ago)' '$TASK'"
+assert 'and told to report a stale log as history rather than as last night' \
+  "grep -qF 'never present an old alert as last' '$TASK'"
+assert 'an UNKNOWN age is unverified, not fresh — the blank that reads as freshness' \
+  "grep -qF 'report it as unverified, not as fresh' '$TASK'"
+# The instruction needs somewhere to land. The report template had no alert slot at all, so
+# "say so in the report" was a rule with no output field — and a field the agent has to invent
+# is a field it will omit on the morning the log is stale.
+# `--` is load-bearing: the pattern starts with `-`, and grep reads a leading dash as an option
+# cluster even inside quotes — it exits 2 with "invalid option", which an assert reads as the
+# text being absent. A true assertion failing for a quoting reason is the worst kind of red.
+assert 'and the report template carries an alert-log line demanding the age' \
+  "grep -qF -- '- Alert log: <newest entry + its age' '$TASK'"
+# The block below is extracted by line-anchored fences. A SECOND 2-space-indented fenced block
+# anywhere in the profile splices into that sed range and leaves stray fence lines mid-script,
+# so the alert instruction above is deliberately inline code rather than a fence. Counted here
+# because the failure it causes surfaces as "the enumeration block is not valid bash", which
+# names the wrong file.
+fence_count=$(grep -c '^  ```bash$' "$TASK" || true)
+assert 'the profile still carries exactly one 2-space-indented bash fence to extract' \
+  "[ '$fence_count' = 1 ]"
+
 echo "--- overnight-morning-report: the profile keeps its retired-surface exclusions ---"
 # S3 was retired 2026-09-02 (D7) and the pre-snapshot stopped capturing kanban and gateway in
 # the same commit. A report that flags their absence as a fault manufactures a blocker every
