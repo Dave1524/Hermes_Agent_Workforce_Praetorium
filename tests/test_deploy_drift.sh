@@ -56,6 +56,22 @@ fixture() {
   # `clean` assertion below depend on fleet state.
   echo 'rules' > "$root/src_buzz/shared.toml"
   echo 'rules' > "$root/buzz/shared.toml"
+  # The six content trees bin/deploy ships. Every existing assertion in this suite calls
+  # clean(), so leaving these pointed at the real repo would make every one of them depend on
+  # the live runtime's prune backlog — the exact fleet-state dependency this fixture exists to
+  # avoid. Two trees and one single-file tree is enough to exercise all three directions.
+  mkdir -p "$root/src_content/profiles" "$root/run_content/profiles" \
+           "$root/src_content/config/job-overrides" "$root/run_content/config/job-overrides"
+  echo 'task' > "$root/src_content/profiles/live_task.md"
+  echo 'task' > "$root/run_content/profiles/live_task.md"
+  # A NESTED file, on both sides. It is also what keeps config/ non-empty: the checker
+  # refuses a source tree that matched no files, so an empty fixture tree is a finding in
+  # every scenario rather than a neutral background.
+  echo 'env' > "$root/src_content/config/job-overrides/live.env.example"
+  echo 'env' > "$root/run_content/config/job-overrides/live.env.example"
+  echo 'note' > "$root/src_content/NOTE.md"
+  echo 'note' > "$root/run_content/NOTE.md"
+  : > "$root/exclusions.toml"
   cat > "$root/src_buzz/MANIFEST.toml" <<'TOML'
 [[adopted]]
 path = "shared.toml"
@@ -73,6 +89,8 @@ drift() { # runs the checker against the current fixture; extra env comes from t
   DRIFT_SRC_BUZZ="$root/src_buzz" DRIFT_BUZZ="$root/buzz" \
   DRIFT_BUZZ_MANIFEST="$root/src_buzz/MANIFEST.toml" \
   DRIFT_OWNERSHIP="$root/ownership.toml" DRIFT_MANIFESTS="$root/manifests" \
+  DRIFT_SRC_ROOT="$root/src_content" AGENT_WORKFORCE_RUNTIME="$root/run_content" \
+  DRIFT_CONTENT_TREES="profiles config NOTE.md" DRIFT_EXCLUSIONS="$root/exclusions.toml" \
   DRIFT_NOW="${NOW_FIXTURE:-2026-09-02 12:00:00}" \
   bash "$CHECK" 2>&1
 }
@@ -298,6 +316,8 @@ out=$(DRIFT_SRC_BIN="$root/run_bin" DRIFT_RUNTIME_BIN="$root/run_bin" \
       DRIFT_SRC_BUZZ="$root/src_buzz" DRIFT_BUZZ="$root/buzz" \
       DRIFT_BUZZ_MANIFEST="$root/src_buzz/MANIFEST.toml" \
       DRIFT_OWNERSHIP="$root/ownership.toml" DRIFT_MANIFESTS="$root/manifests" \
+  DRIFT_SRC_ROOT="$root/src_content" AGENT_WORKFORCE_RUNTIME="$root/run_content" \
+  DRIFT_CONTENT_TREES="profiles config NOTE.md" DRIFT_EXCLUSIONS="$root/exclusions.toml" \
       bash "$CHECK" 2>&1); rc=$?
 assert 'source and runtime resolving to one tree is refused, not reported clean' "[ $rc -eq 2 ]"
 assert 'and says which tree collapsed' "saw 'same tree'"
@@ -341,6 +361,8 @@ out=$(DRIFT_SRC_BIN="$root/src_bin" DRIFT_RUNTIME_BIN="$root/run_bin" \
       DRIFT_SRC_BUZZ="$root/src_buzz" DRIFT_BUZZ="$root/buzz" \
       DRIFT_BUZZ_MANIFEST="$root/src_buzz/MANIFEST.toml" \
       DRIFT_OWNERSHIP="$root/ownership.toml" DRIFT_MANIFESTS="$root/manifests" \
+  DRIFT_SRC_ROOT="$root/src_content" AGENT_WORKFORCE_RUNTIME="$root/run_content" \
+  DRIFT_CONTENT_TREES="profiles config NOTE.md" DRIFT_EXCLUSIONS="$root/exclusions.toml" \
       bash "$CHECK" --scope bin 2>&1); rc=$?
 assert '--scope bin ignores an /etc-only unit deploy cannot install' "[ $rc -eq 0 ]"
 assert 'and says so rather than implying the units were checked' "saw 'NOT compared'"
@@ -458,6 +480,8 @@ out=$(DRIFT_SRC_BIN="$root/src_bin" DRIFT_RUNTIME_BIN="$root/run_bin" \
       DRIFT_SRC_BUZZ="$root/buzz" DRIFT_BUZZ="$root/buzz" \
       DRIFT_BUZZ_MANIFEST="$root/src_buzz/MANIFEST.toml" \
       DRIFT_OWNERSHIP="$root/ownership.toml" DRIFT_MANIFESTS="$root/manifests" \
+  DRIFT_SRC_ROOT="$root/src_content" AGENT_WORKFORCE_RUNTIME="$root/run_content" \
+  DRIFT_CONTENT_TREES="profiles config NOTE.md" DRIFT_EXCLUSIONS="$root/exclusions.toml" \
       bash "$CHECK" 2>&1); rc=$?
 assert 'buzz source and live resolving to one tree is refused, not reported clean' "[ $rc -eq 2 ]"
 assert 'and says which tree collapsed' "saw 'same directory'"
@@ -569,4 +593,132 @@ capture
 assert 'systemd/user/*.conf is not reported as an uninstalled drop-in' "! saw 'user/model.conf'"
 rm -rf "$root"
 
+\n
+echo "--- 16. the six content trees bin/deploy ships (W7) ---"
+# Until 2026-09-03 this check compared 2 of the 8 paths bin/deploy ships. The four unit
+# groups above cover `bin` and the three unit trees; these cover the rest, and profiles/ is
+# the one that matters most — it holds the agents' actual instructions, so a profile fixed in
+# source and never deployed is a fleet running prose this repo has already corrected.
+fixture
+echo 'edited' > "$root/run_content/profiles/live_task.md"
+capture
+assert 'a profile whose bytes differ is named' \
+  "saw 'DRIFT \[content\] content differs: profiles/live_task.md'"
+rm -rf "$root"
+
+fixture
+echo 'new' > "$root/src_content/profiles/added_task.md"
+capture
+assert 'a profile in source and not deployed is red' \
+  "saw 'DRIFT \[content\] source-only: profiles/added_task.md is not deployed'"
+rm -rf "$root"
+
+# The direction bin/deploy cannot fix. It is additive, so deleting a file from source leaves
+# the deployed copy in place until --prune runs — and --prune is a human decision against a
+# live runtime. Undeclared, that is drift.
+fixture
+echo 'orphan' > "$root/run_content/profiles/disowned_task.md"
+capture
+assert 'a runtime file the source tree disowned is red when nothing declares it' \
+  "saw 'DRIFT \[content\] runtime-only: profiles/disowned_task.md has no source and is declared in no exclusion'"
+
+cat > "$root/exclusions.toml" <<'TOML'
+[[runtime_only]]
+path  = "disowned_task.md"
+tree  = "profiles"
+since = "2026-09-01"
+why   = "fixture"
+TOML
+capture
+assert 'declaring it in design/deploy-exclusions.toml clears the finding' "clean"
+assert 'and it is still printed by name, never silently skipped' \
+  "saw 'info: runtime-only: profiles/disowned_task.md'"
+assert 'the info line names the action that resolves it' "saw 'pending bin/deploy --prune'"
+rm -rf "$root"
+
+# The self-clearing half, and the reason the exclusions carry no expiry date. A prune removes
+# the file; the entry that silenced it must then go, or the list carries a permanent silence
+# for something that no longer exists. An exclusion outliving its subject is the same defect
+# as a missing one, pointing the other way.
+fixture
+cat > "$root/exclusions.toml" <<'TOML'
+[[runtime_only]]
+path  = "already_pruned.md"
+tree  = "profiles"
+since = "2026-09-01"
+why   = "fixture: the prune has run"
+TOML
+capture
+assert 'an exclusion whose subject is gone is red, so the list cannot rot' \
+  "saw 'stale exclusion: design/deploy-exclusions.toml names profiles/already_pruned.md'"
+assert 'and it says the prune happened rather than reporting a missing file' \
+  "saw 'the prune has happened; delete the entry'"
+rm -rf "$root"
+
+# Single-file trees (CLAUDE.md, AGENTS.md, README.md). `find` over a file path yields the
+# file with an EMPTY %P, which would compare "$src/" against "$live/" — two directories that
+# do not exist — and pass silently. Both are exercised because the bug is invisible from the
+# passing side.
+fixture
+echo 'changed' > "$root/run_content/NOTE.md"
+capture
+assert 'a single-file tree whose bytes differ is caught, not collapsed to an empty path' \
+  "saw 'DRIFT \[content\] content differs: NOTE.md'"
+rm -rf "$root"
+
+fixture
+rm "$root/run_content/NOTE.md"
+capture
+assert 'and an undeployed single-file tree is red' \
+  "saw 'DRIFT \[content\] source-only: NOTE.md is not deployed'"
+rm -rf "$root"
+
+# Nesting is why these trees need %P and not %f. config/job-overrides/ and profiles/archive/
+# both nest, and a basename comparison collapses profiles/archive/x.md onto profiles/x.md —
+# which is exactly the pair the live exclusion list is about, so the bug would hide the real
+# case while reporting a clean tree.
+fixture
+mkdir -p "$root/src_content/profiles/archive"
+cp "$root/src_content/profiles/live_task.md" "$root/src_content/profiles/archive/live_task.md"
+capture
+assert 'an archived copy is a distinct path, not the same name as its live sibling' \
+  "saw 'source-only: profiles/archive/live_task.md'"
+assert 'and the live sibling is not reported' "! saw 'source-only: profiles/live_task.md'"
+rm -rf "$root"
+
+fixture
+echo 'x' > "$root/run_content/config/job-overrides/deep_only.env"
+capture
+assert 'a nested runtime-only file is named with its full relative path' \
+  "saw 'runtime-only: config/job-overrides/deep_only.env'"
+rm -rf "$root"
+
+# Same *.bak* exclusion as the bin half. bin/notion_rest.py and the profile editors leave
+# dated backups in the runtime as a matter of course.
+fixture
+echo 'old' > "$root/run_content/profiles/live_task.md.bak-20260713-093716"
+capture
+assert 'a dated .bak in the runtime content tree is not drift' "clean"
+rm -rf "$root"
+
+fixture
+rm -rf "$root/src_content/profiles" "$root/run_content/profiles"
+capture
+assert "a tree in bin/deploy's PATHS that exists in neither place is red, not skipped" \
+  "saw 'profiles is in bin/deploy'"
+rm -rf "$root"
+
+echo "--- 16b. the tree list agrees with bin/deploy's PATHS ---"
+# CONTENT_TREES is a literal in check_deploy_drift.sh rather than a parse of bin/deploy:20,
+# because parsing another script's array is a join that breaks silently. This is that join,
+# asserted instead — in both directions, so neither list can grow or shrink alone.
+deploy_paths=$(sed -n 's/^PATHS=(\(.*\))$/\1/p' "$REPO/bin/deploy" | tr ' ' '\n' | LC_ALL=C sort)
+checked=$( { sed -n 's/^CONTENT_TREES="${DRIFT_CONTENT_TREES:-\(.*\)}"$/\1/p' "$CHECK" | tr ' ' '\n'
+             printf 'bin\nsystemd\n'; } | LC_ALL=C sort)
+assert 'every path bin/deploy ships is compared by this check' \
+  "[ -z \"\$(comm -23 <(echo \"\$deploy_paths\") <(echo \"\$checked\"))\" ]"
+assert 'and this check compares nothing bin/deploy does not ship' \
+  "[ -z \"\$(comm -13 <(echo \"\$deploy_paths\") <(echo \"\$checked\"))\" ]"
+assert 'both lists actually parsed (an empty comm difference is not evidence)' \
+  "[ \"\$(echo \"\$deploy_paths\" | wc -l)\" = 8 ] && [ \"\$(echo \"\$checked\" | wc -l)\" = 8 ]"
 exit $fail
