@@ -1,0 +1,93 @@
+# Files that exist in the DEPLOYED content trees and no longer exist in source.
+#
+# This is the content-tree twin of design/unit-ownership.toml, and the two answer different
+# questions. unit-ownership.toml answers "is this unit ours, and may it ever be committed?"
+# — a permanent property. This file answers "why is a file the source tree deleted still
+# sitting in ~/agent-workforce?", which is a TEMPORARY state with a known end: someone runs
+# `bin/deploy --prune`.
+#
+# WHY THE STATE EXISTS AT ALL. bin/deploy is additive by default. Deleting a file from this
+# repo therefore does nothing to the tree systemd execs; the deployed copy survives until a
+# --prune run removes it, and --prune is deliberately not automatic because it deletes from
+# a live runtime. So every source deletion opens a window in which the runtime holds a file
+# the repo has disowned, and until 2026-09-03 nothing measured that window: the drift check
+# compared 2 of the 8 trees bin/deploy ships (W7).
+#
+# THE HAZARD IS NOT HYPOTHETICAL, and profiles/m1_signal_scan_task.md is the worked example.
+# It was archived out of source on 2026-09-01 and still sits in the runtime. The live job
+# does not read it — profiles/m1_signal_scan.env.example says so in as many words, and calls
+# the block naming it "NOT A REVERT PATH" — but the reason it is not a revert path is that
+# the file was archived, and the runtime is the one tree where it was not. A hand-edited env
+# pointing at the old path finds a real, readable, stale profile.
+#
+# NO DATES, AND THAT IS DELIBERATE. The campaign exclusions in unit-ownership.toml's sibling
+# mechanism carry an `expires` because a campaign has a scheduled end. A prune does not: it
+# ends when Dave runs it. Inventing a review date here would be a bounded window whose
+# boundary is a guess, and the check would then go red on a day chosen by nobody. The list
+# self-clears instead — see the next paragraph, which is the whole design.
+#
+# THE LIST IS EXACT, AND IT IS CHECKED IN BOTH DIRECTIONS. A runtime-only file that is NOT
+# named here is drift and fails. An entry here naming a file that is NO LONGER in the runtime
+# also fails, telling you to delete the entry. So the moment `bin/deploy --prune` runs, this
+# file becomes nine findings that say "the prune happened, remove these" — which is how a
+# stale exclusion list is prevented from quietly becoming permanent. An exclusion that
+# outlives its subject is the same defect as no exclusion at all, pointing the other way.
+
+[[runtime_only]]
+path  = "claudius_task.md"
+tree  = "profiles"
+since = "2026-09-01"          # eb933c5 — moved to profiles/archive/
+why   = "Archived with the hermes/OpenRouter research path. profiles/archive/claudius_task.md is the retained copy and IS deployed; this is the stale top-level duplicate."
+
+[[runtime_only]]
+path  = "cron-overnight-pre-snapshot.prompt.md"
+tree  = "profiles"
+since = "2026-09-01"          # 98966eb
+why   = "The model-free bin/overnight_pre_snapshot.sh replaced the Hermes cron LLM checklist (NUC-36). Kept under profiles/archive/ as the record of what it replaced."
+
+[[runtime_only]]
+path  = "m1_signal_scan_task.md"
+tree  = "profiles"
+since = "2026-09-01"          # 98966eb
+why   = "Superseded by m1_signal_scan_cc_task.md when the job moved to headless Claude Code. THE WORKED EXAMPLE in this file's header — the live env.example calls the block naming it NOT A REVERT PATH."
+
+[[runtime_only]]
+path  = "overnight_morning_report_task.md"
+tree  = "profiles"
+since = "2026-09-01"          # 98966eb
+why   = "Superseded by overnight_morning_report_cc_task.md on the 2026-07-31 migration off hermes/marcus."
+
+[[runtime_only]]
+path  = "weekly_pre_assembly_task.md"
+tree  = "profiles"
+since = "2026-09-01"          # 98966eb
+why   = "Superseded by weekly_pre_assembly_cc_task.md on the same migration."
+
+# The four below are W4's consolidation: job-override templates now live in profiles/ and
+# config/job-overrides/ keeps only archive/ and a pointer README. The runtime never got the
+# deletion half. Note these are the very files docs/runbook.md used to tell a reader to
+# `install` from — W4 fixed the instruction; this is the artifact the instruction pointed at.
+
+[[runtime_only]]
+path  = "job-overrides/augustus-content.env.example"
+tree  = "config"
+since = "2026-09-01"          # 98966eb — W4
+why   = "Consolidated into profiles/. This copy still sets AGENT_RUNTIME_CMD to the retired kanban_run_and_wait.sh, so it is actively wrong as well as absent from source."
+
+[[runtime_only]]
+path  = "job-overrides/bd_stall_radar.env.example"
+tree  = "config"
+since = "2026-09-01"          # 98966eb — W4
+why   = "Consolidated into profiles/."
+
+[[runtime_only]]
+path  = "job-overrides/overnight_morning_report.env.example"
+tree  = "config"
+since = "2026-09-01"          # 98966eb — W4
+why   = "Consolidated into profiles/."
+
+[[runtime_only]]
+path  = "job-overrides/weekly_pre_assembly.env.example"
+tree  = "config"
+since = "2026-09-01"          # 98966eb — W4
+why   = "Consolidated into profiles/."

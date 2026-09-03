@@ -60,6 +60,16 @@ ETC="${DRIFT_ETC:-/etc/systemd/system}"
 SRC_USER="${DRIFT_SRC_USER:-$REPO/systemd/user}"
 USER_TREE="${DRIFT_USER:-$HOME/.config/systemd/user}"
 OWNERSHIP="${DRIFT_OWNERSHIP:-$REPO/design/unit-ownership.toml}"
+EXCLUSIONS="${DRIFT_EXCLUSIONS:-$REPO/design/deploy-exclusions.toml}"
+# The content trees are compared as $SRC_ROOT/<tree> rather than per-tree variables — six
+# trees would otherwise mean six overrides. Overridable as one root so the suite can build a
+# synthetic pair; REPO itself is derived from $0 and cannot be pointed at a fixture.
+SRC_ROOT="${DRIFT_SRC_ROOT:-$REPO}"
+# The six trees bin/deploy ships that were compared by nothing until 2026-09-03 (W7).
+# Kept as a literal list rather than read from bin/deploy:20, because parsing another
+# script's array is a join that breaks silently; tests/test_deploy_drift.sh asserts the
+# two agree instead, which fails loudly in both directions.
+CONTENT_TREES="${DRIFT_CONTENT_TREES:-profiles docs config CLAUDE.md AGENTS.md README.md}"
 MANIFESTS="${DRIFT_MANIFESTS:-$REPO/design/agents}"
 SRC_BUZZ="${DRIFT_SRC_BUZZ:-$REPO/buzz-team}"
 BUZZ_TREE="${DRIFT_BUZZ:-$HOME/.config/buzz-team}"
@@ -148,6 +158,16 @@ names() { # dir, then find-args; prints basenames, byte-sorted
   find "$dir" -maxdepth 1 -type f "$@" -printf '%f\n' 2>/dev/null | LC_ALL=C sort
 }
 
+# The content trees are NOT flat — config/job-overrides/, profiles/archive/ and docs/ all
+# nest — so these need paths relative to the tree root (%P), not basenames (%f). Using
+# names() here would collapse profiles/archive/m1_signal_scan_task.md and the stale
+# profiles/m1_signal_scan_task.md onto one string and report a clean tree.
+relnames() { # dir, then find-args; prints tree-relative paths, byte-sorted
+  local dir=$1; shift
+  [ -d "$dir" ] || return 0
+  find "$dir" -type f "$@" -printf '%P\n' 2>/dev/null | LC_ALL=C sort
+}
+
 # --- the declarations ------------------------------------------------------------------
 # Read once, in python, because the sources are TOML. Emits one line per declared exclusion:
 #   third_party <unit>
@@ -164,7 +184,7 @@ names() { # dir, then find-args; prints basenames, byte-sorted
 # with nothing wrong in it.
 BUZZ_MANIFEST="${DRIFT_BUZZ_MANIFEST:-$SRC_BUZZ/MANIFEST.toml}"
 if [ "$SCOPE" = all ]; then
-  for d in "$OWNERSHIP:file" "$MANIFESTS:dir" "$BUZZ_MANIFEST:file"; do
+  for d in "$OWNERSHIP:file" "$MANIFESTS:dir" "$BUZZ_MANIFEST:file" "$EXCLUSIONS:file"; do
     path=${d%:*}; kind=${d##*:}
     if { [ "$kind" = file ] && [ ! -f "$path" ]; } || { [ "$kind" = dir ] && [ ! -d "$path" ]; }; then
       echo "$(basename "$0"): refusing to run — ownership declarations not found at $path" >&2
@@ -175,7 +195,7 @@ if [ "$SCOPE" = all ]; then
   done
 fi
 
-declarations=$(OWNERSHIP="$OWNERSHIP" MANIFESTS="$MANIFESTS" python3 <<'PY'
+declarations=$(OWNERSHIP="$OWNERSHIP" MANIFESTS="$MANIFESTS" EXCLUSIONS="$EXCLUSIONS" python3 <<'PY'
 import os, pathlib, tomllib
 own = pathlib.Path(os.environ["OWNERSHIP"])
 if own.is_file():
@@ -187,6 +207,11 @@ if manifests.is_dir():
         for w in tomllib.loads(m.read_text()).get("workflows", []):
             if w.get("status") == "campaign" and w.get("expires"):
                 print("campaign", w.get("unit", ""), w["expires"])
+exclusions = pathlib.Path(os.environ["EXCLUSIONS"])
+if exclusions.is_file():
+    for row in tomllib.loads(exclusions.read_text()).get("runtime_only", []):
+        if row.get("tree") and row.get("path"):
+            print("runtime_only", row["tree"], row["path"])
 PY
 )
 
@@ -231,6 +256,18 @@ buzz_declared() { # kind, name
 # regex matches any character — dbus-orgXfreedesktop.resolve1.service would match the
 # declared dbus-org.freedesktop.resolve1.service and be silenced. Fail-open in a checker
 # whose contract is that ownership fails closed.
+# Field comparison for the same reason as declared_third_party below — a path is data, and
+# a `grep "^runtime_only $tree $path"` would let a regex metacharacter in a filename match a
+# neighbouring entry and silence a real finding.
+declared_runtime_only() { # tree, relative-path
+  local want_tree=$1 want_path=$2 kind tree path
+  while read -r kind tree path; do
+    [ "$kind" = runtime_only ] || continue
+    [ "$tree" = "$want_tree" ] && [ "$path" = "$want_path" ] && return 0
+  done <<<"$declarations"
+  return 1
+}
+
 declared_third_party() { # unit, tree (default etc)
   local want_tree=${2:-etc} kind tree unit
   while read -r kind tree unit; do
@@ -279,8 +316,77 @@ while IFS= read -r f; do
   cmp -s "$SRC_BIN/$f" "$RUNTIME_BIN/$f" || report bin "content differs: $f"
 done < <(comm -12 <(echo "$bin_src") <(echo "$bin_run"))
 
+# --- the six remaining bin/deploy trees <-> the runtime copy ----------------------------
+# W7: until 2026-09-03 this check compared 2 of the 8 paths bin/deploy ships. `bin` and the
+# three unit trees were covered; profiles, docs, config, CLAUDE.md, AGENTS.md and README.md
+# were compared by nothing, so a profile-only change deployed or not deployed looked
+# identical from here — and profiles/ is where the agents' actual instructions live.
+#
+# These belong to SCOPE=bin, not to the unit half: bin/deploy writes them, so a caller whose
+# exit code should mean "what deploy controls" wants them included. That is also why they sit
+# above the scope=bin early exit rather than below it.
+#
+# The three membership directions match the bin half exactly, with ONE addition: a runtime
+# file the source tree has disowned is checked against design/deploy-exclusions.toml, because
+# bin/deploy is additive and a source deletion does not reach the runtime until --prune runs.
+# See that file's header for why the exclusions carry no expiry date.
+for tree in $CONTENT_TREES; do
+  src="$SRC_ROOT/$tree"
+  live="$RUNTIME_ROOT/$tree"
+  # A single file (CLAUDE.md, AGENTS.md, README.md) is compared directly. Running find over
+  # a file path yields the file itself with an EMPTY %P, which would compare "$src/" against
+  # "$live/" and silently pass.
+  if [ -f "$src" ] || [ -f "$live" ]; then
+    if [ ! -f "$src" ]; then
+      report content "runtime-only: $tree has no source counterpart"
+    elif [ ! -f "$live" ]; then
+      report content "source-only: $tree is not deployed"
+    else
+      cmp -s "$src" "$live" || report content "content differs: $tree"
+    fi
+    continue
+  fi
+  if [ ! -d "$src" ] && [ ! -d "$live" ]; then
+    report content "$tree is in bin/deploy's PATHS and exists in neither tree"
+    continue
+  fi
+  # *.bak* excluded on both sides, matching the bin half. bin/notion_rest.py and the profile
+  # editors leave dated .bak files in the runtime as a matter of course; they are backups of
+  # deployed files rather than files, and reporting them would bury the findings that matter.
+  c_src=$(relnames "$src" ! -name '*.bak*')
+  c_live=$(relnames "$live" ! -name '*.bak*')
+  if [ -z "$c_src" ]; then
+    report content "source tree $src matched no files — a clean result here would mean nothing"
+  fi
+  while IFS= read -r f; do
+    [ -n "$f" ] && report content "source-only: $tree/$f is not deployed"
+  done < <(comm -23 <(echo "$c_src") <(echo "$c_live"))
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    if declared_runtime_only "$tree" "$f"; then
+      info "runtime-only: $tree/$f — declared in design/deploy-exclusions.toml, pending bin/deploy --prune"
+    else
+      report content "runtime-only: $tree/$f has no source and is declared in no exclusion"
+    fi
+  done < <(comm -13 <(echo "$c_src") <(echo "$c_live"))
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    cmp -s "$src/$f" "$live/$f" || report content "content differs: $tree/$f"
+  done < <(comm -12 <(echo "$c_src") <(echo "$c_live"))
+done
+
+# The exclusion list, read in the other direction. An entry whose subject is gone is how a
+# prune announces itself, and leaving it in place would carry a permanent silence for a file
+# that no longer exists — an exclusion outliving its subject is the same defect as a missing
+# one, pointing the other way. This is what makes the dateless list self-clearing.
+while read -r kind tree path; do
+  [ "$kind" = runtime_only ] || continue
+  [ -e "$RUNTIME_ROOT/$tree/$path" ] && continue
+  report content "stale exclusion: design/deploy-exclusions.toml names $tree/$path, which is no longer in $RUNTIME_ROOT/$tree — the prune has happened; delete the entry"
+done <<<"$declarations"
+
 if [ "$SCOPE" = bin ]; then
-  info "scope=bin — the three unit trees are NOT compared by this invocation"
+  info "scope=bin — the three unit trees are NOT compared by this invocation (the six content trees above ARE: bin/deploy writes them)"
   if [ "$findings" -eq 0 ]; then echo "drift: clean (bin only)"; else echo "drift: $findings finding(s) (bin only)"; fi
   exit $(( findings > 0 ))
 fi
