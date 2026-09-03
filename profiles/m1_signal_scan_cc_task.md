@@ -47,9 +47,12 @@ proceed.
 
 4. Write exactly ONE proposal file `_inbox/agents/<today>_m1-signal-scan.md` (today from
    `date +%F`) in the format below. If you cannot find at least 3 genuine second-order
-   signals at quality, write NO file and print one line saying why — a clean decline beats
-   a padded proposal. Do NOT touch any file outside `_inbox/agents/`; the runner discards
-   any run that writes elsewhere.
+   signals at quality, write no file and print exactly `DECLINE: <short reason>` — a clean
+   decline beats a padded proposal. The `DECLINE:` prefix is load-bearing, not a style
+   note: `bin/proposal_or_decline.sh` reads it out of the run log as the sentinel that
+   tells a deliberate decline apart from a dead run, so a bare sentence of prose fails the
+   run. Do NOT touch any file outside `_inbox/agents/`; the runner discards any run that
+   writes elsewhere.
 
 5. Never act outward. This task never emails, posts, DMs, shares, or messages anyone or
    anything — no Notion sharing, no outbound. It only writes the one proposal file.
