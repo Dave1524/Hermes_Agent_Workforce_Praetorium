@@ -6,14 +6,20 @@
 # /etc/systemd/system is root-owned and `dave` cannot write it without sudo — installing a
 # unit stays a human action, exactly as systemd/ttm-pool-drain.service records for its own.
 #
-# FOUR TREES, NOT THREE. D8 named source systemd/, the staging copy ~/agent-workforce/systemd/
+# FIVE TREES, NOT THREE. D8 named source systemd/, the staging copy ~/agent-workforce/systemd/
 # and live /etc/systemd/system/. It never mentioned ~/.config/systemd/user/, which holds the
 # nine --user units the Buzz fleet runs on — including buzz-agent@.service, the fleet's core
-# unit. The comparisons that mean something:
+# unit. Brief 2 added that fourth tree and adopted those units; it did not adopt the files
+# those units READ, so the unit became sourced and its entire configuration did not. The
+# fifth tree closes that: ~/.config/buzz-team/ holds the five dispatch-rule files, the
+# connector deny-list, the seam that delivers it, the unit's real ExecStart, the MCP bridge,
+# the Notion broker and the fleet's own gate — every mechanism S1 (Buzz interactive: DMs,
+# channels, forums) runs on. The comparisons that mean something:
 #
 #   bin/            <-> ~/agent-workforce/bin/      the runtime tree every ExecStart names
 #   systemd/        <-> /etc/systemd/system/        DIRECTLY, not via staging
 #   systemd/user/   <-> ~/.config/systemd/user/     --user scope, never installed in /etc
+#   buzz-team/      <-> ~/.config/buzz-team/        what those --user units read at startup
 #
 # THE STAGING COPY ~/agent-workforce/systemd/ IS NOT A SIDE OF ANY COMPARISON, deliberately.
 # systemd reads /etc and never reads it — proof: content-inbox-finalize.{service,timer} sit in
@@ -32,7 +38,10 @@
 # declaration in this repo explains it — design/unit-ownership.toml for permanent third-party
 # and never-commit entries, and the owning manifest's status = "campaign" + expires for the
 # dated ones. Never a heuristic over unit contents: "references /home/dave" or "User=dave"
-# misclassifies systemd/ttm-pool-drain.service, which is ours and has neither.
+# misclassifies systemd/ttm-pool-drain.service, which is ours and has neither. The buzz-team
+# tree fails closed the same way and from its own declaration: buzz-team/MANIFEST.toml names
+# every adopted file and every excluded one, an undeclared file in EITHER tree is red, and a
+# missing MANIFEST.toml is a refusal to run rather than an empty exclusion set.
 set -uo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
@@ -52,6 +61,8 @@ SRC_USER="${DRIFT_SRC_USER:-$REPO/systemd/user}"
 USER_TREE="${DRIFT_USER:-$HOME/.config/systemd/user}"
 OWNERSHIP="${DRIFT_OWNERSHIP:-$REPO/design/unit-ownership.toml}"
 MANIFESTS="${DRIFT_MANIFESTS:-$REPO/design/agents}"
+SRC_BUZZ="${DRIFT_SRC_BUZZ:-$REPO/buzz-team}"
+BUZZ_TREE="${DRIFT_BUZZ:-$HOME/.config/buzz-team}"
 # THIS SCRIPT CANNOT RUN FROM THE DEPLOYED COPY OF ITSELF, and the failure is silent, so it
 # is a guard rather than a note. REPO is resolved from $0, so a copy exec'd out of the
 # runtime tree sets SRC_BIN to that same tree and compares it with itself — the bin half
@@ -73,6 +84,12 @@ if same_dir "$SRC_SYSTEM" "$RUNTIME_ROOT/systemd"; then
   echo "$(basename "$0"): refusing to run — the unit source is the STAGING copy" >&2
   echo "  ($SRC_SYSTEM). systemd reads $ETC and never staging, so this comparison" >&2
   echo "  goes green the moment a unit is deployed while /etc stays stale." >&2
+  exit 2
+fi
+if same_dir "$SRC_BUZZ" "$BUZZ_TREE"; then
+  echo "$(basename "$0"): refusing to run — the buzz-team source and the live tree" >&2
+  echo "  resolve to the same directory ($SRC_BUZZ). Same tautology as the bin half:" >&2
+  echo "  a tree compared with itself reports zero findings whatever either contains." >&2
   exit 2
 fi
 
@@ -102,14 +119,22 @@ info()   { echo "  info: $*"; }
 # PR gate gets muted. Skip whole, OUT LOUD, in the format tests/box_precondition.sh prints
 # and .github/workflows/verify.yml diffs against tests/ci-expected-skips.txt.
 #
-# The predicate is BOTH trees absent, not either. On this box a deleted runtime tree is
-# itself drift and must stay red, and ~/.config/systemd/user survives that — so only a
-# checkout with neither can reach the skip. /etc is not part of the predicate: a hosted
-# runner has an /etc/systemd/system full of its own units, so its presence proves nothing.
-if [ ! -d "$RUNTIME_BIN" ] && [ ! -d "$USER_TREE" ]; then
-  printf 'SKIP: %s — %s (absent: %s %s)\n' "$(basename "$0")" \
+# The predicate is ALL THREE trees absent, not any one. On this box a deleted runtime tree
+# is itself drift and must stay red, and ~/.config/systemd/user and ~/.config/buzz-team
+# survive that — so only a checkout with none of them can reach the skip. /etc is not part
+# of the predicate: a hosted runner has an /etc/systemd/system full of its own units, so its
+# presence proves nothing.
+#
+# The buzz-team tree JOINS this predicate rather than getting a skip of its own. A second
+# skip would be a second thing tests/ci-expected-skips.txt has to know about and a second
+# place the gate can shrink; adding a conjunct only makes the existing skip harder to reach,
+# which is the safe direction. The printed line gains a third path, so ci-expected-skips.txt
+# is updated in the same commit — a skip line that changes silently is what that file exists
+# to prevent.
+if [ ! -d "$RUNTIME_BIN" ] && [ ! -d "$USER_TREE" ] && [ ! -d "$BUZZ_TREE" ]; then
+  printf 'SKIP: %s — %s (absent: %s %s %s)\n' "$(basename "$0")" \
     'the deployed trees this check compares against' \
-    "${RUNTIME_BIN/#$HOME/\~}" "${USER_TREE/#$HOME/\~}"
+    "${RUNTIME_BIN/#$HOME/\~}" "${USER_TREE/#$HOME/\~}" "${BUZZ_TREE/#$HOME/\~}"
   exit 0
 fi
 
@@ -131,8 +156,15 @@ names() { # dir, then find-args; prints basenames, byte-sorted
 # /etc-only unit reports as undeclared drift — measured 2026-09-02 at 11 findings including
 # ollama.service and both live campaigns, on a box with no drift at all. A daily alert that
 # is wrong every day is worse than no check, and the failure is invisible from the output.
+#
+# buzz-team/MANIFEST.toml is in the same list and for the same reason, one tree over: with
+# it missing, every one of the box's declared-excluded files (TEAM.md, heartbeat.prompt,
+# aurelian-calibration.md) reads as undeclared box-only drift, and every adopted file reads
+# as an undeclared source-only one. That is a check that is wrong every day about a tree
+# with nothing wrong in it.
+BUZZ_MANIFEST="${DRIFT_BUZZ_MANIFEST:-$SRC_BUZZ/MANIFEST.toml}"
 if [ "$SCOPE" = all ]; then
-  for d in "$OWNERSHIP:file" "$MANIFESTS:dir"; do
+  for d in "$OWNERSHIP:file" "$MANIFESTS:dir" "$BUZZ_MANIFEST:file"; do
     path=${d%:*}; kind=${d##*:}
     if { [ "$kind" = file ] && [ ! -f "$path" ]; } || { [ "$kind" = dir ] && [ ! -d "$path" ]; }; then
       echo "$(basename "$0"): refusing to run — ownership declarations not found at $path" >&2
@@ -157,6 +189,43 @@ if manifests.is_dir():
                 print("campaign", w.get("unit", ""), w["expires"])
 PY
 )
+
+# The buzz-team declaration, read separately because its shape is different: two lists, not
+# one keyed table. Emits `adopted <name>` and `excluded <pattern>`. Read only under
+# SCOPE=all — the refusal above is what guarantees the file exists by the time we get here.
+buzz_declarations=''
+if [ "$SCOPE" = all ]; then
+  buzz_declarations=$(BUZZ_MANIFEST="$BUZZ_MANIFEST" python3 <<'PY'
+import os, pathlib, tomllib
+data = tomllib.loads(pathlib.Path(os.environ["BUZZ_MANIFEST"]).read_text())
+for row in data.get("adopted", []):
+    if row.get("path"):
+        print("adopted", row["path"])
+for row in data.get("excluded", []):
+    if row.get("path"):
+        print("excluded", row["path"])
+PY
+  )
+fi
+
+# Field comparison for the same reason as declared_third_party below: a filename is data.
+# `excluded` entries are matched as GLOBS (buzz-team/MANIFEST.toml declares `*.env` as a
+# standing refusal rather than a record of a file that once existed), so the case pattern is
+# deliberately unquoted on the right — and every other entry is a literal, which a glob
+# match treats as itself.
+buzz_declared() { # kind, name
+  local want=$1 name=$2 kind pat
+  while read -r kind pat; do
+    [ "$kind" = "$want" ] || continue
+    if [ "$want" = excluded ]; then
+      # shellcheck disable=SC2254  # glob match is the point; see the comment above
+      case "$name" in $pat) return 0 ;; esac
+    else
+      [ "$pat" = "$name" ] && return 0
+    fi
+  done <<<"$buzz_declarations"
+  return 1
+}
 
 # Field comparison, never `grep "^third_party $1"`: a unit name is data, and `.` in a basic
 # regex matches any character — dbus-orgXfreedesktop.resolve1.service would match the
@@ -339,6 +408,69 @@ if [ -d "$USER_TREE" ]; then
   n=$(find "$USER_TREE" -mindepth 2 -name '*.conf' 2>/dev/null | wc -l)
   [ "$n" -gt 0 ] && info "user drop-ins: $n *.conf files NOT compared (see design/unit-ownership.toml)"
 fi
+
+# --- buzz-team/ <-> ~/.config/buzz-team ------------------------------------------------
+# The fifth tree: what the --user units above actually READ. Brief 2 gave the units a source
+# and left their entire configuration unsourced, so every design/ reference to this tree was
+# a `governed_by` pointer out of the repo.
+#
+# maxdepth 1 and -type f, so backups/ is never listed — it is declared excluded anyway,
+# because an absence cannot be told from a deletion and a converge naming it would then be a
+# bug in the tool rather than an undeclared file.
+#
+# MANIFEST.toml is filtered from the SOURCE side only, and the asymmetry is deliberate: it is
+# this repo's declaration ABOUT the tree, not configuration any process on the box reads, so
+# bin/deploy_buzz_team.sh never writes it. Filtering it from the box side too would make a
+# hand-copied one invisible; leaving it unfiltered there reports it as box-only, which is
+# exactly what it would be.
+echo "buzz-team: $SRC_BUZZ <-> $BUZZ_TREE"
+buzz_src=$(names "$SRC_BUZZ" ! -name 'MANIFEST.toml')
+buzz_live=$(names "$BUZZ_TREE")
+if [ -z "$buzz_src" ]; then
+  report buzz "source tree $SRC_BUZZ matched no files — a clean result here would mean nothing"
+fi
+
+# Source-only is one of two different bugs and they need different fixes, so they are two
+# reports. A file in the repo that is not on the box means the box is not running what the
+# repo says — run bin/deploy_buzz_team.sh, then restart the units.
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  if ! buzz_declared adopted "$f"; then
+    report buzz "source-only: $f is in $SRC_BUZZ and declared in no MANIFEST.toml [[adopted]] entry"
+    continue
+  fi
+  report buzz "source-only: $f is not on the box — bin/deploy_buzz_team.sh has not run"
+done < <(comm -23 <(echo "$buzz_src") <(echo "$buzz_live"))
+
+# Box-only is the other direction: a rebuild from source loses it. Declared exclusions are
+# named rather than silently skipped, for the same reason the third-party units are.
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  if buzz_declared excluded "$f"; then
+    info "box-only: $f — declared excluded (prose or runtime state), not adopted"
+    continue
+  fi
+  report buzz "box-only: $f runs on this box with no source here — a rebuild from source loses it"
+done < <(comm -13 <(echo "$buzz_src") <(echo "$buzz_live"))
+
+# Present in BOTH trees. The two loops above ask "is this declared?" only about files that
+# are missing from one side, so a file hand-copied into both used to fall straight through to
+# `cmp`, match, and pass — undeclared, ungoverned by the converge, and reported by nothing.
+# The header's "an undeclared file in EITHER tree is red" was true of each direction
+# separately and of neither together until 2026-09-03. This is the likeliest shape of the
+# bug it describes, because the way an undeclared file gets here is somebody copying it.
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  if ! buzz_declared adopted "$f"; then
+    if buzz_declared excluded "$f"; then
+      report buzz "in both trees: $f is declared EXCLUDED, which asserts the box holds it and this repo does not — and this repo does"
+    else
+      report buzz "in both trees: $f is declared in no MANIFEST.toml entry — bin/deploy_buzz_team.sh neither writes it nor knows it exists"
+    fi
+    continue
+  fi
+  cmp -s "$SRC_BUZZ/$f" "$BUZZ_TREE/$f" || report buzz "content differs: $f"
+done < <(comm -12 <(echo "$buzz_src") <(echo "$buzz_live"))
 
 # The staging copy, named so the next reader does not add it as a comparison side.
 info "staging $RUNTIME_ROOT/systemd/ is inert — systemd reads $ETC, never it"

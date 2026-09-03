@@ -80,3 +80,22 @@ must_carry = [
 preconditions = [
   "The D5 half cannot execute before 2026-09-04 01:30. The brief may be written now; it must state that gate.",
 ]
+
+[[brief]]
+id       = 7
+slug     = "buzz-interactive-harness"
+title    = "Finalise the agent harness on S1 — DMs, channels and forums"
+section  = "S1"
+ships    = "red"
+must_carry = [
+  "S1 was DESCRIBED everywhere and DECLARED nowhere. Measured 2026-09-03: zero of the 26 [[workflows]] entries carried surface = \"interactive\", so the coverage checker, the status vocabulary and the suite requirement could not see a single DM, channel post or forum thread. That is not partial coverage — a checker that walks the declared set reports FULL coverage of the surfaces that have entries, so the gap was invisible to the very mechanism built to find gaps. Nothing was failing and nothing was looking.",
+  "~/.config/buzz-team/ was a FIFTH governance tree with no source in this repo: 5 governed_by values named it (one per persona manifest) and 56 lines mentioned the path in some form. Both counts are methods, not a single round number — `git grep -h governed_by a3bed90 -- design/ docs/ | grep -c config/buzz-team` and `git grep -h 'config/buzz-team' a3bed90 | wc -l`. Adopt the mechanism files byte-identically and cmp-verify; declare the excluded ones in buzz-team/MANIFEST.toml rather than leaving them merely absent. The rule is mechanism in, prose out: a rule file a process parses belongs here, a charter an agent reads stays in the deny-listed ~/.config/buzz-agents/ tree.",
+  "ADOPTION FALSIFIES EXEMPTIONS, and that is the trap this brief is most likely to be got wrong on. fleet-turn-check's suite_exempt read 'script lives at ~/.config/buzz-team/fleet-turn-check.sh, not in this repo'; adopting the script made that false in the same commit. Restating it with a fresh reason would have been the worst of the three outcomes — a true-looking exemption whose premise the change had just removed. Either write the suite or record that the workflow is now uncovered. design/eval-spec.md:53 and :153 both carried the same falsified premise and were corrected here.",
+  "DO NOT EXTEND bin/deploy. Its PATHS array and its three destination guards are specific to the runtime tree; buzz-team/ gets its own converge script (bin/deploy_buzz_team.sh) with its own guards. It must restart nothing and say so — a rule-file change is inert until the five agents are restarted by hand, and buzz-acp compiles filters EAGERLY, so a malformed expression crash-loops the unit rather than silently never matching.",
+  "config/fleet-units.tsv's five new rows are the first kind=service entries. Every consumer appended '.timer' unconditionally and was right 30 times out of 30 before them. systemctl list-timers DROPS an unmatched name silently — rc=0, empty stderr, '1 timers listed' for six requested (measured 2026-09-03) — so the failing case must be demonstrated by RUNNING a consumer, not by reading one. It is the scope defect's exact shape, one column over.",
+  "aurelian's entry is a PRESENCE entry, not a job. His header used to read 'OWNS NOTHING' unqualified, which this brief's own change would have falsified; it now distinguishes a surface presence from a unit of work. A second entry under his name carrying a route, a non-shared runner or an OnCalendar retires the calibration pin, and that is a decision rather than a manifest edit.",
+]
+preconditions = [
+  "Ships RED by design on three counts, none of which may be softened to change the number: W6's four uncovered standing workflows (pre-existing, untouched), W12's one orphan suite (pre-existing, and widening the rule is its own brief), and deploy drift from this brief's own bin/ edits, which clears when bin/deploy runs after merge.",
+  "The five buzz-agent@* units may not be restarted, no identity may be minted, and ~/.config/buzz-agents/** may not be read or routed around. TEAM.md, heartbeat.prompt and aurelian-calibration.md are excluded from adoption by declaration.",
+]

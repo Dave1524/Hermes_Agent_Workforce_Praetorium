@@ -1,10 +1,18 @@
 # aurelian — cold verification. Normative capability manifest (D2).
 # Descriptive of live state 2026-09-01.
 #
-# aurelian is the only persona on this box that OWNS NOTHING and EXECUTES NOTHING.
-# That is not an oversight and not a degraded state — it is the calibration pin. Every
-# other agent's output can be checked by an agent that has no stake in it and cannot have
-# produced it. The moment he acquires a workflow, he stops being able to do his job.
+# aurelian is the only persona on this box that EXECUTES NOTHING. That is not an oversight
+# and not a degraded state — it is the calibration pin. Every other agent's output can be
+# checked by an agent that has no stake in it and cannot have produced it. The moment he
+# acquires a workflow THAT RUNS, he stops being able to do his job.
+#
+# The qualifier is load-bearing and was added 2026-09-03 with the one [[workflows]] entry
+# below. This header used to say "OWNS NOTHING" and "the moment he acquires a workflow",
+# unqualified, which the same commit that adds an S1 presence entry would have falsified —
+# and a true-looking sentence whose premise has just been removed is worse than no sentence.
+# The distinction that survives: he owns a SURFACE PRESENCE (a live unit the registry must be
+# able to see), and no unit of WORK. Nothing schedules him, nothing routes to him, and
+# bin/buzz_agents.env still cannot resolve his slug.
 
 name    = "aurelian"
 role    = "Cold verification — independent check on other agents' claims; never a co-author"
@@ -14,7 +22,7 @@ status  = "read-only"
 
 [surfaces.interactive]
 present     = true
-governed_by = "~/.config/buzz-team/aurelian.toml"
+governed_by = "buzz-team/aurelian.toml"      # SOURCE. Deployed to ~/.config/buzz-team/aurelian.toml by bin/deploy_buzz_team.sh; the box path is the destination (brief 7)
 admits      = ["owner", "praetorium", "marcus", "claudius", "augustus", "trajan"]
 channels    = "all"
 tools       = ["claude-code-builtins (read paths)", "mcp__qmd-mcp__*"]
@@ -44,7 +52,47 @@ notes   = "No ~/.hermes/profiles/aurelian — the on-disk profiles are marcus, c
 [surfaces.buzz_dispatch]
 present = false
 
-# No [[workflows]]. Intentionally. Do not add one without retiring the pin first.
+# --- S1, brief 7. ONE entry, and it is a PRESENCE entry, not a job.
+#
+# This block used to read "No [[workflows]]. Intentionally. Do not add one without retiring
+# the pin first." That sentence was written about EXECUTING work and it stays true about
+# executing work: aurelian owns no scheduled workflow, no platform job, no route, and
+# acquiring one would end the calibration pin. What changed is that the registry now has to
+# be able to SEE a live unit. buzz-agent@aurelian.service is `active running` on this box and
+# was declared nowhere, which is the same class of gap as the nine --user units brief 2 found
+# — a live thing with no owner is invisible to every check that walks the declared set.
+#
+# So: `surface = "interactive"`, `kind = "service"`, and nothing that executes. Read the
+# distinction before adding a second entry here; if the next one has a `route`, a `runner`
+# that is not the shared launcher, or an OnCalendar, the pin is being retired and that is a
+# decision, not a manifest edit.
+[[workflows]]
+unit     = "buzz-agent@aurelian"
+surface  = "interactive"
+scope    = "user"
+kind     = "service"
+trigger  = "event-driven — a Buzz mention from Dave or from a worker submitting its own output"
+model    = "from the run log, not the deny-listed env"
+profile  = "~/.config/buzz-agents/aurelian.prompt + ~/.config/buzz-team/aurelian-calibration.md (both deny-listed or declared excluded; no repo source)"
+profile_in_repo = false          # deny-listed box path, not a repo file — see notes
+runner   = "buzz-team/buzz-acp-launch.sh"
+contract = "design/contracts/buzz-interactive.md"   # ONE contract, five owners — it says why in its header
+status   = "standing"
+suite    = ["tests/test_buzz_interactive_harness.sh"]
+in_repo  = true
+notes    = """
+The suite that owns this entry is the one that asserts the asymmetry he depends on: he
+admits all five other identities and none of theirs admits him, so a verdict he publishes is
+accepted by the relay and dropped at every worker's dispatch. A symmetric edge would end the
+one-way property silently, in one line of one file, and that is what
+tests/test_buzz_interactive_harness.sh watches.
+
+His isolation knobs (BUZZ_ACP_CONTEXT_MESSAGE_LIMIT=0, NO_MEMORY, MAX_TURNS_PER_SESSION=1,
+HEARTBEAT_INTERVAL=0) are asserted from /proc by buzz-team/verify-fleet.sh, not from a unit
+file — a drop-in that was never loaded looks identical to one that was, and the heartbeat
+value cannot be set in a unit file at all because EnvironmentFile= overrides Environment=.
+That gate is machine-level and stays machine-level; see docs/runbook.md § S1.
+"""
 
 
 # Capability prohibitions. enforced = true means a mechanism blocks it today;

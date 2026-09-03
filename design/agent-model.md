@@ -56,10 +56,33 @@ positions in a count, and a table that renumbers on retirement silently invalida
 
 | # | Surface | Runtime | Who runs here | Tool set | Governed by |
 |---|---|---|---|---|---|
-| **S1** | Buzz interactive | `claude-agent-acp` (marcus, claudius, trajan, aurelian); `codex-acp` in bwrap (augustus) | all five personas | Claude Code built-ins + `mcp__qmd-mcp__*` + 7 `notion_*` (broker) + **whatever `~/.claude/settings.json` does not deny** | `~/.config/systemd/user/buzz-agent@.service` (flags), `~/.config/buzz-team/<name>.toml` (who may wake whom), `~/.claude/settings.json` (`permissions.deny`) |
+| **S1** | Buzz interactive | `claude-agent-acp` (marcus, claudius, trajan, aurelian); `codex-acp` in bwrap (augustus) | all five personas | Claude Code built-ins + `mcp__qmd-mcp__*` + 7 `notion_*` (broker) + **whatever `~/.claude/settings.json` does not deny** | `buzz-team/<name>.toml` **(source, since 2026-09-03)** → `~/.config/buzz-team/<name>.toml` (who may wake whom); `~/.config/systemd/user/buzz-agent@.service` (flags); `~/.claude/settings.json` (`permissions.deny`) |
 | **S2** | Scheduled headless CC | `claude -p` from `bin/run_*_cc.sh`, wrapped by `bin/agent_propose.sh` | nobody — the owner persona is *accountability*, the executor is anonymous | explicit `--allowedTools`; **no MCP** (`--strict-mcp-config --mcp-config '{"mcpServers":{}}'`) | the wrapper script, one per workflow, in `bin/` |
 | ~~**S3**~~ | ~~Hermes kanban dispatch~~ — **RETIRED 2026-09-02 (D7)** | ~~`hermes-gateway` auto-dispatches `ready` cards every 60s~~; the gateway is disabled+stopped, the board is archived (`design/archive/hermes-kanban-board.md`), `bin/kanban_run_and_wait.sh` is deleted | ~~marcus, claudius, augustus, trajan~~ — nobody | ~~Hermes toolsets + a real skills index with a per-profile allowlist~~ | `~/.hermes/profiles/<p>/config.yaml` and `bin/apply_skills_allowlist.sh` **both survive** — the CLI still reads them (§3) |
 | **S4** | Buzz-dispatched scheduled | `bin/run_content_via_buzz.sh` — a timer that triggers **S1** and waits | augustus only | inherits S1 entirely | `bin/buzz_routes.env` (destination, kind, who to wake) + the profile augustus is told to read |
+
+**S1's governance moved into this repo on 2026-09-03 (brief 7) and the direction is now the
+opposite of what it was.** `~/.config/buzz-team/` was a fifth governance tree with no source
+here, and every reference to it pointed *out* of the repo at files nothing reviewed, nothing
+diffed and no gate read. Two counts, each with its method, because they measure different
+things and a single round number for both is how this paragraph was wrong until 2026-09-03:
+
+- **5 `governed_by` values** named the tree — one per persona manifest, and they were the
+  load-bearing ones, since `governed_by` is what a reader follows to find the rule.
+  `git grep -h governed_by a3bed90 -- design/ docs/ | grep -c config/buzz-team`
+- **56 lines** across the repo mentioned the path in any form (prose, comments, scripts).
+  `git grep -h 'config/buzz-team' a3bed90 | wc -l`
+
+Eighteen **files** — not pointers; the two sets do not correspond — are now in `buzz-team/`,
+converged by `bin/deploy_buzz_team.sh` and drift-checked as the fifth tree in
+`bin/check_deploy_drift.sh`. The five `governed_by` values now name the source. Five
+**declared exclusions** stay out by declaration rather than by omission (three files, one
+directory, one `*.env` glob) — `buzz-team/MANIFEST.toml` lists them with reasons, and an
+excluded file that is merely absent is the failure that convention exists to prevent.
+
+The rule the manifest states: **mechanism in, prose out.** A rule file a process parses
+belongs here; a charter an agent reads does not, and the charters remain in
+the deny-listed `~/.config/buzz-agents/` tree where this repo cannot read them.
 
 **S2 is the surface that does nearly all the unattended work and it has no persona at
 all** — `AGENT_PROFILE` carries a *model* name (`claude-sonnet`, `claude-opus`), which
@@ -165,6 +188,15 @@ unit        = "knowledge-digest"  # systemd unit, no suffix — the join key to 
 surface     = "scheduled"
 trigger     = "Sun 09:00 (+5min jitter)"   # DECLARED OnCalendar, never next-elapse (§6.8)
 model       = "claude-opus-5"
+profile_in_repo = false           # optional; default true. `false` says the profile lives
+                                  # outside this repo, so the `Owner:` header below cannot
+                                  # be asserted — the five S1 charters are in the
+                                  # deny-listed ~/.config/buzz-agents/ tree. It is DECLARED,
+                                  # never inferred from the path's shape: a heuristic would
+                                  # also swallow a typo'd repo path and turn a genuinely
+                                  # missing profile into a silent pass. What IS asserted is
+                                  # that the declaration is honest — an external profile
+                                  # must not resolve inside the repo.
 profile     = "profiles/..."      # the task prompt. Its FIRST line must read
                                   # `Owner: <name>` naming the persona whose manifest
                                   # declares this entry (W2, 2026-09-02) — asserted by
@@ -178,6 +210,18 @@ scope       = "user"              # systemd scope: "user" or omitted for the def
                                   # "system". Prose-only until 2026-09-02, which is why
                                   # buzz-pr-watch and both nekovri entries were counted as
                                   # system-scope by anything that did not read their notes.
+kind        = "service"           # "timer" (default) or "service". A `service` unit is
+                                  # Type=simple and always on; it has NO timer, so a
+                                  # consumer that appends ".timer" to it asks for a unit
+                                  # that does not exist — and `systemctl list-timers`
+                                  # answers that by SILENTLY DROPPING the name: rc=0, empty
+                                  # stderr, "1 timers listed" for six units requested
+                                  # (measured 2026-09-03). That is the scope defect's exact
+                                  # shape one column over, so the column exists for the same
+                                  # reason. Materialised into config/fleet-units.tsv col 5;
+                                  # the default is "timer" because that is what all 30
+                                  # pre-existing rows were, and a default that reclassifies
+                                  # existing entries is not a default.
 route       = "research"          # key in bin/buzz_routes.env, or omitted
 contract    = "design/contracts/knowledge-digest.md"
 status      = "standing"          # REQUIRED on every entry — see the table below (R15)
@@ -527,6 +571,37 @@ The minimum wiring that makes them load-bearing, in the order it should be built
    into `bin/verify.sh`, which already runs `tests/*.sh`.
 2. The `AGENT_PROFILE` → owner rename (registry §6.6), taking its values from `owner`.
 3. Generated coverage lists for the reporting jobs (registry §6.4).
+
+### 7.1 S1 is wired (2026-09-03, brief 7)
+
+Item 1's shape held; the surface it was written about was not the one that needed it first.
+All three items above assume `[[workflows]]` entries exist to validate. For S1 there were
+none — all 26 entries were `platform`, `scheduled` or `buzz_dispatch`, so the interactive
+surface was not partly covered, it was structurally invisible to every consumer that walks
+the declared set. A validator built on that set could not have found the gap; it would have
+reported full coverage of the surfaces that had entries.
+
+What is now load-bearing for S1, and what each thing is load-bearing *for*:
+
+| Mechanism | Asserts | Runs |
+|---|---|---|
+| `buzz-team/` + `MANIFEST.toml` | 18 mechanism files have a reviewable source; 5 are excluded **by declaration**, with reasons | — |
+| `bin/deploy_buzz_team.sh` | source → box convergence, its own destination guards, restarts nothing and says so | by hand, `--dry-run` first |
+| `bin/check_deploy_drift.sh` (fifth tree) | source-vs-box, both membership directions | `bin/verify.sh` |
+| `tests/test_buzz_interactive_harness.sh` | the dispatch DAG both directions, `require_mention` on every rule, aurelian's one-way asymmetry, no key material | `bin/verify.sh` |
+| `buzz-team/check-team-kinds.py` | route-table ↔ TEAM.md kind agreement, against the **source** table | `bin/verify.sh`, box-gated |
+| `design/contracts/buzz-interactive.md` | the Send / Kind / Mention obligations, each with failure mode and evidence | read by humans; its checks 1–6 are the suite above |
+| `config/fleet-units.tsv` `kind` column | five always-on services are no longer rendered as timers that never fired | six reporting consumers |
+
+**What is still NOT covered, stated so it is not mistaken for covered.** The five charters
+(`~/.config/buzz-agents/*.prompt`) are deny-listed and have no repo source; `profile_in_repo
+= false` declares that rather than papering over it. `verify-fleet.sh` and `check-loaded.sh`
+are now *sourced* here but are still not *run* here — they need live `/proc`, a live relay
+and the deny-listed tree, so running them from a PR gate would assert box state rather than
+the diff. And obligation 1 of the contract — that a turn actually publishes — remains
+checkable only by `fleet-turn-check`, hourly, at the cost of a real model turn. Adoption
+made the code reviewable; it did not make the runtime assertable, and those are different
+claims.
 
 ## 8. Decisions required from Dave
 

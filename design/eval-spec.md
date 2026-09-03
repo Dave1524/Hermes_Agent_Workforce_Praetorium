@@ -44,15 +44,25 @@ workflows, so for the first time coverage is *computable*.
 
 | # | Layer | Entry point | Cadence | Gates on | Evidence |
 |---|---|---|---|---|---|
-| L1 | Static + unit | `bin/verify.sh` | on demand (pre-commit) | exit code | `bash -n`, `shellcheck -S error`, **42 executed `tests/*.sh`** |
+| L1 | Static + unit | `bin/verify.sh` | on demand (pre-commit) | exit code | `bash -n`, `shellcheck -S error`, **49 executed suites** — `bin/verify.sh` globs `tests/*.sh` and runs every match, which is 47 `test_*.sh` plus the two helper libs `box_precondition.sh` and `rhythm_test_lib.sh`, sourced by others and exec'd as no-ops here (`ls tests/*.sh \| wc -l`, 2026-09-03) — plus `buzz-team/check-team-kinds.py` |
 | L2 | Behavioural conformance | `bin/fleet_eval_behaviour.py` | daily 07:07 | regression vs baseline | delivery receipts vs the **deployed** route table |
 | L3 | Grounding | `bin/fleet_eval_grounding.py` | daily 07:07 | regression vs baseline | qmd retrieval against `fleet_eval_probes.json` |
 | L4 | Local model tier | `bin/local_tier_eval.sh` (+ `_score`/`_report`/`_trend`) | 6×/day | scored trend | on-box model output |
 | L5 | Turn liveness | `fleet-turn-check` | hourly | can an agent complete a turn | live Buzz round trip |
 
-Machine-level siblings outside this repo: `~/.config/buzz-team/verify-fleet.sh` (fleet
-state) and `~/.config/buzz-agents/check-loaded.sh` (config actually loaded). They gate the
-`buzz-agent@*` units, not the workflows, and are governed by `~/CLAUDE.md`.
+Machine-level siblings, **half of which stopped being outside this repo on 2026-09-03**
+(brief 7): `verify-fleet.sh` was adopted as `buzz-team/verify-fleet.sh` and now has a
+source here; `~/.config/buzz-agents/check-loaded.sh` genuinely remains outside, because the
+tree it reads is deny-listed. Both gate the `buzz-agent@*` units rather than the workflows,
+and the RUNNING copies are still governed by `~/CLAUDE.md` — adoption moved the source, not
+the ownership of the live gate.
+
+That distinction is the one to keep. `buzz-team/` is a source tree with a converge script
+(`bin/deploy_buzz_team.sh`) and a drift check; it is not a claim that `bin/verify.sh` now
+runs those gates. It does not. `verify-fleet.sh` needs live `/proc` state and a live relay,
+so running it from a PR gate would assert box state, not the diff. What the repo gained is
+that the two scripts are now diffable, reviewable and drift-checked. That is L1's
+business — `bin/check_deploy_drift.sh` grew a fifth tree for it — not a new eval layer.
 
 `bin/verify.sh` is the **only** layer that is a gate in the blocking sense. L2/L3 exit 1 on
 regression but `fleet-eval.service` carries **no** `OnFailure=agent-alert@%n.service`,
@@ -150,7 +160,7 @@ judgement is the part a coverage figure cannot express.
 | `m1-signal-scan` | claudius | standing | **real hole.** `bin/run_m1_signal_scan_cc.sh` is in-repo and writable. |
 | `agent-workforce-auto-sync` | trajan | standing | **real hole.** `bin/auto-sync` is in-repo. Appears in `test_local_tier_eval_score.sh` only as a `list-timers` *fixture string*. |
 | `overnight-pre-snapshot` | trajan | standing | **real hole.** `bin/overnight_pre_snapshot.sh` is in-repo. |
-| `fleet-turn-check` | trajan | standing | exempt — `~/.config/buzz-team/fleet-turn-check.sh`, outside this repo |
+| `fleet-turn-check` | trajan | standing | **exemption ended 2026-09-03** — the script was adopted as `buzz-team/fleet-turn-check.sh`, so the premise was gone; now covered by `tests/test_fleet_turn_check.sh` (structural: it asserts the five design rules the script's own header requires, and deliberately does not run it — gate 2 spends a real model turn) |
 | `ttm-pool-drain` | trajan | standing | exempt — `/usr/local/bin/ttm-pool-drain`, root-owned, outside this repo |
 | `buzz-pr-watch` | trajan | standing | exempt — `--user` unit running `~/.local/bin/buzz-pr-watch`, outside this repo |
 | `praetorium-content-strategy-research` | augustus | campaign | bounded, `expires` 2026-09-03 — needs no standing suite |
@@ -162,6 +172,20 @@ concluded. Every other gap is bounded, disabled, or code this repo does not own.
 are what `tests/test_workflow_coverage.sh` ships red naming; it is not passing until each
 has a suite, and `suite_exempt` is not the way to close one — it means the code is not in
 this repo, and all four are in-repo and writable.
+
+**The backlog is still four, and it is a different four's worth of work than it was.** Brief 7
+added five standing workflows (the S1 units) and closed one exemption, so the coverage line
+moved from *16 of 23 own a suite, 3 exempt, 4 uncovered* to *22 of 28 own a suite, 2 exempt,
+4 uncovered*. The four names did not change: `overnight-morning-report`, `m1-signal-scan`,
+`agent-workforce-auto-sync`, `overnight-pre-snapshot`. Note the trap in reading that as
+progress — the denominator grew, so the *ratio* improved while the actual hole is identical.
+The four are the number to track; 22/28 is not.
+
+The rule the `fleet-turn-check` row demonstrates is worth stating once: **an exemption is
+only as good as its premise, and adopting code falsifies the premise of every exemption that
+said the code was elsewhere.** Restating such an exemption with a freshly-worded reason is
+the failure mode — it reads as considered and is load-bearing on nothing. Either write the
+suite or record honestly that the exemption is gone and the workflow is now uncovered.
 
 Two qualifications, both load-bearing:
 
@@ -205,10 +229,20 @@ Gate ownership by surface, from D2:
 
 | Surface | Blocking gate | Reporting layers |
 |---|---|---|
-| S1 Buzz interactive | `verify-fleet.sh`, `check-loaded.sh` | L5 |
+| S1 Buzz interactive | `bin/verify.sh` (from 2026-09-03), then `verify-fleet.sh`, `check-loaded.sh` | L5 |
 | S2 Scheduled headless CC | `bin/verify.sh` | L2, L3 |
 | ~~S3 Hermes kanban~~ | — | — (surface **retired 2026-09-02**, D7; §7.2) |
 | S4 Buzz-dispatched scheduled | `bin/verify.sh` | L2, L5 |
+
+S1's blocking gate changed on 2026-09-03 (brief 7) and the ordering in that cell is the
+point. `bin/verify.sh` now owns the half that is decidable from a checkout — the dispatch
+DAG's shape, `require_mention` on every rule, the absence of key material in `buzz-team/`,
+and the route-table/TEAM.md kind agreement. `verify-fleet.sh` and `check-loaded.sh` keep the
+half that needs live `/proc`, a live relay and the deny-listed `~/.config/buzz-agents/` tree.
+Neither can do the other's job, and before brief 7 the first half was done by nobody: all 26
+`[[workflows]]` entries were platform, scheduled or buzz_dispatch, so every DM, channel post
+and forum thread on this box was invisible to the coverage checker, the status vocabulary and
+the suite requirement. Nothing was failing and nothing was looking.
 
 ### Suite ownership has two valid owners, not one
 

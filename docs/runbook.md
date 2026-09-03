@@ -165,9 +165,11 @@ install -m 600 profiles/<job>.env.example ~/.config/agent-workforce/<job>.env
 `config/job-overrides/`, and the `install` example named
 `config/job-overrides/augustus-content.env.example` — a path that has existed only under
 `archive/` since 2026-09-01. Following it provisioned a retired runtime. That directory now
-holds history and a pointer; see `config/job-overrides/README.md`, including the two live
-jobs (`augustus-content`, `bd-stall-radar`) that still have no example and must be derived
-from their unit journal rather than from `archive/`.
+holds history and a pointer; see `config/job-overrides/README.md`, including the two jobs
+(`augustus-content`, standing and enabled; `bd-stall-radar`, dormant and disabled) with no
+example in the live home. `archive/` holds one each and neither is a template — augustus's
+still names `kanban_run_and_wait.sh`, retired with the Hermes kanban — so derive the wiring
+from the unit's own journal rather than from `archive/`.
 
 Supporting daemons (not override-driven):
 
@@ -238,6 +240,83 @@ rsync -a --delete \
 rsync -a ~/dev/agent-workforce/profiles/ ~/agent-workforce/profiles/
 rsync -a ~/dev/agent-workforce/docs/ ~/agent-workforce/docs/
 ```
+
+## S1 — the Buzz interactive surface (brief 7, 2026-09-03)
+
+The five `buzz-agent@*` `--user` units. Their **mechanism** files have a source here
+(`buzz-team/`) as of 2026-09-03; their **charters** do not and will not — those live in the
+deny-listed `~/.config/buzz-agents/` tree, and `profile_in_repo = false` in each manifest is
+how that is declared rather than assumed.
+
+### The loop
+
+```
+edit buzz-team/<file>
+  ->  bash bin/deploy_buzz_team.sh --dry-run      # what would change
+  ->  bash bin/deploy_buzz_team.sh                # converge; RESTARTS NOTHING
+  ->  systemctl --user restart buzz-agent@<name>  # by hand, per agent — see below
+  ->  bash bin/verify.sh                          # drift + the S1 suites
+  ->  ~/.config/buzz-team/verify-fleet.sh         # machine-level gate, ~/CLAUDE.md owns it
+```
+
+**`bin/deploy_buzz_team.sh` is not `bin/deploy`, and adding `buzz-team` to `bin/deploy`'s
+`PATHS` is the wrong fix.** That script's three destination guards are specific to the
+runtime tree; this one has its own (the five rule files must already exist in the
+destination, the destination must not be a git tree, and source must not equal destination).
+The adopted list comes from `buzz-team/MANIFEST.toml`, never from a glob, so a file added to
+the directory without being declared is not silently shipped.
+
+**Nothing restarts on its own, and the converge says so on every run.** A rule file is read
+**at process start only** — an edited `.toml` sits unread while you re-debug the symptom you
+already fixed. Prove the running process loaded it before concluding a fix did not work:
+
+```bash
+stat -c %y ~/.config/buzz-team/marcus.toml
+systemctl --user show buzz-agent@marcus -p ExecMainStartTimestamp
+```
+
+If the file is newer, you have not tested the fix yet.
+
+**A malformed filter expression crash-loops the unit.** Filter compilation is *eager*, so a
+bad rule is not one that silently never matches — it is an agent that will not stay up. That
+is the safe direction, and it is why an edit here is a restart rather than a reload. Restart
+one agent, confirm it is up, then move to the next; do not restart all five at once.
+
+### Which gate owns what
+
+| Question | Gate | Where it runs |
+|---|---|---|
+| Does the dispatch DAG still have the shape it claims? Does every rule require a mention? Is there key material in `buzz-team/`? | `tests/test_buzz_interactive_harness.sh` | `bin/verify.sh`, anywhere |
+| Do the source route table and the live `TEAM.md` agree about event kinds? | `buzz-team/check-team-kinds.py` | `bin/verify.sh`, box-gated |
+| Does the box match the source? | `bin/check_deploy_drift.sh` (fifth tree) | `bin/verify.sh`, box-gated |
+| Are the five processes' *runtime* knobs what the design says — isolation flags from `/proc`, connector denies, secret-path containment? | `~/.config/buzz-team/verify-fleet.sh` | by hand; `~/CLAUDE.md` § Verification |
+| Did the running process read the config, and do the credential halves match? | `~/.config/buzz-agents/check-loaded.sh` | by hand; reports `STALE` / `BADAUTH` |
+| Can an agent actually **complete a turn**? | `fleet-turn-check.service` | hourly, on the box |
+
+The split is not arbitrary. Rows 1–3 are decidable from a checkout, so they belong in the PR
+gate. Rows 4–5 need live `/proc`, a live relay and the deny-listed tree — running them from a
+gate would make a PR red for box state rather than for the diff. Row 6 costs a real model
+turn. Adoption made the code reviewable; it did not make the runtime assertable.
+
+### Three failures that are silent by construction
+
+Full detail, each with its evidence, is `design/contracts/buzz-interactive.md`. In short:
+
+1. **buzz-acp never auto-publishes.** A turn that computes an answer and ends publishes
+   nothing and still reports `ok`. Only `buzz messages send` publishes. `fleet-turn-check` is
+   the only thing that catches it.
+2. **The kind belongs to the destination.** A kind-9 post into a forum channel is accepted by
+   the relay, receipted `ok`, and rendered to nobody. `bin/buzz_routes.env` is the owner;
+   `TEAM.md` follows it.
+3. **An unresolved mention is sent with no `p` tag.** It reaches the channel addressed to
+   nobody and looks exactly like a dead unit. Check the event's `tags` — and note the
+   read-back trap: `buzz messages get` has no `p_tags` field and no `reply_to` field, so a
+   checker reading those invented names prints empty and imitates the real failure.
+
+And one that is not silent but reads as unrelated: `journalctl --user -u buzz-agent@<name>`
+logs **lifecycle only** — start, shutdown, subscribe, reconnect — never a line per message.
+A silent journal during a live turn is the normal case. Prove work by `CPUUsageNSec` against
+an idle sibling, not by the absence of log lines.
 
 ## Daily rhythm jobs — daily plan + EOD summary (NUC-45)
 

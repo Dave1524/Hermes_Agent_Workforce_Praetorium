@@ -13,7 +13,7 @@ status  = "live"
 # also why he alone hits the context ceiling (memory: marcus-context-overflow).
 [surfaces.interactive]
 present     = true
-governed_by = "~/.config/buzz-team/marcus.toml"
+governed_by = "buzz-team/marcus.toml"      # SOURCE. Deployed to ~/.config/buzz-team/marcus.toml by bin/deploy_buzz_team.sh; the box path is the destination (brief 7)
 admits      = ["owner", "praetorium"]
 channels    = "all"
 tools       = ["claude-code-builtins", "mcp__qmd-mcp__*", "notion_* (7, via broker)"]
@@ -105,6 +105,38 @@ status   = "standing"
 suite    = ["tests/test_weekly_pre_assembly_smoke.sh"]
 notes    = "Hermes-era claudius task; ownership moved to marcus 2026-09-01 (registry §7.2)."
 
+
+# --- S1. The interactive surface enters the registry (brief 7). It was documented and
+# --- ungoverned: all 26 [[workflows]] entries were platform, scheduled or buzz_dispatch,
+# --- so every DM, channel post and forum thread on this box was invisible to the coverage
+# --- checker, the status vocabulary and the suite requirement. Nothing was failing and
+# --- nothing was looking.
+[[workflows]]
+unit     = "buzz-agent@marcus"
+surface  = "interactive"
+scope    = "user"
+kind     = "service"             # Type=simple, no timer. See config/fleet-units.tsv.
+trigger  = "event-driven — a Buzz mention or DM; no OnCalendar, the unit is always on"
+model    = "from the run log, not the deny-listed env"
+profile  = "~/.config/buzz-agents/marcus.prompt (deny-listed; no repo source)"
+profile_in_repo = false          # deny-listed box path, not a repo file — see notes
+runner   = "buzz-team/buzz-acp-launch.sh"
+contract = "design/contracts/buzz-interactive.md"   # ONE contract, five owners — it says why in its header
+status   = "standing"
+suite    = ["tests/test_buzz_interactive_harness.sh"]
+in_repo  = true
+notes    = """
+`model` and `profile` are stated as unreadable rather than guessed, using the same
+convention as praetorium-daily-plan's `model` above. Both come from
+~/.config/buzz-agents/marcus.env and .prompt, which are deny-listed; the charter has no
+repo source and brief 7 did not give it one (mechanism in, prose out —
+buzz-team/MANIFEST.toml states the rule).
+
+`trigger` is not an OnCalendar and no consumer reads it as one: test_workflow_coverage.py
+never reads the field, and the timer-family check walks systemd/**/*.timer, which this unit
+has none of. `kind = "service"` is what keeps the three reporting jobs from rendering a
+permanently-live agent as a unit that has never fired.
+"""
 
 # Capability prohibitions. enforced = true means a mechanism blocks it today;
 # enforced = false means it is stated policy that nothing currently prevents.

@@ -9,7 +9,7 @@ status  = "live"
 
 [surfaces.interactive]
 present     = true
-governed_by = "~/.config/buzz-team/claudius.toml"
+governed_by = "buzz-team/claudius.toml"      # SOURCE. Deployed to ~/.config/buzz-team/claudius.toml by bin/deploy_buzz_team.sh; the box path is the destination (brief 7)
 admits      = ["owner", "praetorium", "marcus"]
 channels    = "all"
 tools       = ["claude-code-builtins", "mcp__qmd-mcp__*", "notion_* (7, via broker)"]
@@ -129,6 +129,22 @@ suite    = ["tests/test_bd_followup_drafts_smoke.sh"]
 contract = "design/contracts/bd-followup-drafts.md"       # TODO Phase B
 notes    = "23:30 clears the 04:30/05:30/06:00 jobs sharing agent_propose.sh's global flock — a collision there is a silent SKIP, not a failure (agent-model.md §6.6)."
 
+
+# --- S1, brief 7. See marcus.toml for why these five entries exist and what `kind` does.
+[[workflows]]
+unit     = "buzz-agent@claudius"
+surface  = "interactive"
+scope    = "user"
+kind     = "service"
+trigger  = "event-driven — a Buzz mention or DM; no OnCalendar, the unit is always on"
+model    = "from the run log, not the deny-listed env"
+profile  = "~/.config/buzz-agents/claudius.prompt (deny-listed; no repo source)"
+profile_in_repo = false          # deny-listed box path, not a repo file — see notes
+runner   = "buzz-team/buzz-acp-launch.sh"
+contract = "design/contracts/buzz-interactive.md"   # ONE contract, five owners — it says why in its header
+status   = "standing"
+suite    = ["tests/test_buzz_interactive_harness.sh"]
+in_repo  = true
 
 # Capability prohibitions. enforced = true means a mechanism blocks it today;
 # enforced = false means it is stated policy that nothing currently prevents.

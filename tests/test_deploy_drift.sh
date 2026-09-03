@@ -39,7 +39,7 @@ assert 'a found pattern is never reported as a failure' "yes | grep -q y"
 
 fixture() {
   root=$(mktemp -d)
-  mkdir -p "$root"/{src_bin,run_bin,src_sys,etc,src_user,user}
+  mkdir -p "$root"/{src_bin,run_bin,src_sys,etc,src_user,user,src_buzz,buzz}
   # Every comparison needs a non-empty source side, or the checker reports the empty glob
   # instead of the class under test. D1's first measurement globbed a path that did not
   # exist and returned a clean 0 for every connector; the checker refuses to repeat it.
@@ -50,12 +50,28 @@ fixture() {
   printf '' > "$root/ownership.toml"
   mkdir -p "$root/manifests"
   printf '' > "$root/manifests/none.toml"
+  # The fifth tree gets a synthetic pair like every other. Leaving it unset would point the
+  # buzz comparison at the REAL repo tree and the REAL ~/.config/buzz-team — the live box,
+  # which this suite's header forbids as a comparison side and which would make every
+  # `clean` assertion below depend on fleet state.
+  echo 'rules' > "$root/src_buzz/shared.toml"
+  echo 'rules' > "$root/buzz/shared.toml"
+  cat > "$root/src_buzz/MANIFEST.toml" <<'TOML'
+[[adopted]]
+path = "shared.toml"
+why  = "fixture"
+[[excluded]]
+path = "PROSE.md"
+why  = "fixture prose"
+TOML
 }
 
 drift() { # runs the checker against the current fixture; extra env comes from the caller
   DRIFT_SRC_BIN="$root/src_bin" DRIFT_RUNTIME_BIN="$root/run_bin" \
   DRIFT_SRC_SYSTEM="$root/src_sys" DRIFT_ETC="$root/etc" \
   DRIFT_SRC_USER="$root/src_user" DRIFT_USER="$root/user" \
+  DRIFT_SRC_BUZZ="$root/src_buzz" DRIFT_BUZZ="$root/buzz" \
+  DRIFT_BUZZ_MANIFEST="$root/src_buzz/MANIFEST.toml" \
   DRIFT_OWNERSHIP="$root/ownership.toml" DRIFT_MANIFESTS="$root/manifests" \
   DRIFT_NOW="${NOW_FIXTURE:-2026-09-02 12:00:00}" \
   bash "$CHECK" 2>&1
@@ -248,8 +264,18 @@ assert 'the timer is in the fleet unit list, or no report can see it' \
 # cannot — it never prints a unit systemd has not loaded. Both must be fed by the list.
 # That the OTHER five consumers read the list is asserted once, in tests/test_fleet_ownership.sh;
 # re-asserting it here would be a second copy of the fact this list exists to remove.
-assert 'praetorium-status.sh feeds the derived list to BOTH of its sites' \
-  "[ \"\$(grep -c 'fleet_units system' '$REPO/bin/praetorium-status.sh')\" -eq 2 ]"
+# RESPELLED 2026-09-03 (brief 7), not relaxed. The accessor gained a `kind` argument and a
+# refusing wrapper, so `fleet_units system` no longer appears anywhere and the old assertion
+# went red on a correct script — the same failure mode the W3 note above describes, one
+# paragraph later. The invariant is unchanged: BOTH system-timer sites read the derived list.
+assert 'praetorium-status.sh feeds the derived list to BOTH of its system-timer sites' \
+  "[ \"\$(grep -c 'fleet_or_die system timer' '$REPO/bin/praetorium-status.sh')\" -eq 2 ]"
+# And the wrapper is the ONLY accessor a consumer may call. fleet_units returns empty for a
+# missing, empty or still-4-column TSV, and empty is what lets a report say "nothing
+# scheduled" about a list it could not read; fleet_or_die turns that into a refusal. A site
+# that calls the raw accessor has opted out of the refusal without saying so.
+assert 'and every consumption site goes through the refusing wrapper' \
+  "[ \"\$(grep -c 'fleet_or_die ' '$REPO/bin/praetorium-status.sh')\" -eq 4 ] && [ \"\$(grep -cE '[(]fleet_units ' '$REPO/bin/praetorium-status.sh')\" -eq 1 ]"
 
 registered=$(python3 - <<'PY'
 import pathlib, tomllib
@@ -269,6 +295,8 @@ fixture
 out=$(DRIFT_SRC_BIN="$root/run_bin" DRIFT_RUNTIME_BIN="$root/run_bin" \
       DRIFT_SRC_SYSTEM="$root/src_sys" DRIFT_ETC="$root/etc" \
       DRIFT_SRC_USER="$root/src_user" DRIFT_USER="$root/user" \
+      DRIFT_SRC_BUZZ="$root/src_buzz" DRIFT_BUZZ="$root/buzz" \
+      DRIFT_BUZZ_MANIFEST="$root/src_buzz/MANIFEST.toml" \
       DRIFT_OWNERSHIP="$root/ownership.toml" DRIFT_MANIFESTS="$root/manifests" \
       bash "$CHECK" 2>&1); rc=$?
 assert 'source and runtime resolving to one tree is refused, not reported clean' "[ $rc -eq 2 ]"
@@ -279,6 +307,8 @@ assert 'and says which tree collapsed' "saw 'same tree'"
 out=$(DRIFT_SRC_BIN="$root/src_bin" DRIFT_RUNTIME_BIN="$root/run_bin" \
       DRIFT_SRC_SYSTEM="$root/src_sys" DRIFT_ETC="$root/etc" \
       DRIFT_SRC_USER="$root/src_user" DRIFT_USER="$root/user" \
+      DRIFT_SRC_BUZZ="$root/src_buzz" DRIFT_BUZZ="$root/buzz" \
+      DRIFT_BUZZ_MANIFEST="$root/src_buzz/MANIFEST.toml" \
       DRIFT_OWNERSHIP="$root/nope.toml" DRIFT_MANIFESTS="$root/manifests" \
       bash "$CHECK" 2>&1); rc=$?
 assert 'absent ownership declarations are refused, never an empty exclusion set' "[ $rc -eq 2 ]"
@@ -308,6 +338,8 @@ echo '[Unit]' > "$root/etc/hand-installed.timer"
 out=$(DRIFT_SRC_BIN="$root/src_bin" DRIFT_RUNTIME_BIN="$root/run_bin" \
       DRIFT_SRC_SYSTEM="$root/src_sys" DRIFT_ETC="$root/etc" \
       DRIFT_SRC_USER="$root/src_user" DRIFT_USER="$root/user" \
+      DRIFT_SRC_BUZZ="$root/src_buzz" DRIFT_BUZZ="$root/buzz" \
+      DRIFT_BUZZ_MANIFEST="$root/src_buzz/MANIFEST.toml" \
       DRIFT_OWNERSHIP="$root/ownership.toml" DRIFT_MANIFESTS="$root/manifests" \
       bash "$CHECK" --scope bin 2>&1); rc=$?
 assert '--scope bin ignores an /etc-only unit deploy cannot install' "[ $rc -eq 0 ]"
@@ -335,6 +367,196 @@ capture
 assert 'the same entry scoped to etc does NOT silence it' \
   "saw 'DRIFT \[user\] live-only: not-ours.service'"
 rm -rf "$root"
+
+echo "--- 14b. the fifth tree: buzz-team/ <-> ~/.config/buzz-team ---"
+# S1's mechanism tree. Brief 2 sourced the --user units and left everything those units READ
+# unsourced, so the fleet's core unit was in the repo and its entire configuration was not.
+# The two membership directions are DIFFERENT BUGS WITH DIFFERENT FIXES and are proven
+# separately: source-only means the box is not running what the repo says (run
+# bin/deploy_buzz_team.sh, then restart); box-only means a rebuild from source loses the file
+# (adopt it, or declare it excluded).
+fixture
+echo 'rules' > "$root/src_buzz/marcus.toml"
+capture
+assert 'a repo-side file the box does not have is red, and it is UNDECLARED that is reported' \
+  "saw 'DRIFT \[buzz\] source-only: marcus.toml is in .* declared in no MANIFEST.toml'"
+cat >> "$root/src_buzz/MANIFEST.toml" <<'TOML'
+[[adopted]]
+path = "marcus.toml"
+why  = "declared, so the finding must change from undeclared to undeployed"
+TOML
+capture
+assert 'declaring it changes the finding to "not on the box" — a converge, not an adoption' \
+  "saw 'DRIFT \[buzz\] source-only: marcus.toml is not on the box'"
+echo 'rules' > "$root/buzz/marcus.toml"
+capture
+assert 'converging it clears the finding' "clean"
+echo 'edited-on-the-box' > "$root/buzz/marcus.toml"
+capture
+assert 'and a hand-edit to the live copy is then caught' \
+  "saw 'DRIFT \[buzz\] content differs: marcus.toml'"
+rm -rf "$root"
+
+fixture
+echo 'prose' > "$root/buzz/PROSE.md"
+capture
+assert 'a DECLARED box-only exclusion is not drift — prose stays machine-level by design' "clean"
+assert 'and is named, because an absence cannot be told from a deletion' \
+  "saw 'box-only: PROSE.md — declared excluded'"
+echo 'prose' > "$root/buzz/UNDECLARED.md"
+capture
+assert 'an UNDECLARED box-only file is red — a rebuild from source loses it' \
+  "saw 'DRIFT \[buzz\] box-only: UNDECLARED.md'"
+rm -rf "$root"
+
+echo "--- 14b-iii. buzz-team: present in BOTH trees, declared in neither list ---"
+# The third membership case, and the one the two above cannot reach: present in BOTH trees.
+# Until 2026-09-03 an undeclared file here fell through to `cmp`, matched, and passed — so
+# the header's "an undeclared file in EITHER tree is red" held for each direction separately
+# and for neither together. It is also the likeliest shape of the bug, because the way an
+# undeclared file arrives in both trees is somebody copying it into both.
+fixture
+echo 'hand-copied' > "$root/src_buzz/SIDECAR.toml"
+echo 'hand-copied' > "$root/buzz/SIDECAR.toml"
+capture
+assert 'a byte-identical file in both trees, declared nowhere, is red' \
+  "saw 'DRIFT \[buzz\] in both trees: SIDECAR.toml is declared in no MANIFEST.toml entry'"
+cat >> "$root/src_buzz/MANIFEST.toml" <<'TOML'
+[[adopted]]
+path = "SIDECAR.toml"
+why  = "declaring it is the fix, and the finding must then clear"
+TOML
+capture
+assert 'declaring it adopted clears the finding' "clean"
+rm -rf "$root"
+
+# The mirror case: an `excluded` entry asserts the box holds the file and this repo does not.
+# A source copy falsifies that, and reporting it as merely "excluded, skipping" would let a
+# stale exclusion hide a real adoption.
+fixture
+echo 'prose' > "$root/buzz/PROSE.md"
+echo 'prose' > "$root/src_buzz/PROSE.md"
+capture
+assert 'an EXCLUDED file that has grown a source copy is red, not silently skipped' \
+  "saw 'DRIFT \[buzz\] in both trees: PROSE.md is declared EXCLUDED'"
+rm -rf "$root"
+
+fixture
+rm -f "$root/src_buzz/MANIFEST.toml"
+out=$(drift); rc=$?
+assert 'a missing buzz-team MANIFEST.toml is a refusal to run, not an empty exclusion set' \
+  "[ $rc -eq 2 ]"
+assert 'and the refusal names the declaration it could not find' "saw 'MANIFEST.toml'"
+rm -rf "$root"
+
+fixture
+# Same tautology as the bin half, one tree over: a tree compared with itself reports zero
+# findings whatever either side contains.
+out=$(DRIFT_SRC_BIN="$root/src_bin" DRIFT_RUNTIME_BIN="$root/run_bin" \
+      DRIFT_SRC_SYSTEM="$root/src_sys" DRIFT_ETC="$root/etc" \
+      DRIFT_SRC_USER="$root/src_user" DRIFT_USER="$root/user" \
+      DRIFT_SRC_BUZZ="$root/buzz" DRIFT_BUZZ="$root/buzz" \
+      DRIFT_BUZZ_MANIFEST="$root/src_buzz/MANIFEST.toml" \
+      DRIFT_OWNERSHIP="$root/ownership.toml" DRIFT_MANIFESTS="$root/manifests" \
+      bash "$CHECK" 2>&1); rc=$?
+assert 'buzz source and live resolving to one tree is refused, not reported clean' "[ $rc -eq 2 ]"
+assert 'and says which tree collapsed' "saw 'same directory'"
+rm -rf "$root"
+
+echo "--- 14c. the converge path is a separate script, and it restarts nothing ---"
+# Criterion 8-10. bin/deploy owns ONE $DEST behind three refusals that are all about the
+# agent-workforce runtime tree; a config directory satisfies none of them, and loosening them
+# to fit a second destination weakens the guard protecting the first.
+CONVERGE="$REPO/bin/deploy_buzz_team.sh"
+assert 'bin/deploy_buzz_team.sh exists and is executable' "[ -x '$CONVERGE' ]"
+assert 'bin/deploy still ships exactly its eight paths — buzz-team is NOT one of them' \
+  "! grep -qE '^PATHS=.*buzz-team' '$REPO/bin/deploy'"
+assert 'it says out loud that the fleet is still on the old config' \
+  "grep -q 'NOTHING WAS RESTARTED' '$CONVERGE'"
+assert '--dry-run is a documented mode' "grep -q -- '--dry-run' '$CONVERGE'"
+
+# Proven by RUNNING it under a systemctl stub, not by grepping for the word. The script
+# PRINTS `systemctl --user restart buzz-agent@marcus` inside a quoted heredoc, so a grep
+# cannot tell the instruction it hands a human from a call it makes itself — and it is
+# precisely that distinction the assertion is about. Five live agents: a converge that
+# restarted them would take the fleet down on a malformed filter, because buzz-acp compiles
+# every filter eagerly at startup.
+guard_root=$(mktemp -d)
+mkdir -p "$guard_root/stub" "$guard_root/dest" "$guard_root/notbuzz"
+cat > "$guard_root/stub/systemctl" <<STUB
+#!/bin/sh
+echo "\$@" >> "$guard_root/systemctl-was-called"
+STUB
+chmod +x "$guard_root/stub/systemctl"
+for f in marcus claudius augustus trajan aurelian; do
+  cp "$REPO/buzz-team/$f.toml" "$guard_root/dest/$f.toml"
+done
+echo 'stale' > "$guard_root/dest/marcus.toml"
+converge_out=$(PATH="$guard_root/stub:$PATH" BUZZ_TEAM_DEST="$guard_root/dest" \
+               bash "$CONVERGE" 2>&1); converge_rc=$?
+assert 'a real converge writes the drifted file and exits 0' \
+  "[ $converge_rc -eq 0 ] && cmp -s '$REPO/buzz-team/marcus.toml' '$guard_root/dest/marcus.toml'"
+assert 'and it invoked systemctl exactly never — the fleet is still on the old config' \
+  "[ ! -e '$guard_root/systemctl-was-called' ]"
+assert 'while telling the human which command to run' \
+  "grep -q 'systemctl --user restart buzz-agent@' <<<\"\$converge_out\""
+
+# Its destination guard, proven by pointing it at a directory that is not the live tree.
+assert 'it refuses a destination that lacks the five rule files' \
+  "! BUZZ_TEAM_DEST='$guard_root/notbuzz' bash '$CONVERGE' --dry-run >/dev/null 2>&1"
+assert 'it refuses a destination that does not exist' \
+  "! BUZZ_TEAM_DEST='$guard_root/absent' bash '$CONVERGE' --dry-run >/dev/null 2>&1"
+# --dry-run is the documented first step, so it must not write. Asserted by re-drifting the
+# destination and checking the file is still wrong afterwards.
+echo 'stale-again' > "$guard_root/dest/marcus.toml"
+PATH="$guard_root/stub:$PATH" BUZZ_TEAM_DEST="$guard_root/dest" \
+  bash "$CONVERGE" --dry-run >/dev/null 2>&1
+assert '--dry-run reports the change and writes nothing' \
+  "[ \"\$(cat '$guard_root/dest/marcus.toml')\" = 'stale-again' ]"
+
+# The manifest is a WRITE DESTINATION, not just a selector. `path` reaches
+# `cp -p "$SRC/$f" "$DEST/$f"` with no validation, and the destination guard above proves
+# things about $DEST that a `../` in $f walks straight out of. The escape is also silent
+# afterwards: bin/check_deploy_drift.sh enumerates both trees with
+# `find -maxdepth 1 -type f -printf '%f\n'`, so a file written through a path component is
+# absent from both membership directions and the drift check reports clean.
+#
+# Asserted by running the real thing, with the escape target PRESENT in the source — the
+# pre-existing "declared file absent from source" refusal already covers the absent case, and
+# a test that only covered that would pass with the guard deleted. Measured 2026-09-03 on a
+# guard-stripped copy: `create   ../payload.toml`, `1 file(s) written.`, exit 0 — reported as
+# a clean converge.
+trav="$guard_root/trav"
+mkdir -p "$trav/src" "$trav/live/dest"
+for f in marcus claudius augustus trajan aurelian; do
+  cp "$REPO/buzz-team/$f.toml" "$trav/src/$f.toml"
+  cp "$REPO/buzz-team/$f.toml" "$trav/live/dest/$f.toml"
+done
+# $SRC/../payload.toml resolves to $trav/payload.toml and EXISTS, so the pre-existing
+# "declared file absent from source" refusal cannot be what stops this. $DEST/../payload.toml
+# resolves to $trav/live/payload.toml — a different directory, which is why the fixture nests
+# the destination one level deeper than the source.
+printf 'PAYLOAD\n' > "$trav/payload.toml"
+# The legitimate entry is left DRIFTED so the half-converge assertion below can fail. With
+# dest already matching source there is nothing to write and the check passes vacuously.
+printf 'stale-trav\n' > "$trav/live/dest/marcus.toml"
+cat > "$trav/src/MANIFEST.toml" <<'TRAVMAN'
+[[adopted]]
+path = "marcus.toml"
+[[adopted]]
+path = "../payload.toml"
+TRAVMAN
+trav_out=$(PATH="$guard_root/stub:$PATH" BUZZ_TEAM_SRC="$trav/src" BUZZ_TEAM_DEST="$trav/live/dest" \
+           bash "$CONVERGE" 2>&1); trav_rc=$?
+assert 'a manifest path with a directory component is refused, not written' "[ $trav_rc -ne 0 ]"
+assert 'and it names the offending path rather than failing generically' \
+  "grep -q -- '../payload.toml' <<<\"\$trav_out\""
+assert 'nothing escaped the destination' "[ ! -e '$trav/live/payload.toml' ]"
+# The refusal is a SET check, before any write — a half-converge that refuses on the second
+# entry has already shipped the first, and the operator sees a failure over a changed tree.
+assert 'and the legitimate entry ahead of it was not written either' \
+  "[ \"\$(cat '$trav/live/dest/marcus.toml')\" = 'stale-trav' ]"
+rm -rf "$guard_root"
 
 echo "--- 15. a .conf outside a *.d directory is not a drop-in ---"
 fixture

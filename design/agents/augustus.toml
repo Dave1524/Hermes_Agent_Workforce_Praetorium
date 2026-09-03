@@ -13,7 +13,7 @@ status  = "live"
 
 [surfaces.interactive]
 present     = true
-governed_by = "~/.config/buzz-team/augustus.toml"
+governed_by = "buzz-team/augustus.toml"      # SOURCE. Deployed to ~/.config/buzz-team/augustus.toml by bin/deploy_buzz_team.sh; the box path is the destination (brief 7)
 admits      = ["owner", "praetorium", "marcus"]
 channels    = "all"
 tools       = ["codex-builtins", "mcp__qmd-mcp__*", "notion_* (7, via broker)"]
@@ -118,6 +118,30 @@ suite    = []
 expires  = "2026-09-04 01:30"
 notes    = "agent-model.md §6.5 and §6.7. Logged one silent lock-skip on 2026-08-31 (§6.6)."
 
+
+# --- S1, brief 7. See marcus.toml for why these five entries exist and what `kind` does.
+[[workflows]]
+unit     = "buzz-agent@augustus"
+surface  = "interactive"
+scope    = "user"
+kind     = "service"
+trigger  = "event-driven — a Buzz mention or DM; no OnCalendar, the unit is always on"
+model    = "from the run log, not the deny-listed env"
+profile  = "~/.config/buzz-agents/augustus.prompt (deny-listed; no repo source)"
+profile_in_repo = false          # deny-listed box path, not a repo file — see notes
+runner   = "buzz-team/buzz-acp-launch.sh"
+contract = "design/contracts/buzz-interactive.md"   # ONE contract, five owners — it says why in its header
+status   = "standing"
+suite    = ["tests/test_buzz_interactive_harness.sh"]
+in_repo  = true
+notes    = """
+The harness exception, and it matters for what this entry may be credited with. A drop-in
+swaps his ExecStart to codex-acp, so CLAUDE_CODE_EXECUTABLE and buzz-team/agent-settings.json
+are INERT for him — his connector absence is a property of his namespace, asserted separately
+by tests/test_fleet_guards.sh::augustus-no-claude-connectors. Do not credit the wrapper for
+him. buzz-team/augustus.toml still governs his dispatch: the rules file is read by buzz-acp,
+which is upstream of the harness swap.
+"""
 
 # Capability prohibitions. enforced = true means a mechanism blocks it today;
 # enforced = false means it is stated policy that nothing currently prevents.

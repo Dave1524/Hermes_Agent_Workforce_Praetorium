@@ -23,8 +23,31 @@ run_or_note() {
 # Resolved relative to this script so it works from the repo and from ~/agent-workforce/;
 # design/ is not deployed, so reading the manifests here would empty silently in the runtime.
 FLEET_UNITS="$(dirname "$0")/../config/fleet-units.tsv"
-fleet_units() {  # $1 = scope
-  awk -F'\t' -v want="$1" '!/^#/ && NF>=3 && $2==want && $3=="standing" {print $1}' "$FLEET_UNITS"
+# `kind` (column 5) is not optional here. The five buzz-agent@* rows are Type=simple
+# services with no timer; appending ".timer" to them asks the manager for a unit that does
+# not exist, and `systemctl list-timers` answers that by SILENTLY DROPPING the name — rc=0,
+# empty stderr, "1 timers listed" for six units requested. Measured 2026-09-03.
+fleet_units() {  # $1 = scope, $2 = kind (timer|service|any)
+  awk -F'\t' -v want="$1" -v kind="${2:-any}" \
+    '!/^#/ && NF>=5 && $2==want && $3=="standing" && (kind=="any" || $5==kind) {print $1}' \
+    "$FLEET_UNITS"
+}
+
+# An EMPTY derived list must be LOUD. `NF>=5` matches nothing against a 4-column
+# (pre-2026-09-03) copy of the list — which is what ~/agent-workforce/config/ still holds
+# until bin/deploy runs — and `systemctl list-timers` with an empty argument array lists
+# EVERY timer on the box (44, measured 2026-09-03). So the failure mode of a stale list is a
+# full-looking report derived from nothing, which is strictly worse than the glob this
+# replaced. Checking readability is not enough; the RESULT has to be checked.
+fleet_or_die() {  # scope, kind -> prints units, or refuses
+  local out
+  out=$(fleet_units "$1" "$2")
+  if [ -z "$out" ]; then
+    echo "  FATAL: $FLEET_UNITS declares no $1/$2 units — missing, empty, or still 4-column." >&2
+    echo "  Unit coverage is UNKNOWN, not 'none'." >&2
+    return 1
+  fi
+  printf '%s\n' "$out"
 }
 
 {
@@ -93,18 +116,37 @@ fleet_units() {  # $1 = scope
   if [ ! -r "$FLEET_UNITS" ]; then
     echo "(FATAL: cannot read $FLEET_UNITS — unit coverage unknown, not 'nothing to report')"
   else
-    mapfile -t _sys < <(fleet_units system)
-    run_or_note systemctl list-timers "${_sys[@]/%/.timer}" --no-pager
+    mapfile -t _sys < <(fleet_or_die system timer)
+    if [ ${#_sys[@]} -eq 0 ]; then
+      echo "(UNKNOWN — see FATAL above; NOT 'no timers')"
+    else
+      run_or_note systemctl list-timers "${_sys[@]/%/.timer}" --no-pager
+    fi
 
     section "Systemd timers (user scope)"
     # Separate call, separate manager. A user unit queried system-scope returns not-found,
     # which reads identically to a unit that has been removed.
-    mapfile -t _usr < <(fleet_units user)
+    mapfile -t _usr < <(fleet_or_die user timer)
     if [ ${#_usr[@]} -gt 0 ]; then
       run_or_note env XDG_RUNTIME_DIR="/run/user/$(id -u)" \
         systemctl --user list-timers "${_usr[@]/%/.timer}" --no-pager
     else
-      echo "(no user-scope standing units declared)"
+      echo "(UNKNOWN — see FATAL above; NOT 'no user-scope timers')"
+    fi
+
+    section "Systemd services, user scope (kind=service — always-on, no timer)"
+    # These have no next-elapse to report, so absence from the timer list above is correct
+    # and their state has to be asked for separately. A permanently-live unit is exactly the
+    # kind a schedule-shaped report renders as "never fired".
+    mapfile -t _usrsvc < <(fleet_or_die user service)
+    if [ ${#_usrsvc[@]} -gt 0 ]; then
+      for u in "${_usrsvc[@]}"; do
+        st=$(XDG_RUNTIME_DIR="/run/user/$(id -u)" \
+               systemctl --user is-active "$u.service" 2>/dev/null || true)
+        printf '  %-28s active=%s\n' "$u.service" "${st:-UNKNOWN}"
+      done
+    else
+      echo "(UNKNOWN — see FATAL above; NOT 'no user-scope services')"
     fi
 
     section "Recent unit results"
@@ -132,7 +174,7 @@ fleet_units() {  # $1 = scope
       systemctl show "$u.service" \
         -p ActiveState -p Result -p ExecMainStatus -p ExecMainStartTimestamp 2>/dev/null \
         | paste -sd' ' - || echo "(unit unknown)"
-    done < <(fleet_units system)
+    done < <(fleet_or_die system any)
   fi
 
   section "Box clock sanity"

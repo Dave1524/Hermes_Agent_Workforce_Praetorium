@@ -1,0 +1,203 @@
+# buzz-team/MANIFEST.toml — what this tree is, and what is deliberately NOT in it.
+#
+# THIS TREE IS THE SOURCE; ~/.config/buzz-team/ IS THE DESTINATION. It was the other way
+# round until 2026-09-03: the five dispatch-rule files, the connector deny-list, the seam
+# that delivers it, the unit's real ExecStart, the MCP bridge, the Notion broker and the
+# fleet's own gate all lived only on the box, and every reference to them in design/ was a
+# `governed_by` pointer OUT of the repo. That is verbatim the finding that produced brief 2
+# one tree over — "buzz-agent@.service is in that unsourced tree AND was edited by brief 1;
+# the fleet's core unit has no source of truth". Brief 2 adopted the nine --user units and
+# stopped there, so the unit became sourced and its entire configuration did not.
+#
+# S1 — Buzz interactive: every DM, every channel message, every forum thread — is what this
+# tree governs. bin/check_deploy_drift.sh compares it against the box in BOTH membership
+# directions (source-only: the box is not running what the repo says; box-only: a rebuild
+# from source loses it), and bin/deploy_buzz_team.sh is the one-way converge back.
+#
+# ─────────────────────────────────────────────────────────────────────────────────────
+# THE RULE THAT DECIDES WHERE THE NEXT FILE GOES: MECHANISM IN, PROSE OUT.
+#
+#   MECHANISM — a file read by a PROCESS (buzz-acp, `claude`, python, bash). It has a
+#   parseable shape, a wrong version has a mechanical symptom, and a reviewer can diff it.
+#   Adopted here.
+#
+#   PROSE — a file read by an AGENT as instruction. Its correctness is judgement rather
+#   than shape, it is the class most likely to accrete client detail, and
+#   Dave1524/Hermes_Agent_Workforce_Praetorium is a PUBLIC repo that
+#   agent-workforce-auto-sync.timer pushes to within 15 minutes. Stays machine-level.
+#
+# The rule is stated here so the next file lands on the right side without a new decision.
+# It is a standing-risk boundary, not a leak finding: TEAM.md was read for client content
+# on 2026-09-03 and carries none, and its six channel UUIDs are already in
+# bin/buzz_routes.env. What it protects against is the file this tree acquires NEXT.
+#
+# AN EXCLUDED FILE IS DECLARED, NEVER MERELY ABSENT. An absence cannot be told from a
+# deletion, and the drift check reads the `excluded` list below to decide which box-side
+# files are not findings — so an undeclared file appearing in EITHER tree is red.
+#
+# ADOPT WHAT IS LIVE, THEN CHANGE IT. Every file below was copied from
+# ~/.config/buzz-team/ on 2026-09-03 and `cmp`-verified byte-for-byte. None was corrected
+# on the way in: adopting a fixed copy makes the first drift run report a difference nobody
+# made, and the reviewer then learns to ignore the check. Fixes are commits after adoption.
+#
+# NOT IN bin/verify.sh's SHELLCHECK SWEEP, and that is the same rule. The gate's scope is
+# `bin/` (CLAUDE.md § Verification); these six shell scripts arrived verbatim from the box.
+# tests/test_buzz_interactive_harness.sh asserts `bash -n` and `python3 -m py_compile` over
+# the tree instead — a corrupt adoption is caught, without a lint finding forcing an edit
+# that would break byte-identity on day one. All six are `shellcheck -S error` clean today.
+
+adopted_from = "~/.config/buzz-team/"
+adopted_on   = "2026-09-03"
+converge     = "bin/deploy_buzz_team.sh"
+drift        = "bin/check_deploy_drift.sh (fifth tree, both membership directions)"
+
+# ─── Adopted. Read by a process; diffable; drift-checked. ─────────────────────────────
+
+[[adopted]]
+path = "marcus.toml"
+read_by = "buzz-acp --config, via buzz-agent@marcus.service"
+why = "the DAG root's dispatch rules — admits owner and praetorium only, which is what keeps a worker reply from re-entering him and closing a cycle"
+
+[[adopted]]
+path = "claudius.toml"
+read_by = "buzz-acp --config, via buzz-agent@claudius.service"
+why = "worker leaf dispatch rules — owner, praetorium, marcus; never another worker"
+
+[[adopted]]
+path = "augustus.toml"
+read_by = "buzz-acp --config, via buzz-agent@augustus.service"
+why = "worker leaf dispatch rules. His harness is codex-acp, but the rules file is read by buzz-acp either way — the harness swap is downstream of dispatch"
+
+[[adopted]]
+path = "trajan.toml"
+read_by = "buzz-acp --config, via buzz-agent@trajan.service"
+why = "worker leaf dispatch rules — owner, praetorium, marcus; never another worker"
+
+[[adopted]]
+path = "aurelian.toml"
+read_by = "buzz-acp --config, via buzz-agent@aurelian.service"
+why = "the one asymmetric file: he admits all five other identities and none of theirs admits him, so his verdicts are accepted by the relay and dropped at every worker's dispatch. A sink by construction"
+
+[[adopted]]
+path = "agent-settings.json"
+read_by = "`claude --settings`, via claude-agent-wrapper.sh"
+why = "the connector deny-list that closed agent-model.md 6.1. Inert for augustus — codex permission profiles do not reach an ACP session — so his absence of connectors is asserted separately"
+
+[[adopted]]
+path = "claude-agent-wrapper.sh"
+read_by = "CLAUDE_CODE_EXECUTABLE in buzz-agent@.service"
+why = "the only seam that makes the deny-list reach an agent. --settings passed via BUZZ_ACP_AGENT_ARGS is accepted and silently ignored"
+
+[[adopted]]
+path = "buzz-acp-launch.sh"
+read_by = "ExecStart of buzz-agent@.service"
+why = "the unit's actual entry point — reads TEAM.md and hands it over as BUZZ_ACP_TEAM_INSTRUCTIONS, because buzz-acp ships no --team-instructions-file"
+
+[[adopted]]
+path = "buzz-team-mcp.py"
+read_by = "buzz-acp --mcp-command, spawned by the AGENT"
+why = "the stdio MCP bridge: proxies qmd and advertises the notion_* schema. Spawned by the agent, so it inherits the agent's namespace — which is why augustus's copy runs inside bwrap and the credential had to move to the broker"
+
+[[adopted]]
+path = "buzz-notion-broker.py"
+read_by = "buzz-notion-broker.service (--user, host namespace)"
+why = "holds the Notion write policy on the host side of the namespace split. Reads its token from the deny-listed credential file at call time (load_notion_token) and embeds none — asserted, not assumed"
+
+[[adopted]]
+path = "check-rules.py"
+read_by = "human / verify-fleet.sh"
+why = "parses the five rule files"
+
+[[adopted]]
+path = "check-team-kinds.py"
+read_by = "bin/verify.sh (box-gated) and verify-fleet.sh"
+why = "the kind table has one owner — bin/buzz_routes.env — and this is what catches TEAM.md falling behind it. A kind-9 post into a forum is receipted `ok` and rendered to nobody"
+
+[[adopted]]
+path = "notion-probe.py"
+read_by = "human / verify-fleet.sh gate 9"
+why = "runs the broker round trip by hand, from both ends of the namespace split"
+
+[[adopted]]
+path = "verify-fleet.sh"
+read_by = "human; ~/CLAUDE.md's own Verification block"
+why = "the S1 gate. Roughly twelve gates over rules files, sandbox deny-paths, charter resolution, config freshness, kind agreement, broker reachability, env knobs, roster and the aurelian calibration pin. It was the only thing standing between the DAG and a cascade, and no PR ran it"
+
+[[adopted]]
+path = "fleet-turn-check.sh"
+read_by = "fleet-turn-check.service (hourly)"
+why = "proves an agent can COMPLETE a turn. Every other signal on this box stayed green through a four-day outage. Its unit has been sourced since brief 2; the script it execs is sourced as of this one"
+
+[[adopted]]
+path = "context-cost.py"
+read_by = "human"
+why = "sizes each prompt layer separately, which is how the [Context] knob was shown to be 1.7-3.2% of a fleet prompt against 27-32 KB of static layers resent every request"
+
+[[adopted]]
+path = "trace-turn.sh"
+read_by = "human"
+why = "correlates one turn across the journal, normalising buzz-acp's UTC against journalctl's local time"
+
+[[adopted]]
+path = "watch-test.sh"
+read_by = "human"
+why = "tails a live agent turn"
+
+# ─── Excluded. Named, because absence cannot be told from deletion. ───────────────────
+
+[[excluded]]
+path = "TEAM.md"
+kind = "prose"
+why = """
+Read by every agent as team instructions (buzz-acp-launch.sh exports it as
+BUZZ_ACP_TEAM_INSTRUCTIONS). It is the largest prose surface in this tree, the one most
+likely to accrete client detail as the team's working agreements grow, and this repo is
+public. Checked for client content 2026-09-03 and it has none today — that is the reason
+this is a standing-risk boundary rather than a leak finding.
+
+Its six channel UUIDs are already in bin/buzz_routes.env, which owns them; the kind column
+of its channel table is gated by check-team-kinds.py from bin/verify.sh. So the one
+mechanical fact inside a prose file is asserted from outside it.
+"""
+
+[[excluded]]
+path = "heartbeat.prompt"
+kind = "prose"
+why = """
+The hourly self-prompt text, passed to the agent as instruction. Same class as TEAM.md and
+a smaller surface. Note what it costs to get wrong: it opens with `buzz feed get`, so an
+agent whose BUZZ_ACP_HEARTBEAT_INTERVAL is non-zero reads back history every hour —
+which is precisely why verify-fleet.sh asserts aurelian's interval is 0 from /proc rather
+than from a unit file.
+"""
+
+[[excluded]]
+path = "aurelian-calibration.md"
+kind = "prose"
+why = """
+The calibration pin, in prose, for the one agent who executes nothing. Its correctness is
+judgement end to end — there is no mechanical symptom of a wrong version, which is the
+definition of the prose side of the rule. Adopting it would put a charter in a public repo
+and give the pin a second home to drift in.
+"""
+
+[[excluded]]
+path = "backups/"
+kind = "runtime-state"
+why = """
+Dated snapshots the box writes for itself. Runtime state, not configuration — the same
+class bin/deploy excludes with --exclude='backups/' and for the same reason. It is
+declared rather than merely skipped so that a converge or a drift run naming it is a bug
+in the tool, not an undeclared file.
+"""
+
+[[excluded]]
+path = "*.env"
+kind = "credential"
+why = """
+No .env file exists in this tree today and none may be adopted if one appears. Per-agent
+credentials live in ~/.config/buzz-agents/<name>.env — private key plus NIP-OA auth tag —
+behind the Claude Code deny-list, and this entry is the standing refusal rather than a
+record of something removed. tests/test_buzz_interactive_harness.sh asserts no adopted
+file carries key material.
+"""
