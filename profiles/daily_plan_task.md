@@ -68,12 +68,38 @@ You are running ON Praetorium. Read the box directly — never SSH to it.
 # declared list instead. If a unit you expect is missing, fix design/agents/<persona>.toml
 # and re-materialise the list; do not add it here.
 U=~/agent-workforce/config/fleet-units.tsv
-mapfile -t SYS < <(awk -F'\t' '!/^#/ && NF>=3 && $2=="system" && $3=="standing"{print $1".timer"}' "$U")
-systemctl list-timers "${SYS[@]}" --no-pager
+mapfile -t SYS < <(awk -F'\t' '!/^#/ && NF>=5 && $2=="system" && $3=="standing" && $5=="timer"{print $1".timer"}' "$U")
 # User-scope units are invisible to the system manager above; querying them there returns
 # not-found, which reads exactly like a unit that has been removed.
-mapfile -t USR < <(awk -F'\t' '!/^#/ && NF>=3 && $2=="user" && $3=="standing"{print $1".timer"}' "$U")
-systemctl --user list-timers "${USR[@]}" --no-pager
+#
+# BOTH --user calls below carry XDG_RUNTIME_DIR, and it is not optional politeness: this job
+# is a SYSTEM unit with no session bus, where a bare `systemctl --user` exits 1 with
+# "Failed to connect to user scope bus" and the user-scope half reads as empty. That was true
+# of the list-timers call from the day it was written (2026-09-02), so it is fixed here with
+# its neighbour rather than left as the half of one defect nobody was looking at.
+mapfile -t USR < <(awk -F'\t' '!/^#/ && NF>=5 && $2=="user" && $3=="standing" && $5=="timer"{print $1".timer"}' "$U")
+# REFUSE an empty list rather than reporting one. `NF>=5` matches NOTHING against a 4-column
+# (pre-2026-09-03) copy of this file, and `systemctl list-timers` with an empty argument array
+# lists EVERY timer on the box — 44 of them, measured 2026-09-03 — so a silently empty list
+# renders as a full report derived from nothing. That is worse than the glob this replaced.
+if [ ${#SYS[@]} -eq 0 ] || [ ${#USR[@]} -eq 0 ]; then
+  echo "FATAL: $U yielded no units. It is missing, empty, or still 4-column. Unit coverage is UNKNOWN — do not report 'nothing scheduled'."
+else
+  systemctl list-timers "${SYS[@]}" --no-pager
+  XDG_RUNTIME_DIR="/run/user/$(id -u)" systemctl --user list-timers "${USR[@]}" --no-pager
+fi
+# kind=service rows have NO timer and must be asked about separately, or a permanently-live
+# agent renders as a unit that has never fired. XDG_RUNTIME_DIR is required and is not
+# optional politeness: this job runs as a SYSTEM unit with no session bus, where a bare
+# `systemctl --user` exits 1 with "Failed to connect to user scope bus" — and a `|| true`
+# on it would hide that, reporting the five agents as absent while appearing to have asked.
+mapfile -t SVC < <(awk -F'\t' '!/^#/ && NF>=5 && $2=="user" && $3=="standing" && $5=="service"{print $1".service"}' "$U")
+if [ ${#SVC[@]} -eq 0 ]; then
+  echo "FATAL: no kind=service rows in $U — the always-on agents are unaccounted for, not absent."
+else
+  XDG_RUNTIME_DIR="/run/user/$(id -u)" systemctl --user is-active "${SVC[@]}" \
+    || echo "(NOT all always-on agents are active — the states above are in the order listed: ${SVC[*]})"
+fi
 journalctl --since '14 hours ago' -p warning --no-pager | tail -40
 tail -15 ~/agent-workforce/logs/cost.log
 ls -t ~/logs/overnight/morning-report-*.md 2>/dev/null | head -1

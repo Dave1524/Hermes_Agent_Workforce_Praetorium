@@ -1,0 +1,29 @@
+# Loop guardrail — worker leaf.
+# Fires for Dave, or for marcus (the delegation root). Never for another worker:
+# worker-to-worker is the edge that turns a fan-out into a cascade.
+#
+# One single-equality rule per author rather than one `||` expression. First match wins,
+# and filter compilation is EAGER — a malformed expression crash-loops the unit at
+# startup rather than failing quietly at dispatch, so edit one and watch the restart.
+#
+# `require_mention = true` on every rule is load-bearing beyond its own matches:
+# resolve_channel_filters merges the flag across every rule applying to a channel, so a
+# single `false` widens that channel's whole NIP-01 subscription for every author.
+
+[[rules]]
+name = "owner"
+channels = "all"
+require_mention = true
+filter = 'author == "82cfc202fce4103742578f8f23849eb616f7ef96ca59a1b13a70d720a9be616f"'
+
+[[rules]]
+name = "marcus"
+channels = "all"
+require_mention = true
+filter = 'author == "abbc19ddcc22f6511183936a4993359d4d22c6ef5afc53c7dba65bdeb958916b"'
+
+[[rules]]
+name = "praetorium"
+channels = "all"
+require_mention = true
+filter = 'author == "b0a6d15f871ab8c502029e57e0fddec3ddecb09846ffdf6a56b6515bd1906fcd"'

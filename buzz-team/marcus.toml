@@ -1,0 +1,21 @@
+# Loop guardrail — marcus is the delegation root.
+# Only Dave and praetorium can start marcus. Siblings cannot, so no worker reply can
+# re-enter him and no cycle can close: praetorium is a publishing identity with no
+# runtime, so admitting it adds a source, never a return edge. Composes with (does not
+# replace) --respond-to owner-only: buzz-acp runs the author gate first, then these
+# rules, so this can only narrow.
+#
+# Dave (owner)  82cfc202fce4103742578f8f23849eb616f7ef96ca59a1b13a70d720a9be616f
+# praetorium    b0a6d15f871ab8c502029e57e0fddec3ddecb09846ffdf6a56b6515bd1906fcd
+
+[[rules]]
+name = "owner-only"
+channels = "all"
+require_mention = true
+filter = 'author == "82cfc202fce4103742578f8f23849eb616f7ef96ca59a1b13a70d720a9be616f"'
+
+[[rules]]
+name = "praetorium"
+channels = "all"
+require_mention = true
+filter = 'author == "b0a6d15f871ab8c502029e57e0fddec3ddecb09846ffdf6a56b6515bd1906fcd"'

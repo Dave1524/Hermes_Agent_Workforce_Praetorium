@@ -1029,7 +1029,8 @@ aspirational.
 
 Not questions. W1-W5 are D1's: it settled the direction and nobody implemented them.
 W6-W10 were opened by Phase-B briefs 2-4 (2026-09-02) — four of them are things those
-briefs deliberately did not do, and W6 is the one that keeps the gate red.
+briefs deliberately did not do, and W6 is the one that keeps the gate red. W13-W14 were
+opened by brief 7 (2026-09-03).
 
 | | Item | Source | Note |
 |---|---|---|---|
@@ -1045,13 +1046,18 @@ briefs deliberately did not do, and W6 is the one that keeps the gate red.
 | W10 | Two bespoke off-box predicates, neither able to use `box_only_with` | brief 2, brief 4 | `bin/check_deploy_drift.sh` and `tests/test_content_skill_extract.sh` each hand-roll a guard whose predicate is "this is not Praetorium", because `box_only_with` means "skip if a path is absent" — the opposite of what both need, which is a **missing subject on the box staying RED**. Raised by review 2026-09-02 and declined there: a shared helper would have to span `bin/` ↔ `tests/`, and the naive consolidation costs the fail-closed property. If a third site appears, that is the signal to design the helper properly rather than copy it again. |
 | W11 | `bin/praetorium-status.sh` has no suite of its own | brief 5 | It is the box's most-read health view and nothing asserts it. `tests/test_ops_view.sh` looks like coverage and is not — it **stubs** `praetorium-status.sh` to prove `ops-view.sh` embeds *something*. Brief 5 rewrote its user-services block (a `--failed` query replacing a two-unit whitelist) and proved both branches by hand — reachable bus prints the failed set or `none`, unreachable prints `UNKNOWN` rather than a false `none`. By hand is where that proof stays. A suite needs a `systemctl` stub on `PATH`, which is real work and not a subtraction brief's. |
 | W12 | `no-orphan-suite` is narrower than its name and cannot see most orphans | brief 6 | The assertion reads *every suite is claimed by a workflow or by `design/fleet-suites.toml`*, but `tests/test_workflow_coverage.py:188-198` only reports an unclaimed suite when its subject is exec'd **solely by an archived unit** (`dead` non-empty). An unclaimed suite whose subject is live is not reported at all. Measured by adding `tests/test_fleet_ownership.sh` in brief 6: it was unclaimed and the checker stayed silent — nothing would have flagged its absence, so registering it in `fleet-suites.toml` was deliberate rather than gate-driven. Same family as W9 and as the whitelist defect in `readiness-report-phantom-blockers`: a check that asks a narrow list whether it is fine cannot fail. Widening it would change what green means for the whole gate — every unclaimed suite would surface at once — so it is a brief of its own, not a line inside one. |
+| W13 | `verify-fleet.sh` and `check-loaded.sh` are sourced here but run nowhere in the gate | brief 7 | Adoption made `buzz-team/verify-fleet.sh` reviewable and drift-checked; it did **not** make it run. Nine gates inside it assert live `/proc` state, live relay membership and the deny-listed `~/.config/buzz-agents/` tree, so calling it from `bin/verify.sh` would make a PR red for box state rather than for the diff — the exact failure `tests/box_precondition.sh` exists to prevent, one layer up. `check-loaded.sh` was **not** adopted at all and cannot be: it reads the deny-listed tree by design. So the machine-level gate stays machine-level and `~/CLAUDE.md` § Verification stays its owner. The open question is whether the *decidable-from-a-checkout* subset of `verify-fleet.sh` should be split out into a repo suite, or whether `tests/test_buzz_interactive_harness.sh` has already taken everything that qualifies. Nothing is broken today; the risk is that a future edit to the adopted copy is reviewed as if the gate ran it. |
+| W14 | The `buzz-agent@*` units carry no `OnFailure=` | brief 7 | Every scheduled unit on this box alerts on failure; the five always-on ones do not — `~/.config/systemd/user/buzz-agent@.service` has no `OnFailure=agent-alert@%n.service`. `fleet-turn-check` is the compensating control and it is **hourly**, so the detection floor for a dead agent is up to an hour, against seconds for a timer job. Brief 7 did not fix this and could not: the unit lives in `/etc`-adjacent `--user` space and editing it needs a restart of all five agents, which the brief explicitly forbade. Note the asymmetry before treating it as a simple omission — an always-on unit that exits *is* restarted by systemd, so `OnFailure` on a crash-looping agent would alert repeatedly, and the failure this box actually produces (a unit that stays up and stops answering) would not fire it at all. That is why the hourly turn check exists and why this is a design question rather than a missing line. |
 
 
 ### Pending actions reserved for Dave — the branch cannot clear these itself
 
 Not carried work; concrete steps this box will not take from an unmerged branch. Most are
 reported by `bin/check_deploy_drift.sh`, so they cannot be forgotten silently — but none
-clears until someone runs it, and item 4 is the one the check cannot see.
+clears until someone runs it, and item 5 is the one the check cannot see. (It was item 4
+until brief 7 inserted the buzz-team converge above it — a numbered list referenced by
+position is one insertion away from pointing at the wrong entry, so the reference moves
+with it.)
 
 1. **`bin/deploy`, after merge.** Ten `bin/` files are source-only or content-drifted,
    including `check_deploy_drift.sh` itself and `skill_sections.sh`. **Until this runs,
@@ -1065,7 +1071,16 @@ clears until someone runs it, and item 4 is the one the check cannot see.
    that inversion is deliberate — see the unit header.
 3. **Verify by RUNNING the job, not by `list-timers`.** `active` + `enabled` +
    a correct `next_elapse` say nothing about whether `ExecStart` exists.
-4. **`~/agent-workforce/bin/kanban_run_and_wait.sh` is still on disk** (7,599 B, 2026-08-12).
+4. **`bin/deploy_buzz_team.sh`, after merge — and it is NOT `bin/deploy`.** The
+   `buzz-team/` tree has its own converge script with its own destination guards, because
+   `bin/deploy`'s three guards are specific to the runtime tree and its `PATHS` array must
+   not grow a fifth member (brief 7, criterion 8-10). Run `--dry-run` first; it restarts
+   nothing and says so, and a rule-file change is inert until the five agents are restarted
+   by hand. **It is a no-op today** — the 18 files were adopted *from* the box, so source and
+   destination are byte-identical and `--dry-run` reports `live tree already current`
+   (verified 2026-09-03). It stops being a no-op the first time anyone edits `buzz-team/`,
+   which is the point of adopting it.
+5. **`~/agent-workforce/bin/kanban_run_and_wait.sh` is still on disk** (7,599 B, 2026-08-12).
    Brief 5 deleted it from source; a plain `bin/deploy` is additive and will not remove it.
    **`--prune` is the documented remedy and brief 5 refused to run it — read the next block
    before deciding.** Harmless in the meantime: no unit invokes it (proven from 14 journals),

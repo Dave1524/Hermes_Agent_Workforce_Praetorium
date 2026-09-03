@@ -48,7 +48,12 @@ if ! python3 -c 'import tomllib' 2>/dev/null; then
   exit 77
 fi
 
-# One parse, reused. Emits: owner<TAB>unit<TAB>scope<TAB>status<TAB>profile
+# One parse, reused. Emits: owner<TAB>unit<TAB>scope<TAB>status<TAB>kind<TAB>where<TAB>profile
+#
+# `kind` defaults to "timer" for the same reason `scope` defaults to "system": that is what
+# every entry was before the column existed, so an unstated value must mean the old value or
+# the default silently reclassifies 30 units. It is stated explicitly on the five
+# buzz-agent@* entries, which are the ones it is false for.
 manifest_rows() {
   python3 - "$AGENTS" <<'PY'
 import tomllib, glob, os, sys
@@ -58,7 +63,9 @@ for f in sorted(glob.glob(os.path.join(sys.argv[1], '*.toml'))):
     owner = d['name']
     for w in d.get('workflows', []):
         print('\t'.join([owner, w['unit'], w.get('scope', 'system'),
-                         w['status'], w.get('profile', '')]))
+                         w['status'], w.get('kind', 'timer'),
+                         'repo' if w.get('profile_in_repo', True) else 'external',
+                         w.get('profile', '')]))
 PY
 }
 
@@ -67,26 +74,123 @@ fleet_rows() { grep -v '^#' "$FLEET" | grep -v '^[[:space:]]*$'; }
 echo '--- the list itself is well-formed ---'
 assert 'config/fleet-units.tsv exists' "[ -f '$FLEET' ]"
 assert 'design/agents/ exists' "[ -d '$AGENTS' ]"
-assert 'every row has four tab-separated columns' \
-  "[ \"\$(fleet_rows | awk -F'\t' 'NF!=4' | wc -l)\" -eq 0 ]"
+assert 'every row has five tab-separated columns' \
+  "[ \"\$(fleet_rows | awk -F'\t' 'NF!=5' | wc -l)\" -eq 0 ]"
 assert 'no duplicate units' \
   "[ \"\$(fleet_rows | cut -f1 | sort | uniq -d | wc -l)\" -eq 0 ]"
 assert 'scope is only system or user' \
   "[ \"\$(fleet_rows | awk -F'\t' '\$2!=\"system\" && \$2!=\"user\"' | wc -l)\" -eq 0 ]"
+# The vocabulary is closed for the same reason scope's is: a consumer branches on the value,
+# so a third spelling is not a new category, it is a row that every branch skips.
+assert 'kind is only timer or service' \
+  "[ \"\$(fleet_rows | awk -F'\t' '\$5!=\"timer\" && \$5!=\"service\"' | wc -l)\" -eq 0 ]"
+assert 'at least one row of each kind, or the column is asserting nothing' \
+  "[ \"\$(fleet_rows | awk -F'\t' '\$5==\"timer\"' | wc -l)\" -gt 0 ] && [ \"\$(fleet_rows | awk -F'\t' '\$5==\"service\"' | wc -l)\" -gt 0 ]"
 assert 'the list is not empty (a silently empty list is the defect it replaced)' \
   "[ \"\$(fleet_rows | wc -l)\" -gt 0 ]"
 
+echo '--- and kind is joined against the unit files, not merely spelled correctly ---'
+# A closed vocabulary stops a THIRD spelling; it does not stop the WRONG one of the two. The
+# column exists so the three reporting jobs never render an always-on agent as a timer that
+# has never fired — and a row typed `timer` for a unit that has no timer reproduces exactly
+# that defect, silently, past every assertion above.
+#
+# So the value is checked against the repo's own unit files. Evidence, one direction: if a
+# `.timer` exists for the unit it is a timer; if only a `.service` exists it is a service.
+# Templates are resolved both ways — `praetorium-phaseb-brief@` is instantiated as
+# `…@2.timer`, while `buzz-agent@marcus` is served by the template `buzz-agent@.service`.
+#
+# A unit with NO file in this repo is /etc-only and cannot be judged here — that is the
+# campaign case, and it is NAMED rather than skipped. An unexplained empty evidence set is
+# how this check would stop checking.
+kind_join=$(FLEET="$FLEET" REPO_ROOT="$REPO_ROOT" python3 <<'PY'
+import os, pathlib
+root = pathlib.Path(os.environ["REPO_ROOT"])
+
+def evidence(d, unit):
+    names = {f"{unit}.timer", f"{unit}.service"}
+    if unit.endswith("@"):
+        names |= {p.name for p in d.glob(f"{unit}*.timer")}
+        names |= {p.name for p in d.glob(f"{unit}*.service")}
+    elif "@" in unit:
+        base = unit.split("@")[0] + "@"
+        names |= {f"{base}.timer", f"{base}.service"}
+    present = {n for n in names if (d / n).is_file()}
+    return (any(n.endswith(".timer") for n in present),
+            any(n.endswith(".service") for n in present))
+
+unjudgeable = []
+judged = 0
+for line in pathlib.Path(os.environ["FLEET"]).read_text().splitlines():
+    if line.startswith("#") or not line.strip():
+        continue
+    cols = line.split("\t")
+    if len(cols) < 5:
+        continue
+    unit, scope, status, _owner, kind = cols[0], cols[1], cols[2], cols[3], cols[4]
+    d = root / ("systemd/user" if scope == "user" else "systemd")
+    has_timer, has_service = evidence(d, unit)
+    if has_timer:
+        expected = "timer"
+    elif has_service:
+        expected = "service"
+    else:
+        unjudgeable.append(f"{unit} ({status})")
+        continue
+    judged += 1
+    if expected != kind:
+        print(f"{unit}: declared kind={kind}, {d} says {expected}")
+# A join that reached nothing passes every comparison it never made. Pointed at the wrong
+# root — the failure mode this block had itself, reading an unexported REPO_ROOT and falling
+# back to cwd — every unit lands in `unjudgeable` and the check reports clean.
+if judged == 0:
+    print(f"the kind join judged ZERO rows against {root}/systemd — it is looking in the wrong place, not finding agreement")
+if unjudgeable:
+    print("NOTE no unit file in this repo, so kind is unjudged here:", ", ".join(sorted(unjudgeable)))
+PY
+)
+assert 'no row declares a kind its unit files contradict' \
+  "[ -z \"\$(printf '%s\n' \"\$kind_join\" | grep -v '^NOTE' | grep -v '^\$')\" ] || { printf '      %s\n' \"\$kind_join\"; false; }"
+# Printed unconditionally: the units this join cannot reach are the ones a future mistake
+# would hide in.
+printf '%s\n' "$kind_join" | grep '^NOTE' | sed 's/^/  info: /'
+
 echo '--- the list equals the manifests, in BOTH directions ---'
-mrows=$(manifest_rows | awk -F'\t' '{print $2"\t"$3"\t"$4"\t"$1}' | sort)
-frows=$(fleet_rows | sort)
-assert 'every manifest workflow appears in the list with the same scope/status/owner' \
+# LC_ALL=C on BOTH sorts, because `comm` compares bytes and `sort` does not. Under
+# en_US.UTF-8 punctuation is weighted differently in the first pass, so a locale-sorted
+# input makes comm walk past lines it should have matched — and it reports that as a
+# difference in whichever direction it drifted, never as an error. The five buzz-agent@*
+# rows put an `@` in the key for the first time, which is exactly the character class that
+# makes the two collations disagree.
+mrows=$(manifest_rows | awk -F'\t' '{print $2"\t"$3"\t"$4"\t"$1"\t"$5}' | LC_ALL=C sort)
+frows=$(fleet_rows | LC_ALL=C sort)
+assert 'every manifest workflow appears in the list with the same scope/status/owner/kind' \
   "[ -z \"\$(comm -23 <(printf '%s\n' \"\$mrows\") <(printf '%s\n' \"\$frows\"))\" ]"
 assert 'the list declares no unit the manifests do not' \
   "[ -z \"\$(comm -13 <(printf '%s\n' \"\$mrows\") <(printf '%s\n' \"\$frows\"))\" ]"
 
 echo '--- every profile-carrying workflow names its owner on line 1 ---'
-while IFS=$'\t' read -r owner unit scope status profile; do
+while IFS=$'\t' read -r owner unit scope status kind where profile; do
   [ -n "$profile" ] || continue
+  # `Owner: <persona>` on line 1 is a convention of the profiles THIS REPO OWNS. The five
+  # S1 charters live at ~/.config/buzz-agents/<name>.prompt, which is deny-listed — this
+  # repo cannot read them, so it cannot assert a header in them and must not pretend to.
+  #
+  # The escape is DECLARED, never inferred. `profile_in_repo = false` in the manifest is
+  # what routes an entry here; a heuristic on the path's shape would also swallow a typo'd
+  # repo path and turn a real missing profile into a silent pass. What is asserted instead
+  # is that the declaration is honest: an external profile must not resolve inside the repo.
+  if [ "$where" = external ]; then
+    # $profile reaches assert(), which evals its argument. Interpolating a manifest value
+    # into a single-quoted test expression makes a value containing a quote — say
+    # `dave's.prompt` — terminate the quoting and run as code. Every other field in this
+    # loop is treated as data; this one goes through a function so it stays data too.
+    _outside_repo() { [ ! -e "$REPO_ROOT/$1" ]; }
+    assert "$unit: profile declared external and is in fact outside this repo" \
+      "_outside_repo \"\$profile\""
+    echo "  ok: $unit: owner header not assertable (external profile: $profile)"
+    continue
+  fi
   f="$REPO_ROOT/$profile"
   assert "$unit: profile exists ($profile)" "[ -f '$f' ]"
   [ -f "$f" ] || continue

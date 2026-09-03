@@ -1,0 +1,66 @@
+# Subscription DAG — the verification leaf.
+#
+# Aurelian is the only agent the three workers may address directly, and the exception is
+# deliberate: a worker must be able to submit its own output for review without routing
+# the artifact through Marcus or Dave first. It does not reopen the cycle problem, because
+# Aurelian is a sink — see "Why this cannot loop" below.
+#
+# Dave (owner)  82cfc202fce4103742578f8f23849eb616f7ef96ca59a1b13a70d720a9be616f
+# marcus        abbc19ddcc22f6511183936a4993359d4d22c6ef5afc53c7dba65bdeb958916b
+# praetorium    b0a6d15f871ab8c502029e57e0fddec3ddecb09846ffdf6a56b6515bd1906fcd
+# claudius      818238434309416fa7fd8cc482908e61f8ebcb6978ff974ccf2044d4ed014c7c
+# trajan        1212e9a7e5a2c41b4e56d266fe2b42bb1e528cfa58a482975b9e5ba4d389fab0
+# augustus      d36e4b8b8c8c3c6424c884110c22fcbbed6fc2d55374f4576ee51d43145c7d01
+#
+# Why this cannot loop: every other agent's rules admit Dave, marcus and praetorium and
+# nobody else, so a verdict Aurelian addresses to claudius, trajan or augustus is accepted
+# by the relay and dropped at THEIR dispatch. The edge is one-way by construction — worker
+# to Aurelian only, never back. The verdict is still published and still visible in the
+# channel; what it cannot do is wake the worker. The charter tells him to write for a
+# reader rather than a recipient for exactly this reason.
+#
+# One single-equality rule per author rather than one `||` expression. First match wins,
+# and filter compilation is EAGER — a malformed expression crash-loops the unit at
+# startup rather than failing quietly at dispatch, so edit one and watch the restart.
+#
+# `require_mention = true` on every rule is load-bearing beyond its own matches:
+# resolve_channel_filters merges the flag across every rule applying to a channel, so a
+# single `false` widens that channel's whole NIP-01 subscription for every author. For
+# this agent it is also the isolation boundary: mention-gated is what keeps him from
+# receiving — and being billed for — the development traffic he is meant to arrive after.
+
+[[rules]]
+name = "owner"
+channels = "all"
+require_mention = true
+filter = 'author == "82cfc202fce4103742578f8f23849eb616f7ef96ca59a1b13a70d720a9be616f"'
+
+[[rules]]
+name = "marcus"
+channels = "all"
+require_mention = true
+filter = 'author == "abbc19ddcc22f6511183936a4993359d4d22c6ef5afc53c7dba65bdeb958916b"'
+
+[[rules]]
+name = "praetorium"
+channels = "all"
+require_mention = true
+filter = 'author == "b0a6d15f871ab8c502029e57e0fddec3ddecb09846ffdf6a56b6515bd1906fcd"'
+
+[[rules]]
+name = "claudius"
+channels = "all"
+require_mention = true
+filter = 'author == "818238434309416fa7fd8cc482908e61f8ebcb6978ff974ccf2044d4ed014c7c"'
+
+[[rules]]
+name = "trajan"
+channels = "all"
+require_mention = true
+filter = 'author == "1212e9a7e5a2c41b4e56d266fe2b42bb1e528cfa58a482975b9e5ba4d389fab0"'
+
+[[rules]]
+name = "augustus"
+channels = "all"
+require_mention = true
+filter = 'author == "d36e4b8b8c8c3c6424c884110c22fcbbed6fc2d55374f4576ee51d43145c7d01"'

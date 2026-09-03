@@ -73,9 +73,10 @@ does not already prove on the commit that changes it.
 path    = "tests/test_fleet_ownership.sh"
 owner   = "fleet"
 asserts = [
-  "list-schema",            # four columns, no duplicate units, scope in {system,user}, non-empty
+  "list-schema",            # five columns, no duplicate units, scope in {system,user}, kind in {timer,service}, non-empty
   "list-equals-manifests",  # both join directions: no manifest unit missing, no unit invented
-  "row-matches-manifest",   # scope/status/owner agree with the declaring design/agents/*.toml
+  "row-matches-manifest",   # scope/status/owner/kind agree with the declaring design/agents/*.toml
+  "kind-matches-unit-files",# kind is joined against systemd/**, so a mistyped value is red rather than silent
   "profile-owner-header",   # every [[workflows]] profile exists and line 1 names its owner
   "no-prose-owner-drift",   # no profile's prose claims a persona other than its declared owner
   "consumers-name-the-list",# all six reporting consumers read config/fleet-units.tsv

@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(//home/dave/.confidential.img)",
+      "Edit(//home/dave/.confidential.img)",
+      "Read(//home/dave/ENCRYPTION_RECOVERY.md)",
+      "Edit(//home/dave/ENCRYPTION_RECOVERY.md)",
+      "Read(//home/dave/.ssh/**)",
+      "Edit(//home/dave/.ssh/**)",
+      "Read(//home/dave/.config/agent-workforce/**)",
+      "Edit(//home/dave/.config/agent-workforce/**)",
+      "Read(//home/dave/.config/buzz-agents/**)",
+      "Edit(//home/dave/.config/buzz-agents/**)",
+      "mcp__claude_ai_Notion",
+      "mcp__claude_ai_Gmail",
+      "mcp__claude_ai_Microsoft_365",
+      "mcp__claude_ai_Google_Drive",
+      "mcp__claude_ai_Figma"
+    ]
+  }
+}

@@ -61,8 +61,12 @@ capture_inputs() {
   # The services list below is deliberately NOT derived: it mixes workflow units with
   # daemons (ollama, qmd-mcp) that are declared in no manifest, and it is test data rather
   # than fleet coverage.
+  # `$5=="timer"` (2026-09-03): the list now carries kind=service rows. They have no
+  # timer, so including them would ask list-timers for units that do not exist — which it
+  # drops silently, shrinking t1's denominator without changing the prompt. A grading
+  # fixture that quietly loses rows is worse here than one that is simply harder.
   mapfile -t _fleet_timers < <(
-    awk -F'\t' '!/^#/ && NF>=3 && $2=="system" && $3=="standing" {print $1".timer"}' \
+    awk -F'\t' '!/^#/ && NF>=5 && $2=="system" && $3=="standing" && $5=="timer" {print $1".timer"}' \
       "$REPO_BIN/../config/fleet-units.tsv" 2>/dev/null)
   if [ ${#_fleet_timers[@]} -eq 0 ]; then
     log "FATAL: config/fleet-units.tsv unreadable or empty — refusing to grade on a fixture"

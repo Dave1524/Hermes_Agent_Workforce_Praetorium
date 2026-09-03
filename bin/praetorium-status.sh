@@ -17,8 +17,31 @@ if [ ! -r "$FLEET_UNITS" ]; then
   echo "  FATAL: cannot read $FLEET_UNITS — unit coverage unknown, not 'fine'"
   exit 1
 fi
-fleet_units() {  # $1 = scope
-  awk -F'\t' -v want="$1" '!/^#/ && NF>=3 && $2==want && $3=="standing" {print $1}' "$FLEET_UNITS"
+# `kind` (column 5) is not optional here. The five buzz-agent@* rows are Type=simple
+# services with no timer; appending ".timer" to them asks the manager for a unit that does
+# not exist, and `systemctl list-timers` answers that by SILENTLY DROPPING the name — rc=0,
+# empty stderr, "1 timers listed" for six units requested. Measured 2026-09-03.
+fleet_units() {  # $1 = scope, $2 = kind (timer|service|any)
+  awk -F'\t' -v want="$1" -v kind="${2:-any}" \
+    '!/^#/ && NF>=5 && $2==want && $3=="standing" && (kind=="any" || $5==kind) {print $1}' \
+    "$FLEET_UNITS"
+}
+
+# An EMPTY derived list must be LOUD. `NF>=5` matches nothing against a 4-column
+# (pre-2026-09-03) copy of the list — which is what ~/agent-workforce/config/ still holds
+# until bin/deploy runs — and `systemctl list-timers` with an empty argument array lists
+# EVERY timer on the box (44, measured 2026-09-03). So the failure mode of a stale list is a
+# full-looking report derived from nothing, which is strictly worse than the glob this
+# replaced. Checking readability is not enough; the RESULT has to be checked.
+fleet_or_die() {  # scope, kind -> prints units, or refuses
+  local out
+  out=$(fleet_units "$1" "$2")
+  if [ -z "$out" ]; then
+    echo "  FATAL: $FLEET_UNITS declares no $1/$2 units — missing, empty, or still 4-column." >&2
+    echo "  Unit coverage is UNKNOWN, not 'none'." >&2
+    return 1
+  fi
+  printf '%s\n' "$out"
 }
 
 echo; echo "── Services"
@@ -34,19 +57,23 @@ while read -r u; do
   state=$(systemctl is-active "$u.timer" 2>/dev/null || true)
   enabled=$(systemctl is-enabled "$u.timer" 2>/dev/null || true)
   printf "  %-32s active=%-10s enabled=%s\n" "$u.timer" "$state" "$enabled"
-done < <(fleet_units system)
+done < <(fleet_or_die system timer)
 
 echo; echo "── Timers (next runs)"
-mapfile -t _sys < <(fleet_units system)
-systemctl list-timers "${_sys[@]/%/.timer}" --no-pager 2>/dev/null | head -30
+mapfile -t _sys < <(fleet_or_die system timer)
+if [ ${#_sys[@]} -eq 0 ]; then
+  echo "  UNKNOWN — see FATAL above; NOT 'no timers'"
+else
+  systemctl list-timers "${_sys[@]/%/.timer}" --no-pager 2>/dev/null | head -30
+fi
 
 # User-scope standing units are invisible to the system manager above. Reported separately
 # rather than merged, because "not-found" from the wrong manager is indistinguishable from
 # a unit that is genuinely gone.
 echo; echo "── User timers (scope=user, next runs)"
-mapfile -t _usr < <(fleet_units user)
+mapfile -t _usr < <(fleet_or_die user timer)
 if [ ${#_usr[@]} -eq 0 ]; then
-  echo "  none declared"
+  echo "  UNKNOWN — see FATAL above; NOT 'none declared'"
 else
   XDG_RUNTIME_DIR="/run/user/$(id -u)" \
     systemctl --user list-timers "${_usr[@]/%/.timer}" --no-pager 2>/dev/null | head -10 \
@@ -57,6 +84,25 @@ fi
 #    hand-maintained list whether it is fine — a whitelist cannot report a unit nobody
 #    thought to add, which is how an 8-day failure went unnamed twice a day.
 #    Fail-soft (|| true); set -uo pipefail contract preserved (no -e).
+# ── User services declared kind=service: always-on agents with no timer. They are absent
+#    from every list above BY DESIGN (the kind filter), so without this block the five
+#    buzz-agent@* units are reported nowhere. The --failed query below does NOT cover them:
+#    `systemctl --user stop buzz-agent@marcus` leaves it `inactive (dead)`, which is not
+#    `failed`, so a deliberately-stopped or never-started agent is invisible to it. Ask about
+#    the declared set AND ask the manager what is failing — the two answer different
+#    questions and neither substitutes for the other.
+echo; echo "── User services (scope=user, kind=service — always-on)"
+mapfile -t _usrsvc < <(fleet_or_die user service)
+if [ ${#_usrsvc[@]} -eq 0 ]; then
+  echo "  UNKNOWN — see FATAL above; NOT 'none declared'"
+else
+  for u in "${_usrsvc[@]}"; do
+    st=$(XDG_RUNTIME_DIR="/run/user/$(id -u)" \
+           systemctl --user is-active "$u.service" 2>/dev/null || true)
+    printf "  %-32s active=%s\n" "$u.service" "${st:-UNKNOWN}"
+  done
+fi
+
 echo; echo "── User services (failed units)"
 rt="/run/user/$(id -u)"
 # `|| true` on the assignment alone would print "none" when the USER BUS is unreachable,

@@ -28,39 +28,57 @@
 # stated in prose only, which is exactly why buzz-pr-watch and both nekovri entries were
 # counted as system-scope by everything that did not read their notes.
 #
+# KIND IS LOAD-BEARING FOR THE SAME REASON, one column over (2026-09-03, brief 7). Every
+# row here was a timer until the five buzz-agent@* units arrived, so every consumer could
+# append ".timer" to a unit name unconditionally and be right 30 times out of 30. Those five
+# are Type=simple services with no timer at all — always on, woken by a Buzz mention — and
+# an unconditional ".timer" asks the user manager for buzz-agent@marcus.timer, which does
+# not exist. systemctl answers "Unit ... could not be found", which renders identically to a
+# unit that was deleted. That is the scope defect's exact shape: a live, healthy unit
+# reported as missing, in a report whose whole job is to say what is missing.
+#
+# So a consumer that lists TIMERS filters `$5=="timer"`, and one that wants unit STATE does
+# not need to filter at all (is-active works on both). Neither may append ".timer" blind.
+#
 # STATUS FILTER IS THE CONSUMER'S CALL, AND IT MUST BE STATED WHERE IT IS MADE.
-#   standing = 23 (22 system + 1 user)   <- what the reporting jobs report on
+#   standing = 28 (22 system + 6 user)   <- what the reporting jobs report on
 #   campaign = 3, dormant = 2, spent = 2 <- deliberately excluded from routine reports
+# Of the 28 standing, 23 are kind=timer and 5 are kind=service (the buzz-agent@* fleet).
 # Do not hardcode those counts anywhere; derive them from this file.
 #
-#unit	scope	status	owner
-agent-drift-check	system	standing	trajan
-agent-inbox-sync	system	standing	trajan
-agent-proposal	system	standing	claudius
-agent-workforce-auto-sync	system	standing	trajan
-augustus-content	system	standing	augustus
-bd-followup-drafts	system	dormant	claudius
-bd-stall-radar	system	dormant	claudius
-buzz-pr-watch	user	standing	trajan
-content-change-dispatch	system	standing	augustus
-fleet-eval	system	standing	trajan
-fleet-turn-check	system	standing	trajan
-inbox-backlog-alert	system	standing	trajan
-knowledge-digest	system	standing	claudius
-local-tier-eval	system	standing	trajan
-m1-signal-scan	system	standing	claudius
-memory-consolidation	system	standing	trajan
-nekovri-subsidy-kickoff	user	spent	trajan
-nekovri-subsidy-watchdog	user	spent	trajan
-overnight-morning-report	system	standing	marcus
-overnight-pre-snapshot	system	standing	trajan
-praetorium-content-strategy-research	system	campaign	augustus
-praetorium-daily-plan	system	standing	marcus
-praetorium-eod-summary	system	standing	marcus
-praetorium-faceless-content-research	system	campaign	augustus
-praetorium-phaseb-brief@	system	campaign	trajan
-qmd-refresh	system	standing	trajan
-raw-ingest	system	standing	claudius
-scorecard	system	standing	trajan
-ttm-pool-drain	system	standing	trajan
-weekly-pre-assembly	system	standing	marcus
+#unit	scope	status	owner	kind
+agent-drift-check	system	standing	trajan	timer
+agent-inbox-sync	system	standing	trajan	timer
+agent-proposal	system	standing	claudius	timer
+agent-workforce-auto-sync	system	standing	trajan	timer
+augustus-content	system	standing	augustus	timer
+bd-followup-drafts	system	dormant	claudius	timer
+bd-stall-radar	system	dormant	claudius	timer
+buzz-agent@augustus	user	standing	augustus	service
+buzz-agent@aurelian	user	standing	aurelian	service
+buzz-agent@claudius	user	standing	claudius	service
+buzz-agent@marcus	user	standing	marcus	service
+buzz-agent@trajan	user	standing	trajan	service
+buzz-pr-watch	user	standing	trajan	timer
+content-change-dispatch	system	standing	augustus	timer
+fleet-eval	system	standing	trajan	timer
+fleet-turn-check	system	standing	trajan	timer
+inbox-backlog-alert	system	standing	trajan	timer
+knowledge-digest	system	standing	claudius	timer
+local-tier-eval	system	standing	trajan	timer
+m1-signal-scan	system	standing	claudius	timer
+memory-consolidation	system	standing	trajan	timer
+nekovri-subsidy-kickoff	user	spent	trajan	timer
+nekovri-subsidy-watchdog	user	spent	trajan	timer
+overnight-morning-report	system	standing	marcus	timer
+overnight-pre-snapshot	system	standing	trajan	timer
+praetorium-content-strategy-research	system	campaign	augustus	timer
+praetorium-daily-plan	system	standing	marcus	timer
+praetorium-eod-summary	system	standing	marcus	timer
+praetorium-faceless-content-research	system	campaign	augustus	timer
+praetorium-phaseb-brief@	system	campaign	trajan	timer
+qmd-refresh	system	standing	trajan	timer
+raw-ingest	system	standing	claudius	timer
+scorecard	system	standing	trajan	timer
+ttm-pool-drain	system	standing	trajan	timer
+weekly-pre-assembly	system	standing	marcus	timer

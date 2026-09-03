@@ -42,6 +42,46 @@ shellcheck "${scripts[@]}" || true
 echo "--- deploy drift (source vs deployed) ---"
 bash bin/check_deploy_drift.sh || fail=1
 
+# S1 channel-kind agreement (brief 7, criterion 19). The kind a channel renders is one fact
+# with two readers: bin/deliver.sh resolves ROUTE_<key>_kind for scheduled output, and the
+# agents read the TEAM.md table for everything they send by hand. When those disagree the
+# wrong kind is accepted by the relay, receipted `ok`, and rendered to nobody — which is how
+# twelve research runs were lost across 2026-08-25. There is no runtime signal for it, so a
+# gate is the only place it can be caught.
+#
+# THE SOURCE ROUTE TABLE, NOT THE DEPLOYED ONE. The checker's own default is
+# ~/agent-workforce/bin/buzz_routes.env, which is the right question for "is the box
+# consistent right now" and the wrong one for a PR gate: an edit to bin/buzz_routes.env that
+# contradicts TEAM.md would pass here until bin/deploy ran, and by then the commit is
+# merged. bin/check_deploy_drift.sh above already owns source-vs-deployed for this file, so
+# checking source here costs nothing and closes the window. Both paths are passed explicitly
+# because the checker takes `sys.argv[1:] or [DEFAULTS]` — passing one silently means the
+# other keeps its default.
+#
+# Box-gated on TEAM.md alone. It is the one input a checkout cannot carry: brief 7 declared
+# it EXCLUDED from buzz-team/ adoption (it names live channel UUIDs and is agent-editable),
+# so it has no repo source by design and never will.
+echo "--- S1 channel kinds (source routes vs live TEAM.md) ---"
+team_md="$HOME/.config/buzz-team/TEAM.md"
+if [ -e "$team_md" ]; then
+  # The pass says so out loud. A silent check is indistinguishable from a step that ran
+  # nothing, and this one has exactly two neighbours in the gate output — a header and the
+  # first `test:` line — so a version that stopped executing would read identically.
+  if python3 buzz-team/check-team-kinds.py bin/buzz_routes.env "$team_md"; then
+    # Same filter the checker applies: ROUTE_<key>_kind and ROUTE_<key>_notify are
+    # attributes of a route, not routes. Counting them would inflate the number the pass
+    # line is offered as evidence for.
+    printf '  ok: every routed channel is in the TEAM.md table under the same kind (%s routes)\n' \
+      "$(grep -E '^ROUTE_[a-z][a-z0-9_-]*=' bin/buzz_routes.env | grep -cvE '^ROUTE_[a-z][a-z0-9_-]*_(kind|notify)=')"
+  else
+    fail=1
+  fi
+else
+  printf 'SKIP: %s — %s (absent: %s)\n' 'check-team-kinds.py' \
+    'the live TEAM.md channel table, which is declared excluded from buzz-team/ adoption' \
+    "${team_md/#$HOME/\~}"
+fi
+
 if [ -d tests ]; then
   # Most tests mktemp fixtures without a cleanup trap. Owning one temp root here
   # beats 30 traps a new test can forget: on 2026-08-13 the accumulated leak hit

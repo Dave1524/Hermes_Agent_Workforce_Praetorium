@@ -13,7 +13,7 @@ status  = "live"
 
 [surfaces.interactive]
 present     = true
-governed_by = "~/.config/buzz-team/trajan.toml"
+governed_by = "buzz-team/trajan.toml"      # SOURCE. Deployed to ~/.config/buzz-team/trajan.toml by bin/deploy_buzz_team.sh; the box path is the destination (brief 7)
 admits      = ["owner", "praetorium", "marcus"]
 channels    = "all"
 tools       = ["claude-code-builtins", "mcp__qmd-mcp__*", "notion_* (7, via broker)"]
@@ -59,14 +59,30 @@ present = false
 unit = "fleet-turn-check"
 surface = "platform"
 status = "standing"
-suite    = []
-suite_exempt = "script lives at ~/.config/buzz-team/fleet-turn-check.sh, not in this repo"
+suite    = ["tests/test_fleet_turn_check.sh"]
 trigger = "hourly (+2min jitter)"
 what = "proves an agent can COMPLETE a turn — the gate every other fleet signal missed for 4 days"
 alerted = true
-in_repo = true                   # backported from /etc 2026-09-02 (brief 2). The UNIT is
-                                 # here now; the SCRIPT still is not — that is suite_exempt
-                                 # above, and in_repo has never described the script.
+in_repo = true                   # backported from /etc 2026-09-02 (brief 2). The UNIT came
+                                 # here then; the SCRIPT arrived 2026-09-03 as
+                                 # buzz-team/fleet-turn-check.sh. Both halves are now sourced.
+notes = """
+THE EXEMPTION IS GONE BECAUSE ITS PREMISE IS. It read `suite_exempt = "script lives at
+~/.config/buzz-team/fleet-turn-check.sh, not in this repo"` until 2026-09-03, when brief 7
+adopted that script into buzz-team/. Restating the exemption with a new reason was the other
+option and it would have been dishonest: the code IS here and IS writable, which is exactly
+the condition eval-spec.md 7.1 says suite_exempt does not cover. A true-looking exemption
+whose premise the same commit removed is the worst of the three outcomes.
+
+WHAT THE SUITE CAN AND CANNOT ASSERT, stated here so nobody mistakes it for a behavioural
+test. It asserts the five design rules the script's own header names as required — enumerate
+from systemd not a roster, bound each window at BOTH ends, print which bound produced it,
+name a quiet unit out loud, exit non-zero on failure — each of which is the invariant whose
+loss produced a past misdiagnosis. It does NOT run the script: gate 2 spends a real model
+turn, and the script pins PATH at line 23, so a stubbed systemctl on PATH is defeated by
+construction. That pin is a testability finding, not a defect to fix here — it exists so a
+systemd unit with a minimal environment resolves its binaries.
+"""
 
 [[workflows]]
 unit = "fleet-eval"
@@ -289,6 +305,22 @@ nekovri-subsidy-watchdog.service.d/auth.conf is a SYMLINK to
 buzz-agent@trajan.service.d/auth.conf. Two credential paths, one file; both are declared
 never-commit in design/unit-ownership.toml.
 """
+
+# --- S1, brief 7. See marcus.toml for why these five entries exist and what `kind` does.
+[[workflows]]
+unit     = "buzz-agent@trajan"
+surface  = "interactive"
+scope    = "user"
+kind     = "service"
+trigger  = "event-driven — a Buzz mention or DM; no OnCalendar, the unit is always on"
+model    = "from the run log, not the deny-listed env"
+profile  = "~/.config/buzz-agents/trajan.prompt (deny-listed; no repo source)"
+profile_in_repo = false          # deny-listed box path, not a repo file — see notes
+runner   = "buzz-team/buzz-acp-launch.sh"
+contract = "design/contracts/buzz-interactive.md"   # ONE contract, five owners — it says why in its header
+status   = "standing"
+suite    = ["tests/test_buzz_interactive_harness.sh"]
+in_repo  = true
 
 # Capability prohibitions. enforced = true means a mechanism blocks it today;
 # enforced = false means it is stated policy that nothing currently prevents.

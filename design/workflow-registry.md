@@ -38,6 +38,27 @@ the surface §5 now records as retired.
 | augustus | codex-acp (bwrap) | Content editor-in-chief; namespace strips `~/.ssh`, so never owns a workflow needing `git fetch` |
 | aurelian | read-only calibration pin | Cold verification only; never a co-author; no scheduled work |
 
+**This layer entered the registry on 2026-09-03 (brief 7); until then it was described here
+and declared nowhere.** All 26 `[[workflows]]` entries in `design/agents/*.toml` were
+`platform`, `scheduled` or `buzz_dispatch`, so the five always-on units were not partly
+covered by the coverage checker — they were structurally invisible to it, and to the status
+vocabulary and the suite requirement with them. Each persona now carries exactly one
+`surface = "interactive"` entry, and the five share one contract
+(`design/contracts/buzz-interactive.md`) because they run byte-identical code against five
+charters this repo cannot read; five files would be five copies of one set of obligations.
+
+Two properties of these entries are easy to misread:
+
+- **They are `kind = "service"`, not timers.** `Type=simple`, always on, no `OnCalendar`.
+  Asking `systemctl list-timers` for `buzz-agent@marcus.timer` returns nothing *and exits 0
+  with empty stderr* — it silently drops names it cannot match, so six units requested
+  rendered as "1 timers listed" (measured 2026-09-03). `config/fleet-units.tsv` gained a
+  `kind` column for exactly this, and all six reporting consumers filter on it.
+- **A presence entry is not a unit of work.** aurelian's entry says a live unit exists that
+  the registry must be able to see; it does not retire the calibration pin. If a second
+  entry ever appears under his name carrying a `route`, a non-shared `runner` or an
+  `OnCalendar`, the pin is being retired and that is a decision, not a manifest edit.
+
 ## 2. Scheduled persona workflows (live)
 
 All run headless Claude Code via `bin/agent_propose.sh` + `AGENT_JOB_OVERRIDES`.

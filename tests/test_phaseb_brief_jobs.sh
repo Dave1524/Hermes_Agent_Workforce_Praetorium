@@ -26,10 +26,37 @@ assert() {
   eval "$pf"
 }
 
+# WAS `ids == {2,3,4,5,6}` — a frozen snapshot, replaced 2026-09-03 when brief 7 was added
+# by hand and turned it red. The literal was not asserting what it looked like it asserted:
+# it could not detect a RENUMBERED entry any better than the derived form can, and it fired
+# on the one thing the queue is supposed to do, which is grow. A check that goes red on
+# correct use gets edited every time, and a check that gets edited every time is not load-
+# bearing on anything.
+#
+# What is actually invariant, in the direction that holds:
+#   * ids are unique and contiguous from 2 — a gap means an entry was deleted rather than
+#     marked done, and a duplicate means two briefs answer to one id;
+#   * every praetorium-phaseb-brief@N.timer in systemd/ has a queue entry with that id.
+#
+# UNITS -> QUEUE ONLY. The reverse does not hold and must not be asserted: the five timers
+# are spent one-shot scaffolding that wrote briefs 2-6 on the night of 2026-09-02, while the
+# queue is the durable record. Requiring a unit per entry would mean the queue could never
+# gain an entry without installing a systemd unit to generate it, which is backwards — brief
+# 7 was written without one. A unit with no entry is the real defect: it generates a brief
+# nobody declared.
 queue_covers() { python3 -c "
-import tomllib,sys
-ids={b['id'] for b in tomllib.load(open('$QUEUE','rb'))['brief']}
-sys.exit(0 if ids=={2,3,4,5,6} else 1)"; }
+import tomllib, sys, glob, os, re
+ids = sorted(b['id'] for b in tomllib.load(open('$QUEUE','rb'))['brief'])
+if len(ids) != len(set(ids)):
+    print('  duplicate brief ids in the queue:', ids); sys.exit(1)
+if ids != list(range(2, 2 + len(ids))):
+    print('  brief ids are not contiguous from 2:', ids); sys.exit(1)
+units = sorted(int(m.group(1)) for f in glob.glob('$REPO_ROOT/systemd/praetorium-phaseb-brief@*.timer')
+               for m in [re.search(r'@(\d+)\.timer\$', os.path.basename(f))] if m)
+orphan = [u for u in units if u not in set(ids)]
+if orphan:
+    print('  unit(s) generate a brief the queue does not declare:', orphan); sys.exit(1)
+"; }
 queue_entries_complete() { python3 -c "
 import tomllib,sys
 for b in tomllib.load(open('$QUEUE','rb'))['brief']:
@@ -51,7 +78,7 @@ assert 'a found pattern is never reported as a failure' "yes | grep -q y"
 echo "-- queue"
 assert 'the brief queue exists' "[ -r '$QUEUE' ]"
 assert 'the queue is valid TOML' "python3 -c \"import tomllib;tomllib.load(open('$QUEUE','rb'))\""
-assert 'the queue covers exactly briefs 2-6' "queue_covers"
+assert 'queue ids are unique and contiguous, and every brief-writing unit is declared' "queue_covers"
 assert 'every entry carries a non-empty must_carry list' "queue_entries_complete"
 
 echo "-- runner"

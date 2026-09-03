@@ -5,15 +5,25 @@
 # Lines beginning with # and blank lines are stripped before the diff; everything else must
 # match a printed `SKIP:` line verbatim. Paths are $HOME-relative (tests/box_precondition.sh).
 #
-# Six lines are box state a checkout cannot carry: five from four suites (phaseb_brief_jobs
-# declares two preconditions, so lines and suites are not the same count) plus
-# bin/check_deploy_drift.sh, which the gate calls directly rather than through tests/ and
-# which prints the same SKIP shape for the same reason. One is the mirror — test_fetch_status's negative case needs NO
+# Seven lines are box state a checkout cannot carry: five from four suites (phaseb_brief_jobs
+# declares two preconditions, so lines and suites are not the same count) plus TWO the gate
+# calls directly rather than through tests/ — bin/check_deploy_drift.sh and
+# buzz-team/check-team-kinds.py — which print the same SKIP shape for the same reason.
+# One is the mirror — test_fetch_status's negative case needs NO
 # system chrome on PATH, which its own header calls out as true on Praetorium; the runner
 # image ships one. The OpenCode line is a cost opt-in that predates this file and skips
 # everywhere, including on the box.
+#
+# TWO LINES CHANGED 2026-09-03 (brief 7) and both are the same edit, not a new exemption.
+# check_deploy_drift.sh gained a fifth tree, so its existing skip line names a third absent
+# path; the buzz-team tree deliberately joined that predicate instead of getting a skip of
+# its own. check-team-kinds.py is genuinely new, and it is the ONLY line here whose input has
+# no repo source by design: TEAM.md names live channel UUIDs and is agent-editable, so
+# buzz-team/MANIFEST.toml declares it excluded rather than adopted. That is why it cannot be
+# made to run on a runner, and why the exemption is not expected to end.
 
-SKIP: check_deploy_drift.sh — the deployed trees this check compares against (absent: ~/agent-workforce/bin ~/.config/systemd/user)
+SKIP: check-team-kinds.py — the live TEAM.md channel table, which is declared excluded from buzz-team/ adoption (absent: ~/.config/buzz-team/TEAM.md)
+SKIP: check_deploy_drift.sh — the deployed trees this check compares against (absent: ~/agent-workforce/bin ~/.config/systemd/user ~/.config/buzz-team)
 SKIP: live OpenCode agent contract tests (set OPENCODE_LIVE_TESTS=1 to spend model tokens)
 SKIP: test_content_skill_extract.sh — the vault the content job reads (absent: ~/vault/08_skills/linkedin-content-engine/SKILL.md)
 SKIP: test_fetch_status.sh — the negative case needs no system chrome on PATH (probed: google-chrome chromium chromium-browser chrome)
