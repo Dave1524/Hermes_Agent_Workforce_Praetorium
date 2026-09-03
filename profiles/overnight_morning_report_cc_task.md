@@ -73,7 +73,18 @@ Prefer:
 - `journalctl -u overnight-pre-snapshot.service -u agent-proposal.service -u agent-inbox-sync.service --since '12 hours ago' --no-pager | tail -80`
 - `ls -la ~/agent-worktrees/inbox/_inbox/agents/`
 - `tail -20 ~/agent-workforce/logs/cost.log`
-- `tail -20 ~/logs/agent-alert.log` (if present)
+- Alerts — **date the log before you read it; a bare tail is how a dead alert gets reported as
+  last night's** (W17). Every line already carries `failed at <ISO>Z`, so "there is a timestamp
+  in it" proves nothing — an eight-day-dead log renders identically to a live one. Run both,
+  in this order:
+  - `stat -c 'alert log newest entry: %y' ~/logs/agent-alert.log 2>/dev/null || echo 'no agent-alert.log yet'`
+  - `tail -20 ~/logs/agent-alert.log 2>/dev/null`
+
+  The pre-snapshot's `## Alerts (last 10)` section prints the same marker for you, as
+  `newest entry: <ts> (N days ago) — FRESH` or `— STALE`. **Read that line and obey it.** If it
+  says STALE, or the mtime you just read is two or more days old, say so in the report — "no new
+  alerts since `<date>`; the lines below are history" — and never present an old alert as last
+  night's. `UNKNOWN` means the age could not be read: report it as unverified, not as fresh.
 - MCP: curl `http://127.0.0.1:8765/health`; `ss -ltn | grep 8766`
 
 Do **not** treat `~/.hermes/cron/jobs.json` as the primary schedule source — fleet
@@ -128,6 +139,9 @@ Structure:
 - Gateway: <status>
 - Box timezone: Europe/Amsterdam (good) / WRONG (<show>)
 - OpenRouter cost.log overnight: <summary of outcomes / spend deltas if present>
+- Alert log: <newest entry + its age, always — e.g. "2026-08-26, 8 days ago — STALE, nothing
+  new; the lines it holds are history" or "no alerts since the last report">. Never list alert
+  lines without this; an undated alert is indistinguishable from last night's.
 
 ## Action items for Dave
 - <bullet list, or "none — everything nominal">

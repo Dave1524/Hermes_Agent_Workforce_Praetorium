@@ -81,6 +81,21 @@ make_snap_fixture() {
   echo "$root"
 }
 
+# Alert-log fixture with an EXPLICIT age, because the age is the variable under test. A marker
+# that printed "STALE" unconditionally would satisfy a stale-only fixture, so the fresh case is
+# what makes the stale case evidence rather than a coincidence.
+#
+# The default line is shaped like a real one: bin/agent_alert.sh:122 writes
+# `agent-workforce ALERT: unit <u> failed at <ISO>Z`, so the tail ALREADY contains a timestamp
+# even when the log is dead. That is deliberate — it makes "a date appears in the section" true
+# of the broken code, and forces the assertions below onto the age instead.
+make_alert_log() { # root, touch-date [, line...]
+  local root=$1 when=$2; shift 2
+  [ $# -gt 0 ] || set -- 'agent-workforce ALERT: unit qmd-refresh.service failed at 2026-08-26T04:25:01Z'
+  printf '%s\n' "$@" > "$root/home/logs/agent-alert.log"
+  touch -d "$when" "$root/home/logs/agent-alert.log"
+}
+
 run_snap() { # root -> rc; snapshot path in $root/snap_path, output in $root/run.log
   local root=$1 rc=0
   HOME="$root/home" PATH="$root/stub:$PATH" OVERNIGHT_LOG_DIR="$root/out" \
@@ -222,27 +237,78 @@ echo "--- pre-snapshot: retired S3 surfaces stay retired ---"
 assert 'no Gateway health section' "! grep -q '^## Gateway health' \"\$(cat '$root/snap_path')\""
 assert 'no Kanban state section' "! grep -q '^## Kanban state' \"\$(cat '$root/snap_path')\""
 
-echo "--- pre-snapshot: PINNED GAP — the alerts tail carries no freshness marker ---"
-# Characterization, not approval. `tail -10 ~/logs/agent-alert.log` renders an eight-day-dead
-# alert log identically to a live one: presence is not freshness, and the consumer downstream
-# is a morning report whose job is to say what is wrong. The fix is one line — print the log's
-# mtime, or the age of its newest entry, beside the tail — but it is a behaviour change to the
-# artifact the morning report parses, so it is a decision rather than a tidy-up.
-# Tracked as W17 in design/open-decisions.md. Verified 2026-09-03 against :187-192.
+echo "--- pre-snapshot: the alerts tail is DATED, so a dead log cannot read as a live one ---"
+# W17, FIXED 2026-09-03 (design/open-decisions.md). This group pinned the defect until then:
+# `tail -10 ~/logs/agent-alert.log` with no clock renders an eight-day-dead alert log identically
+# to a live one — presence is not freshness — and the consumer downstream is a morning report
+# whose whole job is to say what is wrong. The section now prints
+# `newest entry: <iso> (N days ago) — FRESH|STALE` above the tail, and a stale log carries an
+# explicit instruction not to report its lines as current.
 #
-# WHEN THIS IS FIXED THE SECOND ASSERTION GOES RED. Read the row, then assert the marker.
+# THE ASSERTIONS KEY ON THE AGE, NOT ON A TIMESTAMP EXISTING, and the fixture is built to make
+# that the only thing that can pass: its lines carry `failed at <ISO>Z` exactly as
+# bin/agent_alert.sh:122 writes them. So "a date appears in the section" was TRUE of the broken
+# code and is worthless as evidence — ten dated lines from eight days ago still read as last
+# night's to an LLM skimming the artifact. What the fix adds, and what is asserted here, is the
+# age in days plus a one-word verdict.
 root=$(make_snap_fixture "$FIXTURE_TSV")
-printf 'ancient alert nobody has looked at\n' > "$root/home/logs/agent-alert.log"
-touch -d '8 days ago' "$root/home/logs/agent-alert.log"
+make_alert_log "$root" '8 days ago'
 rc=$(run_snap "$root")
-assert 'W17: the eight-day-old line is reported' \
-  "section_of '$root' 'Alerts (last 10)' | grep -q 'ancient alert nobody has looked at'"
-assert 'W17: with nothing anywhere in the section dating it' \
-  "! section_of '$root' 'Alerts (last 10)' | grep -qiE 'mtime|last (modified|written)|days? old|age:|stale'"
-# The one thing the section does get right: absence is distinguished from silence.
+assert 'still exits 0 — the marker is inside a fail-soft section' "[ '$rc' = 0 ]"
+assert 'the fixture is adversarial: the tail line already carries its own ISO stamp' \
+  "section_of '$root' 'Alerts (last 10)' | grep -q 'failed at 2026-08-26T04:25:01Z'"
+assert 'W17: the eight-day-old line is still reported' \
+  "section_of '$root' 'Alerts (last 10)' | grep -q 'agent-workforce ALERT: unit qmd-refresh.service'"
+assert 'W17: and the section states its AGE IN DAYS, not merely a timestamp' \
+  "section_of '$root' 'Alerts (last 10)' | grep -qE 'newest entry: .*\\(8 days ago\\)'"
+# The age has to be the LOG's, not the snapshot's. This file carries ISO stamps of its own in
+# the header, so a marker that dated the run rather than the log would look identical in a grep
+# for "a timestamp" — and would be exactly as blind as the bare tail.
+alert_iso=$(date -d "@$(stat -c %Y "$root/home/logs/agent-alert.log")" -Is)
+assert "W17: the timestamp is the LOG's mtime, not the snapshot's own clock" \
+  "section_of '$root' 'Alerts (last 10)' | grep -qF '$alert_iso'"
+assert 'W17: an eight-day-old log is labelled STALE in a word, not left to arithmetic' \
+  "section_of '$root' 'Alerts (last 10)' | grep -q 'STALE'"
+assert 'W17: and the consumer is told, in words, not to report those lines as current' \
+  "section_of '$root' 'Alerts (last 10)' | grep -q 'do not report them as current'"
+
+# The case the old fixture lacked. A marker hard-coded to say STALE would have passed every
+# assertion above; only a fresh log can tell the two apart.
+root=$(make_snap_fixture "$FIXTURE_TSV")
+make_alert_log "$root" 'now'
+rc=$(run_snap "$root")
+assert 'W17: a log written today is labelled FRESH, with its age' \
+  "section_of '$root' 'Alerts (last 10)' | grep -qE '\\(0 days ago\\) — FRESH'"
+assert 'W17: and carries no STALE verdict' \
+  "! section_of '$root' 'Alerts (last 10)' | grep -q 'STALE'"
+assert 'W17: nor the do-not-report-as-current instruction, which would cry wolf every morning' \
+  "! section_of '$root' 'Alerts (last 10)' | grep -q 'do not report them as current'"
+
+# An unreadable mtime must degrade to a STATED unknown. A blank here would read as freshness,
+# which is the defect being fixed, and a crash would truncate the last section of the snapshot.
+root=$(make_snap_fixture "$FIXTURE_TSV")
+make_alert_log "$root" '8 days ago'
+printf '#!/usr/bin/env bash\nexit 1\n' > "$root/stub/stat"
+chmod +x "$root/stub/stat"
+rc=$(run_snap "$root")
+assert 'W17: a failed stat still exits 0 (fail-soft, like every other section)' "[ '$rc' = 0 ]"
+assert 'W17: and says UNKNOWN out loud rather than printing an undated tail' \
+  "section_of '$root' 'Alerts (last 10)' | grep -q 'newest entry: UNKNOWN'"
+assert 'W17: naming the age UNVERIFIED, so it cannot be read as fresh' \
+  "section_of '$root' 'Alerts (last 10)' | grep -q 'UNVERIFIED'"
+assert 'W17: the alerts themselves are still shown — unknown age, not withheld' \
+  "section_of '$root' 'Alerts (last 10)' | grep -q 'agent-workforce ALERT: unit qmd-refresh.service'"
+
+# Absence is distinguished from silence — the one thing this section always got right — and now
+# so is emptiness, which the marker would otherwise render as a header over nothing.
 root=$(make_snap_fixture "$FIXTURE_TSV")
 rc=$(run_snap "$root")
 assert 'a MISSING alert log says so, rather than rendering as an empty section' \
   "section_of '$root' 'Alerts (last 10)' | grep -q 'no agent-alert.log yet'"
+root=$(make_snap_fixture "$FIXTURE_TSV")
+: > "$root/home/logs/agent-alert.log"
+rc=$(run_snap "$root")
+assert 'a PRESENT but empty log says that instead of leaving a bare marker' \
+  "section_of '$root' 'Alerts (last 10)' | grep -q 'the log exists but is empty'"
 
 exit $fail
