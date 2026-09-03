@@ -112,8 +112,9 @@ assert 'and still passes with pipefail set in the CALLER (bash -lc is a fresh sh
   "[ '$rc' = 0 ]"
 
 echo "--- overnight-morning-report: an unusable task file refuses, and says so ---"
-# The contrast with m1-signal-scan, which has no such guard: see W15 in open-decisions.md
-# and tests/test_m1_signal_scan_smoke.sh. Here the check is an explicit `[ -r ]` BEFORE the
+# This guard is the shape m1-signal-scan copied when W15 was fixed (2026-09-03) — it had none
+# until then and launched an empty prompt instead; see W15 in open-decisions.md and the matching
+# group in tests/test_m1_signal_scan_smoke.sh. The check is an explicit `[ -r ]` BEFORE the
 # command substitution, so both shapes refuse instead of launching an empty prompt.
 home=$(make_mr_home no_task)
 rc=$(run_mr "$home")
