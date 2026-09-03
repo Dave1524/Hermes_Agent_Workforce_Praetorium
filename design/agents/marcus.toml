@@ -72,7 +72,7 @@ route    = "ops"
 run_mode = "ops"
 contract = "design/contracts/overnight-morning-report.md"  # TODO Phase B
 status   = "standing"
-suite    = []
+suite    = ["tests/test_overnight_morning_report_smoke.sh"]
 notes    = """
 Carries the recurring reporting-defect class (coverage globs, whitelist health checks).
 Registry §2 footnote 1 keeps it separate from daily-plan for now. Its acceptance checks

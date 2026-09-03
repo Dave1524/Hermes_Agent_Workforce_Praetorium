@@ -6,6 +6,12 @@ set -euo pipefail
 # shellcheck source=tests/rhythm_test_lib.sh
 . "$(dirname "$0")/rhythm_test_lib.sh"
 
+# Deterministic canary for the pipefail/SIGPIPE regression in assert(): `yes` is guaranteed
+# to still be writing when `grep -q` exits, so this fails if and only if a condition is
+# evaluated under pipefail. It lives in every caller because the assert it guards is shared —
+# a single copy in the lib could not tell which suite had reintroduced the setting.
+assert 'a found pattern is never reported as a failure' "yes | grep -q y"
+
 smoke_suite eod-summary \
   bin/run_eod_summary_cc.sh \
   profiles/eod_summary.env.example \

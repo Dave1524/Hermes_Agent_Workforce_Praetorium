@@ -17,9 +17,22 @@ GUARD="$REPO_ROOT/bin/vault_sync_guard.sh"
 STAMP=".git/vault_sync_guard_last_fetch"
 
 fail=0
+# pipefail has no place inside a boolean condition, and this file sets it at the top for the
+# fixture builders below — which DO need it, being real data-producing pipelines. `grep -q`
+# exits on its first match, so whatever feeds it dies of SIGPIPE and the pipeline reports 141
+# for a pattern that WAS found: a true assertion fails, and a negated one (`! producer |
+# grep -q X`) passes without reading anything.
+#
+# Scoped off here rather than per-condition, matching every hand-rolled assert() in tests/.
+# This lib was the last holdout: eight suites share this function and not one carried the
+# `yes | grep -q y` canary, so the defect was undetectable from any of them. Added 2026-09-03
+# while giving the W6 workflows suites; the canary now appears in each of the nine callers.
 assert() {
-  local desc=$1 cond=$2
+  local desc=$1 cond=$2 pf
+  pf=$(shopt -po pipefail)
+  set +o pipefail
   if eval "$cond"; then echo "  ok: $desc"; else echo "  FAIL: $desc"; fail=1; fi
+  eval "$pf"
 }
 
 commit_at() {
