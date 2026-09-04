@@ -26,6 +26,17 @@ STATUSES = {"standing", "campaign", "spent", "dormant", "planned"}
 DECLARES_WORKFLOWS = re.compile(r"^\s*\[\[workflows\]\]\s*$", re.M)
 EXEC_LINE = re.compile(r"^\s*Exec[A-Za-z]*=")
 BIN_REF = re.compile(r"bin/[A-Za-z0-9_.@-]+(?:/[A-Za-z0-9_.@-]+)*")
+# The assertion-id anchor: a `::`-prefixed id wrapped in parentheses. Deliberately the same
+# notation design/agents/*.toml already uses on the other side of the colons in
+# `test = "<suite>::<id>"`, which tests/test_fleet_guards.sh's enforced-has-test greps back.
+# The parentheses are what separate a DECLARATION site from a mention: cross-references in
+# prose are written `<path>::<id>` with no brackets, so they are not mistaken for anchors.
+ANCHOR = re.compile(r"\(::([A-Za-z0-9][A-Za-z0-9_-]*)\)")
+COMPANION = re.compile(r"tests/[A-Za-z0-9_.-]+\.py")
+# python named in COMMAND POSITION, not merely somewhere on the line. Matching the word
+# anywhere credits a comment that mentions the interpreter as a hand-off to it — see
+# suite_sources.
+PY_INVOKE = re.compile(r"(?:^|[;&|]\s*|\bexec\s+)python3?\s")
 
 problems = []
 exempt = []
@@ -140,13 +151,17 @@ for owner, w in entries:
             problem("suite-paths-exist",
                     f"{w.get('unit')} ({owner}): declared suite {path} is not a file")
 
-# design/fleet-suites.toml's own structure is asserted by tests/test_fleet_guards.sh
-# (path exists, owner, asserts non-empty). Consumed here, not re-validated.
+# design/fleet-suites.toml's own SCHEMA is asserted by tests/test_fleet_guards.sh (path
+# exists, owner is in the enum, asserts non-empty). Consumed here, not re-validated. The
+# `asserts` JOIN below is a different claim from that schema and lives here deliberately —
+# see the block that opens it.
 decl = ROOT / "design" / "fleet-suites.toml"
 fleet_declared, fleet_owned = set(), set()
+fleet_entries = []
 if decl.is_file():
     for suite in tomllib.loads(decl.read_text()).get("suite", []):
         fleet_declared.add(suite.get("path"))
+        fleet_entries.append((suite.get("path"), list(suite.get("asserts") or [])))
         if suite.get("owner"):
             fleet_owned.add(suite.get("path"))
 claimed |= fleet_owned
@@ -197,6 +212,107 @@ for suite in unclaimed:
                 f"{suite}: claimed by no workflow and no fleet owner, and its subject "
                 f"{', '.join(dead)} is exec'd only by an archived unit")
 
+# --- the asserts join (W9) -----------------------------------------------------------
+# Until 2026-09-04 design/fleet-suites.toml's `asserts` list named its assertions by
+# CONVENTION ONLY. Nothing read the strings: this file read `path` and `owner` and never
+# `asserts`, and tests/test_fleet_guards.sh only checked the list was non-empty. So renaming
+# an id on either side left the other silently stale — one fact in two places, which is the
+# class D6 exists to detect, sitting inside D6's own join.
+#
+# THERE WAS NO SECOND SHAPE TO PRESERVE, which is the measurement that decided the fix.
+# Counted across the four entries, 2026-09-04: 32 declared ids, of which 8 were anchored
+# (all in tests/test_fleet_guards.sh), 5 appeared as `check <id>` calls in
+# tests/test_workflow_coverage.sh, and 19 appeared NOWHERE in the files they name — not as
+# an id, not as a description. tests/test_fleet_ownership.sh declared nine ids against seven
+# prose group headers; tests/test_content_inbox_finalize.sh declared nine against thirteen,
+# in a file it does not even contain (it is an eight-line wrapper round a .py). A per-entry
+# `kind` would have blessed that gap as a second legitimate shape. It was one shape and
+# three files that had not adopted it, so the anchor was added to all of them instead.
+#
+# BOTH DIRECTIONS, because either alone fails open. A declared id with no anchor catches a
+# rename inside the suite; an anchor no entry declares catches a rule added to a suite that
+# never reached the manifest, and a rename onto an id that happens to be declared elsewhere.
+#
+# AND A VACUITY GUARD, because this join's own failure mode is reaching nothing: an entry
+# whose files yield zero anchors passes every comparison it never makes, exactly as
+# test_fleet_ownership.sh's kind join does when pointed at the wrong root.
+#
+# WHAT IT DOES NOT CLAIM. It joins ids to anchors, not assertions to ids. A group carrying
+# no anchor is outside the join and is not reported — test_content_inbox_finalize.py has
+# thirteen groups and nine declared rules, and the four unnamed ones stay unnamed. Widening
+# that would make the manifest enumerate every echo, which is not what `asserts` is for.
+# Stated here so the rule's reach is readable, the way no-orphan-suite's is.
+#
+# EDITING TRAP: a parenthesised `::`-id written as an EXAMPLE in any scanned file becomes a
+# real anchor. It fails loudly — an anchor no entry declares — rather than silently, which
+# is why the form is described in words above and never shown as a literal.
+
+
+def suite_sources(path):
+    """The declared file, plus any tests/*.py it hands the whole run to.
+
+    Two of the declared suites are thin wrappers: tests/test_content_inbox_finalize.sh is
+    eight lines ending in `exec python3 tests/test_content_inbox_finalize.py`. Following
+    that is what stops the join from reporting nine anchorless ids against a file that was
+    never going to hold them.
+
+    Restricted to lines that INVOKE python in command position, and never to a comment.
+    Both halves of that were paid for. tests/test_fleet_guards.sh names its own path in a
+    Python literal and tests/test_buzz_interactive_harness.sh names another suite's path in
+    a prose cross-reference, so "any tests/… string" was never the rule. But "any line
+    containing the word python" is not the rule either, and that version SHIPPED for about
+    an hour: the header comment added to tests/test_content_inbox_finalize.sh by this same
+    change says `asserts-anchored in tests/test_workflow_coverage.py follows the exec line`,
+    which matched, and this checker's own source was silently joined into the finalize
+    entry's scan set. It was harmless only because that file carries no anchors — the next
+    file to mention a companion in prose would have had every anchor reported as undeclared,
+    in an entry that never named it. Caught by the mutation test, not by reading.
+    """
+    files = [path]
+    source = ROOT / path
+    if source.is_file():
+        for line in source.read_text().splitlines():
+            stripped = line.lstrip()
+            if stripped.startswith("#") or not PY_INVOKE.search(stripped):
+                continue
+            for companion in COMPANION.findall(line):
+                if companion != path and companion not in files \
+                        and (ROOT / companion).is_file():
+                    files.append(companion)
+    return files
+
+
+joined_ids = 0
+joined_suites = 0
+for path, declared in fleet_entries:
+    # A missing or unnamed path is tests/test_fleet_guards.sh's finding to report; joining
+    # against a file that is not there would restate it as a pile of absent anchors.
+    if not path or not (ROOT / path).is_file():
+        continue
+    joined_suites += 1
+    sources = suite_sources(path)
+    anchored = {}
+    for source in sources:
+        for found in ANCHOR.findall((ROOT / source).read_text()):
+            anchored.setdefault(found, source)
+    joined_ids += len(anchored)
+    where = " + ".join(sources)
+    if declared and not anchored:
+        problem("asserts-anchored",
+                f"{path}: declares {len(declared)} assert id(s) and {where} carries no "
+                "anchor at all — the join reached nothing, so it compared nothing")
+        continue
+    for want in declared:
+        if want not in anchored:
+            problem("asserts-anchored",
+                    f"{path}: declares '{want}' and no assertion in {where} is anchored "
+                    "to it — the id was renamed on one side only")
+    for found, source in sorted(anchored.items()):
+        if found not in declared:
+            problem("asserts-anchored",
+                    f"{path}: {source} anchors '{found}', which that entry's asserts list "
+                    "in design/fleet-suites.toml does not declare")
+
 # --- the unit side -------------------------------------------------------------------
 declared_units = {w.get("unit") for _, w in entries}
 missing_families = []
@@ -225,6 +341,11 @@ print(f"  standing coverage: {len(covered)} of {len(standing)} own a suite, "
 print(f"  {len(claimed)} distinct suite paths claimed "
       f"({len(fleet_owned)} by design/fleet-suites.toml); "
       f"{len(unclaimed)} of {len(suites)} suites unclaimed, {len(orphans)} orphaned")
+# Printed on every run, not only on a finding. The `asserts` join's own failure mode is
+# reaching nothing, and its assertion is a negative one — so the size of what it compared
+# is the only thing on screen that distinguishes a clean pass from an empty one.
+print(f"  asserts join: {joined_ids} anchored id(s) matched across {joined_suites} "
+      f"declared suite(s)")
 
 print("  exempt from needing a suite — named, never merely skipped:")
 for unit, reason in exempt:

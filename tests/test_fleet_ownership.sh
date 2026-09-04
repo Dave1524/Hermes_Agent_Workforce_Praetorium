@@ -19,6 +19,13 @@
 #
 # The denominator is DERIVED here, never written down. "9 of 19" was recorded on
 # 2026-09-01 and could not be reproduced a day later, because 19 never named its set.
+#
+# THE `::id` TOKENS IN THE GROUP HEADERS BELOW ARE LOAD-BEARING (W9). design/fleet-suites.toml
+# declares this suite's nine rules by id, and until 2026-09-04 not one of those ids appeared
+# in this file in any form — the manifest and the assertions agreed by eye, so renaming
+# either side went unnoticed. asserts-anchored in tests/test_workflow_coverage.py now reads
+# the anchors back in both directions: a declared id with no anchor here is red, and an
+# anchor the manifest does not declare is red too. Renaming a rule is an edit to two files.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -71,7 +78,7 @@ PY
 
 fleet_rows() { grep -v '^#' "$FLEET" | grep -v '^[[:space:]]*$'; }
 
-echo '--- the list itself is well-formed ---'
+echo '--- the list itself is well-formed (::list-schema) ---'
 assert 'config/fleet-units.tsv exists' "[ -f '$FLEET' ]"
 assert 'design/agents/ exists' "[ -d '$AGENTS' ]"
 assert 'every row has five tab-separated columns' \
@@ -89,7 +96,7 @@ assert 'at least one row of each kind, or the column is asserting nothing' \
 assert 'the list is not empty (a silently empty list is the defect it replaced)' \
   "[ \"\$(fleet_rows | wc -l)\" -gt 0 ]"
 
-echo '--- and kind is joined against the unit files, not merely spelled correctly ---'
+echo '--- and kind is joined against the unit files, not merely spelled correctly (::kind-matches-unit-files) ---'
 # A closed vocabulary stops a THIRD spelling; it does not stop the WRONG one of the two. The
 # column exists so the three reporting jobs never render an always-on agent as a timer that
 # has never fired — and a row typed `timer` for a unit that has no timer reproduces exactly
@@ -155,6 +162,12 @@ assert 'no row declares a kind its unit files contradict' \
 # would hide in.
 printf '%s\n' "$kind_join" | grep '^NOTE' | sed 's/^/  info: /'
 
+# TWO DECLARED RULES, ONE COMPARISON, so both anchors sit on this group rather than one
+# being left implicit: the comm key is the WHOLE row, so "the list equals the manifests"
+# (::list-equals-manifests) and "every field agrees with the manifest that declares it"
+# (::row-matches-manifest) are the same pair of assertions read two ways. Splitting the key
+# to give each its own assertion would weaken both — a membership check that ignored
+# scope/status/owner/kind would pass a row whose every field had drifted.
 echo '--- the list equals the manifests, in BOTH directions ---'
 # LC_ALL=C on BOTH sorts, because `comm` compares bytes and `sort` does not. Under
 # en_US.UTF-8 punctuation is weighted differently in the first pass, so a locale-sorted
@@ -169,7 +182,7 @@ assert 'every manifest workflow appears in the list with the same scope/status/o
 assert 'the list declares no unit the manifests do not' \
   "[ -z \"\$(comm -13 <(printf '%s\n' \"\$mrows\") <(printf '%s\n' \"\$frows\"))\" ]"
 
-echo '--- every profile-carrying workflow names its owner on line 1 ---'
+echo '--- every profile-carrying workflow names its owner on line 1 (::profile-owner-header) ---'
 while IFS=$'\t' read -r owner unit scope status kind where profile; do
   [ -n "$profile" ] || continue
   # `Owner: <persona>` on line 1 is a convention of the profiles THIS REPO OWNS. The five
@@ -198,6 +211,8 @@ while IFS=$'\t' read -r owner unit scope status kind where profile; do
     "[ \"\$(head -1 '$f' | sed -n 's/^Owner: \\([A-Za-z0-9_-]*\\).*/\\1/p')\" = '$owner' ]"
   # The owner header is canonical, but the prose below it is what a reader sees first.
   # A "You are <persona>" naming anyone else is drift that the header alone cannot catch.
+  # A separate declared rule from the header above, so it carries its own anchor
+  # (::no-prose-owner-drift) — the two fail for different reasons and read differently.
   others=$(ls "$AGENTS" | sed 's/\.toml$//' | grep -vx "$owner" || true)
   for p in $others; do
     assert "$unit: no prose claims 'You are ${p^}'" \
@@ -205,7 +220,7 @@ while IFS=$'\t' read -r owner unit scope status kind where profile; do
   done
 done < <(manifest_rows)
 
-echo '--- the reporting consumers read the list rather than a glob of their own ---'
+echo '--- the reporting consumers read the list rather than a glob of their own (::consumers-name-the-list) ---'
 for c in bin/praetorium-status.sh bin/overnight_pre_snapshot.sh bin/local_tier_eval.sh \
          profiles/daily_plan_task.md profiles/eod_summary_task.md \
          profiles/overnight_morning_report_cc_task.md; do
@@ -213,7 +228,7 @@ for c in bin/praetorium-status.sh bin/overnight_pre_snapshot.sh bin/local_tier_e
     "grep -q 'fleet-units.tsv' '$REPO_ROOT/$c'"
 done
 
-echo '--- the artifact lives where bin/deploy can ship it ---'
+echo '--- the artifact lives where bin/deploy can ship it (::deployable-not-design) ---'
 # design/ is not in bin/deploy's list, so a consumer reading the manifests directly works
 # in the repo and empties in the runtime. This is the assertion that stops that regression.
 assert 'bin/deploy ships the config/ tree' \
@@ -221,7 +236,7 @@ assert 'bin/deploy ships the config/ tree' \
 assert 'bin/deploy does NOT ship design/ (so nothing may read it at run time)' \
   "! grep -qE '^[^#]*DEPLOY_PATHS=.*\bdesign\b' '$REPO_ROOT/bin/deploy'"
 
-echo '--- W4: the job-override examples have exactly one home ---'
+echo '--- W4: the job-override examples have exactly one home (::one-example-home) ---'
 # The invariant is a filesystem fact, not a prose fact. config/job-overrides/ holds a README
 # and archive/ only; the live templates are profiles/*.env.example. Asserted this way round
 # because the failure mode was an INSTRUCTION that stayed authoritative-looking after its
