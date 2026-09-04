@@ -56,7 +56,8 @@ if [ ! -e "$out" ]; then
 fi
 
 # auto-sync fires every 15 min and commits any dirty tree, so it may have swept the file already;
-# that is success, not an error. It does NOT push a clean tree (bin/auto-sync:25), which is why
+# that is success, not an error. It does NOT push a clean tree (auto-sync's `working tree clean`
+# early return), which is why
 # the push below is unconditional rather than gated on having made a commit here.
 git add -- "$out"
 if git diff --cached --quiet; then

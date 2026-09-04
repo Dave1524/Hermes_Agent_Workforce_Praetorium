@@ -21,7 +21,23 @@ if ! git pull --ff-only origin "$PRIMARY"; then
 fi
 
 # Nothing to commit?
-if git diff --quiet && git diff --cached --quiet; then
+#
+# This has to agree with the `git add -A` below, and only `git status --porcelain` does.
+# `git diff` / `git diff --cached` see TRACKED paths only, so a tree holding nothing but NEW
+# files reported "working tree clean. Nothing to do" here every 15 minutes, indefinitely, while
+# add -A would have committed them on the very next line. The cost was a delayed sync with a
+# wrong author story: the file waited for some unrelated tracked edit, then got swept in under
+# an `Auto-sync:` subject dated days after it was written. (W16, fixed 2026-09-03.)
+#
+# --porcelain and add -A honour the same exclusions (.gitignore, .git/info/exclude,
+# assume-unchanged/skip-worktree), so an ignored file still reads clean and no empty commit is
+# attempted. Neither is asked about ignored paths: --porcelain lists them only under --ignored.
+#
+# Assigned on its own line, NOT inline in the `if`: `set -e` is suspended inside a condition, so
+# a command substitution there would swallow a git failure and report a broken repo as clean.
+# Out here a non-zero git exits the script loudly, which is the direction this job should fail.
+pending=$(git status --porcelain)
+if [ -z "$pending" ]; then
     echo "auto-sync: working tree clean. Nothing to do."
     exit 0
 fi
@@ -30,6 +46,32 @@ timestamp=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
 message="Auto-sync: $PRIMARY updates at $timestamp"
 
 git add -A
+
+# A nested repository is staged by `git add -A` as a 160000 GITLINK — an accidental submodule
+# with no `.gitmodules`, recording a commit that exists only in this clone. It is the one thing
+# this job must never push: it commits and pushes cleanly, exit 0, and a fresh clone gets a
+# directory git refuses to populate. The W16 widening above is what made it REACHABLE — under
+# the old tracked-only gate an untracked worktree directory never woke the job at all — and this
+# box creates nested repos routinely (`git worktree` and the agent harness both do; the source
+# checkout held six under .claude/worktrees/ on 2026-09-03).
+#
+# Ignoring the known paths is not enough on its own. An ignore list is something someone has to
+# remember to extend, and the next nested repo lands somewhere nobody predicted; .gitignore
+# carries the two paths we know about, this carries the property. Fails CLOSED: non-zero reaches
+# OnFailure=agent-alert@%n.service, which is the loud, recoverable direction. The index is reset
+# first so the next tick starts from a clean slate rather than re-committing a staged gitlink
+# through some other path.
+gitlinks=$(git ls-files --stage | awk '$1 == "160000" { sub(/^[^\t]*\t/, ""); print }')
+if [ -n "$gitlinks" ] && [ -z "$(git ls-files -- .gitmodules)" ]; then
+    git reset -q
+    echo "auto-sync: REFUSING to sync — nested repositories staged as gitlinks, with no .gitmodules:" >&2
+    printf '%s\n' "$gitlinks" | sed 's/^/  /' >&2
+    echo "auto-sync: these are almost certainly git worktrees or a stray clone. Add them to" >&2
+    echo "auto-sync: .gitignore (or .git/info/exclude), or remove them; the next tick then syncs" >&2
+    echo "auto-sync: normally. Nothing was committed and origin is untouched." >&2
+    exit 1
+fi
+
 git commit -m "$message"
 git push origin "$PRIMARY"
 

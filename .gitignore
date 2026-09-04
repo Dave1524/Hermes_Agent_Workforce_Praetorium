@@ -9,3 +9,9 @@ secrets.env
 # OpenCode observability — captured LLM prompt/response data.
 # These contain full prompt and response text and MUST NOT be committed.
 var/opencode-observability/
+
+# Agent worktrees created by the Workflow harness. Nested repositories: `git add -A` stages one
+# as a 160000 gitlink pointing at a commit that exists only in this clone. bin/auto-sync refuses
+# on that property regardless, but a refusal is a stopped sync plus a Discord alert every 15
+# minutes — ignoring the path we KNOW about keeps the guard for the ones we do not.
+.claude/worktrees/
