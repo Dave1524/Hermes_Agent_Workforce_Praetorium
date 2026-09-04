@@ -74,7 +74,6 @@ overnight-morning-report	system	standing	marcus	timer
 overnight-pre-snapshot	system	standing	trajan	timer
 praetorium-daily-plan	system	standing	marcus	timer
 praetorium-eod-summary	system	standing	marcus	timer
-praetorium-phaseb-brief@	system	campaign	trajan	timer
 qmd-refresh	system	standing	trajan	timer
 raw-ingest	system	standing	claudius	timer
 scorecard	system	standing	trajan	timer

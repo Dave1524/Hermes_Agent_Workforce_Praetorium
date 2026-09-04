@@ -223,31 +223,12 @@ in_repo = true   # systemd/user/buzz-pr-watch.{service,timer}, backported 2026-0
 notes = "systemctl --user. Every other job here is system scope; do not debug it with sudo. It is `standing` because its cadence is recurring and open-ended, but it watches ONE pull request — when block/buzz#3816 closes it becomes a job with nothing to watch, and no status transition will announce that."
 
 
-[[workflows]]
-unit = "praetorium-phaseb-brief@"
-surface = "platform"
-status = "campaign"
-expires = "2026-09-02 05:22:00"
-suite    = ["tests/test_phaseb_brief_jobs.sh"]
-trigger = "five one-shot instances, all 2026-09-02: @2 00:12, @3 01:07, @4 02:07, @5 02:52, @6 05:22"
-runner = "bin/run_phaseb_brief_cc.sh"
-what = "writes one Phase-B implementation brief per queue id (design/phaseb-brief-queue.toml)"
-alerted = true
-in_repo = true
-notes = """
-ONE entry for the template family, not five: `praetorium-phaseb-brief@` is the join key to
-systemd, and the five `@N.timer` files are instances of it. A registry keyed on the instance
-names would grow a row per brief written.
-
-`campaign`, not `standing` — every instance carries an absolute one-shot OnCalendar, and
-`expires` is the latest of the five. By agent-model.md's status table it is `spent` the moment
-that has passed, i.e. flag-for-removal, which is brief 6's job along with the units themselves.
-
-It was missing from this registry entirely until brief 3, which is the omission that made its
-coverage checker's unit-side assertion worth writing: five enabled timers ran against no
-declared owner. `tests/test_phaseb_brief_jobs.sh` already existed and was unclaimed; this is
-its owner.
-"""
+# praetorium-phaseb-brief@ was retired 2026-09-04 with its units, its suite and its runner.
+# Five one-shot instances, all fired 2026-09-02 (latest 05:22), no NEXT on any of them. The
+# entry is removed rather than marked `spent` because nothing survives it in any tree —
+# systemd/, /etc and bin/ all lost their copy in the same change. open-decisions.md item 8
+# carries the record; design/phaseb-brief-queue.toml is the queue it drove and stays as
+# history.
 
 [[workflows]]
 unit = "agent-drift-check"
