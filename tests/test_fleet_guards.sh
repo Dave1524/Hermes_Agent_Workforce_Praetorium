@@ -277,6 +277,12 @@ else:
                 f"{decl.name}: '{path}' declares owner {owner!r}, which is not one of "
                 f"{sorted(OWNERS)} — D6's checker credits ANY truthy owner, so a value "
                 "outside this set silences the orphan rule while looking correct")
+        # Non-empty only. Whether those ids name assertions that EXIST is a different
+        # claim and a different check: asserts-anchored, in the coverage checker, which
+        # joins the list to the anchors in the suite it names and runs off the box too.
+        # This one is the floor under it. An empty list plus an unanchored suite is the one
+        # state that join cannot see — nothing to match in either direction, and its
+        # zero-anchor guard keys off a non-empty list — so the floor is what forbids it.
         if not suite.get("asserts"):
             problems.append(f"{decl.name}: '{path}' declares no asserts")
     this_suite = "tests/test_fleet_guards.sh"

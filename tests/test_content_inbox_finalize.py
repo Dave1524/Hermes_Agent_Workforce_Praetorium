@@ -189,7 +189,7 @@ def run(argv, api, shell):
     return raised, result, out.getvalue(), err.getvalue()
 
 
-print("--- check: all guards pass, and it writes nothing ---")
+print("--- check: all guards pass, and it writes nothing (::check-writes-nothing) ---")
 workspace()
 api, shell = FakeNotion(), FakeShell()
 raised, result, out, err = run(["check"], api, shell)
@@ -198,7 +198,7 @@ check("all six guards ran", out.count("PASS ") == 6)
 check("it says so", "6/6 guards passed" in out)
 check("nothing was written to Notion", api.writes() == [])
 
-print("--- apply: freeze, then archive, then a receipt that can reverse both ---")
+print("--- apply: freeze, then archive (::apply-freeze-then-archive) ---")
 root = workspace()
 api, shell = FakeNotion(), FakeShell()
 raised, result, out, err = run(["apply", "--notify"], api, shell)
@@ -221,6 +221,9 @@ check("the note says where the content went", "Content DB" in
       appended[2]["children"][0]["callout"]["rich_text"][0]["text"]["content"])
 check("the note says how to reverse it", "undo" in
       appended[2]["children"][0]["callout"]["rich_text"][0]["text"]["content"])
+# --- and a receipt that can reverse both (::receipt-reverses-both). A separate declared
+# rule from the ordering above: the freeze can be correct and still be irreversible if the
+# receipt loses the callout id or the prior title, which is undo's only input.
 receipt = json.load(open(fin.RECEIPT))
 check("the receipt records the archive completed", receipt["archived"] is True)
 check("it keeps the callout block undo must delete", receipt["callout_block"] == "callout-1")
@@ -229,7 +232,7 @@ check("it keeps the guard results as evidence", len(receipt["guards"]) == 6)
 check("one notification, and it reports success",
       len(shell.notifications) == 1 and "finalized" in shell.notifications[0][0])
 
-print("--- undo puts the board back ---")
+print("--- undo puts the board back (::undo-restores-the-board) ---")
 api2 = FakeNotion()
 api2.in_trash = True
 api2.title = fin.nr.rt("Agent Content Inbox (frozen 2026-08-15 — migrated to Content DB)")
@@ -244,7 +247,7 @@ check("the callout is deleted", api2.deleted_blocks == ["callout-1"])
 check("the receipt is retired, not left to be replayed", not os.path.exists(fin.RECEIPT))
 check("but it is kept for the record", os.path.exists(fin.RECEIPT + ".undone"))
 
-print("--- every guard, on its own, refuses the pass with Notion untouched ---")
+print("--- every guard, on its own, refuses the pass with Notion untouched (::any-guard-refuses) ---")
 # Each row is a real way this could have gone wrong between now and 22:00 tomorrow.
 cases = [
     ("something is still writing the old board",
@@ -333,7 +336,7 @@ raised, result, out, err = run(["check"], api, FakeShell())
 check("non-zero exit", result == 1)
 check("nothing written", api.writes() == [])
 
-print("--- a failure between freeze and archive stays reversible ---")
+print("--- a failure between freeze and archive stays reversible (::partial-failure-reversible) ---")
 # The freeze is two writes and the archive is a third. If the receipt were written after
 # all three, a failure here would leave a renamed board that undo cannot find.
 workspace()
@@ -361,7 +364,7 @@ check("Dave is told it failed part-way, and how to reverse it",
       len(shell.notifications) == 1 and "FAILED PART-WAY" in shell.notifications[0][0]
       and "undo" in shell.notifications[0][1])
 
-print("--- an archive that silently did not stick is a failure ---")
+print("--- an archive that silently did not stick is a failure (::archive-must-stick) ---")
 # PATCH returning 200 is not evidence. If in_trash reads false afterwards, the board is
 # still live and reporting success would tell Dave step 5 was done when it was not.
 workspace()
@@ -378,7 +381,7 @@ raised, result, out, err = run(["apply"], FakeNotion(), shell)
 check("exits clean", raised is None and result == 0)
 check("no notification", shell.notifications == [])
 
-print("--- systemctl output is parsed by key, never by position ---")
+print("--- systemctl output is parsed by key, never by position (::systemctl-parsed-by-key) ---")
 # `systemctl show -p A -p B` prints in systemd's own order, so a positional read of a
 # multi-property call swaps the fields and misjudges the unit. FakeShell emits an extra
 # leading line precisely so a positional parser would fail this.
@@ -391,7 +394,7 @@ check("the timestamp is read from its own key",
 check("an absent property is empty, not the neighbouring line's value",
       fin.unit_property(fin.NIGHTLY_UNIT, "NoSuchProperty") == "")
 
-print("--- a notify.sh that fails cannot fail the run ---")
+print("--- a notify.sh that fails cannot fail the run (::notify-cannot-fail-the-run) ---")
 # The pass is done by then. Turning a completed finalize into a failed unit would send
 # Dave to check a board that is already correct.
 workspace()

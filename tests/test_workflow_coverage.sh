@@ -55,7 +55,31 @@ named_matches_counted() {
   [ -n "$exempt_counted" ] && [ "$exempt_named" = "$exempt_counted" ]
 }
 
+# The join's own size, asserted rather than merely printed. `check asserts-anchored` below is
+# a NEGATIVE assertion — `! grep -q PROBLEM` — so it passes identically whether the join found
+# nothing wrong or the rule was deleted from tests/test_workflow_coverage.py entirely. Proven
+# 2026-09-04: removing the join block left this suite green, printing one line fewer. The
+# reported count is therefore compared against a figure derived HERE, from this file's own
+# anchors, the same way exempt-named compares two independent emissions above.
+anchors_here=$(grep -cE '\(::[A-Za-z0-9][A-Za-z0-9_-]*\)' tests/test_workflow_coverage.sh)
+join_ids=$(sed -n 's/^  asserts join: \([0-9]\{1,\}\) anchored.*/\1/p' "$report")
+join_suites=$(sed -n 's/^  asserts join: [0-9]\{1,\} anchored id(s) matched across \([0-9]\{1,\}\) .*/\1/p' "$report")
+
+join_reported_what_it_compared() {
+  [ -n "$join_ids" ] && [ -n "$join_suites" ] \
+    && [ "$join_suites" -gt 0 ] && [ "$anchors_here" -gt 0 ] \
+    && [ "$join_ids" -ge "$anchors_here" ]
+}
+
 # One assertion per rule, each named as design/fleet-suites.toml declares it.
+#
+# THE TRAILING TOKEN IS THE JOIN ANCHOR, not decoration (W9). `check <id>` names the id to
+# bash but to nothing else, and `exempt-named` below is a plain assert whose id appeared
+# nowhere in this file at all — so the manifest and this file agreed by convention only and
+# a rename on either side went unnoticed. The anchors are read back by asserts-anchored in
+# tests/test_workflow_coverage.py, in both directions: a declared id with no anchor here is
+# red, and an anchor this file's entry does not declare is red too. Move an id and update
+# both, or the gate says so.
 check() {
   local id=$1 desc=$2
   assert "$desc" "! grep -q '^PROBLEM	$id	' '$report'"
@@ -63,16 +87,20 @@ check() {
 }
 
 check parse-integrity \
-  'the coverage figure was computed from entries that actually parsed'
+  'the coverage figure was computed from entries that actually parsed'  # (::parse-integrity)
 check standing-has-suite \
-  'every standing workflow without suite_exempt names at least one suite'
+  'every standing workflow without suite_exempt names at least one suite'  # (::standing-has-suite)
 check suite-paths-exist \
-  'every path named in a suite exists on disk'
+  'every path named in a suite exists on disk'  # (::suite-paths-exist)
 assert 'every exempt workflow is printed by name, never merely skipped' \
-  named_matches_counted
+  named_matches_counted  # (::exempt-named)
 check no-orphan-suite \
-  'every suite is claimed by a workflow or by design/fleet-suites.toml'
+  'every suite is claimed by a workflow or by design/fleet-suites.toml'  # (::no-orphan-suite)
 check timer-family-declared \
-  'every *.timer family in systemd/ has a manifest entry'
+  'every *.timer family in systemd/ has a manifest entry'  # (::timer-family-declared)
+check asserts-anchored \
+  'every asserts id is anchored in the suite it names, and every anchor is declared'  # (::asserts-anchored)
+assert 'and the join says how much it compared, so a deleted rule cannot pass as a clean one' \
+  join_reported_what_it_compared  # (::asserts-join-counted)
 
 exit $fail

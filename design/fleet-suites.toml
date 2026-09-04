@@ -12,6 +12,28 @@
 #
 # owner = "fleet" is the declared value; design/eval-spec.md §6 documents it as part of
 # D6's join so the checker and this file cannot drift apart.
+#
+# --- `asserts` IS JOINED, NOT DECORATIVE (W9, closed 2026-09-04) -----------------------
+#
+# Every id in an `asserts` list must be ANCHORED in the suite that entry names: the id,
+# `::`-prefixed and wrapped in parentheses, on the line that opens the assertion group.
+# tests/test_workflow_coverage.py's `asserts-anchored` reads the two sides against each
+# other in BOTH directions — a declared id nothing anchors is red, and an anchor no entry
+# declares is red. Renaming a rule is therefore an edit to two files, and forgetting the
+# second one fails the gate instead of going quiet.
+#
+# It is worth knowing what this list WAS, because the shape looked more principled than it
+# was. Measured 2026-09-04, before the anchors: 32 declared ids across the four entries, of
+# which 8 were anchored, 5 more appeared as `check <id>` calls, and 19 appeared nowhere at
+# all in the files they name. The two entries below with nine ids each matched them to
+# prose group headers by eye — and one of those nine-id entries names a file that contains
+# no assertions whatsoever, being an eight-line wrapper round a .py. The join follows that
+# `exec python3` hop; a suite whose assertions live in a companion anchors them there.
+#
+# The notation is not new. design/agents/*.toml already writes `test = "<suite>::<id>"` and
+# tests/test_fleet_guards.sh's `enforced-has-test` already greps the id back out of the
+# named file, so this is the same namespace read from the other end. Parentheses are what
+# distinguish a declaration site from a prose cross-reference, which is written bare.
 
 [[suite]]
 path    = "tests/test_fleet_guards.sh"
@@ -47,6 +69,8 @@ asserts = [
   "exempt-named",           # every suite_exempt workflow is printed by name, never skipped
   "no-orphan-suite",        # both join directions: workflow -> suite, and this file's owners
   "timer-family-declared",  # every *.timer family in systemd/ has a manifest entry
+  "asserts-anchored",       # W9: this list is joined to the assertions it names, both ways
+  "asserts-join-counted",   # W9: and the join reports its own size, so a deleted rule is red
 ]
 why_no_workflow = """
 It grades the registry, not a job. Nothing execs it and nothing ever should — its subject is

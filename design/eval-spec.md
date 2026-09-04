@@ -255,10 +255,20 @@ directions — an unowned workflow is red, and so is a suite no workflow claims.
 `path` and the `asserts` list. That file is the second source of ownership the §7.1 checker
 must accept.
 
+**`asserts` is joined to the assertions it names, and this section deliberately does not
+restate how.** The rule and its notation live in one place — `asserts-anchored` in
+`tests/test_workflow_coverage.py`, with the convention written up in the header of
+`design/fleet-suites.toml` — and the join runs in both directions, so a declared id nothing
+asserts and an assertion no entry declares are each red. What matters at this level is only
+that the list is *load-bearing*: it was a hand-written index until 2026-09-04, agreeing with
+the suites by eye, and 19 of its 32 ids named assertions that did not exist under that name
+anywhere. Read the checker for the current rule.
+
 **`owner` is an enum, and this section deliberately does not list its values.** The set is
 enforced in one place — `OWNERS` in `tests/test_fleet_guards.sh` — and restating it here
-would put one fact in two files, which is the W9 hazard applied to the very join D6 exists
-to keep honest. Read the enforcing line for the current values and the block above each
+would put one fact in two files, which is the hazard W9 recorded (closed 2026-09-04) applied
+to the very join D6 exists to keep honest. Read the enforcing line for the current values
+and the block above each
 entry in `design/fleet-suites.toml` for why that entry has the owner it does. What matters
 at this level is the *rule*: the §7.1 checker credits any entry carrying an owner, so an
 owner value outside the enforced set silences the orphan rule for that suite while looking
