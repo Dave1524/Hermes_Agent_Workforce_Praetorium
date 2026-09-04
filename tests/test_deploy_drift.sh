@@ -593,7 +593,6 @@ capture
 assert 'systemd/user/*.conf is not reported as an uninstalled drop-in' "! saw 'user/model.conf'"
 rm -rf "$root"
 
-\n
 echo "--- 16. the six content trees bin/deploy ships (W7) ---"
 # Until 2026-09-03 this check compared 2 of the 8 paths bin/deploy ships. The four unit
 # groups above cover `bin` and the three unit trees; these cover the rest, and profiles/ is
