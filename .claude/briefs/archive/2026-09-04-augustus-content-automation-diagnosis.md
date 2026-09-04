@@ -1,5 +1,16 @@
 # Brief: Augustus content-automation stalls — three compounding root causes
 
+> ## STATE — 2026-09-04: archived as a historical diagnostic, not an open work item.
+>
+> It records its own outcome inline: "all three fixes IMPLEMENTED & verified 2026-07-12",
+> with Issue 2 (qmd semantic search CPU-bound) marked ONGOING at the time of writing.
+> Kept for its measurements, which are the reason not to delete it — the per-stage
+> `qmd query` timings and the three-GGUF-models-on-CPU breakdown are not recorded
+> anywhere else in this repo.
+>
+> Read the dated facts, not the posture: this predates the Notion MCP removal (Notion is
+> REST-only on this box now), so Issue 3's hard blocker no longer describes a live path.
+
 **Date:** 2026-07-12   **Author:** diagnostic pass (Claude Code, on-box)
 **Scope:** why the nightly Augustus content pitch+draft runs are slow / producing nothing.
 **Evidence:** all facts below were measured live on Praetorium this session (journal, process state,

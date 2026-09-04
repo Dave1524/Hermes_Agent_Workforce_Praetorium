@@ -1,6 +1,18 @@
 # Brief: Deny the outward connectors for agent sessions, and assert every enforced must-not rule
 **Date:** 2026-09-01   **Verify:** `bash bin/verify.sh` from the repo root (syntax + shellcheck -S error over `bin/`, then every `tests/*.sh`)
 
+> ## STATE — 2026-09-04: DONE. Archived.
+>
+> Phase-B brief 1 (D1 + D9). Its work landed 2026-09-01 and
+> `design/phaseb-brief-queue.toml` records both halves from the outside: line 38 —
+> "The `fleet` owner value landed with brief 1: `design/fleet-suites.toml` declares
+> `owner = "fleet"`" — and line 20, that `buzz-agent@.service` "was edited on 2026-09-01
+> by brief 1 to add `CLAUDE_CODE_EXECUTABLE`". Later briefs then built on it: D8's drift
+> check adopted that unit tree, and W6 closed the suite-ownership half it opened.
+>
+> Archived unbannered until now, which is the only reason it sat loose in
+> `.claude/briefs/` for three days after it was finished.
+
 This is Phase-B brief 1, and it is D1 and D9 together. They merged because D9's measurement
 found that seven of the eight outward `must_not` rules are `enforced = false` *precisely
 because* D1's mechanism is not installed. Installing a mechanism and writing the test that

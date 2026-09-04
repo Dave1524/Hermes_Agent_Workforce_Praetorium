@@ -1,6 +1,6 @@
 # Buzz Phase 0 spike — verdicts
 
-Deliverable for Phase 0 of `.claude/briefs/buzz-surface-migration.md`: one verdict per proof,
+Deliverable for Phase 0 of `.claude/briefs/archive/2026-08-08-buzz-surface-migration.md`: one verdict per proof,
 recorded against the deployed build rather than upstream source.
 
 Spike run 2026-08-05 (setup) and 2026-08-07 (execution). All event times below are **UTC**, as
