@@ -90,34 +90,13 @@ suite    = ["tests/test_content_change_dispatch.sh",
            "tests/test_content_dispatch_state_hold.sh"]
 notes    = "Polls Notion Picked rows; drafts only on a new row. Re-enabled 2026-09-01 (registry §7.4)."
 
-[[workflows]]
-unit     = "praetorium-content-strategy-research"
-surface  = "scheduled"
-trigger  = "EXPIRES 2026-09-03 23:00 — four absolute OnCalendar dates, not a recurring calendar"
-model    = "claude-opus-5"
-profile  = "profiles/standing_research_content_strategy_task.md"
-runner   = "bin/run_standing_research_topic_cc.sh"
-run_mode = "ops"
-contract = "design/contracts/content-strategy-research.md" # TODO Phase B
-status   = "campaign"
-suite    = []
-expires  = "2026-09-03 23:00"
-notes    = "agent-model.md §6.5. Also has no source in systemd/ — §6.7."
-
-[[workflows]]
-unit     = "praetorium-faceless-content-research"
-surface  = "scheduled"
-trigger  = "EXPIRES 2026-09-04 01:30 — four absolute OnCalendar dates, not a recurring calendar"
-model    = "claude-opus-5"
-profile  = "profiles/standing_research_faceless_content_task.md"
-runner   = "bin/run_standing_research_topic_cc.sh"
-run_mode = "ops"
-contract = "design/contracts/faceless-content-research.md" # TODO Phase B
-status   = "campaign"
-suite    = []
-expires  = "2026-09-04 01:30"
-notes    = "agent-model.md §6.5 and §6.7. Logged one silent lock-skip on 2026-08-31 (§6.6)."
-
+# The two D5 research campaigns that lived here — praetorium-content-strategy-research and
+# praetorium-faceless-content-research — were retired 2026-09-04 with their unit files. Both
+# fired their last declared run (2026-09-03 23:00, 2026-09-04 01:30), existed in /etc only,
+# and are gone from every tree. Removed rather than marked `spent`: the nekovri-subsidy-*
+# entries keep theirs because they still have source under systemd/user/ (in_repo = true),
+# and these have none, so an entry would name a unit that exists nowhere. open-decisions.md
+# item 7 carries the record.
 
 # --- S1, brief 7. See marcus.toml for why these five entries exist and what `kind` does.
 [[workflows]]
