@@ -70,6 +70,7 @@ asserts = [
   "no-orphan-suite",        # both join directions: workflow -> suite, and this file's owners
   "timer-family-declared",  # every *.timer family in systemd/ has a manifest entry
   "asserts-anchored",       # W9: this list is joined to the assertions it names, both ways
+  "asserts-join-counted",   # W9: and the join reports its own size, so a deleted rule is red
 ]
 why_no_workflow = """
 It grades the registry, not a job. Nothing execs it and nothing ever should — its subject is
