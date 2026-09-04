@@ -186,12 +186,17 @@ make_fixture() {
   echo "$root"
 }
 
+# XDG_RUNTIME_DIR is unset for a different reason than the two keys: the script SETS it before
+# every `systemctl --user` call (a system unit has no session bus), and leaving the caller's
+# value in place makes that assertion measure the operator's shell instead of the script.
+# Proven 2026-09-04: with it inherited, deleting all three assignments from the production
+# script left this suite 92/92 green. A check that cannot fail is not a check.
 # BRAVE_API_KEY and OPENROUTER_API_KEY are unset per run so an operator's own environment can
 # never decide a branch; AGENT_BROWSER_EXECUTABLE_PATH points into the stub dir so the fetch
 # section is the same on this box (no system chrome) and on a runner image (which ships one).
 run_status() { # root [cwd] -> rc; stdout in $root/out.log, stderr in $root/err.log
   local root=$1 cwd=${2:-$root} rc=0
-  ( cd "$cwd" && env -u BRAVE_API_KEY -u OPENROUTER_API_KEY -u LLM_BASE_URL \
+  ( cd "$cwd" && env -u BRAVE_API_KEY -u OPENROUTER_API_KEY -u LLM_BASE_URL -u XDG_RUNTIME_DIR \
       HOME="$root/home" PATH="$root/stub:$PATH" \
       AGENT_BROWSER_EXECUTABLE_PATH="$root/stub/agent-browser" \
       bash "$root/bin/praetorium-status.sh" ) > "$root/out.log" 2> "$root/err.log" || rc=$?
