@@ -56,7 +56,7 @@ fixture() {
   # `clean` assertion below depend on fleet state.
   echo 'rules' > "$root/src_buzz/shared.toml"
   echo 'rules' > "$root/buzz/shared.toml"
-  # The six content trees bin/deploy ships. Every existing assertion in this suite calls
+  # The seven content trees bin/deploy ships. Every existing assertion in this suite calls
   # clean(), so leaving these pointed at the real repo would make every one of them depend on
   # the live runtime's prune backlog — the exact fleet-state dependency this fixture exists to
   # avoid. Two trees and one single-file tree is enough to exercise all three directions.
@@ -71,7 +71,25 @@ fixture() {
   echo 'env' > "$root/run_content/config/job-overrides/live.env.example"
   echo 'note' > "$root/src_content/NOTE.md"
   echo 'note' > "$root/run_content/NOTE.md"
+  # systemd/ is a content tree TOO, and that is the whole of W17. It has two destinations:
+  # /etc (compared above, by the unit half) and $RUNTIME_ROOT/systemd/, the staging copy
+  # bin/deploy actually writes. Pointed at the real repo this pair would depend on the live
+  # prune backlog like the others; built here it does not.
+  mkdir -p "$root/src_content/systemd" "$root/run_content/systemd"
+  echo '[Unit]' > "$root/src_content/systemd/staged.service"
+  echo '[Unit]' > "$root/run_content/systemd/staged.service"
   : > "$root/exclusions.toml"
+  # ONE owner for the content-tree half of the fixture env. Four call sites need it — drift()
+  # and the three inline invocations that each override a single other var — and it was four
+  # copies of the same literal until W17, which is the shape this suite exists to catch one
+  # tree over. Passed through `env` because an expanded array word is a command word, not an
+  # assignment: bash recognises `NAME=value` prefixes at parse time, before expansion.
+  CONTENT_ENV=(
+    "DRIFT_SRC_ROOT=$root/src_content"
+    "AGENT_WORKFORCE_RUNTIME=$root/run_content"
+    'DRIFT_CONTENT_TREES=profiles config NOTE.md systemd'
+    "DRIFT_EXCLUSIONS=$root/exclusions.toml"
+  )
   cat > "$root/src_buzz/MANIFEST.toml" <<'TOML'
 [[adopted]]
 path = "shared.toml"
@@ -89,8 +107,7 @@ drift() { # runs the checker against the current fixture; extra env comes from t
   DRIFT_SRC_BUZZ="$root/src_buzz" DRIFT_BUZZ="$root/buzz" \
   DRIFT_BUZZ_MANIFEST="$root/src_buzz/MANIFEST.toml" \
   DRIFT_OWNERSHIP="$root/ownership.toml" DRIFT_MANIFESTS="$root/manifests" \
-  DRIFT_SRC_ROOT="$root/src_content" AGENT_WORKFORCE_RUNTIME="$root/run_content" \
-  DRIFT_CONTENT_TREES="profiles config NOTE.md" DRIFT_EXCLUSIONS="$root/exclusions.toml" \
+  env "${CONTENT_ENV[@]}" \
   DRIFT_NOW="${NOW_FIXTURE:-2026-09-02 12:00:00}" \
   bash "$CHECK" 2>&1
 }
@@ -316,8 +333,7 @@ out=$(DRIFT_SRC_BIN="$root/run_bin" DRIFT_RUNTIME_BIN="$root/run_bin" \
       DRIFT_SRC_BUZZ="$root/src_buzz" DRIFT_BUZZ="$root/buzz" \
       DRIFT_BUZZ_MANIFEST="$root/src_buzz/MANIFEST.toml" \
       DRIFT_OWNERSHIP="$root/ownership.toml" DRIFT_MANIFESTS="$root/manifests" \
-  DRIFT_SRC_ROOT="$root/src_content" AGENT_WORKFORCE_RUNTIME="$root/run_content" \
-  DRIFT_CONTENT_TREES="profiles config NOTE.md" DRIFT_EXCLUSIONS="$root/exclusions.toml" \
+  env "${CONTENT_ENV[@]}" \
       bash "$CHECK" 2>&1); rc=$?
 assert 'source and runtime resolving to one tree is refused, not reported clean' "[ $rc -eq 2 ]"
 assert 'and says which tree collapsed' "saw 'same tree'"
@@ -361,8 +377,7 @@ out=$(DRIFT_SRC_BIN="$root/src_bin" DRIFT_RUNTIME_BIN="$root/run_bin" \
       DRIFT_SRC_BUZZ="$root/src_buzz" DRIFT_BUZZ="$root/buzz" \
       DRIFT_BUZZ_MANIFEST="$root/src_buzz/MANIFEST.toml" \
       DRIFT_OWNERSHIP="$root/ownership.toml" DRIFT_MANIFESTS="$root/manifests" \
-  DRIFT_SRC_ROOT="$root/src_content" AGENT_WORKFORCE_RUNTIME="$root/run_content" \
-  DRIFT_CONTENT_TREES="profiles config NOTE.md" DRIFT_EXCLUSIONS="$root/exclusions.toml" \
+  env "${CONTENT_ENV[@]}" \
       bash "$CHECK" --scope bin 2>&1); rc=$?
 assert '--scope bin ignores an /etc-only unit deploy cannot install' "[ $rc -eq 0 ]"
 assert 'and says so rather than implying the units were checked' "saw 'NOT compared'"
@@ -480,8 +495,7 @@ out=$(DRIFT_SRC_BIN="$root/src_bin" DRIFT_RUNTIME_BIN="$root/run_bin" \
       DRIFT_SRC_BUZZ="$root/buzz" DRIFT_BUZZ="$root/buzz" \
       DRIFT_BUZZ_MANIFEST="$root/src_buzz/MANIFEST.toml" \
       DRIFT_OWNERSHIP="$root/ownership.toml" DRIFT_MANIFESTS="$root/manifests" \
-  DRIFT_SRC_ROOT="$root/src_content" AGENT_WORKFORCE_RUNTIME="$root/run_content" \
-  DRIFT_CONTENT_TREES="profiles config NOTE.md" DRIFT_EXCLUSIONS="$root/exclusions.toml" \
+  env "${CONTENT_ENV[@]}" \
       bash "$CHECK" 2>&1); rc=$?
 assert 'buzz source and live resolving to one tree is refused, not reported clean' "[ $rc -eq 2 ]"
 assert 'and says which tree collapsed' "saw 'same directory'"
@@ -707,17 +721,86 @@ assert "a tree in bin/deploy's PATHS that exists in neither place is red, not sk
   "saw 'profiles is in bin/deploy'"
 rm -rf "$root"
 
+echo "--- 16c. the STAGING copy of systemd/, the eighth path (W17) ---"
+# systemd/ is ONE tree with TWO destinations, and only one of them was compared. The unit
+# half above reads /etc directly — correctly, since systemd never reads staging — and that
+# read as coverage: "systemd/ is compared" was true of a different destination. The copy
+# bin/deploy actually writes, $RUNTIME_ROOT/systemd/, was compared by nothing, and it was
+# already populated: three runtime-only units on 2026-09-04, named by `--dry-run --prune`
+# and by no check.
+fixture
+echo '[Unit]x' > "$root/run_content/systemd/staged.service"
+capture
+assert 'a staged unit whose bytes differ from source is named' \
+  "saw 'DRIFT \[content\] content differs: systemd/staged.service'"
+rm -rf "$root"
+
+fixture
+echo '[Unit]' > "$root/src_content/systemd/added.timer"
+capture
+assert 'a unit in source and not staged is red' \
+  "saw 'DRIFT \[content\] source-only: systemd/added.timer is not deployed'"
+rm -rf "$root"
+
+# The direction that was live on this box: bin/deploy is additive, so a unit deleted from
+# source sits in staging until --prune runs. discord-bot.service has no source in any tree
+# and both content-inbox-finalize files were archived; none of the three was reportable.
+fixture
+echo '[Unit]' > "$root/run_content/systemd/discord-bot.service"
+capture
+assert 'a staged unit the source tree disowned is red when nothing declares it' \
+  "saw 'DRIFT \[content\] runtime-only: systemd/discord-bot.service has no source and is declared in no exclusion'"
+
+cat > "$root/exclusions.toml" <<'TOML'
+[[runtime_only]]
+path  = "discord-bot.service"
+tree  = "systemd"
+since = "2026-09-04"
+why   = "fixture"
+TOML
+capture
+assert 'the same exclusion lookup applies to the staging tree' "clean"
+assert 'and the staged file is still printed by name' \
+  "saw 'info: runtime-only: systemd/discord-bot.service'"
+assert 'the info line names the action that resolves it' "saw 'pending bin/deploy --prune'"
+rm -rf "$root"
+
+# THE TREE IS NOT FLAT, and this is the assertion the other four cannot make. systemd/user/,
+# systemd/archive/ and systemd/qmd-mcp.service.d/ all exist in both copies, so a -maxdepth 1
+# regression in relnames() would pass every assertion above while comparing nothing below the
+# top level — including the nine --user units the Buzz fleet runs on.
+fixture
+mkdir -p "$root/run_content/systemd/user"
+echo '[Unit]' > "$root/run_content/systemd/user/orphan.service"
+capture
+assert 'a staged file in a NESTED path is named with its full relative path' \
+  "saw 'runtime-only: systemd/user/orphan.service'"
+rm -rf "$root"
+
 echo "--- 16b. the tree list agrees with bin/deploy's PATHS ---"
 # CONTENT_TREES is a literal in check_deploy_drift.sh rather than a parse of bin/deploy:20,
 # because parsing another script's array is a join that breaks silently. This is that join,
 # asserted instead — in both directions, so neither list can grow or shrink alone.
+#
+# A PATH CREDITED BY A LITERAL IN THIS FILE IS A PATH THIS TEST ASSERTS AND THE CHECK DOES
+# NOT PERFORM. `bin` is the one legitimate case: it has its own comparison block above
+# (SRC_BIN <-> RUNTIME_BIN) and can never come from CONTENT_TREES. `systemd` was credited
+# here too from 2026-09-03 to 2026-09-04, and that is exactly how this assertion passed
+# 8 = 8 while the staging copy of systemd/ was compared by nothing — the check was measured
+# for seven paths and asserted for eight. Nothing else may be added to this printf.
 deploy_paths=$(sed -n 's/^PATHS=(\(.*\))$/\1/p' "$REPO/bin/deploy" | tr ' ' '\n' | LC_ALL=C sort)
-checked=$( { sed -n 's/^CONTENT_TREES="${DRIFT_CONTENT_TREES:-\(.*\)}"$/\1/p' "$CHECK" | tr ' ' '\n'
-             printf 'bin\nsystemd\n'; } | LC_ALL=C sort)
+content_trees=$(sed -n 's/^CONTENT_TREES="${DRIFT_CONTENT_TREES:-\(.*\)}"$/\1/p' "$CHECK" | tr ' ' '\n')
+checked=$( { echo "$content_trees"; printf 'bin\n'; } | LC_ALL=C sort)
 assert 'every path bin/deploy ships is compared by this check' \
   "[ -z \"\$(comm -23 <(echo \"\$deploy_paths\") <(echo \"\$checked\"))\" ]"
 assert 'and this check compares nothing bin/deploy does not ship' \
   "[ -z \"\$(comm -13 <(echo \"\$deploy_paths\") <(echo \"\$checked\"))\" ]"
 assert 'both lists actually parsed (an empty comm difference is not evidence)' \
   "[ \"\$(echo \"\$deploy_paths\" | wc -l)\" = 8 ] && [ \"\$(echo \"\$checked\" | wc -l)\" = 8 ]"
+# The laundering guard, measured rather than grepped for: re-adding `systemd` to the printf
+# leaves it in `checked` twice, which the comm and the count above both catch — and removing
+# it from CONTENT_TREES to compensate is what this asserts. Grepping this file for the old
+# printf would match the grep's own pattern and fail on the fixed tree.
+assert 'systemd is credited by the real CONTENT_TREES, not by a literal in this test' \
+  "grep -qx systemd <<<\"\$content_trees\""
 exit $fail

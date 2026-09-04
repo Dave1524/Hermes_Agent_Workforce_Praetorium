@@ -6,7 +6,7 @@
 # /etc/systemd/system is root-owned and `dave` cannot write it without sudo — installing a
 # unit stays a human action, exactly as systemd/ttm-pool-drain.service records for its own.
 #
-# FIVE TREES, NOT THREE. D8 named source systemd/, the staging copy ~/agent-workforce/systemd/
+# SIX TREES, NOT THREE. D8 named source systemd/, the staging copy ~/agent-workforce/systemd/
 # and live /etc/systemd/system/. It never mentioned ~/.config/systemd/user/, which holds the
 # nine --user units the Buzz fleet runs on — including buzz-agent@.service, the fleet's core
 # unit. Brief 2 added that fourth tree and adopted those units; it did not adopt the files
@@ -14,20 +14,30 @@
 # fifth tree closes that: ~/.config/buzz-team/ holds the five dispatch-rule files, the
 # connector deny-list, the seam that delivers it, the unit's real ExecStart, the MCP bridge,
 # the Notion broker and the fleet's own gate — every mechanism S1 (Buzz interactive: DMs,
-# channels, forums) runs on. The comparisons that mean something:
+# channels, forums) runs on. The sixth is the one D8 DID name and this file then excluded
+# on its own reasoning: the staging copy, restored below as a second destination rather than
+# a replacement. The comparisons that mean something:
 #
 #   bin/            <-> ~/agent-workforce/bin/      the runtime tree every ExecStart names
 #   systemd/        <-> /etc/systemd/system/        DIRECTLY, not via staging
 #   systemd/user/   <-> ~/.config/systemd/user/     --user scope, never installed in /etc
 #   buzz-team/      <-> ~/.config/buzz-team/        what those --user units read at startup
+#   systemd/        <-> ~/agent-workforce/systemd/  the staging copy bin/deploy writes
 #
-# THE STAGING COPY ~/agent-workforce/systemd/ IS NOT A SIDE OF ANY COMPARISON, deliberately.
-# systemd reads /etc and never reads it — proof: content-inbox-finalize.{service,timer} sit in
-# the staging tree today and `systemctl list-unit-files` does not know them. bin/deploy rsyncs
-# systemd/ into staging and never writes /etc (its PATHS array at bin/deploy:20 has no /etc
-# entry), so comparing source against staging goes GREEN the moment a unit is deployed while
-# /etc stays stale — a false green in exactly the direction that matters, and it is live right
-# now: staging is byte-identical to source for all 55 units. Do not add it back.
+# THE STAGING COPY IS A SECOND DESTINATION, NEVER A SUBSTITUTE FOR /etc. This file said
+# "~/agent-workforce/systemd/ IS NOT A SIDE OF ANY COMPARISON, deliberately … do not add it
+# back" until 2026-09-04, and the reasoning behind that was sound but proved the wrong
+# conclusion. systemd reads /etc and never reads staging — proof:
+# content-inbox-finalize.{service,timer} sit in the staging tree today and
+# `systemctl list-unit-files` does not know them. So source-vs-staging must never REPLACE
+# source-vs-/etc: it would go green the moment a unit is deployed while /etc stayed stale,
+# a false green in exactly the direction that matters. That is a rule about substitution.
+# What it does not license is comparing staging against nothing, which is what the file
+# actually did: bin/deploy rsyncs systemd/ into staging as one of the eight paths in its
+# PATHS array (bin/deploy:20), so staging is a deploy destination this repo is answerable
+# for, and it is compared above with the other content trees. Both halves stay. The claim
+# that made the gap invisible was "staging is byte-identical to source for all 55 units" —
+# stated with no check behind it and false by three files when one was finally run (W17).
 #
 # MEMBERSHIP IS COMPARED IN BOTH DIRECTIONS. A unit present in one tree and absent from the
 # other is invisible to a byte-comparison of the units that exist in both, which is all the
@@ -61,15 +71,26 @@ SRC_USER="${DRIFT_SRC_USER:-$REPO/systemd/user}"
 USER_TREE="${DRIFT_USER:-$HOME/.config/systemd/user}"
 OWNERSHIP="${DRIFT_OWNERSHIP:-$REPO/design/unit-ownership.toml}"
 EXCLUSIONS="${DRIFT_EXCLUSIONS:-$REPO/design/deploy-exclusions.toml}"
-# The content trees are compared as $SRC_ROOT/<tree> rather than per-tree variables — six
-# trees would otherwise mean six overrides. Overridable as one root so the suite can build a
+# The content trees are compared as $SRC_ROOT/<tree> rather than per-tree variables — seven
+# trees would otherwise mean seven overrides. Overridable as one root so the suite can build a
 # synthetic pair; REPO itself is derived from $0 and cannot be pointed at a fixture.
 SRC_ROOT="${DRIFT_SRC_ROOT:-$REPO}"
-# The six trees bin/deploy ships that were compared by nothing until 2026-09-03 (W7).
+# The seven trees bin/deploy ships that were compared by nothing: six until 2026-09-03 (W7),
+# and `systemd` until 2026-09-04 (W17).
+#
+# WHY systemd WAS MISSED FOR A DAY LONGER THAN THE OTHER SIX. It is ONE tree with TWO
+# destinations. The unit half of this script compares systemd/ against /etc directly, and
+# "systemd/ is compared" read as coverage — but /etc is not the destination bin/deploy
+# writes. bin/deploy rsyncs systemd/ into $RUNTIME_ROOT/systemd/, and that copy was a side
+# of no comparison at all. Both are needed and neither substitutes for the other: /etc is
+# what systemd executes, staging is what bin/deploy is answerable for. Measured 2026-09-04,
+# the gap was already populated — three staged units with no source, named by
+# `bin/deploy --dry-run --prune` and by nothing else.
+#
 # Kept as a literal list rather than read from bin/deploy:20, because parsing another
 # script's array is a join that breaks silently; tests/test_deploy_drift.sh asserts the
 # two agree instead, which fails loudly in both directions.
-CONTENT_TREES="${DRIFT_CONTENT_TREES:-profiles docs config CLAUDE.md AGENTS.md README.md}"
+CONTENT_TREES="${DRIFT_CONTENT_TREES:-profiles docs config CLAUDE.md AGENTS.md README.md systemd}"
 MANIFESTS="${DRIFT_MANIFESTS:-$REPO/design/agents}"
 SRC_BUZZ="${DRIFT_SRC_BUZZ:-$REPO/buzz-team}"
 BUZZ_TREE="${DRIFT_BUZZ:-$HOME/.config/buzz-team}"
@@ -77,8 +98,9 @@ BUZZ_TREE="${DRIFT_BUZZ:-$HOME/.config/buzz-team}"
 # is a guard rather than a note. REPO is resolved from $0, so a copy exec'd out of the
 # runtime tree sets SRC_BIN to that same tree and compares it with itself — the bin half
 # becomes a tautology that reports zero findings whatever the repo contains, and SRC_SYSTEM
-# becomes the staging copy this file's own header forbids as a comparison side. That was the
-# shipped state of agent-drift-check.service until it was pointed at the source tree.
+# becomes the staging copy, which would compare staging with itself and take /etc out of the
+# run entirely — the one substitution the header forbids. That was the shipped state of
+# agent-drift-check.service until it was pointed at the source tree.
 same_dir() {
   local a b
   a=$(cd "$1" 2>/dev/null && pwd -P) || return 1
@@ -316,11 +338,15 @@ while IFS= read -r f; do
   cmp -s "$SRC_BIN/$f" "$RUNTIME_BIN/$f" || report bin "content differs: $f"
 done < <(comm -12 <(echo "$bin_src") <(echo "$bin_run"))
 
-# --- the six remaining bin/deploy trees <-> the runtime copy ----------------------------
+# --- the seven remaining bin/deploy trees <-> the runtime copy ---------------------------
 # W7: until 2026-09-03 this check compared 2 of the 8 paths bin/deploy ships. `bin` and the
 # three unit trees were covered; profiles, docs, config, CLAUDE.md, AGENTS.md and README.md
 # were compared by nothing, so a profile-only change deployed or not deployed looked
 # identical from here — and profiles/ is where the agents' actual instructions live.
+#
+# W17: that widening reached 7 of 8, not 8 of 8. `systemd` was credited as covered because
+# the unit half compares it against /etc — a different destination from the one bin/deploy
+# writes. See the CONTENT_TREES comment for the full statement; it is in this loop now.
 #
 # These belong to SCOPE=bin, not to the unit half: bin/deploy writes them, so a caller whose
 # exit code should mean "what deploy controls" wants them included. That is also why they sit
@@ -386,7 +412,7 @@ while read -r kind tree path; do
 done <<<"$declarations"
 
 if [ "$SCOPE" = bin ]; then
-  info "scope=bin — the three unit trees are NOT compared by this invocation (the six content trees above ARE: bin/deploy writes them)"
+  info "scope=bin — the three unit trees are NOT compared by this invocation (the seven content trees above ARE, staging systemd/ among them: bin/deploy writes them)"
   if [ "$findings" -eq 0 ]; then echo "drift: clean (bin only)"; else echo "drift: $findings finding(s) (bin only)"; fi
   exit $(( findings > 0 ))
 fi
@@ -578,8 +604,10 @@ while IFS= read -r f; do
   cmp -s "$SRC_BUZZ/$f" "$BUZZ_TREE/$f" || report buzz "content differs: $f"
 done < <(comm -12 <(echo "$buzz_src") <(echo "$buzz_live"))
 
-# The staging copy, named so the next reader does not add it as a comparison side.
-info "staging $RUNTIME_ROOT/systemd/ is inert — systemd reads $ETC, never it"
+# The staging copy, named so the next reader does not mistake the comparison above for this
+# one. It IS compared — against source, with the other content trees, because bin/deploy
+# writes it — but it is inert as a runtime, so a green there says nothing about $ETC.
+info "staging $RUNTIME_ROOT/systemd/ is compared against source above; systemd still reads $ETC, never it"
 
 if [ "$findings" -eq 0 ]; then
   echo "drift: clean"
