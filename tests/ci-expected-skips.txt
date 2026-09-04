@@ -5,7 +5,7 @@
 # Lines beginning with # and blank lines are stripped before the diff; everything else must
 # match a printed `SKIP:` line verbatim. Paths are $HOME-relative (tests/box_precondition.sh).
 #
-# Five lines are box state a checkout cannot carry: three from three suites plus TWO the gate
+# Six lines are box state a checkout cannot carry: four from four suites plus TWO the gate
 # calls directly rather than through tests/ — bin/check_deploy_drift.sh and
 # buzz-team/check-team-kinds.py — which print the same SKIP shape for the same reason.
 # It was seven from 2026-09-03 until 2026-09-04, when test_phaseb_brief_jobs.sh was deleted
@@ -20,6 +20,12 @@
 # check_deploy_drift.sh gained a fifth tree, so its existing skip line names a third absent
 # path; the buzz-team tree deliberately joined that predicate instead of getting a skip of
 # its own. check-team-kinds.py is genuinely new, and it is the ONLY line here whose input has
+# ONE LINE ADDED 2026-09-04: test_memory_index_budget.sh. Its subject is the shared memory
+# index every session on this box loads, which lives under ~/.claude and has no repo source
+# either — but unlike the TEAM.md line it is not an exemption from coverage: the suite's
+# fixture groups run everywhere and prove the checker detects both failure modes. Only the
+# verdict on the live file skips, so what a runner loses is one data point, not the check.
+#
 # no repo source by design: TEAM.md names live channel UUIDs and is agent-editable, so
 # buzz-team/MANIFEST.toml declares it excluded rather than adopted. That is why it cannot be
 # made to run on a runner, and why the exemption is not expected to end.
@@ -31,3 +37,4 @@ SKIP: test_content_skill_extract.sh — the vault the content job reads (absent:
 SKIP: test_fetch_status.sh — the negative case needs no system chrome on PATH (probed: google-chrome chromium chromium-browser chrome)
 SKIP: test_fleet_eval.sh — the live qmd index the anchors resolve against (absent: ~/.cache/qmd/index.sqlite)
 SKIP: test_fleet_guards.sh — the live fleet state this suite asserts (absent: ~/.claude/settings.json ~/.config/buzz-team/agent-settings.json ~/.config/systemd/user/buzz-agent@.service)
+SKIP: test_memory_index_budget.sh — the shared memory index every session on this box loads (absent: ~/.claude/projects/-home-dave/memory/MEMORY.md)
