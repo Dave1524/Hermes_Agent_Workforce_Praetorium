@@ -7,8 +7,26 @@ This is a separate repo from the vault clones (`../Obsidian_AI_Operating_System/
 the vault holds *what they know*.
 
 ## Roster
+
+**This section owns the Hermes profiles and their job wiring. It does not own the live Buzz
+fleet, and never did.** Two rosters exist on this box for two different runtimes that share only
+the persona charters: the **Hermes profiles** below, which back the unattended systemd timer
+fleet in this repo, and the **`buzz-agent@*` units**, the interactive chat surface, which the
+machine-level `~/CLAUDE.md` owns. Until 2026-09-05 both files described "the fleet" without
+saying which one, so a reader landing on either took it for the whole roster — and this one was
+short by an agent, having never mentioned aurelian. It still does not list him, because he is not
+a Hermes profile; that is now the correct answer rather than an omission.
+
+Neither list is authoritative for *membership*. A roster in prose is a snapshot, and this is
+machine state with a live reader:
+
+```
+systemctl --user list-units 'buzz-agent@*' --all    # the chat fleet — five units on 2026-09-05
+ls ~/.hermes/profiles/                              # the Hermes profiles below
+```
+
 - Box name: **Praetorium**. Keep the Roman-emperor convention for any additional agent profiles.
-- Four live Hermes profiles under `~/.hermes/profiles/`, each with its own `SOUL.md` (role charter
+- Four Hermes profiles under `~/.hermes/profiles/`, each with its own `SOUL.md` (role charter
   + guardrails), `config.yaml` (model/MCP/skills), isolated memory, and skills allowlist (NUC-42):
 
   | Persona | Role | Model | Tier | Scheduled jobs |
@@ -42,8 +60,19 @@ the vault holds *what they know*.
 - **The one hard gate is outward action.** No email, no social, no messaging humans from this
   box — it holds no outward credentials, ever. Anything for the outside world is a draft Dave
   sends. Notion and Discord are inside the bubble, not outward.
-- **No canonical vault access.** This box holds no credential to the canonical `obsidian-ai-os`
-  vault — only a repo-scoped deploy key to `obsidian-ai-os-boxsafe`.
+- **Canonical vault access is a rule you keep, not a boundary that holds.** This file claimed
+  from its first version until 2026-09-05 that the box held *no* canonical credential. It holds
+  one: `~/.ssh/config` maps `Host github-canonical` to
+  `~/.config/agent-workforce/keys/canonical_deploy`, and
+  `git ls-remote git@github-canonical:Dave1524/Obsidian_AI_Operating_System.git` authenticates
+  and lists refs (re-run it rather than trusting this line). It is **write-enabled**: the
+  canonical repo's ruleset names a single bypass actor and that actor is this deploy key, so a
+  push from here is applied and merely logged — the vault's own `pre-push` guard says of itself
+  "This is friction and a record, not a boundary"
+  (`00_system/tools/hooks/pre-push`). So vault work goes on `agents/<date>-<slug>` branches for
+  Mac-side merge because that is the rule, not because anything stops you. The old wording was
+  wrong in the dangerous direction: an agent that believes it cannot reach canonical will not
+  think to be careful with a credential it has.
 - **Vault writes go through `agents`, never `main`.** Any proposal to the vault is committed to
   the box-safe repo's `agents` branch/inbox. `main` is machine-published from the Mac — never
   hand-write or merge into it from here.
@@ -116,8 +145,10 @@ model release):
 
 Rules that are easy to get wrong:
 - **These jobs write only `_inbox/agents/**`; every vault change they describe is a
-  proposal for Mac-side promotion, never a direct write to `main`.** The box holds no
-  canonical vault credential — see "No canonical vault access" above.
+  proposal for Mac-side promotion, never a direct write to `main`.** This is a rule the
+  jobs keep, not one the credentials enforce — see "Canonical vault access is a rule you
+  keep" above. Until 2026-09-05 this line cited the box's supposed lack of a canonical
+  credential as the reason, which made a discipline look like a guarantee.
 - **A run must produce either a dated proposal or an explicit `DECLINE:` sentinel.**
   `bin/proposal_or_decline.sh <slug>` (wired as `AGENT_VERIFY_CMD`) fails any run that
   produces neither, so a dead run can never again log as a clean NOPROPOSAL.
