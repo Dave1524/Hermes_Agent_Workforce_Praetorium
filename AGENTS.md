@@ -7,14 +7,17 @@ wiring, and the verification gate. Everything in it applies to Codex too.
 This file used to restate project rules in its own words and drifted three weeks stale doing it
 (1.4 KB against an 11 KB `CLAUDE.md`). It is now a pointer so that cannot recur. Do not re-fork
 it — project rules belong in `CLAUDE.md`; only Codex-specific mechanics belong here.
+Re-confirmed a pointer and not a fork on 2026-09-05, and `tests/test_instruction_scaffolding.sh`
+now asserts it on every run: this file must name its sibling and stay well under its size.
 
 ## Read these before making changes
 
 From `CLAUDE.md`, in this order:
 
-- **Hard constraints (short form)** — the outward-action gate, the no-canonical-vault-access rule,
-  `agents`-branch-only vault writes, Mac-only publishing, and the separate secrets tree. These are
-  the rules that make this box safe to run unattended.
+- **Hard constraints (short form)** — the outward-action gate, the canonical-vault credential this
+  box turns out to *have*, `agents`-branch-only vault writes, Mac-only publishing, and the separate
+  secrets tree. These are the rules that make this box safe to run unattended, and the vault ones
+  are rules kept rather than boundaries enforced — read them there, not from this summary.
 - **Where things live** — in particular that `~/dev/agent-workforce/` is source and
   `~/agent-workforce/` is the deployed runtime copy that systemd actually execs. Nothing deploys
   automatically; edit source without running `bin/deploy` and the runtime keeps running old code.
