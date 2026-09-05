@@ -5,14 +5,15 @@
 # Lines beginning with # and blank lines are stripped before the diff; everything else must
 # match a printed `SKIP:` line verbatim. Paths are $HOME-relative (tests/box_precondition.sh).
 #
-# Six lines are box state a checkout cannot carry: four from four suites plus TWO the gate
+# Seven lines are box state a checkout cannot carry: five from five suites, plus TWO the gate
 # calls directly rather than through tests/ — bin/check_deploy_drift.sh and
-# buzz-team/check-team-kinds.py — which print the same SKIP shape for the same reason.
-# It was seven from 2026-09-03 until 2026-09-04, when test_phaseb_brief_jobs.sh was deleted
-# with the family it asserted; that suite is why lines and suites were not the same count
-# here, having declared two preconditions of its own.
-# One is the mirror — test_fetch_status's negative case needs NO
-# system chrome on PATH, which its own header calls out as true on Praetorium; the runner
+# buzz-team/check-team-kinds.py — which print the same SKIP shape for the same reason. That
+# box-state count was also seven between 2026-09-03 and 2026-09-04, by a different route:
+# test_phaseb_brief_jobs.sh declared two preconditions of its own, which is why lines and suites
+# were not the same count here until it was deleted with the family it asserted.
+#
+# The other two lines are neither. One is the mirror — test_fetch_status's negative case needs
+# NO system chrome on PATH, which its own header calls out as true on Praetorium; the runner
 # image ships one. The OpenCode line is a cost opt-in that predates this file and skips
 # everywhere, including on the box.
 #
@@ -20,15 +21,24 @@
 # check_deploy_drift.sh gained a fifth tree, so its existing skip line names a third absent
 # path; the buzz-team tree deliberately joined that predicate instead of getting a skip of
 # its own. check-team-kinds.py is genuinely new, and it is the ONLY line here whose input has
+# no repo source by design: TEAM.md names live channel UUIDs and is agent-editable, so
+# buzz-team/MANIFEST.toml declares it excluded rather than adopted. That is why it cannot be
+# made to run on a runner, and why the exemption is not expected to end.
+#
 # ONE LINE ADDED 2026-09-04: test_memory_index_budget.sh. Its subject is the shared memory
 # index every session on this box loads, which lives under ~/.claude and has no repo source
 # either — but unlike the TEAM.md line it is not an exemption from coverage: the suite's
 # fixture groups run everywhere and prove the checker detects both failure modes. Only the
 # verdict on the live file skips, so what a runner loses is one data point, not the check.
 #
-# no repo source by design: TEAM.md names live channel UUIDs and is agent-editable, so
-# buzz-team/MANIFEST.toml declares it excluded rather than adopted. That is why it cannot be
-# made to run on a runner, and why the exemption is not expected to end.
+# ONE LINE ADDED 2026-09-05: test_instruction_scaffolding.sh, same shape and same reason. Its
+# subject is the ~/dev project tree — the CLAUDE.md / AGENTS.md pairs an agent actually loads,
+# which no checkout carries. Its fixture groups run everywhere and prove both invariants are
+# detected on synthetic input; only the verdict on the live tree skips.
+#
+# That 09-04 note was originally inserted INTO the middle of the 09-03 paragraph and split a
+# sentence across an unrelated topic, leaving both reading as broken entries. Dated notes are
+# appended in their own paragraph, never interleaved.
 
 SKIP: check-team-kinds.py — the live TEAM.md channel table, which is declared excluded from buzz-team/ adoption (absent: ~/.config/buzz-team/TEAM.md)
 SKIP: check_deploy_drift.sh — the deployed trees this check compares against (absent: ~/agent-workforce/bin ~/.config/systemd/user ~/.config/buzz-team)
@@ -37,4 +47,5 @@ SKIP: test_content_skill_extract.sh — the vault the content job reads (absent:
 SKIP: test_fetch_status.sh — the negative case needs no system chrome on PATH (probed: google-chrome chromium chromium-browser chrome)
 SKIP: test_fleet_eval.sh — the live qmd index the anchors resolve against (absent: ~/.cache/qmd/index.sqlite)
 SKIP: test_fleet_guards.sh — the live fleet state this suite asserts (absent: ~/.claude/settings.json ~/.config/buzz-team/agent-settings.json ~/.config/systemd/user/buzz-agent@.service)
+SKIP: test_instruction_scaffolding.sh — the box's ~/dev project tree, which no checkout carries (absent: ~/dev)
 SKIP: test_memory_index_budget.sh — the shared memory index every session on this box loads (absent: ~/.claude/projects/-home-dave/memory/MEMORY.md)
