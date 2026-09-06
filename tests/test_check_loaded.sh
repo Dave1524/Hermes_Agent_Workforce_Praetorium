@@ -33,9 +33,10 @@
 # relay call — so this gate never depends on relay reachability.
 set -uo pipefail
 
-CHECKER="${CHECKER:-$HOME/.config/buzz-team/check-loaded.sh}"
-
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# The SOURCE copy, which every checkout carries — not the box's, so groups 0-1b run in CI too.
+# bin/check_deploy_drift.sh is what guarantees the box is running this same file.
+CHECKER="${CHECKER:-$REPO_ROOT/buzz-team/check-loaded.sh}"
 # shellcheck source=tests/box_precondition.sh
 . "$REPO_ROOT/tests/box_precondition.sh"
 
@@ -107,9 +108,42 @@ assert "E: and fails the gate" '[[ $rc -ne 0 ]]'
 
 rm -rf "$A" "$B" "$C" "$D" "$E"
 
+echo "--- 1b. fixtures: the relay-event patterns, against real journal text ---"
+# Verbatim from buzz-agent@claudius, 2026-09-04/06. Fixtures come from the producer: a
+# hand-written imitation of a log line proves nothing about the log (memory
+# `handoff-fixtures-must-come-from-the-producer`). The first draft of last_relay_event knew
+# only 'connected to relay' and so read case S — a storm that RECOVERED — as an auth failure,
+# contradicting a live credential probe that said the identity was fine.
+# shellcheck source=/dev/null
+. "$CHECKER"
+
+STORM='INFO buzz_acp::relay: autonomous reconnect attempt 3/5 to wss://vpc.communities.buzz.xyz…
+WARN buzz_acp::relay: autonomous reconnect attempt 3 failed: Auth failed: error: internal error checking restriction state
+INFO buzz_acp::relay: autonomous reconnect attempt 5/5 to wss://vpc.communities.buzz.xyz…
+INFO buzz_acp::relay: autonomous reconnect succeeded (attempt 5)
+INFO buzz_acp::relay: resubscribing to 6 channel(s) after reconnect'
+
+DOWN='WARN buzz_acp::relay: relay connection lost — reconnecting…
+INFO buzz_acp::relay: autonomous reconnect attempt 1/5 to wss://vpc.communities.buzz.xyz…
+WARN buzz_acp::relay: autonomous reconnect attempt 1 failed: Auth failed: restricted: not a relay member'
+
+LOST='INFO buzz_acp::relay: connected to relay wss://vpc.communities.buzz.xyz
+WARN buzz_acp::relay: relay connection lost — reconnecting…'
+
+assert "S: a storm that recovered reads as recovered" \
+  '[[ $(last_relay_event <<<"$STORM") == "autonomous reconnect succeeded" ]]'
+assert "S: and specifically NOT as the auth failure it contains" \
+  '[[ $(last_relay_event <<<"$STORM") != "Auth failed" ]]'
+assert "F: an unrecovered auth failure reads as Auth failed" \
+  '[[ $(last_relay_event <<<"$DOWN") == "Auth failed" ]]'
+assert "L: a drop with no recovery reads as lost, not connected" \
+  '[[ $(last_relay_event <<<"$LOST") == "relay connection lost" ]]'
+assert "N: an empty log yields no event at all" \
+  '[[ -z $(last_relay_event </dev/null) ]]'
+
 echo "--- 2. the live agent tree ---"
-if box_only_with "the live fleet checker and the agent config tree it reads" \
-     "$CHECKER" "$HOME/.config/buzz-agents"; then
+if box_only_with "the live agent identities this classification is checked against" \
+     "$HOME/.config/buzz-agents"; then
   # praetorium is the scheduled-delivery identity and spike0 was a test subject: both have a
   # .env, neither has a buzz-agent@ unit. The old enumeration globbed *.env and called them
   # DEAD, which is what made the gate's failing lines look routine.

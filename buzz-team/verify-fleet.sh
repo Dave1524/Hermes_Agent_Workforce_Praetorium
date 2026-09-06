@@ -161,7 +161,7 @@ ns_reads() {
 
 DENIED_PATHS=(
   "$HOME/.ssh/config"
-  "$HOME/.config/buzz-agents/check-loaded.sh"
+  "$HOME/.config/buzz-agents/marcus.env"
   "$HOME/.config/agent-workforce/secrets.env"
   "$HOME/.codex/config.toml"
   "$HOME/ENCRYPTION_RECOVERY.md"
@@ -184,8 +184,14 @@ assert_containment() {
       continue
     fi
     ok "5/sandbox $agent (pid $pid)"
+    # A missing path is unreadable too, so ns_reads alone scores a DELETED file as
+    # contained. Without this guard the gate would have started certifying nothing the
+    # moment check-loaded.sh left this tree on 2026-09-06 — the same fail-open the file
+    # itself was rewritten for, one layer up.
     for path in "${DENIED_PATHS[@]}"; do
-      if ns_reads "$pid" "$path"; then
+      if [ ! -e "$path" ]; then
+        fail "5/denied $agent ${path#$HOME/} (path absent — containment unproven, not proven)"
+      elif ns_reads "$pid" "$path"; then
         fail "5/denied $agent ${path#$HOME/}"
       else
         ok "5/denied $agent ${path#$HOME/}"

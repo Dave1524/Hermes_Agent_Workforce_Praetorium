@@ -124,6 +124,11 @@ read_by = "human; ~/CLAUDE.md's own Verification block"
 why = "the S1 gate. Roughly twelve gates over rules files, sandbox deny-paths, charter resolution, config freshness, kind agreement, broker reachability, env knobs, roster and the aurelian calibration pin. It was the only thing standing between the DAG and a cascade, and no PR ran it"
 
 [[adopted]]
+path = "check-loaded.sh"
+read_by = "human; ~/CLAUDE.md's own Verification block (extra-gates)"
+why = "the per-agent freshness and credential gate. It lived in ~/.config/buzz-agents/ — the ONLY script inside the credential tree, and therefore the only one no Claude Code session could read or repair, which is why it accumulated three defects nobody could fix in place. It never needed to be there: it reaches the .env files through systemd-run -p EnvironmentFile= and reads none of them itself. Moved here 2026-09-06 and corrected in the same commit, which departs from ADOPT-THEN-CHANGE above: it had no prior source to diff against, so there was no byte-identity to preserve. The pre-move original is still at ~/.config/buzz-agents/check-loaded.sh until Dave deletes it"
+
+[[adopted]]
 path = "fleet-turn-check.sh"
 read_by = "fleet-turn-check.service (hourly)"
 why = "proves an agent can COMPLETE a turn. Every other signal on this box stayed green through a four-day outage. Its unit has been sourced since brief 2; the script it execs is sourced as of this one"

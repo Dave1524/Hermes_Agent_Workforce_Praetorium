@@ -5,7 +5,7 @@
 # Lines beginning with # and blank lines are stripped before the diff; everything else must
 # match a printed `SKIP:` line verbatim. Paths are $HOME-relative (tests/box_precondition.sh).
 #
-# Seven lines are box state a checkout cannot carry: five from five suites, plus TWO the gate
+# Eight lines are box state a checkout cannot carry: six from six suites, plus TWO the gate
 # calls directly rather than through tests/ — bin/check_deploy_drift.sh and
 # buzz-team/check-team-kinds.py — which print the same SKIP shape for the same reason. That
 # box-state count was also seven between 2026-09-03 and 2026-09-04, by a different route:
@@ -31,6 +31,13 @@
 # fixture groups run everywhere and prove the checker detects both failure modes. Only the
 # verdict on the live file skips, so what a runner loses is one data point, not the check.
 #
+# ONE LINE ADDED 2026-09-06: test_check_loaded.sh, and it is the narrowest exemption here. The
+# suite's subject is buzz-team/check-loaded.sh, which every checkout carries, so groups 0-1b run
+# in CI against the versioned source. Only group 2 skips: it classifies the live identities in
+# ~/.config/buzz-agents, which is deny-listed AND box-only. What a runner loses is the check that
+# praetorium and spike0 are INFO rather than DEAD — not the fail-open assertions, which are the
+# reason the suite exists.
+#
 # ONE LINE ADDED 2026-09-05: test_instruction_scaffolding.sh, same shape and same reason. Its
 # subject is the ~/dev project tree — the CLAUDE.md / AGENTS.md pairs an agent actually loads,
 # which no checkout carries. Its fixture groups run everywhere and prove both invariants are
@@ -43,6 +50,7 @@
 SKIP: check-team-kinds.py — the live TEAM.md channel table, which is declared excluded from buzz-team/ adoption (absent: ~/.config/buzz-team/TEAM.md)
 SKIP: check_deploy_drift.sh — the deployed trees this check compares against (absent: ~/agent-workforce/bin ~/.config/systemd/user ~/.config/buzz-team)
 SKIP: live OpenCode agent contract tests (set OPENCODE_LIVE_TESTS=1 to spend model tokens)
+SKIP: test_check_loaded.sh — the live agent identities this classification is checked against (absent: ~/.config/buzz-agents)
 SKIP: test_content_skill_extract.sh — the vault the content job reads (absent: ~/vault/08_skills/linkedin-content-engine/SKILL.md)
 SKIP: test_fetch_status.sh — the negative case needs no system chrome on PATH (probed: google-chrome chromium chromium-browser chrome)
 SKIP: test_fleet_eval.sh — the live qmd index the anchors resolve against (absent: ~/.cache/qmd/index.sqlite)
