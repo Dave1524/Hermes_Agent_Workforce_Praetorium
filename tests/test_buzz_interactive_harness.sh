@@ -136,12 +136,34 @@ key_mismatch=$(
 assert 'the agent half of that table equals bin/buzz_agents.env, both directions' \
   "[ -z \"\$key_mismatch\" ]"
 
+# A sha256 content pin is also 64 lowercase hex, so the guard below cannot tell one from a
+# key by shape alone. The exemption is STRUCTURAL — the pins are parsed out of the
+# [[excluded]] table that owns them, never listed here — so bumping a pin needs no edit to
+# this suite and a pin cannot drift from its declaration. What the guard still refuses is any
+# 64-hex string that is neither a declared identity nor a declared pin.
+pins=$(MANIFEST="$TREE/MANIFEST.toml" python3 -c '
+import os, pathlib, tomllib
+data = tomllib.loads(pathlib.Path(os.environ["MANIFEST"]).read_text())
+for row in data.get("excluded", []):
+    if row.get("sha256"):
+        print(row["sha256"])
+' | LC_ALL=C sort -u)
+
+assert 'every declared content pin is well-formed 64-hex' \
+  "[ -z \"\$pins\" ] || ! grep -qvE '^[0-9a-f]{64}$' <<<\"\$pins\""
+
+# A key smuggled into a sha256 field would be exempted by the parse above, so the two sets
+# are asserted disjoint. A pin that equals an identity is not a coincidence.
+assert 'no content pin is one of the declared identities' \
+  "[ -z \"\$(comm -12 <(printf '%s\n' \"\$pins\") <(awk '{print \$2}' <<<\"\$identities\" | LC_ALL=C sort -u))\" ]"
+
 permitted=$(awk '{print $2}' <<<"$identities" | LC_ALL=C sort -u)
+explained=$(printf '%s\n%s\n' "$permitted" "$pins" | grep -E '^[0-9a-f]{64}$' | LC_ALL=C sort -u)
 stray_hex=$(
   grep -rohE '[0-9a-f]{64}' "$TREE" --include='*' 2>/dev/null | LC_ALL=C sort -u \
-    | comm -23 - <(printf '%s\n' "$permitted")
+    | comm -23 - <(printf '%s\n' "$explained")
 )
-assert 'every 64-hex string in the tree is one of the six declared PUBKEYS' \
+assert 'every 64-hex string in the tree is a declared PUBKEY or a declared content pin' \
   "[ -z \"\$stray_hex\" ] || { printf '      unexpected: %s\n' \$stray_hex; false; }"
 
 assert 'no bech32 private key anywhere in the tree' \

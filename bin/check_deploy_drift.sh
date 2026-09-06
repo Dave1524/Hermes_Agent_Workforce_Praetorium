@@ -251,6 +251,8 @@ for row in data.get("adopted", []):
 for row in data.get("excluded", []):
     if row.get("path"):
         print("excluded", row["path"])
+        if row.get("sha256"):
+            print("pinned", row["path"], row["sha256"])
 PY
   )
 fi
@@ -270,6 +272,27 @@ buzz_declared() { # kind, name
     else
       [ "$pat" = "$name" ] && return 0
     fi
+  done <<<"$buzz_declarations"
+  return 1
+}
+
+# The content pin for an excluded PROSE file. TEAM.md, heartbeat.prompt and
+# aurelian-calibration.md are read by agents as instruction and stay out of this repo under the
+# manifest's mechanism-in/prose-out rule, because Dave1524/Hermes_Agent_Workforce_Praetorium is
+# PUBLIC and auto-sync pushes to it within 15 minutes. So the repo cannot hold their text — it
+# holds their sha256 instead. An edit nobody recorded reads as drift; a deliberate one bumps the
+# pin in the same commit that explains it. Detection without publication, which is the whole of
+# what adoption would have bought for a file whose correctness is judgement anyway.
+#
+# A pin is OPTIONAL: `backups/` is runtime state and `*.env` is a standing refusal, and neither
+# has a fixed content to pin. Absence of a pin is the pre-2026-09-06 behaviour, unchanged.
+buzz_pin() { # name -> sha256 on stdout
+  local name=$1 kind pat sha
+  while read -r kind pat sha; do
+    [ "$kind" = pinned ] || continue
+    [ "$pat" = "$name" ] || continue
+    printf '%s' "$sha"
+    return 0
   done <<<"$buzz_declarations"
   return 1
 }
@@ -579,6 +602,15 @@ done < <(comm -23 <(echo "$buzz_src") <(echo "$buzz_live"))
 while IFS= read -r f; do
   [ -n "$f" ] || continue
   if buzz_declared excluded "$f"; then
+    if pin=$(buzz_pin "$f"); then
+      live=$(sha256sum "$BUZZ_TREE/$f" 2>/dev/null | cut -d' ' -f1)
+      if [ "$live" != "$pin" ]; then
+        report buzz "content pin: $f changed on the box — MANIFEST.toml pins ${pin:0:12}, live is ${live:-unreadable}. Bump sha256 in the same commit that explains the edit, or restore the file"
+      else
+        info "box-only: $f — declared excluded, content pinned at ${pin:0:12}"
+      fi
+      continue
+    fi
     info "box-only: $f — declared excluded (prose or runtime state), not adopted"
     continue
   fi

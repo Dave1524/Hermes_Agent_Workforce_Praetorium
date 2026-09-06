@@ -446,6 +446,40 @@ assert 'an UNDECLARED box-only file is red — a rebuild from source loses it' \
   "saw 'DRIFT \[buzz\] box-only: UNDECLARED.md'"
 rm -rf "$root"
 
+echo "--- 14b-ii. an excluded PROSE file is content-pinned ---"
+# Detection without publication. TEAM.md, heartbeat.prompt and aurelian-calibration.md are read
+# by agents as instruction and stay out of this PUBLIC repo under the manifest's
+# mechanism-in/prose-out rule, so the repo holds their sha256 rather than their text. Without
+# the pin the exclusion is indistinguishable from no control at all — TEAM.md went 24 days with
+# no recorded change and nothing on the box would have reported an edit to it.
+fixture
+printf 'team rules\n' > "$root/buzz/PINNED.md"
+pin=$(sha256sum "$root/buzz/PINNED.md" | cut -d' ' -f1)
+cat >> "$root/src_buzz/MANIFEST.toml" <<TOML
+[[excluded]]
+path = "PINNED.md"
+sha256 = "$pin"
+why = "fixture pinned prose"
+TOML
+capture
+assert 'a pinned prose file matching its pin is clean' "clean"
+assert 'and the run names the pin, so a pinned pass is distinguishable from an unpinned one' \
+  "saw 'content pinned at ${pin:0:12}'"
+printf 'team rules, edited on the box\n' > "$root/buzz/PINNED.md"
+capture
+assert 'an unrecorded edit to pinned prose is red' \
+  "saw 'DRIFT \[buzz\] content pin: PINNED.md changed on the box'"
+assert 'and the finding says how to record a deliberate edit' "saw 'Bump sha256'"
+# The remedy is bumping the pin, never adopting the file. Asserted so the next implementer
+# cannot clear this finding by copying prose into a public repo, which is the one outcome the
+# exclusion exists to prevent.
+assert 'clearing it never means adopting the text — the file stays out of the source tree' \
+  "[ ! -e \"$root/src_buzz/PINNED.md\" ]"
+# An exclusion with no pin keeps its pre-2026-09-06 behaviour: backups/ is runtime state and
+# *.env is a standing refusal, and neither has fixed content to pin.
+assert 'an UNPINNED exclusion is still silent, not newly red' "! saw 'content pin: PROSE.md'"
+rm -rf "$root"
+
 echo "--- 14b-iii. buzz-team: present in BOTH trees, declared in neither list ---"
 # The third membership case, and the one the two above cannot reach: present in BOTH trees.
 # Until 2026-09-03 an undeclared file here fell through to `cmp`, matched, and passed — so

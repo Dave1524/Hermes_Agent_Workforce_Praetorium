@@ -31,6 +31,15 @@
 # on 2026-09-03 and carries none, and its six channel UUIDs are already in
 # bin/buzz_routes.env. What it protects against is the file this tree acquires NEXT.
 #
+# PROSE IS EXCLUDED, NOT UNGOVERNED (2026-09-06). Every prose entry below carries a `sha256`
+# of its live bytes, and bin/check_deploy_drift.sh compares it against the box on every run.
+# The repo therefore holds no prose text and still detects every prose edit: an unrecorded one
+# is drift, a deliberate one bumps the pin in the commit that explains it. This closes the gap
+# that made the exclusion look like an absence of control — TEAM.md is the layer that decides
+# what an agent knows to look at, it went 24 days without a recorded change, and nothing would
+# have reported an edit to it. Adoption was the wrong fix for a public repo; a pin is the
+# right size. A pin is optional and the two non-prose exclusions below carry none.
+#
 # AN EXCLUDED FILE IS DECLARED, NEVER MERELY ABSENT. An absence cannot be told from a
 # deletion, and the drift check reads the `excluded` list below to decide which box-side
 # files are not findings — so an undeclared file appearing in EITHER tree is red.
@@ -153,6 +162,7 @@ why = "tails a live agent turn"
 [[excluded]]
 path = "TEAM.md"
 kind = "prose"
+sha256 = "0bebbeb44a066e2c67e0d3e9836c778844849784ce08b88adb4d48e9bef5e0f3"
 why = """
 Read by every agent as team instructions (buzz-acp-launch.sh exports it as
 BUZZ_ACP_TEAM_INSTRUCTIONS). It is the largest prose surface in this tree, the one most
@@ -168,6 +178,7 @@ mechanical fact inside a prose file is asserted from outside it.
 [[excluded]]
 path = "heartbeat.prompt"
 kind = "prose"
+sha256 = "6db2e3a21fc4edfb4cca97b1a7368504299fa34a445a7594b06c210520fbb8ea"
 why = """
 The hourly self-prompt text, passed to the agent as instruction. Same class as TEAM.md and
 a smaller surface. Note what it costs to get wrong: it opens with `buzz feed get`, so an
@@ -179,6 +190,7 @@ than from a unit file.
 [[excluded]]
 path = "aurelian-calibration.md"
 kind = "prose"
+sha256 = "6e3b7a575558f3a16cf43467d0af16a5de6ab55b4ce004bc3f7b06a39dabb9b3"
 why = """
 The calibration pin, in prose, for the one agent who executes nothing. Its correctness is
 judgement end to end — there is no mechanical symptom of a wrong version, which is the
