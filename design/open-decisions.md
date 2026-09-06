@@ -1263,3 +1263,17 @@ has no owner, which is the honest state rather than a tidy one.
 **Standing side items, owned by nobody yet:** marcus's engram is at ~79% of the 65,535 B wall and
 needs a prune; `augustus-content.timer` was found *stopped* and ran once in eight days — confirm it
 holds its own schedule before anything is concluded from the content backlog.
+
+**Third side item, added 2026-09-06 — the vault cannot answer its own publishing question, and
+only Dave can fix it.** Asked plainly *"how does the agent workforce publish its work and get
+proposals approved today?"*, retrieval over the full 529-document index does not return
+`03_projects/active/ai_agent_workforce/buzz_architecture.md` **at all** — it is absent from the top
+13. The field is `vision.md` 0.90, `nuc_agent_host_spec.md` 0.53 (a hardware spec) and
+`08_skills/agent-inbox-sync/SKILL.md` 0.47 (the superseded Notion gate). This surfaced as
+`fleet_eval`'s `p2_publish_approve` going red on 2026-09-01 and staying red for six days; the probe
+baseline was re-recorded to FAIL on 09-06 because it had been measured on the pre-2026-08-31
+101-document mirror, **not** because the gap is acceptable. What stands between an agent and a
+wrong answer today is TEAM.md's instruction layer, which names the anchor explicitly — retrieval
+alone does not get there. The remedy is a vault edit (the anchor is 84 lines against `vision.md`'s
+330 and loses on wording), and the box holds no path to make it: canonical vault work is Mac-side.
+Owner: Dave. Trigger: the next vault session on `03_projects/active/ai_agent_workforce/`.
