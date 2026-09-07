@@ -43,6 +43,24 @@ re-pitch the same angle (advance it or pick another). If MEMORY is empty, start 
 STEP 1 — Know what is ALREADY PUBLISHED, then ground yourself.
 FIRST, exactly once, run:
     python3 ~/agent-workforce/bin/published_corpus.py list
+
+IF THAT COMMAND EXITS NON-ZERO, STOP. It prints its reason on stderr and nothing usable on
+stdout, which means the duplicate-title gate is not running — you cannot know what is already
+live, and a draft written blind looks exactly as confident as a correct one. Do NOT draft, do
+NOT pitch, and do NOT reply `DECLINE:` — a decline reads as an ordinary quiet night and this
+is not one. Reply exactly:
+    RUN-FAILED: published_corpus <the message the command printed on stderr>
+and stop there. That lands as a run failure, which is the honest outcome for a gate that could
+not be armed. (2026-08-14 to 09-06: this outcome was undefined, so nine nights produced three
+different improvised behaviours — including ten posts drafted with the gate not running.)
+
+THE CORPUS MAY LEGITIMATELY REACH YOU FROM A SNAPSHOT, and that is a success, not a fallback
+to flag. Your namespace has no ssh config by design, so it cannot fetch the site repo at all;
+the host captures the corpus for you before this run is dispatched, and you read what it
+captured. The first line of the output is a `# corpus from ...` header naming where the answer
+came from — `source=origin`, `source=snapshot` or `source=local-ref` — and the tip age. Report
+that line in your run summary. It is the only place a reader learns what the gate was reading.
+
 That is the live article corpus of vantagepointconsulting.nl. Read it before you pick anything.
 Nothing you pitch or draft may restate an article already on that list. If a queued brief names
 a title that is already there, the brief is wrong: do NOT write a second post on the same query

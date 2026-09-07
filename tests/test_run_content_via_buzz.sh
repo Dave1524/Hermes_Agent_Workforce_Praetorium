@@ -80,6 +80,19 @@ fi
 STUB
 chmod +x "$WORK/digest.sh"
 
+# The corpus gate, stubbed at the CONTENT_CORPUS_BIN seam. The runner arms it on the HOST
+# because augustus cannot: his bwrap namespace has a tmpfs over ~/.ssh, so the site remote's
+# ssh-config alias does not resolve there. What is pinned here is the ORDER — armed before
+# the trigger goes out — and that a gate which cannot be armed stops the run.
+cat >"$WORK/corpus.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'corpus %s\n' "$*" >>"$STUB_ARGV"
+[ -s "$STUB_CORPUS_RC" ] && exit "$(cat "$STUB_CORPUS_RC")"
+echo "# corpus snapshot written to var/published_corpus.json — 2 articles, source=origin"
+exit 0
+STUB
+chmod +x "$WORK/corpus.sh"
+
 export STUB_ARGV="$WORK/argv.log"
 export STUB_STDIN="$WORK/sent_body"
 export STUB_SEND_RC="$WORK/send_rc"
@@ -89,12 +102,14 @@ export STUB_DIGEST_BEFORE="$WORK/digest_before"
 export STUB_DIGEST_AFTER="$WORK/digest_after"
 export STUB_DIGEST_MOVE="$WORK/digest_move"
 export STUB_DIGEST_N="$WORK/digest_n"
+export STUB_CORPUS_RC="$WORK/corpus_rc"
 
 printf 'page-1:Picked\npage-2:Draft\n' >"$STUB_DIGEST_BEFORE"
 printf 'page-1:Draft\npage-2:Draft\n' >"$STUB_DIGEST_AFTER"
 
 reset_case() {
   : >"$STUB_ARGV"; : >"$STUB_SEND_RC"; : >"$STUB_DIGEST_RC"; : >"$STUB_STDIN"
+  : >"$STUB_CORPUS_RC"
   rm -f "$STUB_DIGEST_MOVE" "$STUB_DIGEST_N" "$WORK/board.snapshot"
   printf '[]\n' >"$STUB_EVENTS"
 }
@@ -115,6 +130,7 @@ run_dispatch() {  # run_dispatch [extra env assignments...]
       BUZZ_DELIVER_HELPER="$WORK/helper.sh" \
       BUZZ_HELPER_BIN="$WORK/helper.sh" \
       CONTENT_DIGEST_BIN="$WORK/digest.sh" \
+      CONTENT_CORPUS_BIN="$WORK/corpus.sh" \
       CONTENT_BOARD_SNAPSHOT="$WORK/board.snapshot" \
       AGENT_BUZZ_WAIT_SECONDS="${WAIT_SECS:-2}" \
       AGENT_BUZZ_POLL_SECONDS=1 \
@@ -208,6 +224,95 @@ assert 'the trigger is short — the profile is not inlined nightly' \
 assert 'and it is genuinely smaller than the profile it points at' \
   "[ \"\$(wc -c <'$STUB_STDIN')\" -lt \"\$(wc -c <'$REPO_ROOT/profiles/augustus_content_task.md')\" ]"
 
+echo '--- the FIFTH outcome: a mandatory step augustus could not run ---'
+# SKILL-READ-FAILED: was fixed as a special case. RUN-FAILED: then arrived on 2026-09-06 and
+# fell through the identical hole — matched by nothing, polled to the deadline, and logged
+# "no board movement and no reply" 110 seconds after augustus had answered. A special case
+# ends an instance and leaves the class; the table below is what ends the class.
+reset_case
+event "$AUGUSTUS" "RUN-FAILED: published_corpus REFUSING — origin unreachable"
+run_dispatch; rc=$?
+# The exit code alone is not evidence: the silent path exits 1 too, which is exactly how the
+# dead SKILL-READ-FAILED branch passed its first suite. The log line is what separates them.
+assert 'a RUN-FAILED reply exits 1 — asked, and it could not run' \
+  "[ $rc -eq 1 ] && ! grep -q 'no board movement and no reply' '$WORK/out'"
+assert 'and is NOT reported as a decline' "! grep -qi 'declined' '$WORK/out'"
+assert 'and quotes the reason verbatim' \
+  "grep -qF -- 'published_corpus REFUSING — origin unreachable' '$WORK/out'"
+assert 'and names the event, so the claim stays checkable' "grep -q 'eeeeee' '$WORK/out'"
+# Neither is exit 1 alone, and neither is the absence of the silence line: the deadline
+# any-reply read below also exits 1 and also suppresses that line, so with the RUN-FAILED
+# row deleted every assertion above still passes. These two are what separate the table
+# row from the catch-all — proven by deleting the row and watching only these go red.
+assert 'and the run took the TABLE ROW, not the unknown-sentinel catch-all' \
+  "! grep -qi 'no sentinel matched' '$WORK/out'"
+assert 'and says which class of failure it was' \
+  "grep -qi 'could not complete a mandatory step' '$WORK/out'"
+assert 'the profile instructs him to reply with the sentinel this row reads' \
+  "grep -qF 'RUN-FAILED:' '$REPO_ROOT/profiles/augustus_content_task.md'"
+
+echo '--- a sentinel the table does not know ends the wait; it does not burn it ---'
+# The generalisation. Whatever the next unknown prefix turns out to be, the run must stop on
+# the reply and say which prefix it did not recognise — never spend the full wait and then
+# assert silence over a reply that is sitting in the channel.
+reset_case
+event "$AUGUSTUS" "WAT-FAILED: something nobody taught the dispatcher"
+run_dispatch; rc=$?
+assert 'an unrecognised sentinel still exits 1' "[ $rc -eq 1 ]"
+assert 'and never claims there was no reply' \
+  "! grep -q 'no board movement and no reply' '$WORK/out'"
+assert 'and says plainly that no sentinel matched' "grep -qi 'no sentinel matched' '$WORK/out'"
+assert 'and quotes the line, so the missing row is obvious' \
+  "grep -qF -- 'WAT-FAILED: something nobody taught the dispatcher' '$WORK/out'"
+assert 'and names the event id' "grep -q 'eeeeee' '$WORK/out'"
+
+echo '--- the sentinel table and the profile pin each other, both directions ---'
+# The assertion that makes this class die once instead of once per sentinel. A prefix the
+# profile teaches augustus to send and the dispatcher does not know costs a 20-minute stall
+# in production; a row the dispatcher knows and the profile never emits is dead code. Both
+# are caught here, at gate time, for the price of one table row.
+# ALL-CAPS-colon is reserved in that profile FOR sentinels — if a non-sentinel one is ever
+# needed, this failing is the conversation, not the obstacle.
+PROFILE_MD="$REPO_ROOT/profiles/augustus_content_task.md"
+sed -n '/^SENTINELS=(/,/^)/p' "$RUNNER" | grep -oE '\b[A-Z][A-Z0-9-]*:' | sort -u >"$WORK/table_sentinels"
+grep -oE '\b[A-Z][A-Z0-9-]*:' "$PROFILE_MD" | sort -u >"$WORK/profile_sentinels"
+comm -23 "$WORK/profile_sentinels" "$WORK/table_sentinels" >"$WORK/only_profile"
+comm -13 "$WORK/profile_sentinels" "$WORK/table_sentinels" >"$WORK/only_table"
+# An empty extraction would satisfy one direction vacuously and read as a pass.
+assert 'the dispatcher table extraction found rows at all' "[ -s '$WORK/table_sentinels' ]"
+assert 'the profile extraction found sentinels at all' "[ -s '$WORK/profile_sentinels' ]"
+assert 'every sentinel the profile instructs has a row in the dispatcher table' \
+  "[ ! -s '$WORK/only_profile' ]"
+assert 'and every row in the dispatcher table is a sentinel the profile instructs' \
+  "[ ! -s '$WORK/only_table' ]"
+[ -s "$WORK/only_profile" ] && echo "    profile-only: $(tr '\n' ' ' <"$WORK/only_profile")"
+[ -s "$WORK/only_table" ] && echo "    table-only:   $(tr '\n' ' ' <"$WORK/only_table")"
+
+echo '--- the corpus gate is armed on the HOST, before anyone is asked ---'
+# augustus cannot fetch the site repo: he is the only agent on codex-acp and his namespace
+# mounts a tmpfs over ~/.ssh, so `git@github-website:` — an ssh-config alias — does not
+# resolve. Nine consecutive nights he reported the corpus unreachable while the host-side
+# receipt seconds later read `corpus: fetched`. The fix is a transport split, not a wider
+# namespace: the host acquires, and ~/agent-workforce/var/ is already readable inside.
+reset_case
+event "$AUGUSTUS" "DECLINE: nothing Picked tonight"
+run_dispatch; rc=$?
+assert 'the runner armed the corpus gate' "grep -q '^corpus snapshot' '$STUB_ARGV'"
+assert 'and armed it BEFORE the trigger went out' \
+  "[ \"\$(grep -n '^corpus snapshot' '$STUB_ARGV' | cut -d: -f1 | sed -n 1p)\" \
+   -lt \"\$(grep -n 'messages send' '$STUB_ARGV' | cut -d: -f1 | sed -n 1p)\" ]"
+
+reset_case
+echo 5 >"$STUB_CORPUS_RC"
+run_dispatch; rc=$?
+# Exit 4, not 1: nobody was asked, so agent_propose.sh must record CRASHED and not retry.
+# Same precedent as the unreadable board — dispatching against a gate that cannot run
+# produces a draft that looks exactly as confident as a correct one.
+assert 'a corpus gate that cannot be armed exits 4 (CRASH_EXIT)' "[ $rc -eq 4 ]"
+assert 'and nothing was dispatched — an ungated draft is worse than no draft' \
+  "! grep -q 'messages send' '$STUB_ARGV'"
+assert 'and the failure names the gate, not the wait' "grep -qi 'gate' '$WORK/out'"
+
 echo '--- completion: the board moved ---'
 reset_case
 touch "$STUB_DIGEST_MOVE"
@@ -220,6 +325,11 @@ reset_case
 run_dispatch; rc=$?
 assert 'a timeout with neither movement nor a reply exits 1 (outcome=FAIL)' "[ $rc -eq 1 ]"
 assert 'and it is NOT reported as a decline' "! grep -qi 'decline' '$WORK/out'"
+# The silence line survives the sentinel table: it is now the LAST word, reached only after
+# a re-read finds no reply at all. It must still be reachable, or genuine silence would be
+# mislabelled as an unknown sentinel.
+assert 'and genuine silence still says exactly that' \
+  "grep -q 'no board movement and no reply' '$WORK/out'"
 
 echo '--- completion: a publish failure is exit 4, never "no reply yet" ---'
 reset_case

@@ -14,15 +14,28 @@ checkout sat on a feature branch (feat/ab-hero-cta-flag), eight commits behind, 
 netcongestie article that was already live. Reading the working tree would answer "no
 collision" for an article that exists — the exact failure this helper is meant to end.
 
+ACQUISITION IS SPLIT FROM INTERROGATION, because one reader cannot acquire. augustus is
+the only agent on the codex-acp harness and his bwrap namespace mounts a tmpfs over
+~/.ssh; the site remote is `git@github-website:`, an ssh-config alias, so with no ssh
+config the hostname does not resolve and his fetch fails every single time. From
+2026-08-14 to 2026-09-06 he reported the corpus unreachable nine nights running while
+the host, seconds later, fetched fine. The corpus is public data, so the fix is a
+transport split like buzz-notion-broker.py — the host runs `snapshot`, the sandbox reads
+the file — never a wider namespace, which would hand a credential to the agent's own
+shell to solve a problem that needs no credential at all.
+
 Commands:
   list                 Published corpus, one line per locale. What the profiles inject.
   check "<title>"      Rank the corpus by lexical overlap with a candidate title.
                        Exit 2 when overlap is high enough to call a collision.
+  snapshot             Host-side capture to VP_CORPUS_SNAPSHOT, for readers that cannot
+                       fetch. Refuses unless the fetch it just ran succeeded.
 
 Lexical overlap catches TITLE REUSE, which is what actually went wrong. It does not catch an
 adjacent angle under a different title — read the `list` output and judge that yourself.
 """
 import argparse
+import calendar
 import json
 import os
 import re
@@ -37,6 +50,10 @@ BLOG_REF = os.environ.get("VP_BLOG_REF", "origin/main")
 MAX_LAG_HOURS = float(os.environ.get("VP_CORPUS_MAX_LAG_HOURS", "72"))
 FETCH_TIMEOUT = int(os.environ.get("VP_CORPUS_FETCH_TIMEOUT", "90"))
 COLLISION_THRESHOLD = float(os.environ.get("VP_CORPUS_COLLISION_THRESHOLD", "0.45"))
+SNAPSHOT_PATH = os.path.expanduser(
+    os.environ.get("VP_CORPUS_SNAPSHOT", "~/agent-workforce/var/published_corpus.json"))
+SNAPSHOT_MAX_AGE_HOURS = float(os.environ.get("VP_CORPUS_SNAPSHOT_MAX_AGE_HOURS", "24"))
+SNAPSHOT_STAMP = "%Y-%m-%dT%H:%M:%SZ"
 
 STOPWORDS = {
     "de", "het", "een", "en", "van", "voor", "met", "bij", "aan", "op", "in", "te", "dat",
@@ -71,22 +88,83 @@ def _read_blog_ts():
     return _git("show", "{}:{}".format(BLOG_REF, BLOG_PATH)).stdout
 
 
-def load_corpus():
-    """Return (articles, freshness). Refuses rather than answer from a too-stale ref."""
+def _require_repo():
     if not os.path.isdir(SITE_REPO):
         sys.exit("published_corpus: site repo not found at {} (set VP_SITE_REPO)".format(SITE_REPO))
-    fetched = _fetch()
+
+
+def _ref_corpus():
+    """(articles, tip age) from the on-disk ref. The only path that needs git to work."""
     try:
-        age = _ref_age_hours()
-        source = _read_blog_ts()
+        return parse_articles(_read_blog_ts()), _ref_age_hours()
     except subprocess.CalledProcessError as e:
         sys.exit("published_corpus: cannot read {}:{} — {}".format(
             BLOG_REF, BLOG_PATH, (e.stderr or "").strip()[:200]))
-    if not fetched and age > MAX_LAG_HOURS:
-        sys.exit("published_corpus: REFUSING — origin unreachable and {} is {:.0f}h old "
+
+
+def _snapshot_age_hours(payload):
+    try:
+        captured = calendar.timegm(time.strptime(payload["captured_at"], SNAPSHOT_STAMP))
+    except (KeyError, TypeError, ValueError):
+        return None
+    return (time.time() - captured) / 3600.0
+
+
+def _read_snapshot():
+    """(payload, age, None) when the host snapshot is usable, (None, None, why) otherwise."""
+    try:
+        with open(SNAPSHOT_PATH) as fh:
+            payload = json.load(fh)
+    except (OSError, ValueError):
+        return None, None, "no host snapshot at {}".format(SNAPSHOT_PATH)
+    age = _snapshot_age_hours(payload)
+    if age is None or not isinstance(payload.get("articles"), list):
+        return None, None, "the host snapshot at {} is unusable (no captured_at or no articles)".format(
+            SNAPSHOT_PATH)
+    if age > SNAPSHOT_MAX_AGE_HOURS:
+        return None, None, "the host snapshot at {} is stale ({:.1f}h old, max {:.0f}h)".format(
+            SNAPSHOT_PATH, age, SNAPSHOT_MAX_AGE_HOURS)
+    return payload, age, None
+
+
+def _snapshot_freshness(payload, age):
+    """The host's reading carried forward — a tip does not stop ageing inside a file."""
+    at_capture = (payload.get("freshness") or {}).get("ref_age_hours") or 0.0
+    return {"fetched": False, "source": "snapshot",
+            "ref_age_hours": round(at_capture + age, 1),
+            "captured_at": payload["captured_at"],
+            "snapshot_age_hours": round(age, 1)}
+
+
+def load_corpus():
+    """Return (articles, freshness): live fetch, else host snapshot, else a ref still
+    inside the lag window. Refuses rather than answer from anything older than that, and
+    every path names itself in `source` — a fallback nobody can see is a silent one."""
+    _require_repo()
+    if _fetch():
+        articles, age = _ref_corpus()
+        return articles, {"fetched": True, "source": "origin", "ref_age_hours": round(age, 1)}
+    payload, snapshot_age, no_snapshot = _read_snapshot()
+    if payload is not None:
+        return payload["articles"], _snapshot_freshness(payload, snapshot_age)
+    articles, age = _ref_corpus()
+    if age > MAX_LAG_HOURS:
+        sys.exit("published_corpus: REFUSING — origin unreachable, {}, and {} is {:.0f}h old "
                  "(max {:.0f}h). A stale corpus answers 'no collision' for live articles."
-                 .format(BLOG_REF, age, MAX_LAG_HOURS))
-    return parse_articles(source), {"fetched": fetched, "ref_age_hours": round(age, 1)}
+                 .format(no_snapshot, BLOG_REF, age, MAX_LAG_HOURS))
+    return articles, {"fetched": False, "source": "local-ref", "ref_age_hours": round(age, 1)}
+
+
+def write_snapshot(articles, fresh):
+    """Atomic: a reader in another namespace never opens a half-written corpus."""
+    payload = {"captured_at": time.strftime(SNAPSHOT_STAMP, time.gmtime()),
+               "freshness": fresh, "articles": articles}
+    os.makedirs(os.path.dirname(SNAPSHOT_PATH) or ".", exist_ok=True)
+    tmp = "{}.{}.tmp".format(SNAPSHOT_PATH, os.getpid())
+    with open(tmp, "w") as fh:
+        json.dump(payload, fh, indent=2)
+    os.replace(tmp, SNAPSHOT_PATH)
+    return payload
 
 
 ARRAY_START = re.compile(r"export\s+const\s+blogArticles")
@@ -179,9 +257,20 @@ def rank(candidate, rows):
     return sorted(scored, key=lambda r: -r["score"])
 
 
+def _provenance(fresh):
+    """Which of the three paths answered. The reader acts on this, so it is never omitted."""
+    source = fresh.get("source", "local-ref")
+    if source == "origin":
+        return "source=origin, fetched"
+    if source == "snapshot":
+        return "source=snapshot, captured on the host {} ({}h ago) — origin unreachable here".format(
+            fresh["captured_at"], fresh["snapshot_age_hours"])
+    return "source=local-ref, OFFLINE — origin unreachable and no host snapshot"
+
+
 def _freshness_line(fresh):
-    state = "fetched" if fresh["fetched"] else "OFFLINE — last known ref"
-    return "# corpus from {} ({}), tip age {}h".format(BLOG_REF, state, fresh["ref_age_hours"])
+    return "# corpus from {} ({}), tip age {}h".format(
+        BLOG_REF, _provenance(fresh), fresh["ref_age_hours"])
 
 
 def cmd_list(args, articles, fresh):
@@ -219,6 +308,23 @@ def cmd_check(args, articles, fresh):
     return 0
 
 
+def cmd_snapshot(args):
+    """Acquire on the host for the namespaces that cannot. A snapshot written from
+    anything but a live fetch would launder staleness forward with nothing downstream
+    able to tell, so a failed fetch refuses rather than rewriting the file it already has."""
+    _require_repo()
+    if not _fetch():
+        sys.exit("published_corpus: REFUSING to snapshot — origin unreachable. A snapshot is "
+                 "only worth writing from a ref that was just refreshed; this one would hand "
+                 "a stale corpus to every namespace that trusts it.")
+    articles, age = _ref_corpus()
+    fresh = {"fetched": True, "source": "origin", "ref_age_hours": round(age, 1)}
+    write_snapshot(articles, fresh)
+    print("# corpus snapshot at {} — {} articles, source=origin, tip age {}h".format(
+        SNAPSHOT_PATH, len(articles), fresh["ref_age_hours"]))
+    return 0
+
+
 def main():
     p = argparse.ArgumentParser(description="Published corpus of vantagepointconsulting.nl")
     sub = p.add_subparsers(dest="cmd")
@@ -227,9 +333,12 @@ def main():
     ck = sub.add_parser("check", help="rank the corpus against a candidate title")
     ck.add_argument("candidate")
     ck.add_argument("--json", action="store_true")
+    sub.add_parser("snapshot", help="capture the corpus for readers that cannot fetch")
     args = p.parse_args()
     if not args.cmd:
         args.cmd, args.json = "list", False
+    if args.cmd == "snapshot":
+        sys.exit(cmd_snapshot(args))
     articles, fresh = load_corpus()
     handler = {"list": cmd_list, "check": cmd_check}[args.cmd]
     sys.exit(handler(args, articles, fresh))

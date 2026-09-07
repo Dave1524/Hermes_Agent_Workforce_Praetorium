@@ -26,6 +26,7 @@ set -uo pipefail
 
 BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DIGEST_BIN="${CONTENT_DIGEST_BIN:-$BIN_DIR/content_board_digest.sh}"
+CORPUS_BIN="${CONTENT_CORPUS_BIN:-$BIN_DIR/published_corpus.py}"
 DELIVER_BIN="${DELIVER_BIN:-$BIN_DIR/deliver.sh}"
 HELPER="${BUZZ_HELPER_BIN:-$BIN_DIR/buzz_publish.sh}"
 ROUTES_FILE="${BUZZ_ROUTES_FILE:-$BIN_DIR/buzz_routes.env}"
@@ -66,6 +67,24 @@ mkdir -p "$(dirname "$SNAPSHOT")" 2>/dev/null || true
 # — passing on its own bookkeeping. Live on 2026-08-13's first run.
 printf '%s\n' "$baseline" >"$SNAPSHOT" \
   || crash "could not write the board snapshot at $SNAPSHOT"
+
+# ── 1b. arm the corpus gate, on the HOST ──────────────────────────────────────────
+# augustus cannot do this himself and never could. He is the only agent on codex-acp, and
+# his bwrap namespace mounts a tmpfs over ~/.ssh; the site remote is `git@github-website:`,
+# an ssh-config alias, so with no ssh config the name does not resolve. For nine consecutive
+# nights (2026-08-14 → 09-06) he reported the corpus unreachable while the host-side receipt
+# seconds later read `corpus: fetched`. It is a transport split, not a namespace question:
+# ~/agent-workforce/var/ is already inside his dev-bind and under no tmpfs, so the host
+# writes the snapshot and he reads it with no credential and no widening — which is the
+# rule, not merely the cheaper option (~/CLAUDE.md).
+#
+# A crash, not a warning, for the same reason the baseline above is one: a run dispatched
+# without the duplicate-title gate produces a draft that looks exactly as confident as a
+# correct one. Ten posts shipped that way between 09-02 and 09-05.
+if ! corpus_note=$("$CORPUS_BIN" snapshot 2>&1); then
+  crash "the corpus gate could not be armed, so nobody was asked — augustus cannot reach origin from his namespace and would draft with the duplicate-title check not running: ${corpus_note//$'\n'/ }"
+fi
+log "corpus gate armed — ${corpus_note//$'\n'/ }"
 
 dispatch_epoch=$(date +%s)
 
@@ -142,11 +161,50 @@ for event in events if isinstance(events, list) else []:
     if event.get("pubkey") != author or int(event.get("created_at", 0)) < since:
         continue
     for line in (event.get("content") or "").splitlines():
-        if line.strip().startswith(prefix):
+        # The empty prefix, used by the any-reply read at the deadline, matches every
+        # line including blank ones, and would report an empty string as the reply that
+        # ended the wait. (No apostrophes here: this block is inside a single-quoted -c.)
+        if line.strip() and line.strip().startswith(prefix):
             sys.stdout.write(event.get("id", "") + " " + line.strip() + "\n")
             sys.exit(0)
 sys.exit(1)
 ' "$augustus" "$1" "$2"
+}
+
+# THE OUTCOMES AUGUSTUS CAN NAME, as a table rather than a branch each. The three the
+# header names are board-moved (0), DECLINE: (0) and asked-but-silent (1). Every other
+# sentinel is a reply that IS an answer and is NOT a decline — a skill section that no
+# longer resolves, a mandatory step that exited non-zero.
+#
+# SKILL-READ-FAILED: was fixed here as a special case in 2026-08. RUN-FAILED: arrived on
+# 2026-09-06 and fell through the identical hole, because a special case ends an instance
+# and leaves the class alive. A new sentinel is now one row plus its message, and the
+# verify gate pins this table against profiles/augustus_content_task.md in BOTH directions
+# — so the next one fails a gate instead of costing twenty minutes in production.
+#
+# Failures precede DECLINE: a reply carrying both is a failed run, not a quiet night.
+SENTINELS=(
+  'SKILL-READ-FAILED: 1'
+  'RUN-FAILED: 1'
+  'DECLINE: 0'
+)
+
+sentinel_log() {  # sentinel_log <prefix> <event-id> <line>
+  case "$1" in
+    'SKILL-READ-FAILED:')
+      log "augustus could not read the skill — $3"
+      log "  (event $2) a named section did not resolve in the vault SKILL.md;"
+      log "  this is a FAILURE, not a decline. Fix the section name or the heading, not the run." ;;
+    'RUN-FAILED:')
+      log "augustus could not complete a mandatory step — $3"
+      log "  (event $2) a command the profile makes non-optional exited non-zero;"
+      log "  this is a FAILURE, not a decline. Fix what it names, not the run." ;;
+    'DECLINE:')
+      # Recorded so content_moved.sh can pass an unmoved board without re-reading the
+      # relay, and so the claim stays checkable: `buzz social event --event $2`.
+      printf 'decline_event=%s\n' "$2" >>"$SNAPSHOT"
+      log "augustus declined (event $2) — nothing to draft" ;;
+  esac
 }
 
 deadline=$(( dispatch_epoch + wait_secs ))
@@ -157,32 +215,31 @@ while :; do
     exit 0
   fi
 
-  # THE FOURTH OUTCOME, checked before the decline branch. The three the header names are
-  # board-moved (0), DECLINE: (0) and asked-but-silent (1). A skill read that could not
-  # resolve a named section is none of them: augustus DID reply, and the reply names the
-  # heading that moved. Falling through left it to the deadline, so the run burned the full
-  # wait and then logged "no reply" — asserting the opposite of what happened and discarding
-  # the only line that says which heading to fix.
-  if skill_reply=$(sentinel_reply "$dispatch_epoch" 'SKILL-READ-FAILED:') \
-     && [ -n "$skill_reply" ]; then
-    log "augustus could not read the skill — ${skill_reply#* }"
-    log "  (event ${skill_reply%% *}) a named section did not resolve in the vault SKILL.md;"
-    log "  this is a FAILURE, not a decline. Fix the section name or the heading, not the run."
-    exit 1
-  fi
-
-  if reply=$(sentinel_reply "$dispatch_epoch" 'DECLINE:') && [ -n "$reply" ]; then
-    event_id=${reply%% *}
-    # Recorded so content_moved.sh can pass an unmoved board without re-reading the
-    # relay, and so the claim stays checkable: `buzz social event --event <id>`.
-    printf 'decline_event=%s\n' "$event_id" >>"$SNAPSHOT"
-    log "augustus declined (event $event_id) — nothing to draft"
-    exit 0
-  fi
+  for row in "${SENTINELS[@]}"; do
+    hit=$(sentinel_reply "$dispatch_epoch" "${row%% *}") || continue
+    [ -n "$hit" ] || continue
+    sentinel_log "${row%% *}" "${hit%% *}" "${hit#* }"
+    exit "${row##* }"
+  done
 
   [ "$(date +%s)" -ge "$deadline" ] && break
   sleep "$poll_secs"
 done
+
+# ── 4. the deadline is not proof of silence ───────────────────────────────────────
+# Before recording "no reply", ask whether there WAS one: the empty prefix matches any
+# non-blank line augustus wrote after the dispatch. On 2026-09-07 he answered 110 seconds
+# in, no branch matched, and the run spent the remaining 18 minutes to log the opposite of
+# what happened — throwing away the only line that said what to fix.
+# Deliberately OUTSIDE the poll loop. A catch-all inside it would fire on the first
+# `STATUS:`-shaped progress line and kill a run that was still working.
+if last_reply=$(sentinel_reply "$dispatch_epoch" '') && [ -n "$last_reply" ]; then
+  log "augustus replied and no sentinel matched — ${last_reply#* }"
+  log "  (event ${last_reply%% *}) the wait ended on his reply, not on the clock."
+  log "  Add this prefix as one row in SENTINELS with a message in sentinel_log. The table"
+  log "  and profiles/augustus_content_task.md are pinned to each other by the verify gate."
+  exit 1
+fi
 
 log "no board movement and no reply within ${wait_secs}s — recording FAIL"
 exit 1
