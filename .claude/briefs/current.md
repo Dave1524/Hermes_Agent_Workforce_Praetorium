@@ -7,6 +7,46 @@ five `buzz-agent@*` units. **Both gates, because the remedy spans both domains.*
 **Deploy ordering:** edit → `bin/deploy` → `bash bin/verify.sh` → commit. `bin/check_deploy_drift.sh`
 is inside the gate, so the gate is RED until `bin/deploy` runs. Expected, not a bug.
 
+
+## STATUS — 2026-09-07, same day: the harness half is DONE
+
+`~/.local/bin/{buzz,buzz-acp}` were upgraded from the 2026-07-31 build to **desktop-v0.5.23**
+(built 2026-09-05) and all five `buzz-agent@*` units restarted onto them. Defect 2 is closed at the
+harness. **Defect 1 and the relay question are not**, and the reasons are below rather than
+deferred. What is left is one command Dave or an agent runs, plus one instruction-layer decision.
+
+| | Before | After |
+|---|---|---|
+| `buzz:workflow` / `-owner` / `-mention` in `buzz-acp` | 0 / 0 / 0 | **1 / 1 / 1** |
+| `buzz:config-nudge` (extraction control) | 1 | 1 |
+| Fleet | 5 units on a 2026-07-31 binary | 5 units restarted, `NRestarts=0`, 0 auth failures |
+| `verify-fleet.sh` | — | **PASS** (gates 1-12) |
+| `buzz-team/check-loaded.sh` | — | **PASS** — all five fresh-config, live credential probe accepted, connected |
+
+**Provenance, because neither binary answers `--version`.** Upstream publishes **no standalone CLI
+asset** — releases carry only Desktop bundles (`.deb`, `.AppImage`, `.dmg`, `.exe`) — and the CLI
+rides inside them at `usr/bin/buzz` and `usr/bin/buzz-acp`. Extracted from
+`Buzz_0.5.23_amd64.deb`. `buzz` sha256 `c8ad1f50b2e22ad09c7f291ed56c067b3283b559d4c8b12ba656577203c10cdb`,
+`buzz-acp` sha256 `a082bb546cb4a1796a775472f5e7816c65fa896ba9b482ef79bcfaaecc337b82`. The outgoing
+pair is kept at `~/.local/bin/buzz-backup-2026-09-07/` (`buzz` `2336205f…`, `buzz-acp` `f7cceca3…`)
+— rollback is two `mv`s and five restarts.
+
+**How the upgrade was de-risked before install**, recorded because the next one should follow it:
+all eight flags the unit passes (`--respond-to`, `--allowed-respond-to`, `--subscribe`, `--config`,
+`--heartbeat-prompt-file`, `--idle-timeout`, `--mcp-command`, `--system-prompt-file`) were checked
+present in the new `--help`; a set-difference of old-help against new-help found **zero** removed
+flags; all four `BUZZ_ACP_*` env vars were confirmed present in both binaries; the new binary was
+executed standalone (`rc=0`) before it went near the fleet; and it was installed by
+**rename-into-place**, not overwrite, so a live agent mid-turn keeps its old inode instead of
+hitting `ETXTBSY`. Aurelian was restarted first as the canary and his journal read in full before
+the other four were touched.
+
+**One false alarm worth recording so it is not re-raised.** Aurelian's startup banner reads
+`context_limit=0 max_turns_per_session=1 memory=false` while the unit sets 100 / 50 / on. That is
+**not** an upgrade regression — the identical values appear in his pre-upgrade banners, and
+`verify-fleet` gate 10 asserts them as deliberate isolation overrides for the cold-verification
+agent. Comparing against the old banner before reporting is what kept this out of the findings.
+
 ## The problem, stated once
 
 Asking Marcus or Augustus in chat to schedule work — for themselves or for another agent — either
@@ -128,10 +168,15 @@ must *consume* them. Upgrading only buzz-acp fixes nothing against a relay that 
 
 1. The relay's workflow support is **established by running a command**, not inferred. Record the
    output and the date in this brief's follow-up, and in `design/open-decisions.md` W20.
-2. If the relay supports workflows: both binaries are upgraded to a build at or past the release
-   carrying #6953, and the three tag literals are **present** in the new `buzz-acp` — re-run the
-   same `strings` check that produced the table above, so the fix is proven by the measurement that
-   found the defect.
+2. ~~If the relay supports workflows: both binaries are upgraded to a build at or past the release
+   carrying #6953, and the three tag literals are **present** in the new `buzz-acp`.~~ **DONE
+   2026-09-07 — and done ahead of criterion 1 deliberately, reversing this brief's own ordering.**
+   The ordering was written on the assumption that upgrading was expensive and might be wasted
+   against an old relay. It is neither: the artifact already existed, the swap is two `mv`s, and the
+   binary was five weeks stale on its own merits regardless of what the relay does. Proven by
+   re-running the same `strings` check that found the defect, with `buzz:config-nudge` as the
+   control. **A cheap step that is necessary either way should not wait behind a step that is
+   blocked on someone else** — that is the reusable lesson, not a defence of the original order.
 3. A minimal `schedule` workflow (interval ≥60s, one `send_message` step naming one agent in the
    stored template) fires and **wakes that agent**, proven from the journal and the agent's CPU
    footprint (`systemctl --user show buzz-agent@<name> -p CPUUsageNSec` against an idle sibling),
@@ -143,6 +188,12 @@ must *consume* them. Upgrading only buzz-acp fixes nothing against a relay that 
 5. Defect 1 is decided explicitly either way: agents are granted workflow authoring through the team
    instruction layer, or the base prompt's `list, trigger, runs` is recorded as intended and agents
    stop being asked to schedule. Today it is neither — it is an undocumented refusal.
+   **STILL OPEN, and the upgrade did not touch it.** Verified against the new binary: 0.5.23's base
+   prompt carries the identical `| `buzz workflows` | `list`, `trigger`, `runs` |` row. So even with
+   the wake path installed and a working relay, *asking an agent in chat to schedule something will
+   still produce nothing*, because the agent believes it has no `create`. The fix is one line in
+   `~/.config/buzz-team/TEAM.md` (the team-instruction layer, which layers after `[Base]` and can
+   correct it) — cheap, but a real grant of authority and therefore a decision, not an edit.
 6. Both gates green.
 
 ## Files to modify
@@ -155,18 +206,27 @@ must *consume* them. Upgrading only buzz-acp fixes nothing against a relay that 
 
 ## Files to create
 
-- Nothing yet. The upgrade is not a repo change, and no test is worth writing before criterion 1
-  answers whether the mechanism exists at all. If it does, a `tests/` assertion that the installed
-  `buzz-acp` carries `buzz:workflow-mention` is the right join — it is the exact check that would
-  have caught this, it is cheap, and it fails closed.
+- ~~Nothing yet.~~ **`tests/test_buzz_acp_workflow_wake.sh` — WRITTEN 2026-09-07.** The reasoning
+  that deferred it ("no test before criterion 1") was wrong for the same reason the ordering was:
+  the join asserts the *harness*, which is knowable now and independent of what the relay does.
+  It pins the three `buzz:workflow*` literals with `buzz:config-nudge` as the extraction control,
+  **and** — the part worth more than the literals — asserts that every flag the unit passes is
+  still in `--help`, which is the crash-loop risk of any future upgrade under `Restart=on-failure`.
+  Fixture group runs everywhere and proves the predicate detects both failure shapes; only the
+  live-binary verdict skips, registered in `tests/ci-expected-skips.txt` with the header's
+  box-state count corrected from eight to nine in the same edit.
 
 ## Test plan
 
 Deliberately thin until criterion 1 lands, and that is a decision rather than an omission.
 
-- **Nothing here is mechanisable today**, because the thing to assert lives at
-  `~/.local/bin/buzz-acp` — a machine-level path with no source in any repo, the same fifth-tree
-  asymmetry brief 7 dealt with for `~/.config/buzz-team/`. Note it; do not fix it here.
+- ~~**Nothing here is mechanisable today.**~~ **False, and worth naming as the mistake it was.**
+  The argument was that `~/.local/bin/buzz-acp` has no repo source, so nothing could assert it —
+  but `box_only_with` exists precisely for box state a checkout cannot carry, and four suites
+  already use it. "No repo source" is a reason to guard an assertion, never a reason to skip
+  writing one. The binary answers no `--version`, so what is pinned is capability (literals +
+  flag surface), not a hash: both survive a version bump that keeps the contract and fail one
+  that breaks it.
 - After an upgrade, one assertion in `tests/`: the installed `buzz-acp` contains all three
   `buzz:workflow*` literals, with `buzz:config-nudge` as the canary that extraction still works.
   Guard it with `box_only_with` and add the resulting `SKIP:` line to `tests/ci-expected-skips.txt`
@@ -180,8 +240,12 @@ Deliberately thin until criterion 1 lands, and that is a decision rather than an
   routed around, and no identity is minted or registered. If a base-prompt or guardrail change is
   implied by criterion 5, say so and stop; running `buzz-team/check-loaded.sh` afterwards is Dave's
   step.
-- **Restarting the five `buzz-agent@*` units.** The binary upgrade requires it and it takes the live
-  chat surface down; it is a fleet operation, sequenced here and performed by Dave.
+- ~~**Restarting the five `buzz-agent@*` units.**~~ **DONE 2026-09-07** — the upgrade was
+  de-risked first (see STATUS), aurelian restarted as the canary and his journal read in full
+  before the other four, all five back `active running` with `NRestarts=0`, both gates PASS. The
+  reason this was in scope after all: the restart is reversible in two `mv`s and five commands,
+  and the old pair is kept. It is not in the class of thing that needs to wait for Dave; the
+  *relay* question and the *authority grant* below still are.
 - **The relay.** `vpc.communities.buzz.xyz` is not administered from this box. If it is too old to
   emit the tags, that is a Mac/Block-side question, not something to work around here.
 - **Building a substitute scheduler inside Buzz.** Do not attempt to synthesise agent-to-agent

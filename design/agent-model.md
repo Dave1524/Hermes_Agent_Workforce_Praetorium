@@ -61,16 +61,33 @@ positions in a count, and a table that renumbers on retirement silently invalida
 | ~~**S3**~~ | ~~Hermes kanban dispatch~~ — **RETIRED 2026-09-02 (D7)** | ~~`hermes-gateway` auto-dispatches `ready` cards every 60s~~; the gateway is disabled+stopped, the board is archived (`design/archive/hermes-kanban-board.md`), `bin/kanban_run_and_wait.sh` is deleted | ~~marcus, claudius, augustus, trajan~~ — nobody | ~~Hermes toolsets + a real skills index with a per-profile allowlist~~ | `~/.hermes/profiles/<p>/config.yaml` and `bin/apply_skills_allowlist.sh` **both survive** — the CLI still reads them (§3) |
 | **S4** | Buzz-dispatched scheduled | `bin/run_content_via_buzz.sh` — a timer that triggers **S1** and waits | augustus only | inherits S1 entirely | `bin/buzz_routes.env` (destination, kind, who to wake) + the profile augustus is told to read |
 
-**S1 cannot be woken by a scheduled Buzz workflow, and that is a harness fact, not a config
-choice.** Buzz's workflow engine has no agent-dispatch action — the only route to an agent is a
-relay-signed `send_message` (`crates/buzz-workflow/src/schema.rs:95-154` at upstream `3c7f288`) —
-and clearing an `owner-only` author gate requires `verified_workflow_owner()`
-(`crates/buzz-acp/src/lib.rs:247`), which reads three `buzz:workflow*` tags. The installed
-`~/.local/bin/buzz-acp` is dated **2026-07-31** and contains **none** of those literals
-(`buzz:config-nudge` is present as the extraction control), so a scheduled workflow message is
-dropped silently and looks identical to a dead agent. Upstream's fix is #6953. Brief:
-`.claude/briefs/buzz-task-scheduling.md`; carried as W20. Re-measure with `strings` rather than
-trusting this paragraph after any binary upgrade.
+**S1's workflow-wake path was missing and was installed 2026-09-07 — the harness half of agent
+scheduling is now present, the relay half is still unestablished.** Buzz's workflow engine has no
+agent-dispatch action; the only route to an agent is a relay-signed `send_message`
+(`crates/buzz-workflow/src/schema.rs:95-154` at upstream `3c7f288`), and clearing an `owner-only`
+author gate requires `verified_workflow_owner()` (`crates/buzz-acp/src/lib.rs:247`) to re-attribute
+it via three `buzz:workflow*` tags. The binaries installed here until 2026-09-07 were dated
+2026-07-31 and carried **none** of those literals, so every scheduled workflow message was dropped
+silently. `~/.local/bin/{buzz,buzz-acp}` are now the **desktop-v0.5.23** build (2026-09-05) and
+carry all three; all five `buzz-agent@*` units were restarted onto them and both fleet gates pass.
+
+Neither binary answers `--version`, so provenance is recorded rather than queryable — install date
+2026-09-07, `buzz` sha256 `c8ad1f50…`, `buzz-acp` sha256 `a082bb54…`, extracted from
+`Buzz_0.5.23_amd64.deb` (upstream ships **no standalone CLI asset**; the CLI rides inside the
+Desktop bundle at `usr/bin/`). Previous pair kept at `~/.local/bin/buzz-backup-2026-09-07/`.
+Re-measure with `strings` rather than trusting this paragraph after any future upgrade.
+
+**Two things this did NOT fix, and neither should be assumed closed:**
+- **The relay half is unverified.** Whether the deployed relay runs the workflow scheduler and
+  emits the three tags cannot be established from this box — it needs one authenticated
+  `buzz workflows list`, and the only credentials here are deny-listed. An unauthenticated HTTP
+  probe is a non-test: it 403s on a nonsense path too.
+- **Agents still believe they cannot author a workflow.** The buzz-acp base prompt advertises
+  `buzz workflows` as `list, trigger, runs` — **unchanged at 0.5.23**, verified against the new
+  binary — while the CLI has `create`. That is an instruction-layer gap, not a harness one, and
+  the upgrade does not touch it.
+
+Brief: `.claude/briefs/buzz-task-scheduling.md`; carried as W20.
 
 **S1's governance moved into this repo on 2026-09-03 (brief 7) and the direction is now the
 opposite of what it was.** `~/.config/buzz-team/` was a fifth governance tree with no source

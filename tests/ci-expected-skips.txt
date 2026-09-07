@@ -5,8 +5,8 @@
 # Lines beginning with # and blank lines are stripped before the diff; everything else must
 # match a printed `SKIP:` line verbatim. Paths are $HOME-relative (tests/box_precondition.sh).
 #
-# Eight lines are box state a checkout cannot carry: six from six suites, plus TWO the gate
-# calls directly rather than through tests/ — bin/check_deploy_drift.sh and
+# NINE lines are box state a checkout cannot carry (eight until 2026-09-07): seven from seven
+# suites, plus TWO the gate calls directly rather than through tests/ — bin/check_deploy_drift.sh and
 # buzz-team/check-team-kinds.py — which print the same SKIP shape for the same reason. That
 # box-state count was also seven between 2026-09-03 and 2026-09-04, by a different route:
 # test_phaseb_brief_jobs.sh declared two preconditions of its own, which is why lines and suites
@@ -47,9 +47,17 @@
 # sentence across an unrelated topic, leaving both reading as broken entries. Dated notes are
 # appended in their own paragraph, never interleaved.
 
+# ONE LINE ADDED 2026-09-07: test_buzz_acp_workflow_wake.sh. Its subject is ~/.local/bin/buzz-acp
+# — an installed binary with no repo source that answers no --version, so a checkout cannot carry
+# it and a hash pin would say nothing about capability. Only the verdict on the live binary skips:
+# the suite's fixture group runs everywhere and proves the predicate detects BOTH shapes of the
+# defect (a pre-#6953 binary that passes the control and fails the wake path, and an opaque one
+# that fails the control so an absence is never misread as a missing feature). Eleven lines now.
+
 SKIP: check-team-kinds.py — the live TEAM.md channel table, which is declared excluded from buzz-team/ adoption (absent: ~/.config/buzz-team/TEAM.md)
 SKIP: check_deploy_drift.sh — the deployed trees this check compares against (absent: ~/agent-workforce/bin ~/.config/systemd/user ~/.config/buzz-team)
 SKIP: live OpenCode agent contract tests (set OPENCODE_LIVE_TESTS=1 to spend model tokens)
+SKIP: test_buzz_acp_workflow_wake.sh — the installed buzz-acp and the unit that launches it (absent: ~/.local/bin/buzz-acp ~/.config/systemd/user/buzz-agent@.service)
 SKIP: test_check_loaded.sh — the live agent identities this classification is checked against (absent: ~/.config/buzz-agents)
 SKIP: test_content_skill_extract.sh — the vault the content job reads (absent: ~/vault/08_skills/linkedin-content-engine/SKILL.md)
 SKIP: test_fetch_status.sh — the negative case needs no system chrome on PATH (probed: google-chrome chromium chromium-browser chrome)
