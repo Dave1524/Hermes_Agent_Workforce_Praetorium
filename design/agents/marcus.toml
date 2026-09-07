@@ -14,7 +14,12 @@ status  = "live"
 [surfaces.interactive]
 present     = true
 governed_by = "buzz-team/marcus.toml"      # SOURCE. Deployed to ~/.config/buzz-team/marcus.toml by bin/deploy_buzz_team.sh; the box path is the destination (brief 7)
-admits      = ["owner", "praetorium"]
+admits      = ["owner", "praetorium", "claudius", "trajan", "augustus"]
+# The three workers are the RETURN edge added 2026-09-07 and they are admitted only
+# through hop-gated rules — buzz-team/check-rules.py asserts that, and verify-fleet
+# gate 4 passes them as `<pubkey>@hop`. This list records WHO; the terms live there,
+# because a set alone would pass an edit that readmitted them unconditionally and
+# deleted the only bound on the chain.
 channels    = "all"
 tools       = ["claude-code-builtins", "mcp__qmd-mcp__*", "notion_* (7, via broker)"]
 mcp         = ["qmd-mcp", "buzz-team-mcp"]

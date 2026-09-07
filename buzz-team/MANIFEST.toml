@@ -65,7 +65,7 @@ drift        = "bin/check_deploy_drift.sh (fifth tree, both membership direction
 [[adopted]]
 path = "marcus.toml"
 read_by = "buzz-acp --config, via buzz-agent@marcus.service"
-why = "the DAG root's dispatch rules — admits owner and praetorium only, which is what keeps a worker reply from re-entering him and closing a cycle"
+why = """the DAG root's dispatch rules. Admitted owner and praetorium ONLY until 2026-09-07, which is what kept a worker reply from re-entering him; the three workers are now admitted too, so he can close an orchestration without Dave. The cycle that opens is bounded by a hop token in the message body rather than by the author set, so the property to preserve when editing this file is no longer WHO it admits — it is that every worker rule carries a str_contains(content, "[hop:N]") clause with N in check-rules.py's HOP_BUDGET. Both halves are asserted: verify-fleet.sh gate 4 on the box, tests/test_buzz_interactive_harness.sh in the repo."""
 
 [[adopted]]
 path = "claudius.toml"
@@ -162,13 +162,15 @@ why = "tails a live agent turn"
 [[excluded]]
 path = "TEAM.md"
 kind = "prose"
-sha256 = "0bebbeb44a066e2c67e0d3e9836c778844849784ce08b88adb4d48e9bef5e0f3"
+sha256 = "29c5e38169e4e2d11872f36c01fdfcfde7648fd7e14563a74e4f306d2dfc395b"
 why = """
 Read by every agent as team instructions (buzz-acp-launch.sh exports it as
 BUZZ_ACP_TEAM_INSTRUCTIONS). It is the largest prose surface in this tree, the one most
 likely to accrete client detail as the team's working agreements grow, and this repo is
-public. Checked for client content 2026-09-03 and it has none today — that is the reason
-this is a standing-risk boundary rather than a leak finding.
+public. Checked for client content 2026-09-03 and again 2026-09-07 after the hop-token and
+workflow-grant sections were added; it has none — that is the reason this is a standing-risk
+boundary rather than a leak finding. Re-read it before every pin bump: the pin proves the bytes
+changed as recorded, never that what they say is safe to publish.
 
 Its six channel UUIDs are already in bin/buzz_routes.env, which owns them; the kind column
 of its channel table is gated by check-team-kinds.py from bin/verify.sh. So the one

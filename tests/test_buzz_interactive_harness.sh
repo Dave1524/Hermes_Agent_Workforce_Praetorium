@@ -287,8 +287,37 @@ for a in "${WORKERS[@]}"; do
   assert "$a does NOT admit aurelian — the verification edge is one-way by construction" \
     "! admits_of '$a' | grep -qx 'aurelian'"
 done
-assert 'marcus, the DAG root, admits nobody but owner and praetorium' \
-  "[ \"\$(admits_of marcus | LC_ALL=C sort | tr '\n' ' ')\" = 'owner praetorium ' ]"
+# Marcus stopped being a one-way root on 2026-09-07: the three workers may now wake him,
+# so he can finish an orchestration without Dave re-entering. That closes the cycle this
+# block exists to police, and the SET below is therefore no longer the safety property —
+# it only records WHO. The property is that every worker edge into marcus is hop-gated,
+# and it is asserted one line down by the same checker verify-fleet gate 4 runs, so the
+# repo and the box cannot disagree about it.
+assert 'marcus, the DAG root, admits owner, praetorium and the three workers' \
+  "[ \"\$(admits_of marcus | LC_ALL=C sort | tr '\n' ' ')\" = 'augustus claudius owner praetorium trajan ' ]"
+marcus_worker_rules=$(TREE="$TREE" IDENT="$identities" python3 <<'DAGPY'
+import os, pathlib, re, tomllib
+tree = pathlib.Path(os.environ["TREE"])
+workers = {k for n, k in (l.split() for l in os.environ["IDENT"].splitlines())
+           if n.lower() in ("claudius", "trajan", "augustus")}
+AUTHOR = re.compile(r'author\s*==\s*"([0-9a-f]{64})"')
+HOP = re.compile(r'str_contains\s*\(\s*content\s*,\s*"\[hop:\d+\]"\s*\)')
+total = gated = 0
+for rule in tomllib.loads((tree / "marcus.toml").read_text()).get("rules", []):
+    expr = rule.get("filter", "")
+    if any(k in workers for k in AUTHOR.findall(expr)):
+        total += 1
+        gated += bool(HOP.search(expr))
+print(f"{total} {gated}")
+DAGPY
+)
+# Counted, not sampled: an edit adding one ungated worker rule moves total without moving
+# gated. The >0 half stops the assertion going vacuous if the rules are renamed or removed
+# — "all zero of them are gated" must never read as green.
+assert 'marcus has at least one worker return rule (or the next assertion is vacuous)' \
+  "[ \"\${marcus_worker_rules%% *}\" -gt 0 ]"
+assert 'and EVERY worker edge into marcus is hop-gated, not unconditional' \
+  "[ \"\${marcus_worker_rules%% *}\" = \"\${marcus_worker_rules##* }\" ]"
 
 # Scoped to the RULE FILES, which the tree-wide stray-hex check above cannot say anything
 # about: that one proves no unknown key is anywhere in buzz-team/, this one proves no
