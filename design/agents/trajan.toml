@@ -250,6 +250,41 @@ Named `agent-*` so the reporting globs match it (bin/local_tier_eval.sh:51). A n
 """
 
 [[workflows]]
+unit = "agent-buzz-acp-update"
+surface = "platform"
+status = "standing"
+suite    = ["tests/test_buzz_acp_update.sh"]
+trigger = "daily 07:35 (+5min jitter)"
+runner = "bin/buzz_acp_update.sh check"
+what = "is the installed Buzz CLI/ACP still current with upstream, and would the next release still run"
+alerted = true
+in_repo = true
+notes = """
+W20. The fleet ran a buzz-acp twelve releases behind for five weeks and nothing here could
+have reported it. Buzz Desktop on the Mac and the CLI on this box are two independent
+installs of ONE release stream — every upstream tag is desktop-vX.Y.Z and the CLI ships
+inside Buzz_X.Y.Z_amd64.deb — so Desktop being current says nothing about the box. There is
+no dpkg package to `apt upgrade`; the binaries were extracted by hand, once.
+
+The check has to carry a receipt because the artifacts cannot answer the question. Neither
+binary has --version, and `strings` finds 0.5.3 in both the July build and the September one
+— that is a dependency crate, not the release. sha256 is the only honest identity, so the
+receipt records tag AND hashes and every run re-hashes before believing the tag. A receipt
+that no longer matches disk reports UNPINNED rather than comparing versions.
+
+It reports; it does not install. `apply` is by hand, because the swap restarts every agent
+onto a harness whose flag surface no release note promises and buzz-acp rejects an unknown
+flag at startup into Restart=on-failure. What makes unattended apply thinkable later is the
+probe: it judges a staged candidate — wake-path literals plus every flag the unit's ExecStart
+passes — before anything live is touched. bin/buzz_acp_update.sh owns that predicate and the
+suite tests it, rather than each restating it.
+
+Non-zero is the whole notification path. exit 10 behind, exit 1 unpinned or a week without
+reaching upstream; agent-alert@ already owns the throttle and a second notifier here would be
+a second copy of that policy.
+"""
+
+[[workflows]]
 unit = "nekovri-subsidy-kickoff"
 surface = "platform"
 scope = "user"       # --user manager; invisible to system-scope systemctl (W3, 2026-09-02)

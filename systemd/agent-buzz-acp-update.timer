@@ -1,0 +1,18 @@
+# Daily, clear of the 04:30-07:07 job cluster. Box timezone is Europe/Amsterdam (NUC-24);
+# OnCalendar is local wall clock.
+#
+# Daily rather than weekly because the cost of a run is one HTTP request when current, and
+# upstream shipped 15 releases in the month this was written — a weekly check would have
+# reported an average of three releases at once, which is a worse thing to hand someone
+# than one. Persistent=true so a box that was off does not skip the window silently, which
+# is the same defect one layer up.
+[Unit]
+Description=Schedule the Buzz CLI/ACP upstream currency check — W20
+
+[Timer]
+OnCalendar=*-*-* 07:35
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -41,12 +41,19 @@
 # not need to filter at all (is-active works on both). Neither may append ".timer" blind.
 #
 # STATUS FILTER IS THE CONSUMER'S CALL, AND IT MUST BE STATED WHERE IT IS MADE.
-#   standing = 28 (22 system + 6 user)   <- what the reporting jobs report on
-#   campaign = 3, dormant = 2, spent = 2 <- deliberately excluded from routine reports
-# Of the 28 standing, 23 are kind=timer and 5 are kind=service (the buzz-agent@* fleet).
-# Do not hardcode those counts anywhere; derive them from this file.
+#   standing              <- what the reporting jobs report on
+#   dormant, spent        <- deliberately excluded from routine reports
+# The kind=service rows are the buzz-agent@* fleet; every other standing row is a timer.
+#
+# NO COUNTS ARE WRITTEN HERE, and that is the correction rather than the convention. This
+# block carried "standing = 28 (22 system + 6 user) ... campaign = 3, dormant = 2, spent = 2"
+# directly above the line telling every consumer not to hardcode a count — and by 2026-09-07
+# the campaign figure was wrong (there are none) while the rest had gone stale by a unit. A
+# tally in a comment is the same defect as a tally in prose: nothing recomputes it. Derive it:
+#   awk -F'\t' '!/^#/ && NF>=5 {print $2, $3, $5}' config/fleet-units.tsv | sort | uniq -c
 #
 #unit	scope	status	owner	kind
+agent-buzz-acp-update	system	standing	trajan	timer
 agent-drift-check	system	standing	trajan	timer
 agent-inbox-sync	system	standing	trajan	timer
 agent-proposal	system	standing	claudius	timer

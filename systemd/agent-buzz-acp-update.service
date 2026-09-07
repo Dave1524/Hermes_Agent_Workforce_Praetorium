@@ -1,0 +1,36 @@
+# Is the Buzz CLI/ACP on this box still current with upstream? Nothing else asks.
+#
+# The class of defect: between 2026-07-31 and 2026-09-07 the fleet ran a buzz-acp twelve
+# releases behind and no check on this box could have said so. Buzz Desktop on the Mac and
+# the CLI here are two independent installs of ONE release stream (every tag is
+# desktop-vX.Y.Z; the CLI ships inside Buzz_X.Y.Z_amd64.deb), and Desktop's Tauri updater
+# keeps only the Mac current. There is no dpkg package here to `apt upgrade`, and neither
+# binary answers --version, so staleness is not merely unreported — it is unaskable without
+# a recorded receipt. That is what bin/buzz_acp_update.sh maintains.
+#
+# NON-ZERO IS THE REPORT, and it is deliberately not a notification of its own. exit 10 is
+# "behind", exit 1 is "the receipt no longer describes what is installed" or "upstream has
+# been unreachable for a week". Both reach Dave through agent-alert@, which already owns the
+# throttle: one alert on the transition, one reminder per 24h while it persists, silence
+# otherwise. A second notifier here would be a second copy of that policy — and the failure
+# it protects against is real: qmd-refresh emitted 14 identical alerts in a day before
+# anyone looked.
+#
+# THIS UNIT DOES NOT INSTALL ANYTHING. It may download and extract a new release into
+# var/buzz-stage/ (once per tag, not once per run) so the compatibility verdict it reports
+# is about the real binary rather than a version string. Installing is `apply`, by hand:
+# the swap restarts every agent onto a harness whose flag surface no release note promises,
+# and buzz-acp rejects an unknown flag at startup while Restart=on-failure turns that into
+# a crash loop rather than a visible stop. Making it unattended is a one-line change to
+# ExecStart once a few releases have gone through the probe cleanly.
+[Unit]
+Description=Buzz CLI/ACP upstream currency check — W20
+OnFailure=agent-alert@%n.service
+
+[Service]
+Type=oneshot
+User=dave
+Environment=DELIVERY_JOB=%n
+ExecStart=/home/dave/agent-workforce/bin/buzz_acp_update.sh check
+TimeoutStartSec=20min
+NoNewPrivileges=true
