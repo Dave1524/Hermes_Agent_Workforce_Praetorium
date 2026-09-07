@@ -61,6 +61,17 @@ positions in a count, and a table that renumbers on retirement silently invalida
 | ~~**S3**~~ | ~~Hermes kanban dispatch~~ — **RETIRED 2026-09-02 (D7)** | ~~`hermes-gateway` auto-dispatches `ready` cards every 60s~~; the gateway is disabled+stopped, the board is archived (`design/archive/hermes-kanban-board.md`), `bin/kanban_run_and_wait.sh` is deleted | ~~marcus, claudius, augustus, trajan~~ — nobody | ~~Hermes toolsets + a real skills index with a per-profile allowlist~~ | `~/.hermes/profiles/<p>/config.yaml` and `bin/apply_skills_allowlist.sh` **both survive** — the CLI still reads them (§3) |
 | **S4** | Buzz-dispatched scheduled | `bin/run_content_via_buzz.sh` — a timer that triggers **S1** and waits | augustus only | inherits S1 entirely | `bin/buzz_routes.env` (destination, kind, who to wake) + the profile augustus is told to read |
 
+**S1 cannot be woken by a scheduled Buzz workflow, and that is a harness fact, not a config
+choice.** Buzz's workflow engine has no agent-dispatch action — the only route to an agent is a
+relay-signed `send_message` (`crates/buzz-workflow/src/schema.rs:95-154` at upstream `3c7f288`) —
+and clearing an `owner-only` author gate requires `verified_workflow_owner()`
+(`crates/buzz-acp/src/lib.rs:247`), which reads three `buzz:workflow*` tags. The installed
+`~/.local/bin/buzz-acp` is dated **2026-07-31** and contains **none** of those literals
+(`buzz:config-nudge` is present as the extraction control), so a scheduled workflow message is
+dropped silently and looks identical to a dead agent. Upstream's fix is #6953. Brief:
+`.claude/briefs/buzz-task-scheduling.md`; carried as W20. Re-measure with `strings` rather than
+trusting this paragraph after any binary upgrade.
+
 **S1's governance moved into this repo on 2026-09-03 (brief 7) and the direction is now the
 opposite of what it was.** `~/.config/buzz-team/` was a fifth governance tree with no source
 here, and every reference to it pointed *out* of the repo at files nothing reviewed, nothing
