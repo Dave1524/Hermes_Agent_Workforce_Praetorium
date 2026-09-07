@@ -19,3 +19,78 @@ name = "praetorium"
 channels = "all"
 require_mention = true
 filter = 'author == "b0a6d15f871ab8c502029e57e0fddec3ddecb09846ffdf6a56b6515bd1906fcd"'
+
+# ---------------------------------------------------------------------------
+# The return edge, added 2026-09-07. Until today Marcus was a one-way root: he
+# could wake a worker (their rules admit him) but no worker reply could wake
+# him, so he could never complete an orchestration without Dave re-entering.
+#
+# Admitting workers closes the cycle, so the edge is admitted ONLY with a hop
+# token in the body. The count is the bound:
+#
+#   Dave -> Marcus            no token (owner rule above, unconditional)
+#   Marcus -> worker          [hop:1]
+#   worker -> Marcus          [hop:2]   <- admitted here
+#   Marcus -> worker          [hop:3]
+#   worker -> Marcus          [hop:4]   <- admitted here, and this is the last
+#   anything beyond           no rule matches -> dropped
+#
+# Two returns per Dave-initiated task. There is no [hop:6] rule and adding one
+# is how this stops bounding anything.
+#
+# WHAT THIS IS AND IS NOT. It is enforced outside the model in the direction
+# that matters: a reply with no token, a malformed token, or a token past the
+# budget matches no rule and is dropped, so the failure mode is a chain that
+# stops rather than one that runs. It is NOT a hard bound against a model that
+# re-emits [hop:2] forever — nothing in the filter context can see thread depth
+# (only content, author, kind, channel_id, timestamp), so no expression can
+# count hops for itself. The hard bound remains the DAG: worker-to-worker is
+# admitted nowhere, and Aurelian is a sink. This bounds the realistic failure —
+# two agents politely closing the loop at each other — not an adversarial one.
+#
+# require_mention = true on every rule below is not optional. resolve_channel_filters
+# merges the flag across every rule applying to a channel, so one `false` here would
+# widen this channel's whole NIP-01 subscription for every author.
+#
+# claudius  818238434309416fa7fd8cc482908e61f8ebcb6978ff974ccf2044d4ed014c7c
+# trajan    1212e9a7e5a2c41b4e56d266fe2b42bb1e528cfa58a482975b9e5ba4d389fab0
+# augustus  d36e4b8b8c8c3c6424c884110c22fcbbed6fc2d55374f4576ee51d43145c7d01
+#
+# Aurelian is deliberately absent: he is the verification sink. His verdicts are
+# published to be read, not delivered to be answered.
+
+[[rules]]
+name = "claudius-return-1"
+channels = "all"
+require_mention = true
+filter = 'author == "818238434309416fa7fd8cc482908e61f8ebcb6978ff974ccf2044d4ed014c7c" && str_contains(content, "[hop:2]")'
+
+[[rules]]
+name = "claudius-return-2"
+channels = "all"
+require_mention = true
+filter = 'author == "818238434309416fa7fd8cc482908e61f8ebcb6978ff974ccf2044d4ed014c7c" && str_contains(content, "[hop:4]")'
+
+[[rules]]
+name = "trajan-return-1"
+channels = "all"
+require_mention = true
+filter = 'author == "1212e9a7e5a2c41b4e56d266fe2b42bb1e528cfa58a482975b9e5ba4d389fab0" && str_contains(content, "[hop:2]")'
+
+[[rules]]
+name = "trajan-return-2"
+channels = "all"
+require_mention = true
+filter = 'author == "1212e9a7e5a2c41b4e56d266fe2b42bb1e528cfa58a482975b9e5ba4d389fab0" && str_contains(content, "[hop:4]")'
+
+[[rules]]
+name = "augustus-return-1"
+channels = "all"
+require_mention = true
+filter = 'author == "d36e4b8b8c8c3c6424c884110c22fcbbed6fc2d55374f4576ee51d43145c7d01" && str_contains(content, "[hop:2]")'
+
+[[rules]]
+name = "augustus-return-2"
+channels = "all"
+require_mention = true
+filter = 'author == "d36e4b8b8c8c3c6424c884110c22fcbbed6fc2d55374f4576ee51d43145c7d01" && str_contains(content, "[hop:4]")'

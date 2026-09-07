@@ -122,6 +122,15 @@ assert_rules() {
     # praetorium.
     [ "$agent" != aurelian ] ||
       expected="$expected $CLAUDIUS_PUBKEY $TRAJAN_PUBKEY $AUGUSTUS_PUBKEY"
+    # Marcus's return edge, added 2026-09-07. The three workers may now wake him, which
+    # closes the cycle this assertion was written to keep open — so the SET is no longer
+    # the whole property. `@hop` demands every rule admitting that author carry a hop
+    # token inside check-rules.py's budget. An edit that admitted the same three
+    # unconditionally would pass a set check while deleting the only bound on the chain;
+    # it fails here instead. Workers stay unsuffixed on purpose: their edges must remain
+    # ungated, and the checker rejects a hop token there too.
+    [ "$agent" != marcus ] ||
+      expected="$expected ${CLAUDIUS_PUBKEY}@hop ${TRAJAN_PUBKEY}@hop ${AUGUSTUS_PUBKEY}@hop"
     if python3 "$TEAM_DIR/check-rules.py" "$TEAM_DIR/$agent.toml" $expected; then
       ok "4/rules $agent"
     else
