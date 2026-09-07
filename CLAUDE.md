@@ -101,6 +101,15 @@ ls ~/.hermes/profiles/                              # the Hermes profiles below
   it. Commit your own work **immediately** after editing — before deploying, before the
   verify gate — or the message explaining *why* is lost. For a long batch, stop the timer
   first and restart it after.
+  **It pushes only what it commits itself.** `bin/auto-sync:41-42` prints
+  `working tree clean. Nothing to do.` and exits 0 — before the `git push origin main` at
+  `:76` — so a commit you made by hand on an otherwise clean tree is never pushed by this
+  job. It is not lost: the next tick that finds the tree dirty sweeps it along under *that*
+  tick's generic message. It is simply not published until then, so **push your own commits
+  yourself**. Measured 2026-09-07 — the timer was restarted after a batch, fired
+  immediately, logged `Nothing to do`, and `origin/main` stayed a commit behind. The
+  sentence above is what makes this easy to miss: "any dirty tree reaches `origin/main`" is
+  true, and says nothing at all about a clean one.
 - `~/agent-workforce/` — **deployed runtime copy** (no git) that systemd actually execs. Do not
   treat it as canonical. Deploy with **`bin/deploy`** — additive by default; `--dry-run` to
   preview, `--prune` to also drop files deleted from source. Runtime state (`logs/`, `var/`,
