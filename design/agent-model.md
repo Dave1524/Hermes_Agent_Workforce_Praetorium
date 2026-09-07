@@ -71,11 +71,25 @@ it via three `buzz:workflow*` tags. The binaries installed here until 2026-09-07
 silently. `~/.local/bin/{buzz,buzz-acp}` are now the **desktop-v0.5.23** build (2026-09-05) and
 carry all three; all five `buzz-agent@*` units were restarted onto them and both fleet gates pass.
 
-Neither binary answers `--version`, so provenance is recorded rather than queryable — install date
-2026-09-07, `buzz` sha256 `c8ad1f50…`, `buzz-acp` sha256 `a082bb54…`, extracted from
-`Buzz_0.5.23_amd64.deb` (upstream ships **no standalone CLI asset**; the CLI rides inside the
-Desktop bundle at `usr/bin/`). Previous pair kept at `~/.local/bin/buzz-backup-2026-09-07/`.
-Re-measure with `strings` rather than trusting this paragraph after any future upgrade.
+Neither binary answers `--version`, so provenance is recorded rather than queryable — and it is
+no longer recorded *here*. `~/agent-workforce/var/buzz-cli-install.json` is the receipt, written
+and re-verified by `bin/buzz_acp_update.sh`, which re-hashes the live files on every run and
+reports UNPINNED rather than comparing versions when they disagree. A sha256 written into this
+paragraph would be a second copy that nothing recomputes, which is the defect the receipt exists
+to close. What belongs here is what a receipt cannot say: the release is **not inferable from the
+artifact**. `strings` finds `0.5.3` in both the July and September builds — a dependency crate,
+not the release — so anyone re-deriving a version from a binary is reading the wrong number.
+Upstream ships **no standalone CLI asset**; the CLI rides inside `Buzz_X.Y.Z_amd64.deb` at
+`usr/bin/`, and every release tag is `desktop-vX.Y.Z` because the CLI is a byproduct of packaging
+the Desktop app. Previous pair kept at `~/.local/bin/buzz-backup-2026-09-07/`.
+
+**Staleness is now watched, and that is the durable half of this.** `agent-buzz-acp-update.timer`
+(daily 07:35) alerts through `agent-alert@` when the box falls behind upstream, when the receipt
+stops matching disk, or when it has not reached GitHub for a week. It stages and probes a candidate
+— wake literals plus every flag the unit's `ExecStart` passes — but installs nothing: that is
+`bin/buzz_acp_update.sh apply <tag>`, supervised, with a canary restart and automatic rollback.
+The five-week gap was never really a stale binary; it was that no check on this box could ask the
+question.
 
 **Two things this did NOT fix, and neither should be assumed closed:**
 - **The relay half is unverified.** Whether the deployed relay runs the workflow scheduler and

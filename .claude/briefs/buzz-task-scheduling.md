@@ -206,15 +206,32 @@ must *consume* them. Upgrading only buzz-acp fixes nothing against a relay that 
 
 ## Files to create
 
-- ~~Nothing yet.~~ **`tests/test_buzz_acp_workflow_wake.sh` — WRITTEN 2026-09-07.** The reasoning
-  that deferred it ("no test before criterion 1") was wrong for the same reason the ordering was:
+- ~~Nothing yet.~~ **`tests/test_buzz_acp_update.sh` — WRITTEN 2026-09-07.** The reasoning that
+  deferred a test ("no test before criterion 1") was wrong for the same reason the ordering was:
   the join asserts the *harness*, which is knowable now and independent of what the relay does.
   It pins the three `buzz:workflow*` literals with `buzz:config-nudge` as the extraction control,
   **and** — the part worth more than the literals — asserts that every flag the unit passes is
   still in `--help`, which is the crash-loop risk of any future upgrade under `Restart=on-failure`.
-  Fixture group runs everywhere and proves the predicate detects both failure shapes; only the
-  live-binary verdict skips, registered in `tests/ci-expected-skips.txt` with the header's
-  box-state count corrected from eight to nine in the same edit.
+  Fixture groups run everywhere and prove the predicate detects every failure shape; only the
+  live-binary verdict skips, registered in `tests/ci-expected-skips.txt`.
+
+  It was `tests/test_buzz_acp_workflow_wake.sh` for a few hours the same day. **Folded**, because
+  the next item below needed the identical predicate as an *install gate*, and a test gate and an
+  install gate that can disagree about whether a binary is capable are worse than either alone —
+  on a box whose `CLAUDE.md` is largely a record of two copies of one fact drifting. The predicate
+  now has one owner in `bin/buzz_acp_update.sh probe`, and the suite tests it.
+
+- **`bin/buzz_acp_update.sh` + `systemd/agent-buzz-acp-update.{service,timer}` — WRITTEN
+  2026-09-07**, answering Dave's "can we auto update the acp?". Daily check; alerts through
+  `agent-alert@` when the box is behind, when the install receipt stops matching the bytes on
+  disk, or when upstream has been unreachable for a week. It stages and probes a new release —
+  once per tag, not once per run — so the report says whether the release would actually run
+  here, not just that it exists. **It does not install.** `apply <tag>` is supervised, with a
+  canary restart and automatic rollback; unattended apply is a one-line `ExecStart` change, and
+  the probe is the thing that would make it defensible. Receipt at
+  `~/agent-workforce/var/buzz-cli-install.json`, pinned by sha256 because neither binary answers
+  `--version` and `strings` finds the same `0.5.3` dependency crate in the July and September
+  builds — so the release is not inferable from the artifact, only recorded against it.
 
 ## Test plan
 
