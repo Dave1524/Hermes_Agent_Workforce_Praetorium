@@ -1077,6 +1077,19 @@ edited reads identically to one nobody remembered.
 
 ### Pending actions reserved for Dave — the branch cannot clear these itself
 
+**Audited 2026-09-07 and it was mostly wrong.** Of nine items, three were already struck, and
+items 7 and 8 had been DONE on 2026-09-04 while still reading `DUE NOW`; item 4 was exercised
+and held for the first time on 09-07. Item 3 never clears by design. **What is actually
+reserved for Dave is item 6 and one half of item 9** — two things, where the list read six.
+
+The reason is worth more than the correction. Every item here is checkable in one command
+(`ls /etc/systemd/system`, `bash bin/verify.sh`, `git merge-base --is-ancestor`), and none of
+them was re-checked, because a list titled "reserved for Dave" reads as a list nobody here may
+touch — when what it actually means is nobody here may *perform* them. Verifying is not
+performing. **Re-check this list before reporting it, every time**; an item that clears and is
+not struck makes the whole list read as noise, which is how items 7 and 8 sat visible and
+unnoticed for three days.
+
 Not carried work; concrete steps this box will not take from an unmerged branch. Most are
 reported by `bin/check_deploy_drift.sh`, so they cannot be forgotten silently — but none
 clears until someone runs it, and item 6 is the one the check cannot see. (It was item 4
@@ -1130,7 +1143,13 @@ the record: what closed it, and how that was verified. New work is appended, nev
    (verified 2026-09-03; re-confirmed 2026-09-04 from the other end — `check_deploy_drift.sh`
    reports the `buzz-team` pair as clean apart from the three declared box-only exclusions,
    `TEAM.md`, `aurelian-calibration.md` and `heartbeat.prompt`). It stops being a no-op the
-   first time anyone edits `buzz-team/`, which is the point of adopting it.
+   first time anyone edits `buzz-team/`, which is the point of adopting it. **That happened
+   2026-09-07** — `marcus.toml` gained six hop-gated return rules and `check-rules.py`,
+   `verify-fleet.sh` and `MANIFEST.toml` changed with it — and the procedure held: the live tree
+   was edited FIRST by mistake and `bin/deploy_buzz_team.sh` reverted it, which is the guard
+   working, not a setback. Converged, and the restart half was done too: every `buzz-agent@*`
+   `ExecMainStartTimestamp` is newer than both `marcus.toml` and `TEAM.md`, so the rules and the
+   workflow grant are loaded rather than merely written.
 5. ~~**`~/agent-workforce/bin/kanban_run_and_wait.sh` is still on disk**~~ **CLEARED — the
    file is gone, verified 2026-09-04** (`ls` returns "No such file or directory"; the runtime
    keeps only `kanban_run_and_wait.sh.bak-20260714-132229-preNUC29313738`, which the drift
@@ -1157,8 +1176,17 @@ the record: what closed it, and how that was verified. New work is appended, nev
    from here and only Dave can close it. Absence of a report is not absence of the install, and
    the reverse is equally true; that is the whole reason this item exists outside the check.
 
-7. **Delete the two spent D5 campaign families from `/etc` — DUE NOW, and they are the whole
-   of today's drift red.** `praetorium-content-strategy-research.{service,timer}` and
+7. ~~**Delete the two spent D5 campaign families from `/etc` — DUE NOW, and they are the whole
+   of today's drift red.**~~ **CLEARED — done 2026-09-04, recorded here 2026-09-07.** Neither
+   `praetorium-content-strategy-research` nor `praetorium-faceless-content-research` is in
+   `/etc/systemd/system/` (checked by `ls`, not by the drift verdict, so an exclusion cannot
+   hide it), `list-timers --all 'praetorium-*'` shows only `daily-plan` and `eod-summary`, and
+   `bash bin/verify.sh` exits **0**. The named follow-up landed with it: `design/agents/augustus.toml:93-94`
+   now records the retirement instead of declaring two units that exist in no tree. **This item
+   sat here reading DUE NOW for three days after it was done**, and the sentence that made that
+   easy to miss is its own: "they are the whole of today's drift red" was checkable in one
+   command and nobody ran it. Original text below, because the sequencing is still the model for
+   the next dated exclusion that expires: `praetorium-content-strategy-research.{service,timer}` and
    `praetorium-faceless-content-research.{service,timer}`: `sudo systemctl disable --now` both
    timers, remove the four files from `/etc/systemd/system/`, `systemctl daemon-reload`. Both
    fired their declared last runs — `LastTriggerUSec` Thu 2026-09-03 23:00:02 and Fri
@@ -1175,7 +1203,12 @@ the record: what closed it, and how that was verified. New work is appended, nev
    declarations only as an exclusion lookup. Deleting the units clears the red and leaves the
    registry quietly describing two units that are gone, which is the failure mode this entire
    epic is about. Retire the entries in the same change.
-8. **Delete the `praetorium-phaseb-brief@` family from BOTH trees, in one act** (W8). Five
+8. ~~**Delete the `praetorium-phaseb-brief@` family from BOTH trees, in one act** (W8).~~
+   **CLEARED — done 2026-09-04, recorded here 2026-09-07.** Absent from `/etc/systemd/system/`
+   *and* `~/.config/systemd/user/`, so the both-trees rule was honoured rather than half-applied;
+   `design/agents/trajan.toml:226` records the family retired "with its units, its suite and its
+   runner". W8's row above still reads `TRIGGER: none pending — the family is spent and deletable
+   today`, which was true when written and is now three days stale. Original text: Five
    `@N.timer` files plus `@.service`, spent since 2026-09-02 with no NEXT on any of them:
    remove them from `systemd/` in this repo *and* from `/etc/systemd/system/`, then
    `daemon-reload`. Not urgent and not silent — with both trees still holding them the drift
