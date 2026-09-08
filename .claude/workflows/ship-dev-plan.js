@@ -1,7 +1,7 @@
 export const meta = {
   name: 'ship-dev-plan',
   description: 'Serially /ship ready dev-plan tasks: worktree ship, independent verify + review, fast-forward to main; stop on first red',
-  whenToUse: 'Launching one or more ready tasks from docs/dev-plan-2026-09.md unattended, per .claude/briefs/workflow-ship-feasibility.md',
+  whenToUse: 'Launching one or more ready tasks from docs/dev-plan-2026-09.md unattended, per .claude/briefs/archive/2026-09-08-workflow-ship-feasibility.md',
   phases: [
     { title: 'Ship', detail: 'plan -> implement -> finish in an isolated worktree, one task at a time' },
     { title: 'Land', detail: 'fresh agent: verify.sh set-diff, plan gate, /code-review, ff-merge, push, archive brief' },

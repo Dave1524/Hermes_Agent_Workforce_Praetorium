@@ -5,6 +5,25 @@
 **Status:** investigation. No workflow launched, no code changed, no unit touched. Everything marked
 MEASURED was run on this box today; everything else cites a file and line.
 
+> ## STATE — 2026-09-08: DONE. Archived.
+>
+> Implemented the same day by `/implement` + `/finish` (commit f58fe5d). The §11 script is
+> now the saved workflow `.claude/workflows/ship-dev-plan.js`, which the Workflow tool
+> resolves by name; §11 below is the design record and that file is the source. Deltas from
+> §11: the two red lists and the entry count are named single-line constants;
+> `args.tasks` and `args.today` are guarded before any agent runs; `meta.whenToUse` set.
+> Its control flow is proven by `tests/test_ship_dev_plan_workflow.sh` through
+> `tests/ship_dev_plan_harness.mjs` (scripted agents, nothing spawned): the task ids are
+> plan bullets, T1.1's red list equals the live missing contracts, the 33 equals the live
+> entry count, and all sixteen stop rules fire without shipping a later task. Mutation-checked
+> three ways. `bash bin/verify.sh` exit 0, no red lines.
+>
+> **Not launched.** The §12 sentence now reads: `use a workflow: run ship-dev-plan for
+> T6.4, T1.3, T1.4, T6.2, T1.1, T1.2, today <date>`; the launching session measures
+> `baselineRed`, `fleetStart` and `enabled` inline. H0's `bin/deploy` had already run by
+> the time this was implemented (drift clean on `main`); D4 and the §7 hook rail are still
+> Dave's.
+
 ## Verdict
 
 GO for six of the seven, serially, in two launches. Launch 1 ships T6.4, T1.3, T1.4, T6.2, T1.1, T1.2 and

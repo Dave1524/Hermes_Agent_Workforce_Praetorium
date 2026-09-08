@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # .claude/workflows/ship-dev-plan.js is the saved Workflow script that brief
-# .claude/briefs/workflow-ship-feasibility.md §11 designed: it /ships dev-plan tasks one at a
+# .claude/briefs/archive/2026-09-08-workflow-ship-feasibility.md §11 designed: it /ships dev-plan tasks one at a
 # time, lands each through an independent verifier, and stops on the first failed assertion.
 # The brief calls those rails "mechanical". They are, exactly as far as the code is right —
 # and the Workflow tool runs the script with no gate of its own, against a live main and a
