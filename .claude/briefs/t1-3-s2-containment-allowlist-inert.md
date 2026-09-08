@@ -101,8 +101,11 @@ bypass is unbounded, which T2.2 states when it makes the allowlist real.
 
 ## Notes / preconditions
 
-- Confirmed: 9 runners in `bin/run_*_cc.sh`; all 9 pass `--permission-mode bypassPermissions`,
-  `--strict-mcp-config`, `--mcp-config '{"mcpServers":{}}'` and `--allowedTools`.
+- Confirmed (measured 2026-09-08): 13 files match `bin/run_*_cc.sh`. 9 invoke `claude` directly
+  and all 9 pass `--permission-mode bypassPermissions`, `--strict-mcp-config`,
+  `--mcp-config '{"mcpServers":{}}'` and `--allowedTools`; the other 4 (`daily_plan`,
+  `eod_summary`, `faceless_content`, `content_strategy`) are one-line `exec` delegators to a
+  contained sibling and carry no flags of their own.
 - Confirmed: no test mentions `allowedTools`; eight smoke suites assert `--strict-mcp-config` +
   `mcpServers` in the fake-claude argv; `test_fleet_guards.sh::propose-write-boundary` asserts
   the write boundary (box-gated suite — skips off the box).

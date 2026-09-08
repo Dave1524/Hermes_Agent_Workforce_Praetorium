@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # design/agent-model.md §2 has one row for S2, the scheduled headless surface, and that row
 # says what contains it. Until 2026-09-08 it said "explicit --allowedTools". Every runner in
-# bin/run_*_cc.sh passes that flag under --permission-mode bypassPermissions, and under bypass
-# an allowlist pre-approves, it does not restrict — measured 2026-09-01: Edit was absent from a
+# bin/run_*_cc.sh that invokes claude itself passes that flag under --permission-mode
+# bypassPermissions (the rest are one-line exec delegators to such a sibling and carry no flags
+# of their own), and under bypass an allowlist pre-approves, it does not restrict — measured 2026-09-01: Edit was absent from a
 # runner's list and was used anyway (design/archive/open-decisions-closed-2026-09-07.md:258).
 # What holds S2 is that no MCP server is loaded (--strict-mcp-config --mcp-config
 # '{"mcpServers":{}}' — no connector tool exists in the session) plus agent_propose.sh's
@@ -11,8 +12,12 @@
 #
 # THE INVARIANTS.
 #   1. Every bin/run_*_cc.sh carries the mechanism the row credits: --strict-mcp-config and
-#      the empty mcpServers config. The smoke suites assert the same on argv for the runners
-#      they cover; this is the static join across ALL of them, named per runner.
+#      the empty mcpServers config — on a line that runs, never in a comment, or for a thin
+#      delegator on the sibling its exec line names. The smoke suites assert the same on argv
+#      for the runners they cover; this is the static join across ALL of them, named per runner.
+#      Comment lines are dropped first because every direct runner's header names a sibling and
+#      a flag quoted in a comment contains nothing; a checker reading whole files judged a
+#      runner stripped of both flags as contained through its comment (found 2026-09-08).
 #   2. Exactly one S2 row, and it names --strict-mcp-config.
 #   3. While ANY runner passes bypassPermissions, the S2 row says the allowlist is `inert`.
 #      T2.2 (docs/dev-plan-2026-09.md) takes the runners off bypass and rewrites the row; this
@@ -54,28 +59,37 @@ runners() {                   # $1 dir
   return 0
 }
 
+argv() {                      # $1 file — the lines that run; a flag in a comment is not a flag
+  grep -vE '^[[:space:]]*#' "$1"
+}
+
+# Pipelines below end in a full reader (`grep >/dev/null`, `sort`), never `grep -q`: group 2
+# calls these outside assert(), under pipefail, where an early exit reports 141 for a match.
 bypass_runners() {            # $1 dir — runners that pass --permission-mode bypassPermissions
   local f
   while IFS= read -r f; do
-    grep -qE -- '--permission-mode[[:space:]]+bypassPermissions' "$f" && echo "$f"
+    argv "$f" | grep -E -- '--permission-mode[[:space:]]+bypassPermissions' >/dev/null && echo "$f"
   done < <(runners "$1")
   return 0
 }
 
 contained() {                 # $1 runner file — carries both halves of the no-MCP mechanism
-  grep -q -- '--strict-mcp-config' "$1" && grep -q "'{\"mcpServers\":{}}'" "$1"
+  argv "$1" | grep -- '--strict-mcp-config' >/dev/null \
+    && argv "$1" | grep "'{\"mcpServers\":{}}'" >/dev/null
 }
 
 uncontained_runners() {       # $1 dir — runners missing either half of the no-MCP mechanism
   # A thin runner that execs a sibling run_*_cc.sh (run_daily_plan_cc.sh → run_daily_rhythm_cc.sh)
-  # inherits that sibling's flags, so it is judged by the sibling. One level only, by design.
+  # inherits that sibling's flags, so it is judged by the sibling — read from its exec line only;
+  # a sibling named anywhere else is a mention, not a delegation. One level only, by design.
   local f d ok
   while IFS= read -r f; do
     ok=0
     if contained "$f"; then ok=1; else
       while IFS= read -r d; do
         [ -n "$d" ] && [ -e "$1/$d" ] && contained "$1/$d" && ok=1
-      done < <(grep -oE 'run_[a-z0-9_]+_cc\.sh' "$f" | grep -vxF "$(basename "$f")" | LC_ALL=C sort -u)
+      done < <(argv "$f" | grep -E '(^|[^A-Za-z0-9_])exec([^A-Za-z0-9_]|$)' | grep -oE 'run_[a-z0-9_]+_cc\.sh' \
+                 | grep -vxF "$(basename "$f")" | LC_ALL=C sort -u)
     fi
     [ "$ok" = 1 ] || echo "$f"
   done < <(runners "$1")
@@ -116,6 +130,17 @@ cp "$fx/bypass/run_a_cc.sh" "$fx/nomcp/run_b_cc.sh"
 # a thin delegator to a contained sibling is contained; one to a missing sibling is not
 echo 'exec "$(dirname "$0")/run_b_cc.sh" daily-plan' >"$fx/nomcp/run_c_cc.sh"
 echo 'exec "$(dirname "$0")/run_zz_cc.sh" daily-plan' >"$fx/nomcp/run_d_cc.sh"
+# a direct runner whose comment names a contained sibling and quotes both flags is judged on
+# its own exec line: stripped, it is named
+cat >"$fx/nomcp/run_e_cc.sh" <<'EOF'
+# like run_b_cc.sh, which passes --strict-mcp-config --mcp-config '{"mcpServers":{}}'
+exec claude -p "x" --permission-mode bypassPermissions --allowedTools "Bash,Read"
+EOF
+# a runner whose only bypass is in a comment is not a bypass runner (T2.2 leaves such comments)
+cat >"$fx/nobypass/run_b_cc.sh" <<'EOF'
+# was: --permission-mode bypassPermissions
+exec claude -p "x" --strict-mcp-config --mcp-config '{"mcpServers":{}}' --allowedTools "Bash,Read"
+EOF
 
 cat >"$fx/credits.md" <<'EOF'
 | # | Surface | Tool set |
@@ -143,12 +168,12 @@ assert 'a row that does not name --strict-mcp-config is named' \
   "s2_row_defects '$fx/nostrict.md' '$fx/nobypass' | grep -q 'does not name --strict-mcp-config'"
 assert 'two S2 rows are named by count' \
   "s2_row_defects '$fx/tworows.md' '$fx/nobypass' | grep -q 'found 2'"
-assert 'a runner missing the no-MCP flags and a delegator to a missing sibling are named; the contained sibling and its delegator are not' \
-  "[ \"\$(uncontained_runners '$fx/nomcp' | tr '\n' ' ')\" = '$fx/nomcp/run_a_cc.sh $fx/nomcp/run_d_cc.sh ' ]"
+assert 'a runner missing the no-MCP flags, a delegator to a missing sibling and a stripped runner whose comment names a sibling are named; the contained sibling and its delegator are not' \
+  "[ \"\$(uncontained_runners '$fx/nomcp' | tr '\n' ' ')\" = '$fx/nomcp/run_a_cc.sh $fx/nomcp/run_d_cc.sh $fx/nomcp/run_e_cc.sh ' ]"
 assert 'a contained runner set is silent' \
   "[ -z \"\$(uncontained_runners '$fx/bypass')\" ]"
-assert 'bypass runners are counted (delegators carry no flag of their own)' \
-  "[ \"\$(bypass_runners '$fx/nomcp' | wc -l)\" = 2 ] && [ -z \"\$(bypass_runners '$fx/nobypass')\" ]"
+assert 'bypass runners are counted (delegators carry no flag of their own; a bypass in a comment is not one)' \
+  "[ \"\$(bypass_runners '$fx/nomcp' | wc -l)\" = 3 ] && [ -z \"\$(bypass_runners '$fx/nobypass')\" ]"
 
 echo "--- 2. the live model and runners: $MODEL, $BIN ---"
 uncontained=$(uncontained_runners "$BIN")
