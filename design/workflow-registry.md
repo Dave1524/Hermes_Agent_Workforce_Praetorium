@@ -229,8 +229,8 @@ why neither was deleted (`open-decisions.md:16-18`).
    The owner column here is the fix's spec: episodic memory keys on the OWNER
    persona, not the runtime profile name.
    **RESOLVED IN CODE 2026-09-02 (W1, `cc9f802`); NOT YET ON THE BOX as of 2026-09-02** —
-   whether it has landed since is tracked in `docs/runbook.md` § W1 handoff and
-   `design/open-decisions.md`, not here. `AGENT_OWNER`
+   whether it has landed since is tracked in `docs/runbook.md` § W1 handoff and the W1 row
+   in `design/archive/open-decisions-closed-2026-09-07.md`, not here. `AGENT_OWNER`
    keys `MEM_DIR`, `AGENT_PROFILE` keeps keying `cost.log`'s `profile=`. The "66 runs"
    here is a snapshot that has since grown to **77** across six task slugs — a count in
    prose ages, so re-derive it (`grep -c 'memory=no-store' ~/agent-workforce/logs/cost.log`)

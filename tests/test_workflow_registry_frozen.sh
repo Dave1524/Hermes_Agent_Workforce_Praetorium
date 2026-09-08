@@ -15,8 +15,8 @@
 # is dated history and stays as written — it asserts the file cannot drift back into
 # presenting itself as current.
 #
-# THE THREE INVARIANTS, each on the first HEADER_LINES lines because that is what a reader
-# and the land gate look at:
+# THE THREE INVARIANTS. 1 and 2 look at the first HEADER_LINES lines, because that is what a
+# reader and the land gate look at; 3 looks at every heading in the file:
 #
 #   1. The header is present: a `FROZEN RECORD` marker, and `design/agents/` named as where
 #      workflows are declared now. The bare word FROZEN discriminates nothing — the pre-freeze
@@ -25,8 +25,12 @@
 #      renamed file is the defect the header exists to prevent, so a stale one goes red by
 #      name. Globs resolve as globs (design/agents/*.toml); a trailing slash is a directory.
 #      A line reference (`file.md:77-78`) is checked by its path half, suffix stripped, so a
-#      renamed file hides behind no line number. A `~` home path and a URL are not repo paths
-#      and are not checked — stated so a green run is not read as covering them.
+#      renamed file hides behind no line number. Only a token containing `/` is taken as a
+#      repo path: a `~` home path, a URL and a root-level file such as `CLAUDE.md` are not
+#      checked — stated so a green run is not read as covering them. The dedup is `LC_ALL=C`:
+#      under this box's en_US.UTF-8, `sort -u` collapses two paths that differ only in
+#      punctuation, so a dead pointer beside its live twin was never resolved (measured
+#      2026-09-08; `tests/test_buzz_interactive_harness.sh` pins the same).
 #   3. No `##` heading anywhere in the file claims liveness — `(live`, `(proposed)`,
 #      "must resolve", "required from". Those were the five headings that made the frozen
 #      file read as an open worklist; a heading is the cheapest place the claim can come back.
@@ -93,7 +97,7 @@ unresolved_pointers() {       # $1 file, $2 root the pointers resolve against
     [ -n "$p" ] || continue
     ( cd "$root" && resolves_glob "$p" ) || echo "$p"
   done < <(head -n "$HEADER_LINES" "$f" | grep -oE '`[A-Za-z0-9_./*@:-]+`' | tr -d '`' \
-             | sed -E 's/:[0-9-]+$//' | grep '/' | grep -v '://' | sort -u)
+             | sed -E 's/:[0-9-]+$//' | grep '/' | grep -v '://' | LC_ALL=C sort -u)
 }
 
 echo "--- 0. canary ---"
@@ -127,7 +131,8 @@ cat >"$fx/dead-pointer.md" <<'EOF'
 
 **Status: FROZEN RECORD.** Live declarations: `design/agents/*.toml`, the unit list in
 `config/fleet-units.tsv`, and `design/fixture-path-that-must-not-exist.md:14`, plus
-`design/fixture-dir-that-must-not-exist/`.
+`design/fixture-dir-that-must-not-exist/`. The suite `tests/test_workflow_coverage.sh` exists;
+its punctuation twin `tests/test-workflow-coverage.sh` does not.
 
 ## 2. Scheduled persona workflows (as recorded 2026-09-01)
 EOF
@@ -152,8 +157,10 @@ assert 'a headed file with two live headings reports both' \
   "[ \"\$(live_headings '$fx/live-heading.md' | wc -l)\" = 2 ]"
 assert 'a headed file with live headings still passes the header check' \
   "[ -z \"\$(header_missing '$fx/live-heading.md')\" ]"
-assert 'a dead file pointer and a dead directory pointer are each named' \
-  "[ \"\$(unresolved_pointers '$fx/dead-pointer.md' '$REPO_ROOT' | wc -l)\" = 2 ]"
+assert 'a dead file, a dead directory and a dead punctuation twin are each named' \
+  "[ \"\$(unresolved_pointers '$fx/dead-pointer.md' '$REPO_ROOT' | wc -l)\" = 3 ]"
+assert 'a dead pointer differing from a live one only in punctuation is still named' \
+  "unresolved_pointers '$fx/dead-pointer.md' '$REPO_ROOT' | grep -q tests/test-workflow-coverage.sh"
 assert 'the dead-pointer fixture names the missing file, not the real ones beside it' \
   "unresolved_pointers '$fx/dead-pointer.md' '$REPO_ROOT' | grep -q fixture-path-that-must-not-exist"
 assert 'a healthy file has its header'                "[ -z \"\$(header_missing '$fx/healthy.md')\" ]"
