@@ -15,7 +15,12 @@
 # covering it.
 #
 # A MANIFEST THAT DOES NOT PARSE IS NAMED, NEVER DROPPED. Skipping it would make the join
-# smaller and greener at once, which is the fail-open every checker in this repo refuses.
+# smaller and greener at once, which is the fail-open every checker in this repo refuses. The
+# same for one that parses into a shape the checker cannot walk (`[workflows]` where
+# `[[workflows]]` was meant, the typo agent-model.md §4 warns about): it is one named line, not
+# a traceback. And the checker's exit status is kept in group 2 — with it dropped, a traceback
+# left stdout empty and the verdict printed `all hosted` over a file nothing had checked
+# (found 2026-09-08).
 #
 # FIXTURES FIRST, LIVE TREE SECOND. Group 1 proves the checker names each failure mode on
 # synthetic manifests and stays silent on healthy ones; group 2 is the verdict on
@@ -51,10 +56,13 @@ for m in sorted(d.glob("*.toml")):
     except Exception as exc:
         print(f"{m.name}: does not parse: {exc}")
         continue
-    hosted = {w.get("surface") for w in doc.get("workflows", [])}
-    for name, s in sorted(doc.get("surfaces", {}).items()):
-        if isinstance(s, dict) and s.get("present") is True and name not in hosted:
-            print(f"{m.name}: [surfaces.{name}] present = true hosts no [[workflows]] entry")
+    try:
+        hosted = {w.get("surface") for w in doc.get("workflows", [])}
+        for name, s in sorted(doc.get("surfaces", {}).items()):
+            if isinstance(s, dict) and s.get("present") is True and name not in hosted:
+                print(f"{m.name}: [surfaces.{name}] present = true hosts no [[workflows]] entry")
+    except Exception as exc:
+        print(f"{m.name}: checker error: {type(exc).__name__}: {exc}")
 PY
 }
 
@@ -64,12 +72,21 @@ assert 'a found pattern is never reported as a failure' "yes | grep -q y"
 echo "--- 1. fixtures: each failure mode is caught, a healthy manifest is not ---"
 fx=$(mktemp -d)
 trap 'rm -rf "$fx"' EXIT
-mkdir -p "$fx/broken" "$fx/empty" "$fx/healthy" "$fx/retired"
+mkdir -p "$fx/broken" "$fx/shape" "$fx/empty" "$fx/healthy" "$fx/retired"
 
 cat >"$fx/broken/bad.toml" <<'EOF'
 name = "bad"
 [surfaces.scheduled]
 present = tru
+EOF
+
+cat >"$fx/shape/table.toml" <<'EOF'
+name = "table"
+[surfaces.scheduled]
+present = true
+[workflows]
+unit    = "nightly-thing"
+surface = "scheduled"
 EOF
 
 cat >"$fx/empty/hollow.toml" <<'EOF'
@@ -111,6 +128,8 @@ EOF
 
 assert 'a manifest that does not parse is named, not dropped from the join' \
   "empty_present_surfaces '$fx/broken' | grep -q 'bad.toml: does not parse'"  # (::manifest-parse-named)
+assert 'a manifest that parses into a shape the checker cannot walk is named, not a traceback' \
+  "empty_present_surfaces '$fx/shape' 2>/dev/null | grep -q 'table.toml: checker error'"  # (::manifest-shape-named)
 assert 'a present surface hosting no entry is named by manifest and surface' \
   "empty_present_surfaces '$fx/empty' | grep -q 'hollow.toml: \[surfaces.scheduled\] present = true hosts no'"  # (::present-surface-hosts-work)
 assert 'and the present surface beside it that does host one is not' \
@@ -124,7 +143,7 @@ echo "--- 2. the live manifests: $AGENTS ---"
 count=$(find "$AGENTS" -maxdepth 1 -name '*.toml' | wc -l)
 assert "the join read at least one manifest ($count found) — a verdict over zero would mean nothing" \
   "[ '$count' -ge 1 ]"
-offenders=$(empty_present_surfaces "$AGENTS")
+offenders=$(empty_present_surfaces "$AGENTS") || offenders="checker exited $? (${offenders:-no output})"
 assert "every present surface hosts a workflow (${offenders:-all hosted})" \
   "[ -z \"\$offenders\" ]"
 

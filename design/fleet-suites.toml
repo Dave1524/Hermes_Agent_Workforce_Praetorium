@@ -203,6 +203,7 @@ path    = "tests/test_manifest_surfaces.sh"
 owner   = "fleet"
 asserts = [
   "manifest-parse-named",        # a manifest that does not parse is named, never dropped from the join
+  "manifest-shape-named",        # one that parses into a shape the checker cannot walk is named, not a traceback
   "present-surface-hosts-work",  # every surface declared present hosts >= 1 [[workflows]] entry naming it
   "retired-surface-silent",      # present = false over zero entries is the retired shape, not a finding
 ]

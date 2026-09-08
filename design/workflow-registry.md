@@ -145,8 +145,9 @@ Registry treatment: these are campaigns, not rows in the standing-workflow table
 make-up nights — last runs 2026-09-03 23:00 and 2026-09-04 01:30 — and
 `praetorium-content-strategy-research.{service,timer}` and
 `praetorium-faceless-content-research.{service,timer}` were deleted from `/etc` the same day
-(`1bc6a4c`). Nothing in this file describes them now: `design/agents/augustus.toml` records
-the retirement, `design/open-decisions.md` W19 the residue it left.
+(`1bc6a4c`). Nothing in this file is their live description now — the §2 rows for them keep
+the 2026-09-01 record, corrected by footnote ⁴ — `design/agents/augustus.toml` records the
+retirement, `design/open-decisions.md` W19 the residue it left.
 
 ## 3. Scheduled platform jobs (deterministic, as recorded 2026-09-01)
 
