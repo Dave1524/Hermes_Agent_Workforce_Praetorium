@@ -1,17 +1,47 @@
-# Workflow registry — ownership freeze (D1)
+# Workflow registry — the D1 record (FROZEN)
 
-**Status: FROZEN 2026-09-01** — all eight decisions in §7 are closed (Dave's ALL-CAPS
-answers to §7.1–7.5/§7.8 in commit `ed568f8`; §7.6 and §7.7 discussed and closed the
-same day). Every action below is executed, not proposed. Timer coverage was verified
-by enumerating live timers from systemd (system + user scope) and diffing against this
-file: **every box-owned timer is accounted for here**; the only unlisted timers are OS
-ones (apport, launchpadlib, xfs_scrub, sysstat…). D2 starts from this table.
-Once confirmed, this file is the single source of truth for **which workflows exist
-and who is accountable for each** — build-order step 1 of the approved infrastructure
-review (Notion: "Proposal — Praetorium agent infrastructure review", decision section
-2026-08-31). Per-workflow contracts (input schema, sources, output schema, decline
-conditions, side effects, acceptance checks) are deliberately NOT here — they are D2,
-one file each under `design/contracts/` once the schema exists.
+**Status: FROZEN RECORD — decisions of 2026-09-01, corrections through 2026-09-03, sealed
+2026-09-08 (T6.4).** Nothing below describes the box now. Every table, trigger, `keep`,
+`RESOLVED` and `Open` in this file is a statement about the date it carries, kept in order
+because the file's own rule is that a dated correction is worth more than a confident
+number (§7.6). Read it for *why* an owner is who they are; for the box, read the files below.
+
+**The live answer lives in the manifests, and in the joins that hold them to the box:**
+
+- `design/agents/*.toml` — which workflows exist, on which surface, with which unit, model,
+  route, owner and contract; one manifest per persona (D2, `design/agent-model.md`).
+- `config/fleet-units.tsv` — the unit list every reporting job reads, asserted against the
+  manifests in both directions by `tests/test_fleet_ownership.sh`.
+- `tests/test_workflow_coverage.py` — every manifest entry names a unit, a suite, an owner
+  and a status. A schedule is read from `systemctl cat`, never from this file (§2, first
+  correction).
+- `design/contracts/` — per-workflow contracts, one file each (D2/D3).
+- `design/open-decisions.md` — what is still open; its archive holds what closed.
+
+This file was joined by no test and no script until 2026-09-08, which is how two rows in §2
+kept reading `keep` after their units were deleted (W19, in `design/open-decisions.md`). It
+now carries the one join it honestly can: `tests/test_workflow_registry_frozen.sh` asserts
+that this header stays, that the pointers above resolve on disk, and that no heading below
+presents its content as current. It does not assert the prose is true. The prose is history.
+
+---
+
+## What this file was
+
+**Status at the time: FROZEN 2026-09-01** — all eight decisions in §7 closed (Dave's ALL-CAPS
+answers to §7.1–7.5/§7.8 in commit `ed568f8`; §7.6 and §7.7 discussed and closed the same
+day). Every action below was executed, not proposed. Timer coverage was verified that day by
+enumerating live timers from systemd (system + user scope) and diffing against this file:
+every box-owned timer was accounted for here on 2026-09-01; the only unlisted timers were OS
+ones (apport, launchpadlib, xfs_scrub, sysstat…). D2 started from this table. From that day
+until the manifests landed (D2, 2026-09-01; the interactive layer 2026-09-03), this file was
+the single source of truth for **which workflows exist and who is accountable for each** —
+build-order step 1 of the approved infrastructure review (Notion: "Proposal — Praetorium
+agent infrastructure review", decision section 2026-08-31). That role passed to
+`design/agents/*.toml`, and the timer-coverage claim to `config/fleet-units.tsv`; neither is
+re-derived from this file. Per-workflow contracts (input schema, sources, output schema,
+decline conditions, side effects, acceptance checks) were deliberately NOT here — they are
+D2, one file each under `design/contracts/`.
 
 Derived live 2026-09-01 from: `systemctl list-timers --all` (system + user scope),
 `systemctl cat <unit>` for every workflow unit, `profiles/*.md` headers,
@@ -20,7 +50,7 @@ Derived live 2026-09-01 from: `systemctl list-timers --all` (system + user scope
 re-derivation drops the two `hermes` commands and gains nothing — they contributed only
 the surface §5 now records as retired.
 
-## Ownership model (proposed)
+## Ownership model (adopted 2026-09-01, §7.1)
 
 - **Persona workflow** — output is LLM judgment. Names exactly one accountable persona,
   even when the executor is headless Claude Code on a different model tier
@@ -28,7 +58,7 @@ the surface §5 now records as retired.
 - **Platform job** — deterministic script; no persona. Accountable to the platform
   owner: **trajan** (decided 2026-09-01, §7.1).
 
-## 1. Interactive layer (always-on, Buzz)
+## 1. Interactive layer (always-on Buzz units, as recorded 2026-09-03)
 
 | Agent | Harness | Standing role |
 |---|---|---|
@@ -59,12 +89,12 @@ Two properties of these entries are easy to misread:
   entry ever appears under his name carrying a `route`, a non-shared `runner` or an
   `OnCalendar`, the pin is being retired and that is a decision, not a manifest edit.
 
-## 2. Scheduled persona workflows (live)
+## 2. Scheduled persona workflows (as recorded 2026-09-01)
 
-All run headless Claude Code via `bin/agent_propose.sh` + `AGENT_JOB_OVERRIDES`.
+At the freeze all ran headless Claude Code via `bin/agent_propose.sh` + `AGENT_JOB_OVERRIDES`.
 "Owner" is accountability, not executor.
 
-| Unit (timer) | Trigger | Model | Profile | Route | Owner (prop.) | Decision (prop.) |
+| Unit (timer) | Trigger | Model | Profile | Route | Owner (§7, 2026-09-01) | Decision (2026-09-01) |
 |---|---|---|---|---|---|---|
 | praetorium-daily-plan | Mon–Fri 06:01 | (env) | daily_plan_task.md ("You are Marcus") | ops | marcus | keep |
 | overnight-morning-report | daily 06:17 | Sonnet | overnight_morning_report_cc_task.md | ops | marcus | keep ¹ |
@@ -108,7 +138,7 @@ recurring calendars — that would have created two permanent nightly Opus jobs 
 for. Both also exist only in `/etc` with no source in `systemd/` (§6.7), which stands.
 Registry treatment: these are campaigns, not rows in the standing-workflow table.
 
-## 3. Scheduled platform jobs (live, deterministic)
+## 3. Scheduled platform jobs (deterministic, as recorded 2026-09-01)
 
 | Unit | Trigger | What | Route |
 |---|---|---|---|
@@ -129,7 +159,7 @@ belongs in this table; it was named above only in a §4 row about an archived pr
 Platform job, owner trajan per §7.1, recorded in `design/agents/trajan.toml`. Also note
 `fleet-turn-check` and `ttm-pool-drain` have no source unit in `systemd/` (§6.7).
 
-## 4. Paused, dead, or dormant — every row needs a call
+## 4. Paused, dead, or dormant — the calls made 2026-09-01
 
 | Item | State | Proposed decision |
 |---|---|---|
@@ -145,7 +175,7 @@ Platform job, owner trajan per §7.1, recorded in `design/agents/trajan.toml`. A
 | profiles/cron-overnight-pre-snapshot.prompt.md | hermes cron is empty. `overnight-pre-snapshot.service` is live (daily 04:26) but references this file only in a **comment** ("Replaces the Hermes cron LLM checklist"), not an ExecStart | ARCHIVED 2026-09-01 → `profiles/archive/` |
 | profiles/linkedin_shape.md | reference for bin/linkedin_shape.py, not a workflow | KEPT as reference (§7.7) |
 
-## 5. Other dispatch surfaces
+## 5. Other dispatch surfaces (as of 2026-09-02)
 
 **Read this section's first two bullets in order. They record two decisions one day
 apart, and the second reverses the first.** On 2026-09-01 §7.6 adopted "recurring work =
@@ -187,7 +217,7 @@ why neither was deleted (`open-decisions.md:16-18`).
 - **Buzz** — interactive dispatch; stays the human-facing control plane per the
   decision doc.
 
-## 6. Known inconsistencies this freeze must resolve
+## 6. Known inconsistencies at the freeze, and their status as of 2026-09-02
 
 1. **Deploy-path split.** `agent-inbox-sync` ExecStarts from the SOURCE repo
    (`~/dev/agent-workforce/bin`); every other unit from the deployed copy
@@ -197,11 +227,14 @@ why neither was deleted (`open-decisions.md:16-18`).
    (66 runs) while memory-consolidation prunes four frozen persona stores nightly.
    The owner column here is the fix's spec: episodic memory keys on the OWNER
    persona, not the runtime profile name.
-   **RESOLVED IN CODE 2026-09-02 (W1, `cc9f802`); NOT YET ON THE BOX.** `AGENT_OWNER`
+   **RESOLVED IN CODE 2026-09-02 (W1, `cc9f802`); NOT YET ON THE BOX as of 2026-09-02** —
+   whether it has landed since is tracked in `docs/runbook.md` § W1 handoff and
+   `design/open-decisions.md`, not here. `AGENT_OWNER`
    keys `MEM_DIR`, `AGENT_PROFILE` keeps keying `cost.log`'s `profile=`. The "66 runs"
    here is a snapshot that has since grown to **77** across six task slugs — a count in
    prose ages, so re-derive it (`grep -c 'memory=no-store' ~/agent-workforce/logs/cost.log`)
-   rather than citing this number. The live jobs keep the old keying until the
+   rather than citing this number. As of 2026-09-02 the live jobs kept the old keying,
+   and keep it until the
    `AGENT_OWNER` lines in `docs/runbook.md` § W1 handoff are applied to the deny-listed
    `~/.config/agent-workforce/*.env`.
 3. **Persona framing is inconsistent in-prompt.** daily-plan/eod say "You are Marcus";
@@ -241,7 +274,8 @@ why neither was deleted (`open-decisions.md:16-18`).
    `install -m 600 config/job-overrides/augustus-content.env.example` against a path that
    had existed only under `archive/` since the 2026-09-01 move, so the half-fix recorded
    above left a broken provisioning step reading as authoritative for a day. The new
-   assertion targets `install` commands, not prose. **Open:** `augustus-content` and
+   assertion targets `install` commands, not prose. **Open as of 2026-09-02** (tracked as
+   the W4 row in `design/open-decisions.md` or its archive, not here): `augustus-content` and
    `bd-stall-radar` have no example in the LIVE home. `config/job-overrides/archive/` holds one
    each, but the augustus copy points at the retired `kanban_run_and_wait.sh`, so it is a record
    of the old wiring rather than a template — see the W4 row in `design/open-decisions.md`.
@@ -250,8 +284,8 @@ why neither was deleted (`open-decisions.md:16-18`).
    `praetorium-daily-plan` all run `profile=claude-sonnet`; `knowledge-digest` and
    `raw-ingest` run `profile=claude-opus`; the `bd_followup_drafts` example ships
    `AGENT_PROFILE=claude-opus`. m1 and knowledge-digest log
-   `MEMORY: no per-profile store at /home/dave/.her…` outright. So **no scheduled
-   persona workflow currently accumulates episodic memory** — the fix is a fleet-wide
+   `MEMORY: no per-profile store at /home/dave/.her…` outright. So **at the freeze no scheduled
+   persona workflow accumulated episodic memory** — the fix is a fleet-wide
    rename to owner personas, not a one-job patch.
    **PARTLY SUPERSEDED 2026-09-02 (W1).** The conclusion held for the wrong span. Six of
    the ten jobs listed here are fixed by `AGENT_OWNER`; the other four
@@ -262,7 +296,7 @@ why neither was deleted (`open-decisions.md:16-18`).
    defective — and a reader who treats the whole sentence as the bug will go looking for a
    fault in the four jobs that do not have one.
 
-## 7. Decisions required from Dave
+## 7. Decisions taken by Dave (2026-09-01; all eight closed)
 
 1. Platform jobs accountable owner: trajan, or leave Dave-owned? OWNED BY TRAJAN 
 2. weekly-pre-assembly owner: marcus (proposed) or claudius (historical)? MARCUS
@@ -302,6 +336,6 @@ Decision log: §7.1–7.5 and §7.8 answered by Dave 2026-09-01 (ALL-CAPS above,
 `ed568f8`) and applied the same day, with the content timers re-enabled and verified.
 §7.6 and §7.7 discussed and closed 2026-09-01; all their actions are executed. **D1 is
 complete** — D2 (contract schema, five agent manifests, per-agent skill/tool profiles)
-starts from this table. Two items carried into D2 rather than closed here: consolidating
+started from this table. Two items carried into D2 rather than closed here: consolidating
 the job-override example homes (§6.5) and the fleet-wide `AGENT_PROFILE` → owner-persona
 rename (§6.6).
