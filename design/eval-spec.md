@@ -163,9 +163,12 @@ judgement is the part a coverage figure cannot express.
 | `fleet-turn-check` | trajan | standing | **exemption ended 2026-09-03** — the script was adopted as `buzz-team/fleet-turn-check.sh`, so the premise was gone; now covered by `tests/test_fleet_turn_check.sh` (structural: it asserts the five design rules the script's own header requires, and deliberately does not run it — gate 2 spends a real model turn) |
 | `ttm-pool-drain` | trajan | standing | exempt — `/usr/local/bin/ttm-pool-drain`, root-owned, outside this repo |
 | `buzz-pr-watch` | trajan | standing | exempt — `--user` unit running `~/.local/bin/buzz-pr-watch`, outside this repo |
-| `praetorium-content-strategy-research` | augustus | campaign | bounded, `expires` 2026-09-03 — needs no standing suite |
-| `praetorium-faceless-content-research` | augustus | campaign | bounded, `expires` 2026-09-04 — needs no standing suite |
 | `bd-stall-radar` | claudius | dormant | installed but disabled; its sibling `bd-followup-drafts` has a suite |
+
+*Two `campaign` rows — `praetorium-content-strategy-research` and
+`praetorium-faceless-content-research`, bounded, needing no standing suite — were removed
+2026-09-08 (T6.2): both expired on schedule and were retired 2026-09-04 with their unit
+files (W19).*
 
 So the honest backlog is **four suites** — not fifteen, and not the two this section previously
 concluded. Every other gap is bounded, disabled, or code this repo does not own. Those four
@@ -180,6 +183,12 @@ moved from *16 of 23 own a suite, 3 exempt, 4 uncovered* to *22 of 28 own a suit
 `agent-workforce-auto-sync`, `overnight-pre-snapshot`. Note the trap in reading that as
 progress — the denominator grew, so the *ratio* improved while the actual hole is identical.
 The four are the number to track; 22/28 is not.
+
+**Re-measured 2026-09-08 (T6.2): the backlog is zero.** `bash tests/test_workflow_coverage.sh`
+prints `27 of 29 own a suite, 2 exempt, 0 uncovered` — each of the four named above has a
+suite now, and the two campaign rows left the denominator with their retirement. The "real
+hole" rows above stay as the record of why each was one; the live figure is the checker's
+output, never this paragraph.
 
 The rule the `fleet-turn-check` row demonstrates is worth stating once: **an exemption is
 only as good as its premise, and adopting code falsifies the premise of every exemption that

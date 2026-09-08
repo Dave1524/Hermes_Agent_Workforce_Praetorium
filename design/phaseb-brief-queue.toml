@@ -8,6 +8,10 @@
 # Drop one and the brief regresses to what the doc already knows.
 #
 # Brief 1 (D1 + D9) shipped 2026-09-01 as b4e20a3 and is not in this queue.
+#
+# Queue spent: every brief below landed by 2026-09-04. The two campaign units the entries
+# name were retired 2026-09-04 (W19); every "still firing" below is a 2026-09-01
+# measurement, kept as written.
 
 [[brief]]
 id       = 2

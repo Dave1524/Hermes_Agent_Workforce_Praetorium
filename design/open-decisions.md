@@ -11,7 +11,21 @@ open, so that a thing sitting here means something.
 
 *Opened: W17's class, 2026-09-04*
 
-**OPEN — widened 2026-09-04; full write-up in `.claude/briefs/w19-campaign-retirement-residue.md`.** Opened as "two override envs outlive their units" (`~/.config/agent-workforce/content_strategy.env`, 16 lines, and `faceless_content.env`, 11). That was the visible tip. The retirement commit `1bc6a4c` touched exactly two files — `config/fleet-units.tsv` and `design/agents/augustus.toml` — **because those are the two the repo had a check for**: `tests/test_fleet_ownership.sh` failed in the manifest->list direction until the `.tsv` was re-materialised, and nothing else failed, so nothing else was touched. Eleven pieces of residue survive, and the five in `bin/` and `profiles/` form a closed, deployed, reachable chain (env -> `run_{content_strategy,faceless_content}_cc.sh` -> `run_standing_research_topic_cc.sh` -> the two task profiles), with `augustus.toml`'s `[surfaces.scheduled]` still `present = true` over zero workflows (`:33`) and its `augustus-content` note still describing a 01:30 lock collision with a unit the same commit deleted (`:78`). **`design/workflow-registry.md` is referenced by no test and no script** — verified by grep over `tests/` and `bin/` — so its rows `:77-78` still read `keep` with live triggers. That is the generalisable part and it is one level up from W17: a retirement is as complete as the repo's joins force it to be, and no more; a registry nobody joins against is prose, and prose does not get retired. The cleanup is **not piecemeal** — `bin/check_deploy_drift.sh:334` reports a runtime-only `bin/` file unconditionally while only the content loop consults `design/deploy-exclusions.toml` (`:392`), so deleting the three `bin/` scripts is hard red with no declarable exemption and needs `bin/deploy --prune`, which cannot be aimed and clears nine deferred exclusions. The `design/` and `profiles/` half can land alone and green. Items 1-2 stay Dave-only: the config path is deny-listed, so no check here can enumerate it and the only instrument is a human running `ls`.
+**Design and profiles half landed 2026-09-08 (T6.2).** Registry rows footnoted `⁴` with a
+dated RETIRED note (rows kept — the file is frozen, T6.4); eval-spec rows removed with a
+dated note and the backlog re-measured at zero; `augustus.toml` `[surfaces.scheduled]`
+`present = false`, `retired = "2026-09-04"`, the 01:30 collision note past tense; the two
+task profiles deleted from source and declared in `design/deploy-exclusions.toml` (eleven
+entries); `tests/test_manifest_surfaces.sh` now fails a `present = true` surface that hosts
+no workflow, which is the join item 10 lacked. **Still open:** the `bin/` half — three
+runner scripts plus the help-string example at `bin/notion_research_page.py:144` — goes
+with `bin/deploy --prune` at Dave's chosen moment (T6.3), which clears every exclusion
+entry in the same act; and items 1-2, the two override envs, Dave-only (pending action 3).
+Remaining check 2 hits outside `bin/` are all dated history: `agent-model.md` §6.5-6.7,
+`workflow-registry.md` rows + notes + §7.3, `phaseb-brief-queue.toml` (2026-09-01
+measurements, queue spent), `augustus.toml` retirement comment, and `design/archive/`.
+
+**OPEN — widened 2026-09-04; full write-up in `.claude/briefs/w19-campaign-retirement-residue.md`.** Opened as "two override envs outlive their units" (`~/.config/agent-workforce/content_strategy.env`, 16 lines, and `faceless_content.env`, 11). That was the visible tip. The retirement commit `1bc6a4c` touched exactly two files — `config/fleet-units.tsv` and `design/agents/augustus.toml` — **because those are the two the repo had a check for**: `tests/test_fleet_ownership.sh` failed in the manifest->list direction until the `.tsv` was re-materialised, and nothing else failed, so nothing else was touched. Eleven pieces of residue survive, and the five in `bin/` and `profiles/` form a closed, deployed, reachable chain (env -> `run_{content_strategy,faceless_content}_cc.sh` -> `run_standing_research_topic_cc.sh` -> the two task profiles), with `augustus.toml`'s `[surfaces.scheduled]` still `present = true` over zero workflows (`:33`) and its `augustus-content` note still describing a 01:30 lock collision with a unit the same commit deleted (`:78`). **`design/workflow-registry.md` is referenced by no test and no script** — verified by grep over `tests/` and `bin/` — so its rows `:77-78` still read `keep` with live triggers. That is the generalisable part and it is one level up from W17: a retirement is as complete as the repo's joins force it to be, and no more; a registry nobody joins against is prose, and prose does not get retired. The cleanup is **not piecemeal** — `bin/check_deploy_drift.sh:334` reports a runtime-only `bin/` file unconditionally while only the content loop consults `design/deploy-exclusions.toml` (`:392`), so deleting the three `bin/` scripts is hard red with no declarable exemption and needs `bin/deploy --prune`, which cannot be aimed and clears every entry in `design/deploy-exclusions.toml` (eleven since T6.2). The `design/` and `profiles/` half can land alone and green. Items 1-2 stay Dave-only: the config path is deny-listed, so no check here can enumerate it and the only instrument is a human running `ls`.
 
 ### W20 — Scheduled Buzz workflows cannot wake an agent on the installed harness
 
@@ -32,7 +46,7 @@ Full write-up, including why a workflow message is dropped without an error on e
 
 ## Pending actions reserved for Dave
 
-Both are blocked on a deny-listed path, which is the only reason they are here — no check on
+All three are blocked on a deny-listed path, which is the only reason they are here — no check on
 this box can even read whether they are done.
 
 1. **Install `AGENT_VERIFY_CMD` into `~/.config/agent-workforce/m1_signal_scan.env`** (W15):
@@ -48,6 +62,12 @@ this box can even read whether they are done.
    whether the relay runs the workflow scheduler. Also unreadable from here — the credentials
    are in the deny-listed `~/.config/buzz-agents/`. Likely to answer itself now that TEAM.md
    requires an agent to run exactly this before promising a schedule.
+
+3. **Delete the two campaign override envs** (W19 items 1-2):
+   `rm ~/.config/agent-workforce/content_strategy.env ~/.config/agent-workforce/faceless_content.env`.
+   Both are `AGENT_JOB_OVERRIDES` for units deleted 2026-09-04; no surviving unit names
+   either path. Safe now; do it before T6.3's prune, or the shims' headers stop describing
+   what is on disk.
 
 ---
 

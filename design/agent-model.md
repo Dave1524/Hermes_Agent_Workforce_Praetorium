@@ -378,16 +378,19 @@ boundary that does not exist.
 block — TOML would scope it into that workflow. Every manifest here parses under `tomllib`;
 the first Phase-B test asserts that it still does.
 
-Live totals: 26 entries across five manifests — marcus 4, claudius 6, augustus 4, trajan 12,
+Totals at D2 (2026-09-01): 26 entries across five manifests — marcus 4, claudius 6, augustus 4, trajan 12,
 aurelian 0 (by design, §6.4) — resolving to **25 workflows** and, by status: 22 `standing`,
 2 `campaign`, 2 `dormant`, 0 `planned`, 0 `spent`. The two `dormant` are claudius's BD pair,
-which §7.5 recorded as "planned"; they are installed and disabled, not absent.
+which §7.5 recorded as "planned"; they are installed and disabled, not absent. The two
+`campaign` entries were retired 2026-09-04 (W19); `tests/test_workflow_coverage.sh` prints
+the live totals.
 
 ## 5. Governance rules
 
-1. **The manifest names the owner; the registry names the workflow.** A workflow
-   appears in `design/workflow-registry.md` and its owner's manifest, and nowhere else
-   claims ownership. Two claims is the defect, not a redundancy.
+1. **The manifest names the owner and the workflow.** A workflow appears in its owner's
+   manifest, and nowhere else claims ownership. Two claims is the defect, not a
+   redundancy. Until 2026-09-08 the registry named the workflow too; it is the frozen D1
+   record now (T6.4), and the manifests are the only list.
 2. **A capability is added on one surface at a time, and the manifest says which.**
    Adding `WebSearch` to a scheduled wrapper does not grant it on Buzz and must not be
    described as "claudius can search the web".
@@ -494,6 +497,10 @@ it as deliberate rather than leaving the next reader to wonder.
 
 ### 6.5 The two content-research timers expire BY DESIGN — do not make them recurring
 
+**RETIRED 2026-09-04 (W19).** Both campaigns fired their last declared runs (09-03 23:00,
+09-04 01:30) and their unit files were deleted from `/etc` the same day. The section below
+is the 2026-09-01 record of why they were left alone to expire.
+
 **This section originally claimed both workflows were about to fail silently and needed a
 one-line recurring-calendar fix. That was wrong, and the fix would have been harmful. The
 finding is retained, inverted, because the mistake is the instructive part.**
@@ -560,6 +567,9 @@ manifest therefore records the lock as a per-workflow field so the answer stops 
 unreadable, and Phase B should give every workflow a slug-derived lock by default rather
 than an opt-out global one.
 
+*The 01:30 collision ended 2026-09-04 with the faceless campaign's retirement (W19); the
+lock mechanism it demonstrated is unchanged.*
+
 ### 6.7 Live units exist only in `/etc` and are in no repo — CORRECTED, and CLOSED 2026-09-02
 
 **The count was four families and it was three — `ttm-pool-drain` does not belong on this
@@ -619,7 +629,8 @@ silently is worth less than no manifest at all.
 The minimum wiring that makes them load-bearing, in the order it should be built:
 
 1. `tests/test_agent_manifests.sh` — every manifest parses; every workflow in
-   `design/workflow-registry.md` §2/§4 is claimed by exactly one manifest; every
+   `design/workflow-registry.md` §2/§4 is claimed by exactly one manifest (the registry froze
+   2026-09-08, T6.4 — the manifests are the only list now); every
    `surfaces.scheduled.tools` matches the `--allowedTools` of the named wrapper. Hooks
    into `bin/verify.sh`, which already runs `tests/*.sh`.
 2. The `AGENT_PROFILE` → owner rename (registry §6.6), taking its values from `owner`.

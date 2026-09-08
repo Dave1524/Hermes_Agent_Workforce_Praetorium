@@ -105,8 +105,8 @@ At the freeze all ran headless Claude Code via `bin/agent_propose.sh` + `AGENT_J
 | agent-proposal (standing research) | daily 04:31 | Opus 5 | standing_research_cc_task.md | research | claudius | keep |
 | raw-ingest | daily 03:00 | Opus 5 | raw_ingest_cc_task.md | research | claudius | keep |
 | m1-signal-scan | daily 05:30 | Sonnet | m1_signal_scan_cc_task.md | signals | claudius | keep |
-| praetorium-content-strategy-research | daily 23:00 | Opus 5 | standing_research_content_strategy_task.md | (env) | augustus ³ | keep |
-| praetorium-faceless-content-research | daily 01:30 | Opus 5 | standing_research_faceless_content_task.md | (env) | augustus ³ | keep |
+| praetorium-content-strategy-research | daily 23:00 | Opus 5 | standing_research_content_strategy_task.md | (env) | augustus ³ | keep ⁴ |
+| praetorium-faceless-content-research | daily 01:30 | Opus 5 | standing_research_faceless_content_task.md | (env) | augustus ³ | keep ⁴ |
 
 ¹ The recurring defect class lives here (coverage globs, whitelist health checks —
   memory `readiness-report-phantom-blockers`); merge-candidate with daily-plan later,
@@ -116,6 +116,8 @@ At the freeze all ran headless Claude Code via `bin/agent_propose.sh` + `AGENT_J
 ³ Proposed claudius (output is research, not drafts); Dave assigned **augustus**
   2026-09-01 (§7.3) — accountability follows the content pipeline; executor stays
   headless CC.
+⁴ Retired 2026-09-04 (W19): the campaign fired its last declared run and its unit files
+  were deleted the same day. Row kept as the 2026-09-01 record; RETIRED note below.
 
 "(env)" = pinned inside the deny-listed `*.env` override; D2 records it from
 `agent_propose.sh` run logs, not by reading the env.
@@ -138,6 +140,13 @@ An earlier draft of §6.5 called this a silent failure and proposed converting b
 recurring calendars — that would have created two permanent nightly Opus jobs nobody asked
 for. Both also exist only in `/etc` with no source in `systemd/` (§6.7), which stands.
 Registry treatment: these are campaigns, not rows in the standing-workflow table.
+
+**RETIRED 2026-09-04 (W19; recorded 2026-09-08, T6.2).** Both campaigns spent their four
+make-up nights — last runs 2026-09-03 23:00 and 2026-09-04 01:30 — and
+`praetorium-content-strategy-research.{service,timer}` and
+`praetorium-faceless-content-research.{service,timer}` were deleted from `/etc` the same day
+(`1bc6a4c`). Nothing in this file describes them now: `design/agents/augustus.toml` records
+the retirement, `design/open-decisions.md` W19 the residue it left.
 
 ## 3. Scheduled platform jobs (deterministic, as recorded 2026-09-01)
 
@@ -303,6 +312,8 @@ why neither was deleted (`open-decisions.md:16-18`).
 1. Platform jobs accountable owner: trajan, or leave Dave-owned? OWNED BY TRAJAN 
 2. weekly-pre-assembly owner: marcus (proposed) or claudius (historical)? MARCUS
 3. content-strategy + faceless-content research owner: claudius (proposed) or augustus? AUGUSTUS
+   → Both campaigns expired on schedule and were retired 2026-09-04 (W19); the ownership
+   decision stands as the record.
 4. Re-enable augustus-content + content-change-dispatch now that the holiday is over? RE-ENABLE 
 5. bd-stall-radar and bd-followup-drafts: wire to timers (owner claudius) or kill? WIRE TO TIMERS
 6. Kanban posture: confirm "recurring = systemd, one-offs = kanban, vpc-seo stays"? LETS DISCUSS THIS

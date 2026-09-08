@@ -29,7 +29,7 @@
 # THE LIST IS EXACT, AND IT IS CHECKED IN BOTH DIRECTIONS. A runtime-only file that is NOT
 # named here is drift and fails. An entry here naming a file that is NO LONGER in the runtime
 # also fails, telling you to delete the entry. So the moment `bin/deploy --prune` runs, this
-# file becomes nine findings that say "the prune happened, remove these" — which is how a
+# file becomes one finding per entry saying "the prune happened, remove these" — which is how a
 # stale exclusion list is prevented from quietly becoming permanent. An exclusion that
 # outlives its subject is the same defect as no exclusion at all, pointing the other way.
 
@@ -91,3 +91,22 @@ path  = "job-overrides/weekly_pre_assembly.env.example"
 tree  = "config"
 since = "2026-09-01"          # 98966eb — W4
 why   = "Consolidated into profiles/."
+
+# The two below are W19's profiles half (T6.2, 2026-09-08). The D5 research campaigns that
+# read them were retired 2026-09-04 with their /etc units; the profiles left source four
+# days later and the runtime keeps them until the next --prune. Their runner chain in bin/
+# (run_content_strategy_cc.sh, run_faceless_content_cc.sh, run_standing_research_topic_cc.sh)
+# is NOT declared here: the bin half of the drift check consults no exclusion, so those go
+# with the prune itself (T6.3).
+
+[[runtime_only]]
+path  = "standing_research_content_strategy_task.md"
+tree  = "profiles"
+since = "2026-09-08"          # T6.2 — W19 profiles half
+why   = "Task profile of praetorium-content-strategy-research, a bounded D5 campaign retired 2026-09-04 with its unit. Read only by bin/run_standing_research_topic_cc.sh, which nothing can reach since the unit went."
+
+[[runtime_only]]
+path  = "standing_research_faceless_content_task.md"
+tree  = "profiles"
+since = "2026-09-08"          # T6.2 — W19 profiles half
+why   = "Task profile of praetorium-faceless-content-research, the sibling campaign, retired 2026-09-04 with its unit. Same runner, same reachability: none."

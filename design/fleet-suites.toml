@@ -193,3 +193,22 @@ validator exists to keep the two ends equal" for a week before one existed; ten 
 in Phase 4 by as many sessions, and this is what makes each one fail by name instead of by
 convention. A timer would run it nightly against inputs that change only on a commit.
 """
+
+# The surface join (T6.2, W19 item 10). Same shape and same reason as the entries above:
+# nothing schedules it, its subject is the agreement INSIDE each design/agents/*.toml —
+# a `present = true` surface against the [[workflows]] entries naming it — and that changes
+# only when a human edits a manifest, which is exactly when bin/verify.sh runs it.
+[[suite]]
+path    = "tests/test_manifest_surfaces.sh"
+owner   = "fleet"
+asserts = [
+  "manifest-parse-named",        # a manifest that does not parse is named, never dropped from the join
+  "present-surface-hosts-work",  # every surface declared present hosts >= 1 [[workflows]] entry naming it
+  "retired-surface-silent",      # present = false over zero entries is the retired shape, not a finding
+]
+why_no_workflow = """
+It grades the manifests against themselves — a surface's `present` flag against the entries
+that name the surface — which is no job's output. W19 found augustus.toml's scheduled surface
+present over nothing for four days because the retirement commit touched only what a test
+forced it to; this is that test.
+"""
