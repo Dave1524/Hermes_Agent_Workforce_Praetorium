@@ -86,10 +86,10 @@ resolves_glob() {             # $1 pattern, relative to the cwd
 
 unresolved_pointers() {       # $1 file, $2 root the pointers resolve against
   local f=$1 root=$2 p
+  # shellcheck disable=SC2016  # the backticks are the markdown delimiters being matched, not a command
   while IFS= read -r p; do
     [ -n "$p" ] || continue
     ( cd "$root" && resolves_glob "$p" ) || echo "$p"
-  # shellcheck disable=SC2016  # the backticks are the markdown delimiters being matched, not a command
   done < <(head -n "$HEADER_LINES" "$f" | grep -oE '`[A-Za-z0-9_./*@-]+`' | tr -d '`' | grep '/' | sort -u)
 }
 
@@ -160,10 +160,10 @@ dead=$(unresolved_pointers "$REGISTRY" "$REPO_ROOT")
 live=$(live_headings "$REGISTRY")
 
 assert "the first $HEADER_LINES lines carry the FROZEN header naming design/agents/ (${missing:-complete})" \
-  "[ -z '$missing' ]"
+  "[ -z \"\$missing\" ]"
 assert "every repo path in the header resolves on disk (${dead:-all resolve})" \
-  "[ -z '$dead' ]"
+  "[ -z \"\$dead\" ]"
 assert "no heading presents the record as live (${live:-none})" \
-  "[ -z '$live' ]"
+  "[ -z \"\$live\" ]"
 
 exit $fail
