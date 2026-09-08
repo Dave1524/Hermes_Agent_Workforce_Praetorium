@@ -164,3 +164,32 @@ archived unit — which is why this suite is the one the checker names. The regi
 it without inventing a `[[workflows]]` entry for a job that must never fire again, and a
 status = "spent" entry would still have to name a unit that is deliberately not installed.
 """
+
+# The contract schema validator (T1.4, docs/dev-plan-2026-09.md). Same shape and same reason
+# as the coverage checker above: nothing schedules it, its subject is the agreement between
+# design/contracts/*.md and the [[workflows]] entries that name them, and both change only
+# when a human edits them. The rules are in tests/test_contract_schema.py; the ids below are
+# anchored in the .sh, which asserts one per rule on the live tree after proving each on a
+# fixture. T4.0 adds the executable-check rule here when it lands.
+[[suite]]
+path    = "tests/test_contract_schema.sh"
+owner   = "fleet"
+asserts = [
+  "manifest-parse",           # a manifest that does not parse is named, never dropped from the join
+  "sections-present",         # the eight `## ` headings, each exactly once; fenced ones do not count
+  "sections-ordered",         # in schema order; extra sections may sit between them
+  "sections-nonempty",        # a required section says "none" rather than nothing
+  "contract-declared",        # every contract file is named by some [[workflows]].contract
+  "owner-matches-manifest",   # bold tokens in Identity's Owner(s) row == the declaring manifests, both ways
+  "units-match-manifest",     # Identity's Unit(s) row, brace-expanded, == the declaring entries' units, both ways
+  "one-contract-per-unit",    # no unit is named by entries pointing at two contract paths
+  "named-for-unit",           # rule 1: stem is one of its units, or the preamble says it breaks rule 1
+  "exempt-named",             # every rule-1 exemption is printed by name, never skipped
+  "validated-count",          # the count reported equals the files on disk, computed independently
+]
+why_no_workflow = """
+It grades the contracts against the manifests, not a job's output. The schema doc said "D3's
+validator exists to keep the two ends equal" for a week before one existed; ten contracts land
+in Phase 4 by as many sessions, and this is what makes each one fail by name instead of by
+convention. A timer would run it nightly against inputs that change only on a commit.
+"""

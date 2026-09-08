@@ -91,6 +91,16 @@ outlived its boundary.
 5. **Cite what you read.** A claim in a contract without a path, a command, or a dated
    measurement is lore and will be wrong within a month.
 
+**Validated in the gate since 2026-09-08 (T1.4)** by `tests/test_contract_schema.sh` /
+`.py`: the eight sections above, each once, in order, none empty; `## Identity`'s `Owner(s)`
+row names each owner as a bold token (`**claudius**`) and that set must equal the manifests
+whose `[[workflows]].contract` names the file, both directions; its `Unit(s)` row names the
+units (`buzz-agent@{marcus,trajan}.service` brace form for a shared contract) and must equal
+the declaring entries' `unit` values; no unit may be named by two contract paths; and the file
+stem must be one of its units (rule 1) unless the text before `## Identity` says it
+`breaks rule 1`, which is printed as an exemption on every run. A manifest naming a contract
+that does not exist is T1.1's finding, not this one's. T4.0 adds the check syntax.
+
 ## Status
 
 Written: `knowledge-digest`. **Corrected 2026-09-01 (W5):** the other 25 entries do *not*

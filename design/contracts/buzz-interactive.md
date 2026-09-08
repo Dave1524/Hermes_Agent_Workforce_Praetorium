@@ -23,7 +23,7 @@ and `~/.config/systemd/user/buzz-agent@.service`. Upstream mechanics cite
 | | |
 |---|---|
 | Units | `buzz-agent@{marcus,claudius,augustus,trajan,aurelian}.service` (`--user` scope) |
-| Owners | each unit's own persona manifest, `design/agents/<name>.toml` |
+| Owners | **marcus**, **claudius**, **augustus**, **trajan**, **aurelian** — each unit's own persona manifest, `design/agents/<name>.toml` |
 | Surface | S1 — Buzz interactive |
 | Executor | `~/.local/bin/buzz-acp` → `/usr/local/bin/claude-agent-acp`; **augustus alone** runs `codex-acp` inside a bwrap mount namespace |
 | Kind | `service` — `Type=simple`, always on, **no timer**. `config/fleet-units.tsv` column 5 |
