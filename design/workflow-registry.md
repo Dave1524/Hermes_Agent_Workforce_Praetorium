@@ -12,7 +12,8 @@ number (§7.6). Read it for *why* an owner is who they are; for the box, read th
   route, owner and contract; one manifest per persona (D2, `design/agent-model.md`).
 - `config/fleet-units.tsv` — the unit list every reporting job reads, asserted against the
   manifests in both directions by `tests/test_fleet_ownership.sh`.
-- `tests/test_workflow_coverage.py` — every manifest entry names a unit, a suite, an owner
+- `tests/test_workflow_coverage.sh` (the suite `bin/verify.sh` runs, driving
+  `tests/test_workflow_coverage.py`) — every manifest entry names a unit, a suite, an owner
   and a status. A schedule is read from `systemctl cat`, never from this file (§2, first
   correction).
 - `design/contracts/` — per-workflow contracts, one file each (D2/D3).
@@ -275,10 +276,11 @@ why neither was deleted (`open-decisions.md:16-18`).
    had existed only under `archive/` since the 2026-09-01 move, so the half-fix recorded
    above left a broken provisioning step reading as authoritative for a day. The new
    assertion targets `install` commands, not prose. **Open as of 2026-09-02** (tracked as
-   the W4 row in `design/open-decisions.md` or its archive, not here): `augustus-content` and
+   the W4 row in `design/archive/open-decisions-closed-2026-09-07.md`, not here): `augustus-content` and
    `bd-stall-radar` have no example in the LIVE home. `config/job-overrides/archive/` holds one
    each, but the augustus copy points at the retired `kanban_run_and_wait.sh`, so it is a record
-   of the old wiring rather than a template — see the W4 row in `design/open-decisions.md`.
+   of the old wiring rather than a template — see the W4 row in
+   `design/archive/open-decisions-closed-2026-09-07.md`.
 6. **Inconsistency 2 is wider than "66 m1 runs".** Measured 2026-09-01 from journals:
    `m1-signal-scan`, `weekly-pre-assembly`, `overnight-morning-report` and
    `praetorium-daily-plan` all run `profile=claude-sonnet`; `knowledge-digest` and

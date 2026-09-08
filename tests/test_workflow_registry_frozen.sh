@@ -18,13 +18,15 @@
 # THE THREE INVARIANTS, each on the first HEADER_LINES lines because that is what a reader
 # and the land gate look at:
 #
-#   1. The header is present: a FROZEN marker, and `design/agents/` named as where workflows
-#      are declared now.
+#   1. The header is present: a `FROZEN RECORD` marker, and `design/agents/` named as where
+#      workflows are declared now. The bare word FROZEN discriminates nothing — the pre-freeze
+#      header already read `FROZEN 2026-09-01` while calling itself the single source of truth.
 #   2. Every backticked repo path in the header resolves on disk. A pointer at a moved or
 #      renamed file is the defect the header exists to prevent, so a stale one goes red by
 #      name. Globs resolve as globs (design/agents/*.toml); a trailing slash is a directory.
-#      Tokens carrying a line reference (`file.md:77`) or a `~` are not repo paths and are
-#      not checked — stated so a green run is not read as covering them.
+#      A line reference (`file.md:77-78`) is checked by its path half, suffix stripped, so a
+#      renamed file hides behind no line number. A `~` home path and a URL are not repo paths
+#      and are not checked — stated so a green run is not read as covering them.
 #   3. No `##` heading anywhere in the file claims liveness — `(live`, `(proposed)`,
 #      "must resolve", "required from". Those were the five headings that made the frozen
 #      file read as an open worklist; a heading is the cheapest place the claim can come back.
@@ -66,7 +68,7 @@ assert() {
 header_missing() {            # $1 file
   local hdr
   hdr=$(head -n "$HEADER_LINES" "$1")
-  grep -q 'FROZEN' <<<"$hdr"          || echo 'no FROZEN marker'
+  grep -q 'FROZEN RECORD' <<<"$hdr"   || echo 'no FROZEN RECORD marker'
   grep -q 'design/agents/' <<<"$hdr"  || echo 'no design/agents/ pointer'
 }
 
@@ -90,7 +92,8 @@ unresolved_pointers() {       # $1 file, $2 root the pointers resolve against
   while IFS= read -r p; do
     [ -n "$p" ] || continue
     ( cd "$root" && resolves_glob "$p" ) || echo "$p"
-  done < <(head -n "$HEADER_LINES" "$f" | grep -oE '`[A-Za-z0-9_./*@-]+`' | tr -d '`' | grep '/' | sort -u)
+  done < <(head -n "$HEADER_LINES" "$f" | grep -oE '`[A-Za-z0-9_./*@:-]+`' | tr -d '`' \
+             | sed -E 's/:[0-9-]+$//' | grep '/' | grep -v '://' | sort -u)
 }
 
 echo "--- 0. canary ---"
@@ -103,7 +106,9 @@ trap 'rm -rf "$fx"' EXIT
 cat >"$fx/no-header.md" <<'EOF'
 # Workflow registry — ownership freeze (D1)
 
-**Status: closed** — every action below is executed. This file is the single source of truth.
+**Status: FROZEN 2026-09-01** — all eight decisions in §7 are closed (Dave's ALL-CAPS
+answers to §7.1–7.5/§7.8 in commit `ed568f8`; §7.6 and §7.7 discussed and closed the
+same day). Every action below is executed, not proposed. D2 starts from this table.
 
 ## 2. Scheduled persona workflows (live)
 EOF
@@ -121,7 +126,7 @@ cat >"$fx/dead-pointer.md" <<'EOF'
 # Workflow registry — the D1 record (FROZEN)
 
 **Status: FROZEN RECORD.** Live declarations: `design/agents/*.toml`, the unit list in
-`config/fleet-units.tsv`, and `design/fixture-path-that-must-not-exist.md`, plus
+`config/fleet-units.tsv`, and `design/fixture-path-that-must-not-exist.md:14`, plus
 `design/fixture-dir-that-must-not-exist/`.
 
 ## 2. Scheduled persona workflows (as recorded 2026-09-01)
@@ -132,7 +137,8 @@ cat >"$fx/healthy.md" <<'EOF'
 
 **Status: FROZEN RECORD.** Live declarations: `design/agents/*.toml` (D2, `design/agent-model.md`),
 the unit list in `config/fleet-units.tsv`, contracts under `design/contracts/`. A line reference
-like `design/workflow-registry.md:77-78` and a home path like `~/agent-workforce/bin` are not checked.
+like `design/workflow-registry.md:77-78` is checked by its path; a home path like `~/agent-workforce/bin`
+and a URL like `https://github.com/block/buzz` are not.
 
 ## 2. Scheduled persona workflows (as recorded 2026-09-01)
 ## 7. Decisions taken by Dave (2026-09-01)
