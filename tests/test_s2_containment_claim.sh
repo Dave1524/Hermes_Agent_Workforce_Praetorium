@@ -18,8 +18,16 @@
 #      Comment lines are dropped first because every direct runner's header names a sibling and
 #      a flag quoted in a comment contains nothing; a checker reading whole files judged a
 #      runner stripped of both flags as contained through its comment (found 2026-09-08).
+#      A TRAILING comment is the same defect on one line, and was still live until 2026-09-09:
+#      `exec claude ... --permission-mode bypassPermissions  # was: --strict-mcp-config ...`
+#      read as contained. argv() now cuts at the first ` #` as well. No running line in any
+#      live runner carries one (measured 2026-09-09), and the failure direction is red: an
+#      over-cut line loses the flags and the runner is NAMED, never quietly excused.
 #   2. Exactly one S2 row, and it names --strict-mcp-config.
 #   3. While ANY runner passes bypassPermissions, the S2 row says the allowlist is `inert`.
+#      All three spellings count — `--permission-mode bypassPermissions`, the `=` form, and
+#      `--dangerously-skip-permissions`. Matching only the first made the invariant vacuous
+#      against a runner that still bypassed, which is the one direction it must never fail.
 #      T2.2 (docs/dev-plan-2026-09.md) takes the runners off bypass and rewrites the row; this
 #      assertion goes vacuous then, and fires again only if a runner regains bypass while the
 #      row claims a real allowlist. It never has to be edited for T2.2 to land.
@@ -60,15 +68,17 @@ runners() {                   # $1 dir
 }
 
 argv() {                      # $1 file — the lines that run; a flag in a comment is not a flag
-  grep -vE '^[[:space:]]*#' "$1"
+  grep -vE '^[[:space:]]*#' "$1" | sed -E 's/[[:space:]]+#.*$//'
 }
 
 # Pipelines below end in a full reader (`grep >/dev/null`, `sort`), never `grep -q`: group 2
 # calls these outside assert(), under pipefail, where an early exit reports 141 for a match.
-bypass_runners() {            # $1 dir — runners that pass --permission-mode bypassPermissions
+BYPASS_RE='--permission-mode[[:space:]=]+bypassPermissions|--dangerously-skip-permissions'
+
+bypass_runners() {            # $1 dir — runners that pass bypass in any of its three spellings
   local f
   while IFS= read -r f; do
-    argv "$f" | grep -E -- '--permission-mode[[:space:]]+bypassPermissions' >/dev/null && echo "$f"
+    argv "$f" | grep -E -- "$BYPASS_RE" >/dev/null && echo "$f"
   done < <(runners "$1")
   return 0
 }
@@ -116,7 +126,7 @@ echo "--- 1. fixtures: each failure mode is caught, a healthy pair is not ---"
 fx=$(mktemp -d)
 trap 'rm -rf "$fx"' EXIT
 
-mkdir -p "$fx/bypass" "$fx/nobypass" "$fx/nomcp"
+mkdir -p "$fx/bypass" "$fx/nobypass" "$fx/nomcp" "$fx/spellings"
 cat >"$fx/bypass/run_a_cc.sh" <<'EOF'
 exec claude -p "x" --permission-mode bypassPermissions --strict-mcp-config --mcp-config '{"mcpServers":{}}' --allowedTools "Bash,Read"
 EOF
@@ -140,6 +150,20 @@ EOF
 cat >"$fx/nobypass/run_b_cc.sh" <<'EOF'
 # was: --permission-mode bypassPermissions
 exec claude -p "x" --strict-mcp-config --mcp-config '{"mcpServers":{}}' --allowedTools "Bash,Read"
+EOF
+# a stripped runner whose TRAILING comment quotes both flags: judged on what runs, not on the note
+cat >"$fx/nomcp/run_f_cc.sh" <<'EOF'
+exec claude -p "x" --permission-mode bypassPermissions  # was: --strict-mcp-config --mcp-config '{"mcpServers":{}}'
+EOF
+# the other two spellings of bypass, and one of them demoted to a trailing comment
+cat >"$fx/spellings/run_eq_cc.sh" <<'EOF'
+exec claude -p "x" --permission-mode=bypassPermissions --strict-mcp-config --mcp-config '{"mcpServers":{}}'
+EOF
+cat >"$fx/spellings/run_skip_cc.sh" <<'EOF'
+exec claude -p "x" --dangerously-skip-permissions --strict-mcp-config --mcp-config '{"mcpServers":{}}'
+EOF
+cat >"$fx/spellings/run_cmt_cc.sh" <<'EOF'
+exec claude -p "x" --strict-mcp-config --mcp-config '{"mcpServers":{}}'  # was: --dangerously-skip-permissions
 EOF
 
 cat >"$fx/credits.md" <<'EOF'
@@ -168,12 +192,16 @@ assert 'a row that does not name --strict-mcp-config is named' \
   "s2_row_defects '$fx/nostrict.md' '$fx/nobypass' | grep -q 'does not name --strict-mcp-config'"
 assert 'two S2 rows are named by count' \
   "s2_row_defects '$fx/tworows.md' '$fx/nobypass' | grep -q 'found 2'"
-assert 'a runner missing the no-MCP flags, a delegator to a missing sibling and a stripped runner whose comment names a sibling are named; the contained sibling and its delegator are not' \
-  "[ \"\$(uncontained_runners '$fx/nomcp' | tr '\n' ' ')\" = '$fx/nomcp/run_a_cc.sh $fx/nomcp/run_d_cc.sh $fx/nomcp/run_e_cc.sh ' ]"
+assert 'a runner missing the no-MCP flags, a delegator to a missing sibling and two stripped runners whose comments quote the flags are named; the contained sibling and its delegator are not' \
+  "[ \"\$(uncontained_runners '$fx/nomcp' | tr '\n' ' ')\" = '$fx/nomcp/run_a_cc.sh $fx/nomcp/run_d_cc.sh $fx/nomcp/run_e_cc.sh $fx/nomcp/run_f_cc.sh ' ]"
 assert 'a contained runner set is silent' \
   "[ -z \"\$(uncontained_runners '$fx/bypass')\" ]"
 assert 'bypass runners are counted (delegators carry no flag of their own; a bypass in a comment is not one)' \
-  "[ \"\$(bypass_runners '$fx/nomcp' | wc -l)\" = 3 ] && [ -z \"\$(bypass_runners '$fx/nobypass')\" ]"
+  "[ \"\$(bypass_runners '$fx/nomcp' | wc -l)\" = 4 ] && [ -z \"\$(bypass_runners '$fx/nobypass')\" ]"
+assert 'the = spelling and --dangerously-skip-permissions are bypass; the same flag in a trailing comment is not' \
+  "[ \"\$(bypass_runners '$fx/spellings' | tr '\n' ' ')\" = '$fx/spellings/run_eq_cc.sh $fx/spellings/run_skip_cc.sh ' ]"
+assert 'a row crediting the allowlist beside a runner that bypasses by the = spelling is named' \
+  "s2_row_defects '$fx/credits.md' '$fx/spellings' | grep -q 'does not say the allowlist is inert while 2 runner'"
 
 echo "--- 2. the live model and runners: $MODEL, $BIN ---"
 uncontained=$(uncontained_runners "$BIN")
