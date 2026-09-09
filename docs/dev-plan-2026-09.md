@@ -174,7 +174,7 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   stated reason), the two `profiles/` task files declared runtime-only, the W19 row updated.
   Gate: verify green; the brief's check 2 grep returns only historical notes.
 - **T6.3** [Dave then Claude, S, T6.2] W19, the bin half: `bin/deploy --prune` removes the three
-  runner scripts and clears nine deferred exclusions in one act. Dave picks the moment and
+  runner scripts and clears eleven deferred exclusions in one act. Dave picks the moment and
   deletes the two override envs in the deny-listed tree; Claude runs the prune and re-verifies.
   Gate: drift clean with no runtime-only `bin/` files.
 - **T6.4** [Claude, S] `design/workflow-registry.md` is joined by no test or script. Freeze it as
