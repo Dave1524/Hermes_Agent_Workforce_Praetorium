@@ -17,19 +17,33 @@
 #     equals the declaring entries' `unit` values, both directions.
 #   one-contract-per-unit    no unit is named by entries pointing at two contract paths.
 #   contract-declared        every design/contracts/*.md is named by some manifest.
-#   named-for-unit           the file stem is one of its units (rule 1), or the preamble says
-#     it `breaks rule 1` and an EXEMPT line names it on every run.
+#   named-for-unit           the file stem is one of its units (rule 1), or a declaring
+#     [[workflows]] entry carries `rule1_exempt = "<reason>"` and an EXEMPT line names it on
+#     every run. The opt-out was a `breaks rule 1` substring in the contract's preamble until
+#     2026-09-09; a substring cannot be read for polarity, so a contract saying the OPPOSITE —
+#     that some other file breaks rule 1 — exempted itself. A declaration can.
 #   manifest-parse           a manifest that does not parse is named, not silently dropped.
+#   entry-shape              a [[workflows]] entry naming a contract and no unit is named; it
+#     used to reach sorted() beside a str and die as a traceback rather than a finding.
+#   contract-parseable       an unterminated code fence is named as the fence. It swallows
+#     every heading below it, so the section rules would otherwise report six missing
+#     sections in a file that has all eight.
+#   schema-sections          the eight section names are READ from design/contract-schema.md,
+#     not retyped here, and there must be exactly eight of them. A schema doc the validator
+#     could not read would grade every contract against an empty list and call it clean —
+#     which is why every fixture root below is given a copy of the real one.
 #
 # WHAT THIS DOES NOT ASSERT. That a contract named by a manifest exists — T1.1's rule in
 # tests/test_workflow_coverage.py, which ships red on the ten missing files. That an
 # acceptance check is executable — T4.0 extends the validator for that.
 #
-# FIXTURES FIRST, LIVE TREE SECOND. Group 1 builds two roots under mktemp: a healthy one that
-# must yield no PROBLEM, and a broken one where each rule has exactly one offender and the
-# total is asserted, so a rule that stopped firing is red rather than quiet. Fixture output
-# goes to a file and is grepped, never printed, so no PROBLEM line reaches the gate output on
-# a pass. No box precondition: every checkout carries both inputs, so this never prints SKIP.
+# FIXTURES FIRST, LIVE TREE SECOND. Group 1 builds five roots under mktemp: a healthy one that
+# must yield no PROBLEM, a broken one where each rule has exactly one offender and the total is
+# asserted so a rule that stopped firing is red rather than quiet, and three small ones for the
+# rules whose offenders cannot share a root without doubling another rule's count. Fixture
+# output goes to a file and is grepped, never printed, so no PROBLEM line reaches the gate
+# output on a pass. No box precondition: every checkout carries both inputs, so this never
+# prints SKIP.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -103,8 +117,19 @@ EOF
   } >"$1"
 }
 
-mk_entry() {                  # $1 manifest file, $2 unit, $3 contract path — appends one entry
-  printf '\n[[workflows]]\nunit     = "%s"\ncontract = "%s"\nstatus   = "standing"\n' "$2" "$3" >>"$1"
+mk_entry() {                  # $1 manifest, $2 unit ('' omits it), $3 contract, $4 rule1_exempt
+  {
+    printf '\n[[workflows]]\n'
+    [ -n "$2" ] && printf 'unit     = "%s"\n' "$2"
+    printf 'contract = "%s"\nstatus   = "standing"\n' "$3"
+    [ -n "${4:-}" ] && printf 'rule1_exempt = "%s"\n' "$4"
+    true
+  } >>"$1"
+}
+
+mk_root() {                   # $1 root — design/{contracts,agents} plus the real schema doc
+  mkdir -p "$1/design/contracts" "$1/design/agents"
+  cp "$REPO_ROOT/design/contract-schema.md" "$1/design/contract-schema.md"
 }
 
 echo "--- 0. canary ---"
@@ -115,29 +140,40 @@ trap 'rm -rf "$fx"' EXIT
 
 echo "--- 1a. fixtures: a healthy root is silent and names its one exemption ---"
 H="$fx/healthy"
-mkdir -p "$H/design/contracts" "$H/design/agents"
+mk_root "$H"
 mk_entry "$H/design/agents/claudius.toml" knowledge-digest design/contracts/knowledge-digest.md
-mk_entry "$H/design/agents/marcus.toml"   buzz-agent@marcus design/contracts/shared-thing.md
-mk_entry "$H/design/agents/trajan.toml"   buzz-agent@trajan design/contracts/shared-thing.md
+mk_entry "$H/design/agents/marcus.toml"   buzz-agent@marcus design/contracts/shared-thing.md \
+  'five units, one runtime — five files would be five copies of one fact'
+mk_entry "$H/design/agents/trajan.toml"   buzz-agent@trajan design/contracts/shared-thing.md \
+  'five units, one runtime — five files would be five copies of one fact'
+mk_entry "$H/design/agents/marcus.toml"   pipe-thing design/contracts/pipe-thing.md
 mk_contract "$H/design/contracts/knowledge-digest.md" \
   '| Unit | `knowledge-digest.service` / `.timer` |' \
   '| Owner | **claudius** (`design/agents/claudius.toml`) |'
 mk_contract "$H/design/contracts/shared-thing.md" \
   '| Units | `buzz-agent@{marcus,trajan}.service` (`--user` scope) |' \
   '| Owners | **marcus**, **trajan** — each unit'"'"'s own manifest |' \
-  '**This one breaks rule 1 of the schema deliberately, and says so.**'
+  '**buzz-interactive.md breaks rule 1 of the schema; the exemption is declared in the manifests.**'
+# The three shapes a naive row parser gets wrong, in one Unit cell: an escaped pipe BEFORE the
+# unit token (truncation drops the unit entirely), a pipe inside a code span, and a systemd
+# specifier. Before 2026-09-09 this row declared `no unit` and, once un-truncated, a phantom `n`.
+mk_contract "$H/design/contracts/pipe-thing.md" \
+  '| Unit | alerted \| `pipe-thing.service`, `OnFailure=agent-alert@%n.service`, listed by `systemctl list-units | grep pipe` |' \
+  '| Owner | **marcus** |'
 
 rc=0; validate "$H" >"$fx/healthy.out" 2>&1 || rc=$?
 assert "the validator runs on the healthy root (rc=$rc)" "[ '$rc' = 0 ] && [ -s '$fx/healthy.out' ]"
 assert 'a healthy root yields no PROBLEM line' "! grep -q '^PROBLEM	' '$fx/healthy.out'"
-assert 'the shared contract that says it breaks rule 1 is EXEMPT by name, once' \
-  "[ \"\$(grep -c '^EXEMPT	' '$fx/healthy.out')\" = 1 ] && grep -q '^EXEMPT	design/contracts/shared-thing.md	' '$fx/healthy.out'"
-assert 'the summary counts both contracts, both declared paths and the one exemption' \
-  "grep -q '^SUMMARY	contracts=2 declared=2 absent=0 exempt=1\$' '$fx/healthy.out'"
+assert 'an escaped pipe, a pipe inside a code span and a %n specifier leave one real unit and no finding' \
+  "! grep -q 'pipe-thing.md' '$fx/healthy.out'"
+assert 'the shared contract whose manifests declare rule1_exempt is EXEMPT by name, once' \
+  "[ \"\$(grep -c '^EXEMPT	' '$fx/healthy.out')\" = 1 ] && grep -q '^EXEMPT	design/contracts/shared-thing.md	.*rule1_exempt on 2 of 2' '$fx/healthy.out'"
+assert 'the summary counts all three contracts, the declared paths, the one exemption and the eight sections' \
+  "grep -q '^SUMMARY	contracts=3 declared=3 absent=0 exempt=1 sections=8\$' '$fx/healthy.out'"
 
 echo "--- 1b. fixtures: each rule names exactly its offender ---"
 B="$fx/broken"
-mkdir -p "$B/design/contracts" "$B/design/agents"
+mk_root "$B"
 C="$B/design/agents/claudius.toml"
 for u in missing-section dup-section out-of-order empty-section wrong-owner no-owner-row wrong-unit; do
   mk_entry "$C" "$u" "design/contracts/$u.md"
@@ -165,10 +201,10 @@ mk_contract "$B/design/contracts/undeclared.md" '| Unit | `undeclared.service` |
 mk_entry "$C" some-unit design/contracts/misnamed.md
 mk_contract "$B/design/contracts/misnamed.md" '| Unit | `some-unit.service` |' '| Owner | **claudius** |'
 # one-contract-per-unit: two manifests, two contracts, one unit (both exempt from the stem rule)
-mk_entry "$C" dup-unit design/contracts/dup-a.md
-mk_entry "$B/design/agents/marcus.toml" dup-unit design/contracts/dup-b.md
-mk_contract "$B/design/contracts/dup-a.md" '| Unit | `dup-unit.service` |' '| Owner | **claudius** |' 'It breaks rule 1 on purpose.'
-mk_contract "$B/design/contracts/dup-b.md" '| Unit | `dup-unit.service` |' '| Owner | **marcus** |' 'It breaks rule 1 on purpose.'
+mk_entry "$C" dup-unit design/contracts/dup-a.md 'stem is the surface, not the unit'
+mk_entry "$B/design/agents/marcus.toml" dup-unit design/contracts/dup-b.md 'stem is the surface, not the unit'
+mk_contract "$B/design/contracts/dup-a.md" '| Unit | `dup-unit.service` |' '| Owner | **claudius** |'
+mk_contract "$B/design/contracts/dup-b.md" '| Unit | `dup-unit.service` |' '| Owner | **marcus** |'
 # manifest-parse
 printf '[[workflows\nunit = "x"\n' >"$B/design/agents/broken.toml"
 
@@ -204,6 +240,61 @@ assert 'and those eleven are the only findings — every rule fired exactly once
 assert 'the two rule-1 exemptions in the broken root are printed by name' \
   "[ \"\$(grep -c '^EXEMPT	' '$fx/broken.out')\" = 2 ]"
 
+echo "--- 1c. fixtures: emptiness that reads as content ---"
+# A sub-heading is a label and an empty fence is a hole. Both left `any(line.strip())` true,
+# so `## Decline conditions` followed by `### When it declines` and nothing else read as full.
+E="$fx/empty"
+mk_root "$E"
+for u in sub-only hollow-fence; do
+  mk_entry "$E/design/agents/claudius.toml" "$u" "design/contracts/$u.md"
+  mk_contract "$E/design/contracts/$u.md" "| Unit | \`$u.service\` |" '| Owner | **claudius** |'
+done
+sed -i '/^## Decline conditions$/,/^## Side effects$/{/^## Decline conditions$/b;/^## Side effects$/b;d}' "$E/design/contracts/sub-only.md"
+sed -i 's/^## Decline conditions$/## Decline conditions\n\n### When it declines\n/' "$E/design/contracts/sub-only.md"
+sed -i '/^## Side effects$/,/^## Acceptance checks$/{/^## Side effects$/b;/^## Acceptance checks$/b;d}' "$E/design/contracts/hollow-fence.md"
+sed -i 's/^## Side effects$/## Side effects\n\n```\n```\n/' "$E/design/contracts/hollow-fence.md"
+
+rc=0; validate "$E" >"$fx/empty.out" 2>&1 || rc=$?
+assert "the validator runs on the emptiness root (rc=$rc)" "[ '$rc' = 0 ] && [ -s '$fx/empty.out' ]"
+assert 'a section whose whole body is a sub-heading is empty' \
+  "grep -q '^PROBLEM	sections-nonempty	design/contracts/sub-only.md: ## Decline conditions is empty' '$fx/empty.out'"
+assert 'a section whose whole body is an unfilled fence is empty' \
+  "grep -q '^PROBLEM	sections-nonempty	design/contracts/hollow-fence.md: ## Side effects is empty' '$fx/empty.out'"
+assert 'and those two are the only findings — a fenced ## Inputs still counts as content' \
+  "[ \"\$(grep -c '^PROBLEM	' '$fx/empty.out')\" = 2 ]"
+
+echo "--- 1d. fixtures: shapes that used to be a traceback or a wrong verdict ---"
+S="$fx/shapes"
+mk_root "$S"
+mk_entry "$S/design/agents/claudius.toml" '' design/contracts/no-unit.md
+mk_entry "$S/design/agents/claudius.toml" open-fence design/contracts/open-fence.md
+mk_contract "$S/design/contracts/no-unit.md" '| Unit | none declared |' '| Owner | **claudius** |'
+mk_contract "$S/design/contracts/open-fence.md" '| Unit | `open-fence.service` |' '| Owner | **claudius** |'
+printf '\n```\n' >>"$S/design/contracts/open-fence.md"
+
+rc=0; validate "$S" >"$fx/shapes.out" 2>&1 || rc=$?
+assert "the validator runs on the shapes root (rc=$rc)" "[ '$rc' = 0 ] && [ -s '$fx/shapes.out' ]"
+assert 'an entry naming a contract and no unit is a finding, not a TypeError in sorted()' \
+  "grep -q '^PROBLEM	entry-shape	claudius.toml: a \[\[workflows\]\] entry names contract design/contracts/no-unit.md and no unit' '$fx/shapes.out'"
+assert 'an unterminated fence is named as the fence, by line' \
+  "grep -qE '^PROBLEM	contract-parseable	design/contracts/open-fence.md: the code fence opened on line [0-9]+ is never closed' '$fx/shapes.out'"
+assert 'and it is reported once, not as the six sections it swallowed' \
+  "[ \"\$(grep -c 'open-fence.md' '$fx/shapes.out')\" = 1 ]"
+assert 'the shapes root reports exactly those three findings' \
+  "[ \"\$(grep -c '^PROBLEM	' '$fx/shapes.out')\" = 3 ]"
+
+echo "--- 1e. fixtures: the schema list is read, and a list that is not eight is named ---"
+X="$fx/schema-short"; mkdir -p "$X/design"
+printf '### `## Identity`\n### `## Trigger`\n### `## Inputs`\n' >"$X/design/contract-schema.md"
+N="$fx/schema-absent"; mkdir -p "$N/design"
+
+assert 'a schema doc declaring three sections is named with the count it found' \
+  "validate '$X' 2>&1 | grep -q '^PROBLEM	schema-sections	design/contract-schema.md: declares 3 '"
+assert 'and it is the only finding — a short schema is not also reported as missing sections' \
+  "[ \"\$(validate '$X' 2>&1 | grep -c '^PROBLEM	')\" = 1 ]"
+assert 'a root with no schema doc at all is named, not graded against an empty list' \
+  "validate '$N' 2>&1 | grep -q '^PROBLEM	schema-sections	design/contract-schema.md: absent'"
+
 echo "--- 2. the live tree: $REPO_ROOT/design/contracts against design/agents ---"
 report="$fx/live.out"
 validate "$REPO_ROOT" >"$report" 2>&1 || { cat "$report"; fail=1; }
@@ -235,7 +326,17 @@ check units-match-manifest \
 check one-contract-per-unit \
   'no unit is claimed by two contract paths'  # (::one-contract-per-unit)
 check named-for-unit \
-  'every contract is named for one of its units, or says it breaks rule 1'  # (::named-for-unit)
+  'every contract is named for one of its units, or a declaring entry carries rule1_exempt'  # (::named-for-unit)
+check entry-shape \
+  'every [[workflows]] entry naming a contract also names the unit it is the contract for'  # (::entry-shape)
+check contract-parseable \
+  'every code fence in every contract is closed, so the headings below it are headings'  # (::contract-parseable)
+check schema-sections \
+  'design/contract-schema.md declares the eight sections this validator grades against'  # (::schema-sections)
+
+sections_counted=$(sed -n 's/^SUMMARY\t.*sections=\([0-9]*\).*/\1/p' "$report")
+assert "the eight section names came from the schema doc, not from an empty read (${sections_counted:-none})" \
+  "[ \"\$sections_counted\" = 8 ]"  # (::schema-sections)
 
 exempt_named=$(grep -c '^EXEMPT	' "$report")
 exempt_counted=$(sed -n 's/.*\bexempt=\([0-9]*\).*/\1/p' "$report")

@@ -92,14 +92,32 @@ outlived its boundary.
    measurement is lore and will be wrong within a month.
 
 **Validated in the gate since 2026-09-08 (T1.4)** by `tests/test_contract_schema.sh` /
-`.py`: the eight sections above, each once, in order, none empty; `## Identity`'s `Owner(s)`
-row names each owner as a bold token (`**claudius**`) and that set must equal the manifests
-whose `[[workflows]].contract` names the file, both directions; its `Unit(s)` row names the
-units (`buzz-agent@{marcus,trajan}.service` brace form for a shared contract) and must equal
-the declaring entries' `unit` values; no unit may be named by two contract paths; and the file
-stem must be one of its units (rule 1) unless the text before `## Identity` says it
-`breaks rule 1`, which is printed as an exemption on every run. A manifest naming a contract
-that does not exist is T1.1's finding, not this one's. T4.0 adds the check syntax.
+`.py`. The eight sections above, each once, in order, none empty — and the validator reads
+their names from the eight `### ` headings above rather than carrying its own copy, so
+renaming a section here is the whole change. A section whose entire body is a sub-heading or
+an unfilled fence counts as empty. A `## ` heading inside a fence is content; a fence that is
+never closed is reported as the fence, not as the sections it swallowed.
+
+**The `## Identity` rows are matched on their first cell, which must read `Owner` or
+`Owners` and `Unit` or `Units`.** The `Owner(s)` / `Unit(s)` shorthand this document uses in
+prose is not an accepted label; a row written that way is reported by name, with the
+spellings that are accepted. The Owner row names each owner as a bold token (`**claudius**`)
+and that set must equal the manifests whose `[[workflows]].contract` names the file, both
+directions. The Unit row names the units (`buzz-agent@{marcus,trajan}.service` brace form for
+a shared contract) and must equal the declaring entries' `unit` values; an escaped `\|` and a
+pipe inside a code span are content rather than cell delimiters, and a systemd specifier such
+as `agent-alert@%n.service` names no unit. No unit may be named by two contract paths, and an
+entry naming a contract must name the unit it is the contract for.
+
+The file stem must be one of its units (rule 1). **A contract opts out in the manifest, not in
+its own prose:** `rule1_exempt = "<reason>"` on a declaring `[[workflows]]` entry — the same
+shape as `suite_exempt` in the coverage checker — printed as an exemption on every run. Until
+2026-09-09 the opt-out was the string `breaks rule 1` appearing anywhere before `## Identity`,
+which cannot be read for polarity: a contract saying that some *other* file breaks rule 1
+exempted itself, and so did one that merely quoted the rule.
+
+A manifest naming a contract that does not exist is T1.1's finding, not this one's. T4.0 adds
+the check syntax.
 
 ## Status
 

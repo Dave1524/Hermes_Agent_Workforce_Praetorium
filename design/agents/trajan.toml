@@ -334,6 +334,7 @@ profile  = "~/.config/buzz-agents/trajan.prompt (deny-listed; no repo source)"
 profile_in_repo = false          # deny-listed box path, not a repo file — see notes
 runner   = "buzz-team/buzz-acp-launch.sh"
 contract = "design/contracts/buzz-interactive.md"   # ONE contract, five owners — it says why in its header
+rule1_exempt = "five units running byte-identical code share one set of obligations; five files would be five copies of one fact"
 status   = "standing"
 suite    = ["tests/test_buzz_interactive_harness.sh"]
 in_repo  = true

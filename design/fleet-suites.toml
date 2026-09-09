@@ -183,7 +183,10 @@ asserts = [
   "owner-matches-manifest",   # bold tokens in Identity's Owner(s) row == the declaring manifests, both ways
   "units-match-manifest",     # Identity's Unit(s) row, brace-expanded, == the declaring entries' units, both ways
   "one-contract-per-unit",    # no unit is named by entries pointing at two contract paths
-  "named-for-unit",           # rule 1: stem is one of its units, or the preamble says it breaks rule 1
+  "named-for-unit",           # rule 1: stem is one of its units, or a declaring entry carries rule1_exempt
+  "entry-shape",              # a [[workflows]] entry naming a contract also names a unit
+  "contract-parseable",       # an unterminated code fence is named as the fence, not as missing sections
+  "schema-sections",          # the eight section names are read from design/contract-schema.md, and are eight
   "exempt-named",             # every rule-1 exemption is printed by name, never skipped
   "validated-count",          # the count reported equals the files on disk, computed independently
 ]
