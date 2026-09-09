@@ -17,6 +17,7 @@ design/fleet-suites.toml gives suite -> "fleet" for the suites no workflow can e
 Reading only the first direction reports tests/test_fleet_guards.sh as an orphan, and an
 orphan's recommended fix is deletion.
 """
+import json
 import pathlib
 import re
 import tomllib
@@ -91,8 +92,84 @@ def exec_subjects(unit_files):
     return subjects
 
 
+def peel(raw):
+    raw = raw.strip().rstrip("\\").strip()
+    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "\"'":
+        raw = raw[1:-1]
+    return raw
+
+
+def assignment_default(raw):
+    raw = peel(raw)
+    m = re.fullmatch(r"\$\{[A-Za-z_][A-Za-z0-9_]*:-([^}]+)\}", raw)
+    return m.group(1) if m else raw
+
+
+def resolve_model(token, assigns):
+    token = peel(token)
+    m = re.fullmatch(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)", token)
+    if m:
+        name = m.group(1) or m.group(2)
+        return assigns[name] if name in assigns else token
+    m = re.fullmatch(r"\$\{[A-Za-z_][A-Za-z0-9_]*:-([^}]+)\}", token)
+    return m.group(1) if m else token
+
+
+def mcp_servers_empty(raw):
+    if not raw:
+        return False
+    text = peel(raw).replace('\\"', '"')
+    try:
+        obj = json.loads(text)
+    except json.JSONDecodeError:
+        return text.replace(" ", "") == '{"mcpServers":{}}'
+    return obj.get("mcpServers") == {}
+
+
+def runner_file(runner):
+    if not isinstance(runner, str):
+        return None
+    for tok in re.split(r"(?:->)|[\s;|&]", runner):
+        tok = tok.strip().strip("\"'")
+        if tok and (ROOT / tok).is_file():
+            return ROOT / tok
+    return None
+
+
+def parse_claude_flags(path):
+    """Flags from uncommented lines. A comment naming --model is not the flag."""
+    assigns, model_tok, tools, strict, mcp_cfg = {}, None, None, False, None
+    for line in path.read_text().splitlines():
+        stripped = line.lstrip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        am = re.match(r"([A-Za-z_][A-Za-z0-9_]*)=(\S+)", stripped)
+        if am:
+            assigns[am.group(1)] = assignment_default(am.group(2))
+        if "--strict-mcp-config" in stripped:
+            strict = True
+        mm = re.search(r"--model\s+(\S+)", stripped)
+        if mm:
+            model_tok = mm.group(1)
+        tm = re.search(r"--allowedTools\s+\"([^\"]+)\"", stripped)
+        if tm:
+            tools = [t.strip() for t in tm.group(1).split(",") if t.strip()]
+        cm = re.search(r"--mcp-config\s+(\S.*)", stripped)
+        if cm:
+            mcp_cfg = cm.group(1)
+    if model_tok is None and tools is None and not strict:
+        return None
+    return {
+        "model": resolve_model(model_tok, assigns) if model_tok is not None else None,
+        "tools": tools,
+        "strict": strict,
+        "mcp_empty": mcp_servers_empty(mcp_cfg),
+    }
+
+
 # --- parse ---------------------------------------------------------------------------
 entries = []
+scheduled_by_owner = {}
 manifests = sorted((ROOT / "design" / "agents").glob("*.toml"))
 for manifest in manifests:
     text = manifest.read_text()
@@ -101,6 +178,7 @@ for manifest in manifests:
     except tomllib.TOMLDecodeError as exc:
         problem("parse-integrity", f"{manifest.name}: does not parse: {exc}")
         continue
+    scheduled_by_owner[manifest.stem] = ((data.get("surfaces") or {}).get("scheduled") or {})
     parsed = data.get("workflows", [])
     # Anchored to a table-array header, never to the text: aurelian.toml carries the string
     # in a comment ("# No [[workflows]]. Intentionally.") and owns nothing by design.
@@ -176,6 +254,54 @@ for owner, w in entries:
 if entries and contract_checked < len(entries):
     problem("contract-join-counted",
             f"checked {contract_checked} of {len(entries)} entries — the join skipped some")
+
+# --- runner join (T1.2) ----------------------------------------------------------------
+# surfaces.scheduled tools / tools_web / mcp and each workflow's model against the named
+# runner's --allowedTools / --strict-mcp-config / --model, read from the script. A missing
+# runner, a non-file, or a script that does not pass those flags is counted and is not a
+# PROBLEM. Honour web = true by adding tools_web — standing research's unit is
+# agent-proposal, so a hardcoded unit list would miss it. Resolve ${VAR:-default}; never
+# read a deny-listed env. Two entries sharing one runner are two findings.
+runner_checked = 0
+model_alias = []
+for owner, w in entries:
+    runner_checked += 1
+    path = runner_file(w.get("runner"))
+    if path is None:
+        continue
+    flags = parse_claude_flags(path)
+    if flags is None:
+        continue
+    unit = w.get("unit")
+    surf = scheduled_by_owner.get(owner) or {}
+    declared_model = w.get("model")
+    if isinstance(declared_model, str) and declared_model.strip() \
+            and flags["model"] is not None \
+            and flags["model"] != declared_model.strip():
+        problem("model-alias", unit)
+        model_alias.append(unit)
+    want = set(surf.get("tools") or [])
+    if w.get("web") is True:
+        want.update(surf.get("tools_web") or [])
+    got = set(flags["tools"] or [])
+    if got != want:
+        problem("runner-tools",
+                f"{unit} ({owner}): allowlist {sorted(got)} != {sorted(want)}")
+    declared_mcp = surf.get("mcp")
+    if not isinstance(declared_mcp, list):
+        declared_mcp = []
+    empty_ok = flags["strict"] and flags["mcp_empty"]
+    if declared_mcp == []:
+        if not empty_ok:
+            problem("runner-mcp",
+                    f"{unit} ({owner}): scheduled mcp is empty, runner is not")
+    elif flags["mcp_empty"]:
+        problem("runner-mcp",
+                f"{unit} ({owner}): scheduled mcp names {declared_mcp}, runner empties it")
+
+if entries and runner_checked < len(entries):
+    problem("runner-join-counted",
+            f"checked {runner_checked} of {len(entries)} entries — the join skipped some")
 
 # design/fleet-suites.toml's own SCHEMA is asserted by tests/test_fleet_guards.sh (path)
 # exists, owner is in the enum, asserts non-empty). Consumed here, not re-validated. The
@@ -374,6 +500,8 @@ print(f"  asserts join: {joined_ids} anchored id(s) matched across {joined_suite
       f"declared suite(s)")
 print(f"  contract join: checked {contract_checked} of {len(entries)} entries, "
       f"{len(missing_contract_paths)} missing file(s)")
+print(f"  runner join: checked {runner_checked} of {len(entries)} entries, "
+      f"{len(model_alias)} model-alias(es)")
 
 print("  exempt from needing a suite — named, never merely skipped:")
 for unit, reason in exempt:
@@ -382,6 +510,7 @@ for unit, reason in exempt:
 print(f"SUMMARY\tentries={len(entries)} standing={len(standing)} covered={len(covered)} "
       f"exempt={len(exempt)} uncovered={len(uncovered)} unclaimed={len(unclaimed)} "
       f"orphans={len(orphans)} contract_checked={contract_checked} "
-      f"contract_missing={len(missing_contract_paths)}")
+      f"contract_missing={len(missing_contract_paths)} runner_checked={runner_checked} "
+      f"model_alias={len(model_alias)}")
 for assertion, detail in problems:
     print(f"PROBLEM\t{assertion}\t{detail}")

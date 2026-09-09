@@ -49,6 +49,13 @@ grep '^PROBLEM	contract-exists	' "$report" || true
 if grep -q '^PROBLEM	contract-exists	' "$report"; then
   fail=1
 fi
+# T1.2 ships red as PROBLEM lines, same reason as T1.1. tools/mcp mismatches stay
+# behind check() below — they are green on the live tree.
+# (::model-alias)
+grep '^PROBLEM	model-alias	' "$report" || true
+if grep -q '^PROBLEM	model-alias	' "$report"; then
+  fail=1
+fi
 
 # Every exempt workflow is printed BY NAME on every run. A silent exemption is how a thing
 # stops being looked at, and fleet-turn-check — exempt here — is the gate that proves an
@@ -93,6 +100,16 @@ contract_join_checked_every_entry() {
     && [ "$contract_checked" -gt 0 ]
 }
 
+runner_checked=$(sed -n 's/^  runner join: checked \([0-9]\{1,\}\) of .*/\1/p' "$report")
+runner_of=$(sed -n 's/^  runner join: checked [0-9]\{1,\} of \([0-9]\{1,\}\) entries.*/\1/p' "$report")
+
+runner_join_checked_every_entry() {
+  [ -n "$runner_checked" ] && [ "$runner_checked" = "$runner_of" ] \
+    && [ "$runner_checked" = "$entries_summary" ] \
+    && [ "$runner_checked" = "$live_entries" ] \
+    && [ "$runner_checked" -gt 0 ]
+}
+
 # One assertion per rule, each named as design/fleet-suites.toml declares it.
 #
 # THE TRAILING TOKEN IS THE JOIN ANCHOR, not decoration (W9). `check <id>` names the id to
@@ -126,5 +143,11 @@ assert 'and the join says how much it compared, so a deleted rule cannot pass as
   join_reported_what_it_compared  # (::asserts-join-counted)
 assert 'the contract-path join checked every parsed entry, so skipping the ones without a field cannot pass as a clean run' \
   contract_join_checked_every_entry  # (::contract-join-counted)
+check runner-tools \
+  'every joined runner --allowedTools equals surfaces.scheduled.tools, plus tools_web when web is true'  # (::runner-tools)
+check runner-mcp \
+  'every joined empty mcp is --strict-mcp-config and empty mcpServers'  # (::runner-mcp)
+assert 'the runner join checked every parsed entry, so skipping the ones without a runner cannot pass as a clean run' \
+  runner_join_checked_every_entry  # (::runner-join-counted)
 
 exit $fail
