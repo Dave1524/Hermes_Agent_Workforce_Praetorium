@@ -27,7 +27,7 @@ TASK_FILE="$HOME/agent-workforce/profiles/m1_signal_scan_cc_task.md"
 # AGENT_MCP_DEPS=none in the job env so agent_propose.sh skips the daemon probes too.
 cd "$INBOX"
 exec "$CLAUDE_BIN" -p "$(cat "$TASK_FILE")" \
-  --model sonnet \
+  --model claude-sonnet-5 \
   --permission-mode bypassPermissions \
   --strict-mcp-config \
   --mcp-config '{"mcpServers":{}}' \

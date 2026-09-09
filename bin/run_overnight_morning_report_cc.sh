@@ -24,7 +24,7 @@ umask 077
 
 CLAUDE_BIN="${CLAUDE_BIN:-/home/linuxbrew/.linuxbrew/bin/claude}"
 WORKDIR="${MORNING_REPORT_WORKDIR:-$HOME/agent-workforce}"
-MODEL="${MORNING_REPORT_MODEL:-sonnet}"
+MODEL="${MORNING_REPORT_MODEL:-claude-sonnet-5}"
 TASK_FILE="$WORKDIR/profiles/overnight_morning_report_cc_task.md"
 
 [ -r "$TASK_FILE" ] || { echo "overnight-morning-report: task file not readable: $TASK_FILE" >&2; exit 1; }

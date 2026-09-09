@@ -162,6 +162,8 @@ smoke_suite() {
   HOME="$home" CLAUDE_BIN="$claude" VAULT_DIR="$root/vault" VAULT_SYNC_GUARD="$GUARD" \
     DAILY_RHYTHM_WORKDIR="$REPO_ROOT" bash "$REPO_ROOT/$runner" >"$home/run.log" 2>&1 || rc=$?
   assert "exits 0" "[ '$rc' = 0 ]"
+  assert "pinned to claude-sonnet-5 (T2.1; not the sonnet alias)" \
+    "grep -qx -- '--model' '$home/claude_argv.log' && grep -qx 'claude-sonnet-5' '$home/claude_argv.log'"
   assert "launches the agent with the $job task prompt" \
     "grep -qF '$prompt_marker' '$home/claude_argv.log'"
   assert "no MCP servers (strict, empty config)" \

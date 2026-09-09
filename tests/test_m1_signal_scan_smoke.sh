@@ -166,8 +166,8 @@ assert 'the prompt is the task file, not an empty string (the W15 positive contr
   "[ \"\$(sed -n 1p '$home/claude_argv.log')\" = '-p' ] && [ -n \"\$(sed -n 2p '$home/claude_argv.log')\" ]"
 assert 'launches the agent with the M1 mission prompt' \
   "grep -qF 'Standing task: M1 — Market Signal Scan' '$home/claude_argv.log'"
-assert 'on sonnet, the model design/agents/claudius.toml declares' \
-  "grep -qx -- '--model' '$home/claude_argv.log' && grep -qx 'sonnet' '$home/claude_argv.log'"
+assert 'on claude-sonnet-5, the model design/agents/claudius.toml declares' \
+  "grep -qx -- '--model' '$home/claude_argv.log' && grep -qx 'claude-sonnet-5' '$home/claude_argv.log'"
 assert 'no MCP servers (strict, empty config)' \
   "grep -q -- '--strict-mcp-config' '$home/claude_argv.log' && grep -q 'mcpServers' '$home/claude_argv.log'"
 # cwd, not a flag: the profile writes `_inbox/agents/<today>_m1-signal-scan.md` relative.

@@ -57,6 +57,8 @@ echo "--- weekly-pre-assembly: runs on a current mirror ---"
 home=$(mktemp -d)
 rc=$(run_weekly clean_current "$home")
 assert "exits 0" "[ '$rc' = 0 ]"
+assert "pinned to claude-sonnet-5 (T2.1; not the sonnet alias)" \
+  "grep -qx -- '--model' '$home/claude_argv.log' && grep -qx 'claude-sonnet-5' '$home/claude_argv.log'"
 assert "launches the agent with the pre-assembly task prompt" \
   "grep -qF 'Weekly Review Pre-Assembly (NUC-24), Claude Code runtime variant' '$home/claude_argv.log'"
 assert "no MCP servers (strict, empty config)" \

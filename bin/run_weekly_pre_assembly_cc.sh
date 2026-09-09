@@ -21,7 +21,7 @@ CLAUDE_BIN="${CLAUDE_BIN:-/home/linuxbrew/.linuxbrew/bin/claude}"
 GUARD="${VAULT_SYNC_GUARD:-$BIN_DIR/vault_sync_guard.sh}"
 INBOX="${WEEKLY_PRE_ASSEMBLY_INBOX:-$HOME/agent-worktrees/inbox}"
 TASK_FILE="${WEEKLY_PRE_ASSEMBLY_TASK:-$HOME/agent-workforce/profiles/weekly_pre_assembly_cc_task.md}"
-MODEL="${WEEKLY_PRE_ASSEMBLY_MODEL:-sonnet}"
+MODEL="${WEEKLY_PRE_ASSEMBLY_MODEL:-claude-sonnet-5}"
 
 [ -r "$TASK_FILE" ] || { echo "weekly-pre-assembly: task file not readable: $TASK_FILE" >&2; exit 1; }
 

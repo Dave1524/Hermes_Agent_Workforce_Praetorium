@@ -22,7 +22,7 @@ BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
 CLAUDE_BIN="${CLAUDE_BIN:-/home/linuxbrew/.linuxbrew/bin/claude}"
 GUARD="${VAULT_SYNC_GUARD:-$BIN_DIR/vault_sync_guard.sh}"
 WORKDIR="${DAILY_RHYTHM_WORKDIR:-$HOME/agent-workforce}"
-MODEL="${DAILY_RHYTHM_MODEL:-sonnet}"
+MODEL="${DAILY_RHYTHM_MODEL:-claude-sonnet-5}"
 
 case "$job" in
   daily-plan)  TASK_FILE="$WORKDIR/profiles/daily_plan_task.md" ;;

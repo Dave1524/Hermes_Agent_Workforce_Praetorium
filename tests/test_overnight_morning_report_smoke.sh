@@ -161,8 +161,8 @@ echo "--- overnight-morning-report: the two runtime overrides are honoured ---"
 # exist for testability, so a suite that never used them would leave them unproven.
 home=$(make_mr_home complete)
 rc=$(run_mr "$home")
-assert 'the model defaults to sonnet' \
-  "grep -qx -- '--model' '$home/claude_argv.log' && grep -qx 'sonnet' '$home/claude_argv.log'"
+assert 'the model defaults to claude-sonnet-5' \
+  "grep -qx -- '--model' '$home/claude_argv.log' && grep -qx 'claude-sonnet-5' '$home/claude_argv.log'"
 home=$(make_mr_home complete)
 rc=$(run_mr "$home" MORNING_REPORT_MODEL=haiku)
 assert 'MORNING_REPORT_MODEL overrides it' "grep -qx 'haiku' '$home/claude_argv.log'"

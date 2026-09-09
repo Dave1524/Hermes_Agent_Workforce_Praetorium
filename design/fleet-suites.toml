@@ -73,7 +73,7 @@ asserts = [
   "asserts-join-counted",   # W9: and the join reports its own size, so a deleted rule is red
   "contract-exists",        # T1.1: every declared contract path is a file; ships red on ten
   "contract-join-counted",  # T1.1: the join reports entries checked, and that equals the manifest count
-  "model-alias",            # T1.2: runner --model equals the workflow's model; ships red on five aliases
+  "model-alias",            # T1.2/T2.1: runner --model equals the workflow's model
   "runner-tools",           # T1.2: --allowedTools equals surfaces.scheduled.tools (+ tools_web if web)
   "runner-mcp",             # T1.2: empty mcp means --strict-mcp-config and empty mcpServers
   "runner-join-counted",    # T1.2: the join reports entries checked, and that equals the manifest count
