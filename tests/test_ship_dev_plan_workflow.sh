@@ -136,6 +136,8 @@ assert "meta.phases titles (${meta_phases}) equal the phase() titles the body us
   '[ -n "$meta_phases" ] && [ "$meta_phases" = "$used_phases" ]'
 assert 'a green task'"'"'s ship prompt runs /ship whole' "grep '^prompt:ship:T6.4=' $tmp/happy.out | grep -q 'Run /ship'"
 assert 'a no-deploy task'"'"'s land prompt says so' "grep '^prompt:land:T6.4=' $tmp/happy.out | grep -q 'No deploy for this task'"
+assert 'the land prompt refuses to return on a review that did not run' \
+  "grep '^prompt:land:T6.4=' $tmp/happy.out | grep -q 'code review did not complete'"
 assert 'both prompts carry the rails' \
   "grep '^prompt:ship:T6.4=' $tmp/happy.out | grep -q 'never run bin/deploy --prune' && grep '^prompt:land:T6.4=' $tmp/happy.out | grep -q 'never run bin/deploy --prune'"
 
@@ -155,6 +157,18 @@ assert 'T6.1: the ship prompt demands a "## Runtime actions" section and forbids
   "grep '^prompt:ship:T6.1=' $tmp/deploy.out | grep -q '## Runtime actions'"
 assert 'T6.1: the land prompt runs bin/deploy from main and reads the journal' \
   "grep '^prompt:land:T6.1=' $tmp/deploy.out | grep -q 'bin/deploy (from main)'"
+
+# preShipped: a task whose ship already happened (a land agent that died mid-review is the
+# case this exists for) is landed from the recorded result, with no ship agent spawned.
+PRE=$(jq -nc --argjson s "$G64s" '{"T6.4": $s}')
+run preshipped "$(args '["T6.4"]' ".preShipped = $PRE")" "$(jq -nc --argjson l "$G64l" '{"land:T6.4":$l}')"
+assert 'preShipped: the land agent runs and no ship agent is spawned' \
+  '[ "$(field calls preshipped)" = "land:T6.4" ]'
+assert 'preShipped: the task still lands, from the recorded head' \
+  '[ "$(result_key ".landed | length" preshipped)" = 1 ] && [ "$(result_key ".landed[0].commit" preshipped)" = main-T6.4 ]'
+assert 'preShipped: the recorded branch is what the land prompt is told to rebase' \
+  "grep '^prompt:land:T6.4=' $tmp/preshipped.out | grep -q 'agents/ship-T6.4'"
+assert 'preShipped: the reuse is logged, not silent' '[ "$(field logs preshipped)" -ge 2 ]'
 
 # Every stop rule, each with a second task queued that must never ship.
 expect_stop() {  # $1 name, $2 tasks json, $3 replies json, $4 failingAssertion fragment, $5 expected calls
@@ -193,6 +207,12 @@ expect_stop fleet-restart "$(args "$T2")" "$(two_tasks T6.4 "$G64s" "$(land T6.4
   'fleet restart detected: augustus' 'ship:T6.4,land:T6.4'
 expect_stop enabled "$(args "$T2")" "$(two_tasks T6.4 "$G64s" "$(land T6.4 0 '[]' '[]' '.enabled.user = 15')" T1.3 "$G13s" "$G13l")" \
   'enabled-unit count changed' 'ship:T6.4,land:T6.4'
+expect_stop pre-no-branch "$(args '["T6.4"]' '.preShipped = {"T6.4": {"phaseReached":"finish"}}')" \
+  "$(two_tasks T6.4 "$G64s" "$G64l" T1.3 "$G13s" "$G13l")" \
+  'args.preShipped entry for T6.4 carries no branch' ''
+expect_stop pre-wrong-phase "$(args '["T6.4"]' '.preShipped = {"T6.4": {"branch":"agents/x","phaseReached":"implement"}}')" \
+  "$(two_tasks T6.4 "$G64s" "$G64l" T1.3 "$G13s" "$G13l")" \
+  'ship reached implement, wanted finish' ''
 expect_stop unknown-task "$(args '["T9.9","T6.4"]')" "$(two_tasks T6.4 "$G64s" "$G64l" T1.3 "$G13s" "$G13l")" \
   'unknown task id' ''
 expect_stop no-tasks "$(args "$T2" 'del(.tasks)')" "$(two_tasks T6.4 "$G64s" "$G64l" T1.3 "$G13s" "$G13l")" \

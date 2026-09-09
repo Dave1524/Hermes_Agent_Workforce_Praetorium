@@ -10,7 +10,18 @@ export const meta = {
 
 // args, measured inline by the launching session because a script cannot read the box:
 //   { today: 'YYYY-MM-DD', tasks: ['T6.4', ...], baselineRed: [...],
-//     fleetStart: { marcus: '<ExecMainStartTimestamp>', ... }, enabled: { system: N, user: N } }
+//     fleetStart: { marcus: '<ExecMainStartTimestamp>', ... }, enabled: { system: N, user: N },
+//     preShipped: { 'T6.4': <a SHIP object from an earlier run> } }
+//
+// preShipped exists because the expensive half is not the half that fails. A ship can finish,
+// push its branch and be verified, and the run still die in the land step — T6.2 lost a land
+// agent to the session limit mid-review with the branch already pushed. Re-running the task
+// then re-ships work that is already on a branch. An id listed here skips the ship agent and
+// hands the recorded object to the land step unchanged; every gate after it is unchanged, so a
+// pre-shipped task is landed by the same independent verifier as any other. The object is the
+// launching session's evidence, not the script's: it is checked for the branch the land prompt
+// is built from and for the phase the task requires, and a run stops rather than sending an
+// agent to rebase `undefined`.
 const REPO = '/home/dave/dev/agent-workforce'
 const PLAN = 'docs/dev-plan-2026-09.md'
 
@@ -83,7 +94,8 @@ function landPrompt(id, t, ship, baseline, today) {
 ${t.deploy ? `2. Read the merged brief's "## Runtime actions" section and run exactly those commands, nothing more: bin/deploy (from main), the targeted rm lines, sudo cp systemd/memory-consolidation.service /etc/systemd/system/ && sudo systemctl daemon-reload, sudo systemctl start memory-consolidation.service, journalctl -u memory-consolidation -n 40 --no-pager. Put the journal text in gateEvidence.` : '2. No deploy for this task. If bin/verify.sh reports DRIFT on a file this task changed, that is a red, not something to deploy away.'}
 3. bash bin/verify.sh > /tmp/land-${id}.out 2>&1; verifyExit=$?. allRed = lines matching ^\\s*FAIL:|^PROBLEM\\t|^\\s*DRIFT . newRed = allRed minus this baseline: ${JSON.stringify(baseline)}. Expected new red for this task: ${JSON.stringify(t.expectedRed)} (one line per item, matched by substring, nothing else).
 4. Plan gate. Run: ${t.gateCmd}  -> gateExit. Then judge these words against the tree and put the commands and lines you used in gateEvidence: "${t.gateWords}". gateVerdict = met | not met.
-5. Independent read, calibration-pinned. Read ~/.config/buzz-team/aurelian-calibration.md § "Code / config" and § "Binding"; compute diff_digest = git diff --binary origin/main..main | sha256sum and calibration_digest = sha256sum of that file; apply the rubric's five bullets to the diff. Then invoke the code-review skill at effort ${t.review} on git diff origin/main..main. reviewConfirmed = CONFIRMED findings (file:line: summary); reviewPlausible = the rest.
+5. The code review is a gate, not a note. Independent read, calibration-pinned. Read ~/.config/buzz-team/aurelian-calibration.md § "Code / config" and § "Binding"; compute diff_digest = git diff --binary origin/main..main | sha256sum and calibration_digest = sha256sum of that file; apply the rubric's five bullets to the diff. Then invoke the code-review skill at effort ${t.review} on git diff origin/main..main. reviewConfirmed = CONFIRMED findings (file:line: summary); reviewPlausible = the rest.
+Do not return until the review has produced findings. If the code-review skill cannot be invoked, or returns no result, reset as in step 6, set landed=false and failingAssertion='code review did not complete', and return: an empty reviewConfirmed means the review ran and confirmed nothing, and it must never also mean the review never ran. Both read identically to the caller, and the second one lands the diff.
 6. If verifyExit/newRed/gateExit/gateVerdict/reviewConfirmed do not all pass: git reset --keep origin/main${t.deploy ? ' && bin/deploy (restore runtime bin/ from origin/main; the /etc unit stays as installed, say so)' : ''}; landed=false; fill failingAssertion; return.
 7. Otherwise: git push origin main. git mv the brief to .claude/briefs/archive/${today}-<slug>.md and commit "docs(briefs): archive ${id} — <slug>" with a body carrying verifyExit, every newRed line verbatim, the gate command and result, the diff_digest and calibration_digest, and the plausible findings. git push origin main. git push origin --delete ${ship.branch}. Remove the temporary worktree.
 8. Return fleetStart = ExecMainStartTimestamp of buzz-agent@{marcus,claudius,augustus,trajan,aurelian} (systemctl --user show -p ExecMainStartTimestamp --value) and enabled = {system: systemctl list-unit-files --state=enabled --no-legend | wc -l, user: same with --user}.
@@ -104,9 +116,18 @@ let baseline = args.baselineRed || []
 for (const id of args.tasks) {
   const t = TASKS[id]
   if (!t) return stop(id, 'unknown task id', landed)
-  phase('Ship')
-  const ship = await agent(shipPrompt(id, t, baseline), { label: `ship:${id}`, phase: 'Ship', schema: SHIP, isolation: 'worktree' })
-  if (!ship) return stop(id, 'ship agent returned null (skipped or terminal API error)', landed)
+  const pre = args.preShipped && args.preShipped[id]
+  let ship
+  if (pre) {
+    if (typeof pre.branch !== 'string' || !pre.branch)
+      return stop(id, `args.preShipped entry for ${id} carries no branch to land`, landed, { ship: pre })
+    ship = pre
+    log(`${id}: landing the recorded ship of ${pre.branch}; no ship agent`)
+  } else {
+    phase('Ship')
+    ship = await agent(shipPrompt(id, t, baseline), { label: `ship:${id}`, phase: 'Ship', schema: SHIP, isolation: 'worktree' })
+    if (!ship) return stop(id, 'ship agent returned null (skipped or terminal API error)', landed)
+  }
   const wantPhase = t.shipsRed ? 'implement' : 'finish'
   if (ship.phaseReached !== wantPhase) return stop(id, `ship reached ${ship.phaseReached}, wanted ${wantPhase}: ${ship.stopReason}`, landed, { ship })
 
