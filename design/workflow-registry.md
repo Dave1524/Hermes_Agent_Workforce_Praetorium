@@ -138,7 +138,8 @@ authorised by Dave for six nights on 2026-08-14 and rescheduled for four make-up
 the 2026-08-27 OAuth outage. Expiry is the design, not a defect: leave them alone.
 An earlier draft of §6.5 called this a silent failure and proposed converting both to
 recurring calendars — that would have created two permanent nightly Opus jobs nobody asked
-for. Both also exist only in `/etc` with no source in `systemd/` (§6.7), which stands.
+for. Both also existed only in `/etc` with no source in `systemd/` (§6.7) — as recorded on
+2026-09-01; both `/etc` pairs were deleted 2026-09-04, see the RETIRED note below.
 Registry treatment: these are campaigns, not rows in the standing-workflow table.
 
 **RETIRED 2026-09-04 (W19; recorded 2026-09-08, T6.2).** Both campaigns spent their four
@@ -172,7 +173,7 @@ Platform job, owner trajan per §7.1, recorded in `design/agents/trajan.toml`. A
 
 ## 4. Paused, dead, or dormant — the calls made 2026-09-01
 
-| Item | State | Proposed decision |
+| Item | State | Decision taken 2026-09-01 |
 |---|---|---|
 | augustus-content.timer | RE-ENABLED 2026-09-01 08:15; Persistent=true fired an immediate catch-up run (healthy at launch) | done — owner augustus (§7.4) |
 | content-change-dispatch.timer | RE-ENABLED 2026-09-01 08:15; first poll tick clean (0 Picked, exit 0) | done (§7.4) |

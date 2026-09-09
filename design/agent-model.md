@@ -1,11 +1,12 @@
 # Agent model — surfaces, manifests, and what each agent may do (D2)
 
 **Status: DRAFT 2026-09-01** — build-order step 2 of the approved infrastructure review
-(Notion: "Proposal — Praetorium agent infrastructure review"). Starts from the frozen
-`design/workflow-registry.md` (D1), which answers *which workflows exist and who is
-accountable*. This file answers Dave's second question — **which actions, tools and
-skills each agent requires** — and defines the manifest that makes the answer
-enforceable rather than remembered.
+(Notion: "Proposal — Praetorium agent infrastructure review"). Started from
+`design/workflow-registry.md` (D1), which answered *which workflows exist and who is
+accountable* on 2026-09-01. That answer now lives in `design/agents/*.toml`; the registry
+was sealed as a frozen record on 2026-09-08 (T6.4) and is an input to nothing. This file
+answers Dave's second question — **which actions, tools and skills each agent requires** —
+and defines the manifest that makes the answer enforceable rather than remembered.
 
 Every claim below was read from live state on 2026-09-01, not from the repo's own
 documentation. Where the repo and the live box disagree, §6 records which is which.
@@ -599,9 +600,9 @@ because a whole tree was missing from the comparison.
 
 ### 6.8 Registry §2 recorded next-elapse times, so three schedules are wrong by day
 
-Every trigger in `design/workflow-registry.md` §2 is a *next-elapse* value, which folds in
-`RandomizedDelaySec` and shows only the next occurrence. Compared against the declared
-`OnCalendar`:
+Every trigger recorded in `design/workflow-registry.md` §2 on 2026-09-01 was a *next-elapse*
+value, which folds in `RandomizedDelaySec` and shows only the next occurrence. Compared
+against the declared `OnCalendar` that day:
 
 | Unit | Registry §2 says | Declared |
 |---|---|---|
@@ -613,7 +614,9 @@ The minute-level drift (06:01 for 06:00, 22:19 for 22:15) is harmless jitter. Th
 specs are not: m1-signal-scan is recorded as running seven times a week and runs twice,
 and `CLAUDE.md` has had the correct values all along. Anything that reasons about expected
 run counts — a scorecard, a "0 error runs in 7d" claim, a D3 eval cadence — inherits the
-error. The manifests carry the declared values; the registry has a correction footnote.
+error. `design/agents/*.toml` carries the declared values and is where a schedule is read
+from; the registry keeps its 2026-09-01 numbers with a correction footnote, because a dated
+record is corrected in place, never rewritten (registry §7.6).
 
 **General rule adopted for D2 and D3: read a schedule from `systemctl cat`, never from
 `list-timers`.** One tells you what was asked for, the other what happens to be next.
@@ -628,11 +631,13 @@ silently is worth less than no manifest at all.
 
 The minimum wiring that makes them load-bearing, in the order it should be built:
 
-1. `tests/test_agent_manifests.sh` — every manifest parses; every workflow in
-   `design/workflow-registry.md` §2/§4 is claimed by exactly one manifest (the registry froze
-   2026-09-08, T6.4 — the manifests are the only list now); every
+1. `tests/test_agent_manifests.sh` — every manifest parses; every workflow declared in
+   `design/agents/*.toml` is claimed by exactly one manifest and joined to a live unit; every
    `surfaces.scheduled.tools` matches the `--allowedTools` of the named wrapper. Hooks
-   into `bin/verify.sh`, which already runs `tests/*.sh`.
+   into `bin/verify.sh`, which already runs `tests/*.sh`. **Written as this list stood on
+   2026-09-01, when `design/workflow-registry.md` §2/§4 was the set to join against. It is
+   not any more:** the registry was sealed as a frozen record on 2026-09-08 (T6.4) and the
+   manifests are the only list.
 2. The `AGENT_PROFILE` → owner rename (registry §6.6), taking its values from `owner`.
 3. Generated coverage lists for the reporting jobs (registry §6.4).
 
