@@ -15,8 +15,8 @@
 # is dated history and stays as written — it asserts the file cannot drift back into
 # presenting itself as current.
 #
-# THE THREE INVARIANTS. 1 and 2 look at the first HEADER_LINES lines, because that is what a
-# reader and the land gate look at; 3 looks at every heading in the file:
+# THE FOUR INVARIANTS. 1, 2 and 4 look at the header — the lines above the file's first `---`
+# rule, which is where the header ends; 3 looks at every heading in the file:
 #
 #   1. The header is present: a `FROZEN RECORD` marker, and `design/agents/` named as where
 #      workflows are declared now. The bare word FROZEN discriminates nothing — the pre-freeze
@@ -31,9 +31,19 @@
 #      under this box's en_US.UTF-8, `sort -u` collapses two paths that differ only in
 #      punctuation, so a dead pointer beside its live twin was never resolved (measured
 #      2026-09-08; `tests/test_buzz_interactive_harness.sh` pins the same).
-#   3. No `##` heading anywhere in the file claims liveness — `(live`, `(proposed)`,
-#      "must resolve", "required from". Those were the five headings that made the frozen
-#      file read as an open worklist; a heading is the cheapest place the claim can come back.
+#   3. No heading anywhere in the file, at any level, claims liveness — `(live`, `(proposed`,
+#      "must resolve", "required from", case-insensitively. Those were the five headings that
+#      made the frozen file read as an open worklist; a heading is the cheapest place the
+#      claim can come back, and the H1 is a heading like any other.
+#   4. The header ends at a `---` rule inside HEADER_MAX lines. Without one there is no header,
+#      only a window someone chose, and 1 and 2 are then judged over a guess.
+#
+# WHY THE RULE AND NOT A LINE COUNT. This suite read `head -30` until 2026-09-09, over a header
+# whose last pointer sat on line 24 and whose rule sat on line 28: two lines of growth would
+# have pushed a pointer out of scope with no signal at all — the checker would have gone on
+# passing over a region that no longer contained what it was written to check. The rule moves
+# with the prose, so the window cannot fall behind it. HEADER_MAX only bounds the damage when
+# the rule is missing entirely, which invariant 4 reports rather than absorbs.
 #
 # WHY NOT compgen -G. Measured 2026-09-08 on bash 5.3: `compgen -G "design/nope/"` reports a
 # match for a directory that does not exist — a fail-open on exactly the trailing-slash case
@@ -48,7 +58,7 @@
 # No box precondition: every checkout carries both inputs, so this suite never prints SKIP.
 set -uo pipefail
 
-HEADER_LINES=30
+HEADER_MAX=60
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 REGISTRY="$REPO_ROOT/design/workflow-registry.md"
@@ -69,15 +79,24 @@ assert() {
 # --- the checkers, one definition each, used on fixtures and on the live file --------------
 # Each prints one offender per line, so a failure names its subject instead of only its count.
 
+header_of() {                 # $1 file — the lines above the first `---` rule, HEADER_MAX at most
+  awk -v max="$HEADER_MAX" 'NR>max || /^---$/ {exit} {print}' "$1"
+}
+
+header_unbounded() {          # $1 file — a header no rule closes is a window, not a header
+  head -n "$HEADER_MAX" "$1" | grep -q '^---$' \
+    || echo "no --- rule in the first $HEADER_MAX lines"
+}
+
 header_missing() {            # $1 file
   local hdr
-  hdr=$(head -n "$HEADER_LINES" "$1")
+  hdr=$(header_of "$1")
   grep -q 'FROZEN RECORD' <<<"$hdr"   || echo 'no FROZEN RECORD marker'
   grep -q 'design/agents/' <<<"$hdr"  || echo 'no design/agents/ pointer'
 }
 
-live_headings() {             # $1 file
-  grep -nE '^##.*(\(live|\(proposed\)|must resolve|required from)' "$1"
+live_headings() {             # $1 file — any level, either paren spelling, either case
+  grep -inE '^#{1,6} .*(\(live|\(proposed|must resolve|required from)' "$1"
   return 0
 }
 
@@ -96,7 +115,7 @@ unresolved_pointers() {       # $1 file, $2 root the pointers resolve against
   while IFS= read -r p; do
     [ -n "$p" ] || continue
     ( cd "$root" && resolves_glob "$p" ) || echo "$p"
-  done < <(head -n "$HEADER_LINES" "$f" | grep -oE '`[A-Za-z0-9_./*@:-]+`' | tr -d '`' \
+  done < <(header_of "$f" | grep -oE '`[A-Za-z0-9_./*@:-]+`' | tr -d '`' \
              | sed -E 's/:[0-9-]+$//' | grep '/' | grep -v '://' | LC_ALL=C sort -u)
 }
 
@@ -145,8 +164,46 @@ the unit list in `config/fleet-units.tsv`, contracts under `design/contracts/`. 
 like `design/workflow-registry.md:77-78` is checked by its path; a home path like `~/agent-workforce/bin`
 and a URL like `https://github.com/block/buzz` are not.
 
+---
+
 ## 2. Scheduled persona workflows (as recorded 2026-09-01)
 ## 7. Decisions taken by Dave (2026-09-01)
+EOF
+
+# A header that outgrew the old fixed 30-line window: the dead pointer sits on line 34, above
+# the `---` on line 38. Checked against a window bounded by the rule; missed by a fixed head -30.
+{
+  echo '# Workflow registry — the D1 record (FROZEN)'
+  echo
+  echo '**Status: FROZEN RECORD.** Live declarations: `design/agents/*.toml`.'
+  for i in $(seq 1 28); do echo "Paragraph line $i of a header that grew."; done
+  echo 'One more pointer, added last: `design/fixture-grown-header-pointer.md`.'
+  echo
+  echo '---'
+  echo
+  echo '## 2. Scheduled persona workflows (as recorded 2026-09-01)'
+} >"$fx/long-header.md"
+
+# No rule at all: the header has no end, so the window is a guess. Named rather than assumed.
+cat >"$fx/no-rule.md" <<'EOF'
+# Workflow registry — the D1 record (FROZEN)
+
+**Status: FROZEN RECORD.** Live declarations: `design/agents/*.toml`.
+
+## 2. Scheduled persona workflows (as recorded 2026-09-01)
+EOF
+
+# The three liveness spellings the first regex let through: an H1, a lowercase-insensitive
+# match, and `(proposed` without its closing paren.
+cat >"$fx/heading-variants.md" <<'EOF'
+# Workflow registry (live)
+
+**Status: FROZEN RECORD.** Live declarations: `design/agents/*.toml`.
+
+---
+
+## 3. Scheduled platform jobs (LIVE, deterministic)
+### 7.1 Decisions (proposed, pending Dave)
 EOF
 
 assert 'a file with no header is named for the marker AND the pointer' \
@@ -166,13 +223,24 @@ assert 'the dead-pointer fixture names the missing file, not the real ones besid
 assert 'a healthy file has its header'                "[ -z \"\$(header_missing '$fx/healthy.md')\" ]"
 assert 'and every header pointer resolves'            "[ -z \"\$(unresolved_pointers '$fx/healthy.md' '$REPO_ROOT')\" ]"
 assert 'and no live heading'                          "[ -z \"\$(live_headings '$fx/healthy.md')\" ]"
+assert 'and its header is bounded by a rule'          "[ -z \"\$(header_unbounded '$fx/healthy.md')\" ]"
+assert 'a dead pointer past line 30 but above the rule is still named' \
+  "unresolved_pointers '$fx/long-header.md' '$REPO_ROOT' | grep -q fixture-grown-header-pointer"
+assert 'a file whose header is closed by no rule is named' \
+  "header_unbounded '$fx/no-rule.md' | grep -q 'no --- rule'"
+assert 'an H1, an upper-case (LIVE) and a bare (proposed are each reported' \
+  "[ \"\$(live_headings '$fx/heading-variants.md' | wc -l)\" = 3 ]"
 
 echo "--- 2. the live registry: $REGISTRY ---"
 missing=$(header_missing "$REGISTRY")
 dead=$(unresolved_pointers "$REGISTRY" "$REPO_ROOT")
 live=$(live_headings "$REGISTRY")
+unbounded=$(header_unbounded "$REGISTRY")
+hdr_lines=$(header_of "$REGISTRY" | wc -l)
 
-assert "the first $HEADER_LINES lines carry the FROZEN header naming design/agents/ (${missing:-complete})" \
+assert "the header ends at a --- rule, so the checked window is the header (${unbounded:-$hdr_lines lines})" \
+  "[ -z \"\$unbounded\" ]"
+assert "those $hdr_lines lines carry the FROZEN header naming design/agents/ (${missing:-complete})" \
   "[ -z \"\$missing\" ]"
 assert "every repo path in the header resolves on disk (${dead:-all resolve})" \
   "[ -z \"\$dead\" ]"
