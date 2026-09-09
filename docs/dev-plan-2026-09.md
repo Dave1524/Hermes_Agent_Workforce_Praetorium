@@ -211,10 +211,20 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
 
 ## Execution order for Claude
 
-1. T1.1, T1.4, T1.3, then T1.2 last, because Phase 2 hangs on it.
-2. T6.1, T6.2, T6.4 alongside Phase 1; nothing depends on them.
+Order as of 2026-09-09, after T1.3, T1.4, T6.2 and T6.4 landed. Status for every row lives in the
+Notion tracker; this section is the sequence for what is left.
+
+**Next: T1.1.** No blocker, size S, and it ships red by design — acceptance is that the red list
+equals the 10 missing contract files in the baseline, not a green gate.
+
+1. T1.1, then T1.2. T1.2 stays last in Phase 1 because Phase 2 hangs on it.
+2. T6.1 alongside Phase 1; nothing depends on it.
 3. T2.1 and T2.3, then T2.2 (largest, needs a canary window), then T2.4 once D1 lands.
 4. T3.1, T3.2, T3.3.
-5. T4.0 first. Then T4.1, T4.3, T4.4, T4.2 (BD last, after T2.3), T4.5.
-6. T5.1 starts right after T4.0, in parallel with contract writing. Then T5.2, T5.3, T5.4.
-7. T0.3 when T0.2 lands. T6.3 when Dave says.
+5. T4.0 first, unblocked since T1.4 landed. Then T4.1, T4.3, T4.4, T4.2 (BD last, after T2.3), T4.5.
+6. T5.1 as soon as T4.0 lands — take it ahead of the remaining Phase 4 contracts if the executor
+   is wanted early. Then T5.2, T5.3, T5.4.
+7. T0.3 when T0.2 lands. T6.3 when Dave says; T6.2 no longer blocks it.
+
+Startable today with no blocker: T1.1, T1.2, T2.3, T3.1, T4.0, T6.1. Everything else waits on one
+of those or on a Dave item (D1, T0.1, T6.3's moment).
