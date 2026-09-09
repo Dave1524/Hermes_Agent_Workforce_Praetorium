@@ -24,13 +24,23 @@ for f in bin/*; do
   esac
 done
 
+# The suites are graded at error severity too. Running a test is not the same as linting
+# it: a suite whose bug is an unquoted expansion or a masked return value goes on printing
+# `ok:` lines, and every checker in tests/ is written to be the thing that notices. They
+# stay out of the advisory pass below on purpose — that output is already most of the
+# gate's 200 KB, and style findings on a fixture builder are not what it is read for.
+test_scripts=()
+for f in tests/*.sh; do
+  [ -f "$f" ] && test_scripts+=("$f")
+done
+
 for f in "${scripts[@]}"; do
   echo "syntax: $f"
   bash -n "$f" || fail=1
 done
 
 echo "--- shellcheck (error-severity, must be clean) ---"
-shellcheck -S error "${scripts[@]}" || fail=1
+shellcheck -S error "${scripts[@]}" ${test_scripts[@]+"${test_scripts[@]}"} || fail=1
 
 echo "--- shellcheck (full, advisory only) ---"
 shellcheck "${scripts[@]}" || true
