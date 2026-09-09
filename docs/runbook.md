@@ -75,8 +75,8 @@ read a persisting `na` as the handoff having failed.
 
 Verify after applying: the next run of any of the first six logs
 `mode: … owner=<persona>` in `agent_run.log` and `memory=recorded` or `memory=fallback` in
-`cost.log`. `bd-followup-drafts` and `bd-stall-radar` are `dormant` (timers disabled) and will
-produce no firing — do not enable a timer to create evidence.
+`cost.log`. `bd-followup-drafts` and `bd-stall-radar` were `dormant` until T2.4 (2026-09-09);
+both timers are now enabled (Sun–Thu 23:00 / 23:30).
 
 **Research pipeline brief (2026-07-30).** The standing research run was hard-down for ten
 days on hermes/claudius via OpenRouter (HTTP 402 "Insufficient credits" landing in the
@@ -165,9 +165,10 @@ install -m 600 profiles/<job>.env.example ~/.config/agent-workforce/<job>.env
 `config/job-overrides/`, and the `install` example named
 `config/job-overrides/augustus-content.env.example` — a path that has existed only under
 `archive/` since 2026-09-01. Following it provisioned a retired runtime. That directory now
-holds history and a pointer; see `config/job-overrides/README.md`, including the two jobs
-(`augustus-content`, standing and enabled; `bd-stall-radar`, dormant and disabled) with no
-example in the live home. `archive/` holds one each and neither is a template — augustus's
+holds history and a pointer; see `config/job-overrides/README.md`, including the one job
+(`augustus-content`, standing and enabled) with no example in the live home.
+`bd-stall-radar` gained `profiles/bd_stall_radar.env.example` in T2.3 and was enabled in
+T2.4. `archive/` holds one each and neither is a template — augustus's
 still names `kanban_run_and_wait.sh`, retired with the Hermes kanban — so derive the wiring
 from the unit's own journal rather than from `archive/`.
 

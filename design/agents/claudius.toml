@@ -16,19 +16,19 @@ tools       = ["claude-code-builtins", "mcp__qmd-mcp__*", "notion_* (7, via brok
 mcp         = ["qmd-mcp", "buzz-team-mcp"]
 notes       = "Undenied claude.ai connectors present here too — agent-model.md §6.1."
 
-# The four scheduled workflows do NOT share one tool set. This is the clearest case on
+# The six scheduled workflows do NOT share one tool set. This is the clearest case on
 # the box of a capability that exists per-workflow rather than per-agent.
 [surfaces.scheduled]
 present     = true
-governed_by = "bin/run_knowledge_digest_cc.sh, bin/run_standing_research_cc.sh, bin/run_raw_ingest_cc.sh, bin/run_m1_signal_scan_cc.sh"
+governed_by = "bin/run_knowledge_digest_cc.sh, bin/run_standing_research_cc.sh, bin/run_raw_ingest_cc.sh, bin/run_m1_signal_scan_cc.sh, bin/run_bd_stall_radar_cc.sh, bin/run_bd_followup_drafts_cc.sh"
 tools       = ["Bash", "Read", "Write", "Edit", "Glob", "Grep"]   # the common floor
 tools_web   = ["WebSearch", "WebFetch"]                            # standing-research + m1 only
 mcp         = []
 notes       = """
-knowledge-digest and raw-ingest have NO web access; standing research and m1-signal-scan
-do. qmd is reached through Bash (the CLI), never MCP, on this surface. All four write only
-_inbox/agents/** and must end in a dated proposal or a literal DECLINE: sentinel —
-bin/proposal_or_decline.sh is the AGENT_VERIFY_CMD for every one of them.
+knowledge-digest, raw-ingest, and both BD jobs have NO web access; standing research and
+m1-signal-scan do. qmd is reached through Bash (the CLI), never MCP, on this surface. All
+six write only _inbox/agents/** and must end in a dated proposal or a literal DECLINE:
+sentinel — bin/proposal_or_decline.sh is the AGENT_VERIFY_CMD for every one of them.
 """
 
 [surfaces.kanban]
@@ -100,36 +100,35 @@ profile keeps a same-day idempotency check and no weekly-skip guard — the time
 cadence.
 """
 
-# Registry §7.5 called these "not yet wired" and this file called them `planned`. Both are
-# wrong: service AND timer are installed in /etc and in systemd/, with real OnCalendar
-# lines. They are DISABLED, not absent — `systemctl is-enabled` returns disabled for both.
-# So the Phase-B question is "enable these?", which is Dave's call, and not "build them".
+# Registry §7.5 called these "not yet wired" and this file called them `planned`. They
+# were installed-but-disabled until T2.4 (2026-09-09): D1 placed the override envs, two
+# live canaries each, then `systemctl enable --now`. Status is standing, matching the box.
 [[workflows]]
 unit     = "bd-stall-radar"
 surface  = "scheduled"
-trigger  = "Sun..Thu 23:00 (+5min jitter) — INSTALLED BUT DISABLED"
+trigger  = "Sun..Thu 23:00 (+5min jitter)"
 model    = "claude-sonnet-5"
 profile  = "profiles/bd_stall_radar_task.md"
 runner   = "bin/run_bd_stall_radar_cc.sh"
 route    = "bd"
 web      = false
-status   = "dormant"
+status   = "standing"
 suite    = ["tests/test_bd_stall_radar_smoke.sh"]
 contract = "design/contracts/bd-stall-radar.md"           # TODO Phase B
-notes    = "CC runner landed T2.3 (2026-09-09). Timer stays disabled until T2.4/D1. Stall rules live in bin/bd_stall_radar_kernel.py; the runner is the m1-shaped harness around it."
+notes    = "Enabled T2.4 (2026-09-09). Stall rules live in bin/bd_stall_radar_kernel.py; the runner is the m1-shaped harness around it."
 
 [[workflows]]
 unit     = "bd-followup-drafts"
 surface  = "scheduled"
-trigger  = "Sun..Thu 23:30 (+3min jitter) — INSTALLED BUT DISABLED"
+trigger  = "Sun..Thu 23:30 (+3min jitter)"
 model    = "claude-opus-5"
 profile  = "profiles/bd_followup_drafts_cc_task.md"
 runner   = "bin/run_bd_followup_drafts_cc.sh"
 route    = "bd"
-status   = "dormant"
+status   = "standing"
 suite    = ["tests/test_bd_followup_drafts_smoke.sh"]
 contract = "design/contracts/bd-followup-drafts.md"       # TODO Phase B
-notes    = "23:30 clears the 04:30/05:30/06:00 jobs sharing agent_propose.sh's global flock — a collision there is a silent SKIP, not a failure (agent-model.md §6.6)."
+notes    = "Enabled T2.4 (2026-09-09). 23:30 clears the 04:30/05:30/06:00 jobs sharing agent_propose.sh's global flock — a collision there is a silent SKIP, not a failure (agent-model.md §6.6)."
 
 
 # --- S1, brief 7. See marcus.toml for why these five entries exist and what `kind` does.

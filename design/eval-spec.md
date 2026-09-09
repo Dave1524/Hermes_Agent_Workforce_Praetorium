@@ -163,12 +163,12 @@ judgement is the part a coverage figure cannot express.
 | `fleet-turn-check` | trajan | standing | **exemption ended 2026-09-03** — the script was adopted as `buzz-team/fleet-turn-check.sh`, so the premise was gone; now covered by `tests/test_fleet_turn_check.sh` (structural: it asserts the five design rules the script's own header requires, and deliberately does not run it — gate 2 spends a real model turn) |
 | `ttm-pool-drain` | trajan | standing | exempt — `/usr/local/bin/ttm-pool-drain`, root-owned, outside this repo |
 | `buzz-pr-watch` | trajan | standing | exempt — `--user` unit running `~/.local/bin/buzz-pr-watch`, outside this repo |
-| `bd-stall-radar` | claudius | dormant | installed but disabled; its sibling `bd-followup-drafts` has a suite |
 
 *Two `campaign` rows — `praetorium-content-strategy-research` and
 `praetorium-faceless-content-research`, bounded, needing no standing suite — were removed
 2026-09-08 (T6.2): both expired on schedule and were retired 2026-09-04 with their unit
-files (W19).*
+files (W19). `bd-stall-radar` sat here as dormant/uncovered until T2.3 added its suite
+and T2.4 enabled the timer (2026-09-09); it is standing and covered.*
 
 So the honest backlog is **four suites** — not fifteen, and not the two this section previously
 concluded. Every other gap is bounded, disabled, or code this repo does not own. Those four

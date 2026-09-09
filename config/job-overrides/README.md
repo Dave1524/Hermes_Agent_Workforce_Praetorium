@@ -32,8 +32,7 @@ The ten live examples are `bd_followup_drafts`, `bd_stall_radar`, `daily_plan`, 
 
 `augustus-content` has no `profiles/*.env.example`. Its only template was the archived one
 here, which names a retired runtime. `bd-stall-radar` gained `profiles/bd_stall_radar.env.example`
-in T2.3 (2026-09-09); installing it into `~/.config/agent-workforce/` is D1, and enabling
-the timer is T2.4. Do not install from
+in T2.3 (2026-09-09); D1 installed it and T2.4 enabled the timer the same day. Do not install from
 `archive/` to fill the augustus gap — derive the wiring from the unit's own journal instead, which
 reveals the effective `AGENT_RUNTIME_CMD` without reading the deny-listed live `.env`:
 

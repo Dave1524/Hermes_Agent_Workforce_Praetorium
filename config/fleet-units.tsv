@@ -59,8 +59,8 @@ agent-inbox-sync	system	standing	trajan	timer
 agent-proposal	system	standing	claudius	timer
 agent-workforce-auto-sync	system	standing	trajan	timer
 augustus-content	system	standing	augustus	timer
-bd-followup-drafts	system	dormant	claudius	timer
-bd-stall-radar	system	dormant	claudius	timer
+bd-followup-drafts	system	standing	claudius	timer
+bd-stall-radar	system	standing	claudius	timer
 buzz-agent@augustus	user	standing	augustus	service
 buzz-agent@aurelian	user	standing	aurelian	service
 buzz-agent@claudius	user	standing	claudius	service
