@@ -308,7 +308,7 @@ def main():
         print(f"  [{tag:6}] {c['client'][:34]:34} {c['stage']:9} {c['days']:>4}d  {note[:52]}")
 
     if not stalls:
-        print("=> clean decline: no genuine new stalls, no proposal written")
+        print("DECLINE: no genuine new stalls, no proposal written")
         if not args.dry_run:
             append_memory(memory_line([], today, None))
         return 0

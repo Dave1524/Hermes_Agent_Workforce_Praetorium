@@ -108,13 +108,15 @@ cadence.
 unit     = "bd-stall-radar"
 surface  = "scheduled"
 trigger  = "Sun..Thu 23:00 (+5min jitter) — INSTALLED BUT DISABLED"
-model    = "claude-opus-5"
+model    = "claude-sonnet-5"
 profile  = "profiles/bd_stall_radar_task.md"
+runner   = "bin/run_bd_stall_radar_cc.sh"
 route    = "bd"
+web      = false
 status   = "dormant"
-suite    = []
+suite    = ["tests/test_bd_stall_radar_smoke.sh"]
 contract = "design/contracts/bd-stall-radar.md"           # TODO Phase B
-notes    = "Brief exists: .claude/briefs/bd-radar-followup-timers.md. Live /etc unit already has OnFailure; the repo copy does not (agent-model.md §6.3)."
+notes    = "CC runner landed T2.3 (2026-09-09). Timer stays disabled until T2.4/D1. Stall rules live in bin/bd_stall_radar_kernel.py; the runner is the m1-shaped harness around it."
 
 [[workflows]]
 unit     = "bd-followup-drafts"
