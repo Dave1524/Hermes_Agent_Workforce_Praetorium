@@ -207,7 +207,9 @@ owner   = "fleet"
 asserts = [
   "manifest-parse-named",        # a manifest that does not parse is named, never dropped from the join
   "manifest-shape-named",        # one that parses into a shape the checker cannot walk is named, not a traceback
-  "present-surface-hosts-work",  # every surface declared present hosts >= 1 [[workflows]] entry naming it
+  "present-surface-hosts-work",  # every surface declared present hosts >= 1 live [[workflows]] entry naming it
+  "absent-surface-hosts-nothing",# and present = false hosts none — the same claim, read the other way
+  "idle-status-not-hosting",     # spent and planned entries do not host a surface; dormant does
   "retired-surface-silent",      # present = false over zero entries is the retired shape, not a finding
 ]
 why_no_workflow = """
