@@ -151,7 +151,33 @@ for owner, w in entries:
             problem("suite-paths-exist",
                     f"{w.get('unit')} ({owner}): declared suite {path} is not a file")
 
-# design/fleet-suites.toml's own SCHEMA is asserted by tests/test_fleet_guards.sh (path
+# --- contract-path join (T1.1) -------------------------------------------------------
+# Resolves if present. T4.5 flips this to present-and-resolves. A missing field is
+# counted so the join cannot pass by only walking the entries that name one. Two
+# entries sharing one missing path produce one PROBLEM, not two — the gate is ten
+# distinct files, and augustus-content is named twice.
+contract_checked = 0
+missing_contract_paths = []
+seen_missing_contracts = set()
+for owner, w in entries:
+    contract_checked += 1
+    path = w.get("contract")
+    if not isinstance(path, str) or not path.strip():
+        continue
+    path = path.strip()
+    if (ROOT / path).is_file():
+        continue
+    if path in seen_missing_contracts:
+        continue
+    seen_missing_contracts.add(path)
+    missing_contract_paths.append(path)
+    problem("contract-exists", path)
+
+if entries and contract_checked < len(entries):
+    problem("contract-join-counted",
+            f"checked {contract_checked} of {len(entries)} entries — the join skipped some")
+
+# design/fleet-suites.toml's own SCHEMA is asserted by tests/test_fleet_guards.sh (path)
 # exists, owner is in the enum, asserts non-empty). Consumed here, not re-validated. The
 # `asserts` JOIN below is a different claim from that schema and lives here deliberately —
 # see the block that opens it.
@@ -346,6 +372,8 @@ print(f"  {len(claimed)} distinct suite paths claimed "
 # is the only thing on screen that distinguishes a clean pass from an empty one.
 print(f"  asserts join: {joined_ids} anchored id(s) matched across {joined_suites} "
       f"declared suite(s)")
+print(f"  contract join: checked {contract_checked} of {len(entries)} entries, "
+      f"{len(missing_contract_paths)} missing file(s)")
 
 print("  exempt from needing a suite — named, never merely skipped:")
 for unit, reason in exempt:
@@ -353,6 +381,7 @@ for unit, reason in exempt:
 
 print(f"SUMMARY\tentries={len(entries)} standing={len(standing)} covered={len(covered)} "
       f"exempt={len(exempt)} uncovered={len(uncovered)} unclaimed={len(unclaimed)} "
-      f"orphans={len(orphans)}")
+      f"orphans={len(orphans)} contract_checked={contract_checked} "
+      f"contract_missing={len(missing_contract_paths)}")
 for assertion, detail in problems:
     print(f"PROBLEM\t{assertion}\t{detail}")

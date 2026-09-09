@@ -42,6 +42,13 @@ report=$(mktemp)
 trap 'rm -f "$report"' EXIT
 python3 tests/test_workflow_coverage.py >"$report" 2>&1 || { cat "$report"; exit 1; }
 grep -v '^\(PROBLEM\|EXEMPT\|SUMMARY\)	' "$report"
+# T1.1 ships red as PROBLEM lines, not a collapsed FAIL: — the land set-diff matches
+# one line per missing path. Other PROBLEM ids stay filtered above.
+# (::contract-exists)
+grep '^PROBLEM	contract-exists	' "$report" || true
+if grep -q '^PROBLEM	contract-exists	' "$report"; then
+  fail=1
+fi
 
 # Every exempt workflow is printed BY NAME on every run. A silent exemption is how a thing
 # stops being looked at, and fleet-turn-check — exempt here — is the gate that proves an
@@ -69,6 +76,21 @@ join_reported_what_it_compared() {
   [ -n "$join_ids" ] && [ -n "$join_suites" ] \
     && [ "$join_suites" -gt 0 ] && [ "$anchors_here" -gt 0 ] \
     && [ "$join_ids" -ge "$anchors_here" ]
+}
+
+# Same vacuity shape as the asserts join: a printed count compared against a figure
+# derived here. Walking only the entries that name a contract would print 17 of 33
+# (or 17 of 17) and this would fail; deleting the join prints nothing and this fails.
+contract_checked=$(sed -n 's/^  contract join: checked \([0-9]\{1,\}\) of .*/\1/p' "$report")
+contract_of=$(sed -n 's/^  contract join: checked [0-9]\{1,\} of \([0-9]\{1,\}\) entries.*/\1/p' "$report")
+entries_summary=$(sed -n 's/.*\bentries=\([0-9]*\).*/\1/p' "$report")
+live_entries=$(cat design/agents/*.toml | grep -c '^\[\[workflows\]\]' || true)
+
+contract_join_checked_every_entry() {
+  [ -n "$contract_checked" ] && [ "$contract_checked" = "$contract_of" ] \
+    && [ "$contract_checked" = "$entries_summary" ] \
+    && [ "$contract_checked" = "$live_entries" ] \
+    && [ "$contract_checked" -gt 0 ]
 }
 
 # One assertion per rule, each named as design/fleet-suites.toml declares it.
@@ -102,5 +124,7 @@ check asserts-anchored \
   'every asserts id is anchored in the suite it names, and every anchor is declared'  # (::asserts-anchored)
 assert 'and the join says how much it compared, so a deleted rule cannot pass as a clean one' \
   join_reported_what_it_compared  # (::asserts-join-counted)
+assert 'the contract-path join checked every parsed entry, so skipping the ones without a field cannot pass as a clean run' \
+  contract_join_checked_every_entry  # (::contract-join-counted)
 
 exit $fail
