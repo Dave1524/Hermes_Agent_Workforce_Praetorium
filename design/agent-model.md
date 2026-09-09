@@ -25,8 +25,8 @@ now three:
   tools through the broker — and, until 2026-09-01, Gmail, Outlook and Drive as well
   (§6.1, now closed);
 - inside `knowledge-digest` the runner declares `Bash,Read,Write,Edit,Glob,Grep` and loads
-  **no MCP server at all** — the second half is the containment; the first is a declaration
-  that `bypassPermissions` does not enforce (§2, S2);
+  **no MCP server at all** — the second half is the MCP containment; the first is enforced
+  under `--permission-mode dontAsk` (T2.2, §2, S2);
 - inside `m1-signal-scan` the runner additionally declares `WebSearch,WebFetch`;
 - on a kanban card he had the Hermes toolset plus his hermes profile's 25-skill
   offering (§3) — **S3 retired 2026-09-02 (D7)**.
@@ -59,7 +59,7 @@ positions in a count, and a table that renumbers on retirement silently invalida
 | # | Surface | Runtime | Who runs here | Tool set | Governed by |
 |---|---|---|---|---|---|
 | **S1** | Buzz interactive | `claude-agent-acp` (marcus, claudius, trajan, aurelian); `codex-acp` in bwrap (augustus) | all five personas | Claude Code built-ins + `mcp__qmd-mcp__*` + 7 `notion_*` (broker) + **whatever `~/.claude/settings.json` does not deny** | `buzz-team/<name>.toml` **(source, since 2026-09-03)** → `~/.config/buzz-team/<name>.toml` (who may wake whom); `~/.config/systemd/user/buzz-agent@.service` (flags); `~/.claude/settings.json` (`permissions.deny`) |
-| **S2** | Scheduled headless CC | `claude -p` from `bin/run_*_cc.sh`, wrapped by `bin/agent_propose.sh` | nobody — the owner persona is *accountability*, the executor is anonymous | **no MCP** (`--strict-mcp-config --mcp-config '{"mcpServers":{}}'` — no connector tool exists in the session) plus the `agent_propose.sh` write boundary (proposal mode: anything outside `_inbox/agents/**` discards the whole worktree; ops mode has none). `--allowedTools` is passed but **inert** under `bypassPermissions` — measured 2026-09-01, `Edit` absent from the list and used anyway — so it is the *declared* set, not an enforced one, until T2.2 | the wrapper script, one per workflow, in `bin/` |
+| **S2** | Scheduled headless CC | `claude -p` from `bin/run_*_cc.sh`, wrapped by `bin/agent_propose.sh` | nobody — the owner persona is *accountability*, the executor is anonymous | **no MCP** (`--strict-mcp-config --mcp-config '{"mcpServers":{}}'` — no connector tool exists in the session) plus the `agent_propose.sh` write boundary (proposal mode: anything outside `_inbox/agents/**` discards the whole worktree; ops mode has none). `--allowedTools` is enforced under `--permission-mode dontAsk` (T2.2, 2026-09-09): a tool not on the list is denied, not prompted. A bare `Bash` entry still permits any command the model writes, so Bash is not a sandbox; the write boundary is still the proposal-mode guard. | the wrapper script, one per workflow, in `bin/` |
 | ~~**S3**~~ | ~~Hermes kanban dispatch~~ — **RETIRED 2026-09-02 (D7)** | ~~`hermes-gateway` auto-dispatches `ready` cards every 60s~~; the gateway is disabled+stopped, the board is archived (`design/archive/hermes-kanban-board.md`), `bin/kanban_run_and_wait.sh` is deleted | ~~marcus, claudius, augustus, trajan~~ — nobody | ~~Hermes toolsets + a real skills index with a per-profile allowlist~~ | `~/.hermes/profiles/<p>/config.yaml` and `bin/apply_skills_allowlist.sh` **both survive** — the CLI still reads them (§3) |
 | **S4** | Buzz-dispatched scheduled | `bin/run_content_via_buzz.sh` — a timer that triggers **S1** and waits | augustus only | inherits S1 entirely | `bin/buzz_routes.env` (destination, kind, who to wake) + the profile augustus is told to read |
 
@@ -133,14 +133,16 @@ all** — `AGENT_PROFILE` carries a *model* name (`claude-sonnet`, `claude-opus`
 is what causes registry inconsistency §6.6. The manifest is where the owner persona
 becomes a real value that S2 can key on.
 
-### Permission posture is uniform and permissive
+### Permission posture is no longer uniform
 
-All of S1, S2 and S4 run at `bypassPermissions` / `bypass-permissions`. Nothing is
-gated at the tool-approval layer anywhere on this box. **Every real boundary is either
-a server that is not loaded plus a write boundary (S2), a deny-list (S1), or prose in a
-charter.** S2's `--allowedTools` is not one: under bypass an allowlist pre-approves, it does
-not restrict (S2 row above; T2.2 changes that). Design accordingly: a capability you do not
-want used must be *absent*, not *discouraged*.
+S1 and S4 still run at `bypassPermissions` / `bypass-permissions`. S2 runs at `dontAsk`
+with `--allowedTools` enforced (T2.2, 2026-09-09). A tool not on the list is denied, not
+prompted — unattended jobs cannot hang on a permission dialog. **Every real boundary is
+still either a server that is not loaded plus a write boundary (S2), a deny-list (S1), or
+prose in a charter**, and S2's allowlist is now a fourth: it restricts which Claude Code
+tools exist in the session. It does not sandbox `Bash`. A capability you do not want used
+as a Claude Code tool must be absent from the list; a capability you do not want used via
+Bash must be absent as a binary or caught by the write boundary.
 
 ### Skills are two mechanisms, and the bigger investment sits on the smaller surface
 
@@ -397,10 +399,10 @@ the live totals.
    described as "claudius can search the web".
 3. **A prohibition must name its enforcement point, and `enforced = true` must name the
    test that detects its removal.** A `must_not` entry with no corresponding mechanism — a
-   server that is not loaded, a write boundary, a deny-list rule — is an aspiration, and
-   absence from an `--allowedTools` list is not a mechanism while the runner passes
-   `bypassPermissions` (§2, S2); mark it `enforced = false` rather than implying a boundary
-   that does not exist. Where a mechanism does exist, `test` names the
+    server that is not loaded, a write boundary, a deny-list rule — is an aspiration.
+    Absence from an `--allowedTools` list *is* a mechanism on S2 under `dontAsk` (T2.2);
+    it is still not one on S1/S4, which pass `bypassPermissions`. Mark a `must_not` that
+    only names the allowlist on those surfaces `enforced = false`. Where a mechanism does exist, `test` names the
    assertion covering it (`<file>::<assertion-id>`), or `test_exempt` says in prose why no
    assertion is possible. `tests/test_fleet_guards.sh` enforces this rule on the manifests
    themselves, in both directions. Definition and rationale: eval-spec.md §7.4 (D9).
@@ -430,15 +432,15 @@ Live in this session at the time of the audit, therefore live in every agent ses
 `mcp__claude_ai_Google_Drive__share_file`, plus the rest of Gmail, M365, Drive and Figma.
 (That reading is the finding, not the current state — see the closure below.)
 
-The charter says the fleet drafts and never acts outward. On S2 that was true by
+The charter says the fleet drafts and never acts outward. On S2 that is true by
 construction — no MCP server is loaded (`--strict-mcp-config --mcp-config
-'{"mcpServers":{}}'`), so no connector tool exists in the session to be called. **Not**
-because those tools are absent from `--allowedTools`, which is what this sentence said from
-2026-09-01 to 2026-09-08: the allowlist is inert under `bypassPermissions` (§2, S2 row), so
-dropping `--strict-mcp-config` puts the connectors live on S2 with no error, and dropping the
-allowlist changes nothing. Crediting it is the §5 rule 3 defect — a real boundary attributed
-to the wrong thing, which survives the removal of what actually holds it. On S1 it was true
-only because the agents had not tried.
+'{"mcpServers":{}}'`), so no connector tool exists in the session to be called, **and**
+as of T2.2 (2026-09-09) a connector name absent from `--allowedTools` is also denied
+under `dontAsk`. Until T2.2 the allowlist did not restrict — `bypassPermissions`
+pre-approves, it does not deny — so dropping `--strict-mcp-config` put the connectors
+live on S2 with no error. The empty mcp config remains the half that makes the tools
+not exist; the allowlist is now the half that refuses them if they did. Crediting only
+one is the §5 rule 3 defect. On S1 it was true only because the agents had not tried.
 
 **Closed 2026-09-01 (D1).** All four families are denied for agent sessions, and Dave's own
 interactive sessions are unchanged — `~/.claude/settings.json` was not edited. The split is

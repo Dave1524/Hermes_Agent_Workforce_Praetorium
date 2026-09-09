@@ -38,7 +38,7 @@ TASK_FILE="${STANDING_RESEARCH_TASK:-$HOME/agent-workforce/profiles/standing_res
 cd "$INBOX"
 exec "$CLAUDE_BIN" -p "$(cat "$TASK_FILE")" \
   --model claude-opus-5 \
-  --permission-mode bypassPermissions \
+  --permission-mode dontAsk \
   --strict-mcp-config \
   --mcp-config '{"mcpServers":{}}' \
   --allowedTools "Bash,Read,Write,Edit,Glob,Grep,WebSearch,WebFetch"

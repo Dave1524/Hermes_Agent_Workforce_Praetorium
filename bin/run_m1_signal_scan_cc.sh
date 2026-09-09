@@ -28,7 +28,7 @@ TASK_FILE="$HOME/agent-workforce/profiles/m1_signal_scan_cc_task.md"
 cd "$INBOX"
 exec "$CLAUDE_BIN" -p "$(cat "$TASK_FILE")" \
   --model claude-sonnet-5 \
-  --permission-mode bypassPermissions \
+  --permission-mode dontAsk \
   --strict-mcp-config \
   --mcp-config '{"mcpServers":{}}' \
   --allowedTools "Bash,Read,Write,Edit,Glob,Grep,WebSearch,WebFetch"

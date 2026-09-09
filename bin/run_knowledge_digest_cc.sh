@@ -31,7 +31,7 @@ fi
 cd "$INBOX"
 exec "$CLAUDE_BIN" -p "$(cat "$TASK_FILE")" \
   --model claude-opus-5 \
-  --permission-mode bypassPermissions \
+  --permission-mode dontAsk \
   --strict-mcp-config \
   --mcp-config '{"mcpServers":{}}' \
   --allowedTools "Bash,Read,Write,Edit,Glob,Grep"

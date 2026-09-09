@@ -28,9 +28,10 @@
 #      All three spellings count — `--permission-mode bypassPermissions`, the `=` form, and
 #      `--dangerously-skip-permissions`. Matching only the first made the invariant vacuous
 #      against a runner that still bypassed, which is the one direction it must never fail.
-#      T2.2 (docs/dev-plan-2026-09.md) takes the runners off bypass and rewrites the row; this
-#      assertion goes vacuous then, and fires again only if a runner regains bypass while the
-#      row claims a real allowlist. It never has to be edited for T2.2 to land.
+#      T2.2 (docs/dev-plan-2026-09.md) took the runners off bypass and rewrote the row.
+#      Invariant 4 below is the T2.2 gate: no live runner may pass bypass. Invariant 3
+#      stays so that a runner that regains bypass while the row claims a real allowlist
+#      is named — it is silent only while bypass count is zero.
 #
 # WHAT THIS DOES NOT ASSERT. That the allowlist is inert — that is measured, not testable from
 # a checkout. That Bash is bounded under bypass — it is not, and T2.2's brief says what a bare
@@ -213,5 +214,7 @@ assert "every runner carries --strict-mcp-config and the empty mcpServers config
   "[ -z \"\$uncontained\" ]"
 assert "the S2 row credits the no-MCP mechanism and, under bypass, calls the allowlist inert (${defects:-yes})" \
   "[ -z \"\$defects\" ]"
+assert "no live runner passes bypassPermissions (T2.2)" \
+  "[ -z \"\$(bypass_runners '$BIN')\" ]"
 
 exit $fail

@@ -29,7 +29,7 @@ esac
 cd "$WORKDIR"
 exec "$CLAUDE_BIN" -p "$(cat "$TASK_FILE")" \
   --model claude-opus-5 \
-  --permission-mode bypassPermissions \
+  --permission-mode dontAsk \
   --strict-mcp-config \
   --mcp-config '{"mcpServers":{}}' \
   --allowedTools "Bash,Read,Write,Glob,Grep,WebSearch,WebFetch"
