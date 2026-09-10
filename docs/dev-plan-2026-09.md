@@ -58,7 +58,7 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   workflow: `schedule` trigger, interval at least 60 s, one `send_message` naming one agent
   literally in the stored template. Gate: workflow id recorded.
 - **T0.3** [Claude, S, T0.2] Prove the wake from the journal and `CPUUsageNSec` against an idle
-  sibling, never by asking the agent. Record in `.claude/briefs/buzz-task-scheduling.md` and
+  sibling, never by asking the agent. Record in `.claude/briefs/archive/2026-09-10-buzz-task-scheduling.md` and
   W20. Close W20 as available, or as `DECIDED — not available` with the timer-dispatch path
   written up as the supported mechanism. Delete the test workflow. Gate: W20 closed either way.
 

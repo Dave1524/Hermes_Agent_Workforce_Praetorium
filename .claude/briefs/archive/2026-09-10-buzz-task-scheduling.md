@@ -8,6 +8,109 @@ five `buzz-agent@*` units. **Both gates, because the remedy spans both domains.*
 is inside the gate, so the gate is RED until `bin/deploy` runs. Expected, not a bug.
 
 
+## CLOSED — T0.3, 2026-09-10: W20 is `DECIDED — not available`
+
+**The relay runs no workflow scheduler.** It accepts a `schedule` trigger, stores it, and never
+fires it. The brief's central question (criterion 1) is answered, criterion 3's wake is proven
+impossible rather than proven, and criterion 4 is the branch that applies. Systemd timers remain
+the supported mechanism; nothing below Phase 0 of `docs/dev-plan-2026-09.md` depends on workflows.
+
+### The measurement — Marcus, credentialed shell, 2026-09-09
+
+One probe workflow, `09a4b564-6651-456e-bbca-235902533716`, in `ops-praetorium`
+(`62f321f3-bd6a-4b31-b19b-b8b49bed30f4`) — a stream channel, forced by trap 4 below and the only
+one holding a worker agent. Definition at `~/.scratch/w20-probe.yaml`; the stored copy read back
+byte-identical.
+
+1. **No scheduler.** Interval 5m armed 06:16:35Z; cron `*/2 * * * *` armed 06:35:39Z. Zero fires
+   on either. 65 minutes after creation the channel held exactly one relay-authored message, and
+   that one carried a manual-trigger receipt (`run_id cd7d2cc8-…`).
+2. **Manual trigger works.** `buzz workflows trigger` emitted immediately — event `2918b0e6`,
+   06:30:54Z, signed by the relay self key. A workflow here is a macro, not a schedule.
+3. **The emitted message cannot wake an agent.** Tags: `p <owner>`, `h <channel>`,
+   `buzz:workflow true`, `p <mentioned agent>` — **missing `buzz:workflow-owner` and
+   `buzz:workflow-mention`**, both required by `verified_workflow_owner` (`lib.rs:247`).
+   Attribution rejected → effective author falls back to the raw signer → no author rule matches.
+   CPU over the 150 s after the message: trajan 1.32 s with no burst, against aurelian 0.014 s
+   (idle control) and marcus 8.87 s (a live turn).
+
+Prior to this, T0.1 established the verb works at all: `buzz workflows list` returned `[]` with
+exit 0 across all six team channels — no workflow existed anywhere on the relay.
+
+### Box-side corroboration — 2026-09-10, no credentials used
+
+The harness is ready and **the relay is behind its own harness**:
+
+- `bin/buzz_acp_update.sh probe ~/.local/bin/buzz-acp` — all three `buzz:workflow*` literals
+  present, extraction control passing, all eight unit flags present.
+- Relay NIP-11: `version 0.2.1`, `self`
+  `12f6870117eff1a6318bd38c82a65d51dd19879b7489f57247114d0ee8a96de3` — byte-identical to the
+  signer recorded on the emitted event. That is what makes the message relay-signed rather than
+  agent-signed, and it is checkable without touching a credential.
+- **That key appears in zero author rules** across all five `buzz-team/*.toml`. trajan admits
+  exactly three authors and the relay is not one of them, so the drop is by rule, not by accident.
+- Fleet journals: **0** occurrences of `workflow` since 2026-09-08. trajan's journal for the probe
+  hour holds one `heartbeat_fired` line and nothing else.
+- All five units `NRestarts=0`, up since 2026-09-07 12:12-12:14 CEST — the `CPUUsageNSec` counters
+  sampled above were never reset, which is what makes that comparison sound.
+
+**What this does not establish, said plainly.** The decisive negative — *no schedule ever fired* —
+is Marcus's measurement and cannot be re-derived from a Claude Code session here: `buzz workflows`
+needs the deny-listed `~/.config/buzz-agents/` credentials, and this brief's own
+"Out of scope" forbids routing around them. The five box-side lines corroborate the *consequence*
+(nothing woke); none of them re-observes the *cause*. Absence of `workflow` in a journal is weak
+on its own — these units log lifecycle only, per `~/CLAUDE.md`.
+
+### Two corrections to the record, both from the T0.2 run
+
+Cited here because the earlier text is wrong and was quoted forward:
+
+- *"A workflow runs with Dave's standing authority, not yours"* — **wrong**. The stored workflow
+  record's pubkey is the **creator's**. Measured on the probe, whose record is authored by marcus.
+  Upstream `command_executor.rs:843-846` also restricts manual `trigger` to the owner; marcus
+  triggered his own probe by hand, so that restriction did not hold on relay 0.2.1 either.
+- *"The only way a workflow reaches an agent is `send_message` naming it in the stored
+  template"* — true upstream, **false here**: relay 0.2.1 emits neither wake tag, so no mention
+  wakes anyone, statically named or not.
+
+### Instrument traps, each of which reads like a result
+
+- `buzz workflows runs` returns `[]` for a run that provably executed and posted. Audit from the
+  channel, never the runs feed.
+- `buzz workflows list` still returns a workflow **after a delete** — it queries `kinds:[30620]`
+  raw and never applies the `kind:5`. So a later listing proves nothing either way.
+- `--yaml` on the installed CLI takes YAML **content**, not a path; a path fails with a
+  schema-shaped error that hides the version gap.
+- A workflow message is always kind 9, so one posted into `research`, `content`, `bd` or
+  `approvals` is receipted `ok` and rendered to nobody. Workflows are usable in **stream** channels
+  only.
+
+### Owed, and why T0.3 did not do it
+
+Both need a credentialed shell, which this brief's "Out of scope" reserves. Recorded as pending
+action 2 in `design/open-decisions.md`:
+
+- **Delete the probe workflow** `09a4b564-…`. It is inert — nothing fires — so this is hygiene.
+  Marcus created it and TEAM.md tells him to delete a workflow whose task has ended: one line to
+  him. (A duplicate probe `08fc461e-…`, created by a second concurrent Marcus session naming
+  Aurelian, was already deleted; it still appears in `list` for the reason above.)
+- **Correct `~/.config/buzz-team/TEAM.md` § "Scheduling work"** — the 2026-09-07 grant (D7) still
+  carries both falsified claims above, and still tells every agent to run `buzz workflows list`
+  and report before creating one. That question is answered. This is the authority layer of five
+  running agents, needs a fleet restart plus `check-loaded.sh` to take effect, and TEAM.md is
+  declared excluded from `buzz-team/` adoption — a decision, not an edit. Criterion 5's grant is
+  therefore *made but now misleading*, which is a worse state than either end of it.
+
+### The mechanism that does work
+
+`augustus-content.timer` → `bin/run_content_via_buzz.sh` → dispatch to Augustus over Buzz → wait
+for reply → three-state exit contract. It works **precisely because** the dispatch message is
+signed by an *agent* credential rather than the relay's, so it never meets the author gate above.
+Scheduled agent-to-agent dispatch exists on this box; it is reachable by editing this repo, never
+from chat. Whether closing that last gap is worth pursuing is now a relay-side question, and the
+relay is not administered from here.
+
+
 ## STATUS — 2026-09-07, same day: the harness half is DONE
 
 `~/.local/bin/{buzz,buzz-acp}` were upgraded from the 2026-07-31 build to **desktop-v0.5.23**
@@ -166,8 +269,9 @@ must *consume* them. Upgrading only buzz-acp fixes nothing against a relay that 
 
 ## Acceptance criteria
 
-1. The relay's workflow support is **established by running a command**, not inferred. Record the
-   output and the date in this brief's follow-up, and in `design/open-decisions.md` W20.
+1. **MET 2026-09-09.** The relay's workflow support is **established by running a command**, not
+   inferred. Recorded above and in `design/open-decisions.md` W20. Answer: the verb works, the
+   scheduler does not run.
 2. ~~If the relay supports workflows: both binaries are upgraded to a build at or past the release
    carrying #6953, and the three tag literals are **present** in the new `buzz-acp`.~~ **DONE
    2026-09-07 — and done ahead of criterion 1 deliberately, reversing this brief's own ordering.**
@@ -177,14 +281,15 @@ must *consume* them. Upgrading only buzz-acp fixes nothing against a relay that 
    re-running the same `strings` check that found the defect, with `buzz:config-nudge` as the
    control. **A cheap step that is necessary either way should not wait behind a step that is
    blocked on someone else** — that is the reusable lesson, not a defence of the original order.
-3. A minimal `schedule` workflow (interval ≥60s, one `send_message` step naming one agent in the
-   stored template) fires and **wakes that agent**, proven from the journal and the agent's CPU
-   footprint (`systemctl --user show buzz-agent@<name> -p CPUUsageNSec` against an idle sibling),
-   **not** by asking the agent whether it woke. Absence of logs is not absence of work here.
-4. If the relay does **not** support workflows, or the upgrade is refused: that is recorded as the
-   answer, W20 is closed as `DECIDED — not available`, and the §"already works" path below is
-   documented as the supported mechanism. A "cannot" that is written down beats one that is
-   rediscovered every few weeks.
+3. **DISPROVEN 2026-09-09, which is the same evidence read the other way.** The minimal
+   `schedule` workflow was built exactly as specified (interval 5m, then cron; one `send_message`
+   naming @Trajan literally in the stored template) and **never fired**. The CPU comparison was
+   run anyway on the manually-triggered message and shows no wake: trajan 1.32 s over 150 s
+   against aurelian 0.014 s idle and marcus 8.87 s live. No agent was asked whether it woke.
+4. **THIS IS THE BRANCH THAT APPLIES — done 2026-09-10.** The relay does not run the scheduler;
+   that is recorded as the answer, W20 is closed as `DECIDED — not available`, and the
+   §"already works" path is documented as the supported mechanism in W20, in `agent-model.md` and
+   above. A "cannot" that is written down beats one that is rediscovered every few weeks.
 5. Defect 1 is decided explicitly either way: agents are granted workflow authoring through the team
    instruction layer, or the base prompt's `list, trigger, runs` is recorded as intended and agents
    stop being asked to schedule. Today it is neither — it is an undocumented refusal.

@@ -63,8 +63,12 @@ positions in a count, and a table that renumbers on retirement silently invalida
 | ~~**S3**~~ | ~~Hermes kanban dispatch~~ — **RETIRED 2026-09-02 (D7)** | ~~`hermes-gateway` auto-dispatches `ready` cards every 60s~~; the gateway is disabled+stopped, the board is archived (`design/archive/hermes-kanban-board.md`), `bin/kanban_run_and_wait.sh` is deleted | ~~marcus, claudius, augustus, trajan~~ — nobody | ~~Hermes toolsets + a real skills index with a per-profile allowlist~~ | `~/.hermes/profiles/<p>/config.yaml` and `bin/apply_skills_allowlist.sh` **both survive** — the CLI still reads them (§3) |
 | **S4** | Buzz-dispatched scheduled | `bin/run_content_via_buzz.sh` — a timer that triggers **S1** and waits | augustus only | inherits S1 entirely | `bin/buzz_routes.env` (destination, kind, who to wake) + the profile augustus is told to read |
 
-**S1's workflow-wake path was missing and was installed 2026-09-07 — the harness half of agent
-scheduling is now present, the relay half is still unestablished.** Buzz's workflow engine has no
+**S1 cannot be woken by a scheduled workflow, and that is now settled rather than open
+(W20, closed 2026-09-10).** The harness half was installed 2026-09-07; the relay half was measured
+2026-09-09 and **the relay runs no workflow scheduler** — it accepts a `schedule` trigger, stores
+it, and never fires it, and the message a manual trigger does emit is missing two of the three
+tags the wake requires. Systemd timers are the supported scheduling mechanism on this box.
+Detail below and in W20. Buzz's workflow engine has no
 agent-dispatch action; the only route to an agent is a relay-signed `send_message`
 (`crates/buzz-workflow/src/schema.rs:95-154` at upstream `3c7f288`), and clearing an `owner-only`
 author gate requires `verified_workflow_owner()` (`crates/buzz-acp/src/lib.rs:247`) to re-attribute
@@ -93,17 +97,24 @@ stops matching disk, or when it has not reached GitHub for a week. It stages and
 The five-week gap was never really a stale binary; it was that no check on this box could ask the
 question.
 
-**Two things this did NOT fix, and neither should be assumed closed:**
-- **The relay half is unverified.** Whether the deployed relay runs the workflow scheduler and
-  emits the three tags cannot be established from this box — it needs one authenticated
-  `buzz workflows list`, and the only credentials here are deny-listed. An unauthenticated HTTP
-  probe is a non-test: it 403s on a nonsense path too.
+**Two things this did NOT fix. The first is now answered; the second is still open:**
+- **The relay half — ANSWERED 2026-09-09, and the answer is no.** Relay `0.2.1` accepts a
+  `schedule` trigger and never fires it: interval and cron both armed on one probe workflow, zero
+  fires on either over 65 minutes. A manual `buzz workflows trigger` does emit, immediately, but
+  the emitted event carries `buzz:workflow` **without** `buzz:workflow-owner` or
+  `buzz:workflow-mention`, so `verified_workflow_owner()` rejects attribution, the effective
+  author falls back to the relay's own signing key
+  (`12f6870117eff1a6318bd38c82a65d51dd19879b7489f57247114d0ee8a96de3`, NIP-11 `self`), and that
+  key appears in **zero** author rules across all five `buzz-team/*.toml`. The relay is behind its
+  own harness: this box's buzz-acp understands both missing tags. Measured from a credentialed
+  shell — no Claude Code session here can re-run it, and the box-side corroboration is recorded in
+  W20 rather than restated here.
 - **Agents still believe they cannot author a workflow.** The buzz-acp base prompt advertises
   `buzz workflows` as `list, trigger, runs` — **unchanged at 0.5.23**, verified against the new
   binary — while the CLI has `create`. That is an instruction-layer gap, not a harness one, and
   the upgrade does not touch it.
 
-Brief: `.claude/briefs/buzz-task-scheduling.md`; carried as W20.
+Brief: `.claude/briefs/archive/2026-09-10-buzz-task-scheduling.md`; W20, closed 2026-09-10.
 
 **S1's governance moved into this repo on 2026-09-03 (brief 7) and the direction is now the
 opposite of what it was.** `~/.config/buzz-team/` was a fifth governance tree with no source
