@@ -209,22 +209,62 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   size under 60%.
 - **L2** Closed by measurement 2026-09-07: `augustus-content.timer` is active and fired today.
 
+### Phase 7 — Live breakage, found 2026-09-10 by the /verify sweep
+
+Neither item is on the Notion page. Both are in the class Phase 5 exists to catch, and both are
+losing artifacts today.
+
+- **T7.1** [Claude, S] `bin/proposal_or_decline.sh` fails open across jobs. It greps the last 40
+  lines of the **shared** `agent_run.log` for `^DECLINE:` with no job identity, so any job's
+  decline satisfies any other job's verify. Proved with a fixture: `proposal_or_decline.sh
+  bd-followup-drafts` exits 0 on a sentinel written by `bd-stall-radar`. It happened live — the
+  2026-09-09 23:31 bd-followup-drafts run wrote no proposal, printed only `skip: today's pack
+  already exists`, and logged `OK` five log lines after the radar's 23:04 decline. Compounding it,
+  the idempotent-skip path has no sentinel at all: five task profiles (`standing_research`,
+  `raw_ingest`, `weekly_pre_assembly`, `knowledge_digest`, `bd_followup_drafts`) instruct the agent
+  to print `skip: …`, which the checker does not accept — so an honest same-day re-run only passes
+  by borrowing a sibling's decline. Fix both: stamp the slug into the sentinel
+  (`DECLINE[<slug>]:` or a per-job log) and give the skip branch its own accepted sentinel. Gate: a
+  fixture where job A declines and job B is silent fails B; an idempotent skip passes on its own
+  words.
+- **T7.2** [Claude, M] `augustus-content.service` failed 3 of the last 5 nights — 2026-09-06,
+  09-07 and 09-09 (UTC; the last is the 09-10 01:33 CEST run) — every time on
+  `run_content_via_buzz: no board movement and no reply within 1200s — recording FAIL`, 20 minutes
+  burnt per failure. The corpus gate armed and the trigger published on each; augustus simply never
+  moved the board. On the two nights it worked he replied in under three minutes, so this is not a
+  slow turn. Diagnose along the CLAUDE.md path — the event's `p` tags first, then channel
+  membership, then the unit's cgroup — never by asking the agent. Gate: the cause named, and either
+  fixed or recorded as a `DECIDED` with the timeout re-based on measured turn length.
+
 ## Execution order for Claude
 
-Order as of 2026-09-09, after T1.3, T1.4, T6.2 and T6.4 landed. Status for every row lives in the
-Notion tracker; this section is the sequence for what is left.
+Order as of 2026-09-10, after the 09-09 batch (T1.1, T1.2, T2.1, T2.2, T2.3, T2.4) landed and a
+full `/verify` sweep. Status for every row lives in the Notion tracker; this section is the
+sequence for what is left.
 
-**Next: T1.1.** No blocker, size S, and it ships red by design — acceptance is that the red list
-equals the 10 missing contract files in the baseline, not a green gate.
+**The gate is red and only Phase 4 turns it green.** `bash bin/verify.sh` exits 1 on exactly the
+10 `contract-exists` PROBLEM lines T1.1 was built to ship — 2910 assertions pass, drift is clean,
+one declared skip. That red is correct, and it is also the whole signal: until the ten contracts
+exist, a real regression lands in the same colour and nobody can tell. So Phase 4 moves ahead of
+Phase 3, which the 09-09 order had first and which would have held the gate red through an L, an M
+and an S.
 
-1. T1.1, then T1.2. T1.2 stays last in Phase 1 because Phase 2 hangs on it.
-2. T6.1 alongside Phase 1; nothing depends on it.
-3. T2.1 and T2.3, then T2.2 (largest, needs a canary window), then T2.4 once D1 lands.
-4. T3.1, T3.2, T3.3.
-5. T4.0 first, unblocked since T1.4 landed. Then T4.1, T4.3, T4.4, T4.2 (BD last, after T2.3), T4.5.
-6. T5.1 as soon as T4.0 lands — take it ahead of the remaining Phase 4 contracts if the executor
-   is wanted early. Then T5.2, T5.3, T5.4.
-7. T0.3 when T0.2 lands. T6.3 when Dave says; T6.2 no longer blocks it.
+**Next: T7.1**, then T4.0.
 
-Startable today with no blocker: T1.1, T1.2, T2.3, T3.1, T4.0, T6.1. Everything else waits on one
-of those or on a Dave item (D1, T0.1, T6.3's moment).
+1. **T7.1 and T7.2** — live breakage, ahead of everything. T7.1 is small and is the direct
+   prerequisite for T5.1's sentinel-branch check class; writing the executor on top of a checker
+   that certifies dead runs would bake the defect in. T7.2 is losing a standing job most nights.
+2. **T4.0**, unblocked. Then **T4.3** next inside the phase rather than last: it is the contract
+   for the one job that is actually failing, so it converts T7.2's mystery into a named check.
+   Then T4.1, T4.4, T4.2 (BD, unblocked since T2.3), and **T4.5** — the gate goes green here.
+3. **T5.1** as soon as T4.0 lands; it parallelises with the remaining contracts. Then T5.2, T5.3,
+   T5.4.
+4. **T0.3**, unblocked since T0.1 and T0.2 closed — S, and it closes W20 either way.
+5. **T6.1**, alongside any of the above; nothing depends on it.
+6. **T3.1, T3.2, T3.3** — after the gate is green, not before.
+7. **T6.3** when Dave says.
+
+Startable today with no blocker: T7.1, T7.2, T4.0, T0.3, T6.1, T3.1. Everything else waits on one
+of those or on a Dave item (D2, T6.3's moment).
+
+Dave's queue, unchanged by this sweep: D2, D3, D4, D5, D6, L1, T6.3. D1 closed with T2.4.
