@@ -74,7 +74,7 @@ trigger  = "daily 01:30 (RandomizedDelaySec=5min, Persistent=true)"
 model    = "n/a — dispatches to the live augustus session"
 runner   = "bin/agent_propose.sh -> bin/run_content_via_buzz.sh"
 route    = "content"
-contract = "design/contracts/augustus-content.md"          # TODO Phase B
+contract = "design/contracts/augustus-content.md"
 status   = "standing"
 suite    = ["tests/test_run_content_via_buzz.sh", "tests/test_content_skill_extract.sh"]
 notes    = """

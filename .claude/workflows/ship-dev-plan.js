@@ -25,7 +25,7 @@ export const meta = {
 const REPO = '/home/dave/dev/agent-workforce'
 const PLAN = 'docs/dev-plan-2026-09.md'
 
-const MISSING_CONTRACTS = ['augustus-content', 'bd-followup-drafts', 'bd-stall-radar', 'm1-signal-scan', 'raw-ingest', 'standing-research']
+const MISSING_CONTRACTS = ['bd-followup-drafts', 'bd-stall-radar', 'm1-signal-scan', 'raw-ingest', 'standing-research']
 const ALIAS_WORKFLOWS = ['praetorium-daily-plan', 'praetorium-eod-summary', 'overnight-morning-report', 'weekly-pre-assembly', 'm1-signal-scan']
 const WORKFLOW_ENTRIES = 33
 
