@@ -6,8 +6,11 @@
 # nothing there can be attributed to a particular run; the structured record that
 # agent_propose.sh appends when a run ends can.
 #
-# The decline REASON is the one thing only agent_run.log holds, and it is quoted only
-# when that log was written during this run.
+# The decline REASON is the one thing the structured record does not hold. It comes from
+# the run's OWN output — agent_propose.sh keeps this attempt's stdout at a path keyed by
+# task — and is quoted only when that file was written during this run. Reading it from
+# agent_run.log quoted whichever sibling job had declined last: on 2026-09-09 that stream
+# held bd-stall-radar's decline 27 minutes before bd-followup-drafts said nothing at all.
 set -uo pipefail
 
 BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,10 +18,12 @@ BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$BIN_DIR/delivery_common.sh"
 
 TASK="${DELIVERY_TASK:-}"
-RUN_LOG="${AGENT_RUN_LOG:-$HOME/agent-workforce/logs/agent_run.log}"
 MARKER="${DELIVERY_RUN_MARKER:-}"
 SUBJECT="${REPORT_SUBJECT:-[Praetorium] ${TASK:-agent run}}"
 INBOX_DIR="${AGENT_INBOX_DIR:-$HOME/agent-worktrees/inbox/_inbox/agents}"
+# ExecStartPost is a separate process and inherits no export from the run, so the path is
+# derived from the same task slug agent_propose.sh keyed it on.
+ATTEMPT_LOG="${AGENT_ATTEMPT_LOG:-$HOME/agent-workforce/logs/last-attempt/${TASK}.log}"
 
 # shellcheck source=bin/run_record.sh
 . "$BIN_DIR/run_record.sh"
@@ -26,9 +31,10 @@ INBOX_DIR="${AGENT_INBOX_DIR:-$HOME/agent-worktrees/inbox/_inbox/agents}"
 DELIVERY_RUNTIME=$(run_runtime "$DELIVERY_RUNTIME")
 
 decline_reason() {
-  [ -r "$RUN_LOG" ] || return 0
-  [ -n "$MARKER" ] && [ ! "$RUN_LOG" -nt "$MARKER" ] && return 0
-  grep '^DECLINE:' "$RUN_LOG" | tail -1
+  [ -n "$TASK" ] || return 0
+  [ -r "$ATTEMPT_LOG" ] || return 0
+  [ -n "$MARKER" ] && [ ! "$ATTEMPT_LOG" -nt "$MARKER" ] && return 0
+  grep '^DECLINE:' "$ATTEMPT_LOG" | tail -1
 }
 
 status_line() {  # status_line <record>

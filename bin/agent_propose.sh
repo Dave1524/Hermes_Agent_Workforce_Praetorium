@@ -182,6 +182,14 @@ if [ -z "$run_profile" ]; then
 fi
 run_profile="${run_profile:-unknown}"
 run_task="${AGENT_TASK_SLUG:-standing}"
+# T7.1 (2026-09-10): the run boundary needs a name. agent_run.log is one stream shared by
+# every job, so a DECLINE: line in it belongs to nobody in particular — on 2026-09-09
+# bd-followup-drafts passed its AGENT_VERIFY_CMD on a decline bd-stall-radar had written
+# 27 minutes earlier, having produced nothing itself. This attempt's own output, at a path
+# keyed by task, is the only thing that can answer "did THIS run of THIS job decline?".
+# ExecStartPost inherits no export from the run, so the path must be derivable from the
+# task slug rather than merely passed down.
+export AGENT_ATTEMPT_LOG="${AGENT_ATTEMPT_LOG:-$LOG_DIR/last-attempt/$run_task.log}"
 # W1 (2026-09-02): the episodic store keys on the OWNING PERSONA; the cost record keys on
 # the RUNTIME. They were one variable, and that is why six jobs logged memory=no-store on
 # every run for months — AGENT_PROFILE has been model-named (claude-opus / claude-sonnet)
@@ -319,8 +327,12 @@ while [ "$attempt" -lt "$max_attempts" ]; do
   rc=0
   log "run attempt $attempt/$max_attempts: $run_cmd"
   # Captured per-attempt (then appended to the shared log as before) so the
-  # silent-failure scan sees THIS attempt's tail, not the whole history.
-  attempt_out=$(mktemp "${TMPDIR:-/tmp}/agent_propose_out.XXXXXX")
+  # silent-failure scan sees THIS attempt's tail, not the whole history. Kept after the
+  # run rather than removed: AGENT_VERIFY_CMD reads it in-process and deliver_proposal.sh
+  # reads it from ExecStartPost, long after a mktemp file would have been gone.
+  attempt_out="$AGENT_ATTEMPT_LOG"
+  mkdir -p "$(dirname "$attempt_out")"
+  : > "$attempt_out"
   timeout "${AGENT_TIMEOUT_MINUTES:-30}m" bash -lc "$run_cmd" \
     >"$attempt_out" 2>&1 || rc=$?
   cat "$attempt_out" >>"$LOG_DIR/agent_run.log"
@@ -332,7 +344,6 @@ while [ "$attempt" -lt "$max_attempts" ]; do
     rc=91
     log "SILENT-FAIL: exit 0 but AGENT_VERIFY_CMD found no artifact — recording FAIL"
   fi
-  rm -f "$attempt_out"
   if [ "$rc" -eq 0 ]; then ok=true; break; fi
   # NUC-38: a distinct DEDUP exit (idempotent kanban hit — the card already ran under
   # today's key) is not a failure and must not be retried.

@@ -55,19 +55,27 @@ DECLINE: no 05_knowledge/ or 11_entities/ changes in the last 7 days
 ```
 
 and writes no file. `bin/proposal_or_decline.sh knowledge-digest` matches `^DECLINE:` in
-the last 40 lines of the run log and exits 0.
+**this run's own output** — `$AGENT_ATTEMPT_LOG`, the per-task file agent_propose.sh keeps
+for the attempt — and exits 0. It is deliberately not the shared `agent_run.log`: that
+stream carries every job with no run boundary in it, so until T7.1 (2026-09-10) any job's
+decline satisfied every other job's check. There is no tail window left to tune, because
+the file holds one attempt of one job.
 
 The idempotency skip in STEP 0 is **not** a decline — it prints `skip: …` and no artifact,
-so `proposal_or_decline.sh` fails the run. That is correct today (a second run in one day
-is anomalous and should be visible) but it means a manual re-run on a Sunday reads as a
-failure. Recorded so it is a known behaviour rather than a surprise.
+so `proposal_or_decline.sh` fails the run. That is the intent (a second run in one day is
+anomalous and should be visible) and, since T7.1, it is also what happens: before the fix
+the skip passed by borrowing whichever sibling had declined most recently. It means a
+manual re-run on a Sunday now genuinely reads as a failure, and a canary-then-schedule
+night costs one red run. Recorded so it is a known behaviour rather than a surprise;
+whether that is the alerting Dave wants is a policy question, not a defect.
 
 ## Side effects
 
 - Checks out / resets `~/agent-worktrees/inbox`.
 - Commits the proposal and pushes to the box-safe repo's `agents/inbox` branch.
-- Writes a run record to `~/agent-workforce/logs/agent_run.log` and a cost line to
-  `cost.log`; writes `memory=no-store` because `AGENT_PROFILE` is `claude-opus`, a model
+- Writes a run record to `~/agent-workforce/logs/agent_run.log`, this attempt's own output
+  to `~/agent-workforce/logs/last-attempt/knowledge-digest.log` (truncated per attempt,
+  kept after the run so `ExecStartPost` can read it), and a cost line to `cost.log`; writes `memory=no-store` because `AGENT_PROFILE` is `claude-opus`, a model
   name with no `~/.hermes/profiles/` store (registry §6.6).
 - Touches `/home/dave/logs/run-markers/knowledge-digest.service`.
 - Takes `${AGENT_PROPOSE_LOCK:-/tmp/agent_propose.lock}`.
@@ -81,8 +89,10 @@ task never writes `~/vault` directly on any branch.
 1. **Artifact exists and is this run's.** `_inbox/agents/<RUN_DATE>_knowledge-digest.md`
    is present and newer than `AGENT_RUN_STARTED_AT` — `bin/proposal_or_decline.sh
    knowledge-digest` (already wired as `AGENT_VERIFY_CMD`).
-2. **Or a decline was declared**, `^DECLINE:` in the last 40 log lines. Same command; the
-   check must assert **which branch passed**, never merely that the command exited 0.
+2. **Or a decline was declared**, `^DECLINE:` in this run's own `$AGENT_ATTEMPT_LOG`.
+   Same command; the check must assert **which branch passed**, never merely that the
+   command exited 0 — and must assert it against a sibling job's decline, which is the
+   way branch 2 passed for the wrong job until T7.1.
 3. **Body is under 500 words.** `wc -w` on the file body.
 4. **Header carries the weekly-pre-assembly disclaimer** — `grep -q 'weekly-pre-assembly'`.
 5. **Write boundary held**: `git -C ~/agent-worktrees/inbox diff --name-only HEAD~1` lists

@@ -208,7 +208,18 @@ run_proposal() {  # <sandbox> [extra env assignments are the caller's]
   local h=$1
   DELIVERY_TASK=raw-ingest DELIVERY_ROUTE=research DELIVERY_JOB=raw-ingest.service \
   DELIVERY_RUN_MARKER="$h/marker" AGENT_COST_LOG="$h/cost.log" \
-  AGENT_RUN_LOG="$h/agent_run.log" run_adapter "$h" deliver_proposal.sh
+  run_adapter "$h" deliver_proposal.sh
+}
+
+# T7.1: the reason comes from the run's OWN output, at the per-task path agent_propose.sh
+# writes. ExecStartPost is a separate process and inherits no export from the run, so the
+# path is what carries the job identity — resolved from DELIVERY_TASK, never passed in.
+attempt_log() {  # attempt_log <sandbox> <task> <body> [mtime]
+  local d="$1/agent-workforce/logs/last-attempt"
+  mkdir -p "$d"
+  printf '%s\n' "$3" > "$d/$2.log"
+  [ -n "${4:-}" ] && touch -d "$4" "$d/$2.log"
+  return 0
 }
 
 # A message that only names the file is not a review surface: for these producers the
@@ -248,19 +259,32 @@ assert 'and the outcome is still reported' "argv '$h' | grep -q 'PROPOSAL — pr
 
 h=$(sandbox)
 proposal_sandbox "$h" "$(date -Is)" NOPROPOSAL none
-printf 'noise\nDECLINE: no unprocessed sources in 05_knowledge/raw/\n' > "$h/agent_run.log"
+attempt_log "$h" raw-ingest 'DECLINE: no unprocessed sources in 05_knowledge/raw/'
 rc=$(run_proposal "$h")
 assert 'a decline still delivers' "[ \"\$(calls '$h')\" -eq 1 ]"
 assert 'the decline reason is quoted' "argv '$h' | grep -q 'NOPROPOSAL — no unprocessed sources'"
 
 h=$(sandbox)
 proposal_sandbox "$h" "$(date -Is)" NOPROPOSAL none
-printf 'DECLINE: from a run that ended before this one started\n' > "$h/agent_run.log"
-touch -d '2 hours ago' "$h/agent_run.log"
+attempt_log "$h" raw-ingest 'DECLINE: from a run that ended before this one started' '2 hours ago'
 rc=$(run_proposal "$h")
 assert 'a decline reason older than the marker is not attributed to this run' \
   "! argv '$h' | grep -q 'before this one started'"
 assert 'and the outcome is still reported' "argv '$h' | grep -q 'NOPROPOSAL'"
+
+echo '--- deliver_proposal.sh: a sibling job'"'"'s decline is never quoted as this one'"'"'s ---'
+# The 2026-09-09 failure, one step downstream: agent_run.log held every job'"'"'s declines
+# in one stream, so `grep ^DECLINE: | tail -1` handed this job whichever sibling spoke last.
+h=$(sandbox)
+proposal_sandbox "$h" "$(date -Is)" NOPROPOSAL none
+attempt_log "$h" bd-stall-radar 'DECLINE: no genuine new stalls, no proposal written'
+printf 'DECLINE: no genuine new stalls, no proposal written\n' \
+  > "$h/agent-workforce/logs/agent_run.log"
+rc=$(run_proposal "$h")
+assert 'the sibling reason is not attributed to this job' \
+  "! argv '$h' | grep -q 'no genuine new stalls'"
+assert 'and the silence is reported as having no reason' \
+  "argv '$h' | grep -q 'no reason recorded'"
 
 echo '--- deliver_proposal.sh is loudest when the run wrote no record at all ---'
 h=$(sandbox)

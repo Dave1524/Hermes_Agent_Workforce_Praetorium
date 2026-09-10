@@ -219,14 +219,19 @@ losing artifacts today.
   decline satisfies any other job's verify. Proved with a fixture: `proposal_or_decline.sh
   bd-followup-drafts` exits 0 on a sentinel written by `bd-stall-radar`. It happened live — the
   2026-09-09 23:31 bd-followup-drafts run wrote no proposal, printed only `skip: today's pack
-  already exists`, and logged `OK` five log lines after the radar's 23:04 decline. Compounding it,
-  the idempotent-skip path has no sentinel at all: five task profiles (`standing_research`,
-  `raw_ingest`, `weekly_pre_assembly`, `knowledge_digest`, `bd_followup_drafts`) instruct the agent
-  to print `skip: …`, which the checker does not accept — so an honest same-day re-run only passes
-  by borrowing a sibling's decline. Fix both: stamp the slug into the sentinel
-  (`DECLINE[<slug>]:` or a per-job log) and give the skip branch its own accepted sentinel. Gate: a
-  fixture where job A declines and job B is silent fails B; an idempotent skip passes on its own
-  words.
+  already exists`, and logged `OK` five log lines after the radar's 23:04 decline.
+  `bin/deliver_proposal.sh:31` has the same defect one step narrower, quoting whichever sibling
+  declined last as this job's reason. Fix: give the run boundary a name — `agent_propose.sh` keeps
+  the attempt's own output at a per-task path and exports it, and both consumers read that instead
+  of the shared tail, which removes the wrong-job and wrong-run axes together and deletes the tail
+  window rather than tuning it. Gate: a fixture where job A declines and job B is silent fails B.
+  **Deliberately excluded** — giving the idempotent skip its own accepted sentinel. Six task
+  profiles print `skip: …`, which the checker rejects; `design/contracts/knowledge-digest.md`
+  already records that as intended ("a second run in one day is anomalous and should be visible").
+  Today the skip passes anyway by borrowing a sibling's decline, so the scoping fix *restores* that
+  decision rather than overturning it. The consequence goes live with the fix: a same-day re-run
+  goes red, and a canary-then-schedule night costs one red run. Whether that alerting is wanted is
+  a policy call for Dave, tracked separately — not something a defect fix should settle.
 - **T7.2** [Claude, M] `augustus-content.service` failed 3 of the last 5 nights — 2026-09-06,
   09-07 and 09-09 (UTC; the last is the 09-10 01:33 CEST run) — every time on
   `run_content_via_buzz: no board movement and no reply within 1200s — recording FAIL`, 20 minutes
