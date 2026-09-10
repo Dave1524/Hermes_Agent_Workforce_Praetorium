@@ -24,6 +24,7 @@ run_weekly() {
   local state=$1 home=$2 root
   root=$(make_vault_fixture "$state")
   local claude; claude=$(make_mock_claude "$home")
+  make_skills_fixture "$home" marcus >/dev/null
   mkdir -p "$home/inbox/_inbox/agents"
   rc=0
   HOME="$home" CLAUDE_BIN="$claude" VAULT_DIR="$root/vault" VAULT_SYNC_GUARD="$GUARD" \
@@ -65,6 +66,8 @@ assert "no MCP servers (strict, empty config)" \
   "grep -q -- '--strict-mcp-config' '$home/claude_argv.log' && grep -q 'mcpServers' '$home/claude_argv.log'"
 assert "no outward tools in the allowlist (box holds no outward credential)" \
   "! grep -qE 'WebSearch|WebFetch' '$home/claude_argv.log'"
+assert "offers marcus's pointer-skill tree by explicit path, not ~/.claude/skills (T3.1)" \
+  "grep -qx -- '--plugin-dir' '$home/claude_argv.log' && grep -qx '$home/agent-workforce/skills/marcus' '$home/claude_argv.log'"
 
 echo "--- weekly-pre-assembly: the task profile does not re-introduce the size-capped read ---"
 assert "task profile exists" "[ -f '$TASK' ]"

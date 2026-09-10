@@ -52,6 +52,7 @@ make_m1_home() {
   [ "$state" = no_task ]  || { mkdir -p "$home/agent-workforce/profiles"
                                cp "$TASK" "$home/agent-workforce/profiles/m1_signal_scan_cc_task.md"; }
   [ "$state" = no_inbox ] || mkdir -p "$home/agent-worktrees/inbox/_inbox/agents"
+  make_skills_fixture "$home" claudius >/dev/null
   # `-r`, not `-f`: a present-but-unreadable profile (a bad chmod, a half-copied deploy)
   # feeds cat(1) the same failure and the agent the same empty prompt as an absent one, so
   # the guard is proven against both. `||` form, not `&&`: under `set -e` a trailing-false
@@ -190,6 +191,9 @@ assert 'WebSearch and WebFetch ARE in the allowlist — a scan that cannot read 
   "grep -qx 'Bash,Read,Write,Edit,Glob,Grep,WebSearch,WebFetch' '$home/claude_argv.log'"
 assert 'and the profile still forbids outward ACTION, which is the gate that matters' \
   "grep -qF 'no Notion sharing, no outbound' '$TASK'"
+
+assert "offers claudius's pointer-skill tree by explicit path, not ~/.claude/skills (T3.1)" \
+  "grep -qx -- '--plugin-dir' '$home/claude_argv.log' && grep -qx '$home/agent-workforce/skills/claudius' '$home/claude_argv.log'"
 
 echo "--- m1-signal-scan: the task profile keeps its write boundary and idempotency ---"
 assert 'task profile exists' "[ -f '$TASK' ]"

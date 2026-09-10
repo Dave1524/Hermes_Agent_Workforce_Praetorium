@@ -26,6 +26,7 @@ run_digest() {
   local state=$1 home=$2 root
   root=$(make_vault_fixture "$state")
   local claude; claude=$(make_mock_claude "$home")
+  make_skills_fixture "$home" claudius >/dev/null
   mkdir -p "$home/inbox/_inbox/agents"
   rc=0
   HOME="$home" CLAUDE_BIN="$claude" VAULT_DIR="$root/vault" VAULT_SYNC_GUARD="$GUARD" \
@@ -66,6 +67,8 @@ assert "pins the full Opus 5 model name" "grep -qx 'claude-opus-5' '$home/claude
 assert "no MCP servers (strict, empty config)" \
   "grep -q -- '--strict-mcp-config' '$home/claude_argv.log' && grep -q 'mcpServers' '$home/claude_argv.log'"
 assert "no web tools in the allowlist" "! grep -qE 'WebSearch|WebFetch' '$home/claude_argv.log'"
+assert "offers claudius's pointer-skill tree by explicit path, not ~/.claude/skills (T3.1)" \
+  "grep -qx -- '--plugin-dir' '$home/claude_argv.log' && grep -qx '$home/agent-workforce/skills/claudius' '$home/claude_argv.log'"
 
 echo "--- knowledge-digest: the task profile encodes the whole mechanism ---"
 assert "task profile exists" "[ -f '$TASK' ]"

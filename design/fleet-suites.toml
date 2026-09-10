@@ -232,3 +232,39 @@ that name the surface — which is no job's output. W19 found augustus.toml's sc
 present over nothing for four days because the retirement commit touched only what a test
 forced it to; this is that test.
 """
+
+# The pointer-skill tree (T3.1, docs/dev-plan-2026-09.md). Same shape and same reason as the
+# graders above: its subject is an agreement between four artifacts — skills/, its own README
+# allocation table, design/agents/*.toml's scheduled runners, and the two scripts that deploy
+# and drift-check the tree — none of which is a job's output.
+#
+# WHAT IT CAN AND CANNOT SEE, because the dev-plan gate says "a headless run lists the skills"
+# and this suite deliberately does not. `claude plugin details` does not accept --plugin-dir
+# (measured 2026-09-10: unknown option), so no deterministic CLI call enumerates a
+# session-loaded plugin's skills, and the only listing that exists costs model tokens — which
+# no suite in this repo spends. What is asserted instead is the chain: the tree is well-formed
+# in the layout --plugin-dir actually reads, each runner names its owner's tree by explicit
+# path in the DEPLOYED copy, the guard makes a missing tree fatal instead of silent, and drift
+# keeps that copy equal to source. The live listing is a one-off recorded in the landing commit.
+[[suite]]
+path    = "tests/test_pointer_skills.sh"
+owner   = "fleet"
+asserts = [
+  "pointer-not-copy",           # every SKILL.md is a few lines naming its canonical vault path
+  "pointer-names-match",        # front-matter name == directory == the path segment in the body
+  "plugin-manifest-valid",      # each owner tree is a plugin named praetorium-<owner>
+  "skills-nested-under-skills", # no skill at a plugin root, which --plugin-dir silently ignores
+  "allocation-matches-readme",  # the README table and the tree, both join directions
+  "no-profile-duplicate",       # no pointer duplicates a task profile owning the same surface
+  "runner-offers-owner-tree",   # every scheduled runner passes --plugin-dir at its own owner's tree
+  "runner-skills-guard",        # and proves the plugin manifest readable first — the silent-path trap
+  "runner-join-counted",        # the manifest join reports its size, so a parse matching nothing is red
+  "drift-covers-skills",        # skills is in bin/deploy PATHS and in CONTENT_TREES, read from both
+  "pointer-target-exists",      # box-gated: every named vault path resolves (existence only, never read)
+]
+why_no_workflow = """
+Nothing schedules it and nothing should. Its inputs change only when a human edits them, which
+is exactly when bin/verify.sh already runs it. The one thing a timer could add — proving a live
+headless session sees the tree — is the thing no deterministic call can do, so a nightly run
+would re-assert the static chain against an unchanged input and prove nothing new.
+"""

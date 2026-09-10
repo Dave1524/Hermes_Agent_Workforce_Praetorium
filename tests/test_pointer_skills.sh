@@ -426,6 +426,23 @@ unjoined=$(unjoined_plugin_dir_scripts "$REPO_ROOT" "$TMP/joined-live" | tr '\n'
 assert "no script offers a skill tree without a scheduled workflow naming it (${unjoined:-none} do)" \
   "[ -z '$unjoined' ]"
 
+# The greps above prove the guard is WRITTEN. This proves it FIRES — the distinction matters
+# because the failure it exists to catch is silent, so a guard that never ran would look
+# exactly like a guard that passed. One runner is enough: the pattern is byte-identical in
+# all of them and the greps cover the rest. No vault fixture is needed because the skills
+# guard deliberately sits ahead of the freshness check.
+probe_runner=bin/run_bd_followup_drafts_cc.sh
+assert "the probed runner ($probe_runner) is one the manifest join actually reached" \
+  "grep -qx '$probe_runner' '$TMP/joined-live'"
+probe_home="$TMP/guard-probe"; mkdir -p "$probe_home"
+probe_rc=0
+HOME="$probe_home" PRAETORIUM_SKILLS_DIR="$probe_home/no-such-tree" \
+  BD_FOLLOWUP_TASK="$REPO_ROOT/profiles/bd_followup_drafts_cc_task.md" \
+  bash "$REPO_ROOT/$probe_runner" > "$probe_home/out.log" 2>&1 || probe_rc=$?
+assert "a missing plugin tree is fatal rather than silent (exit $probe_rc)" "[ '$probe_rc' != 0 ]"
+assert "and the refusal names the path it could not read" \
+  "grep -q 'skills plugin not readable' '$probe_home/out.log' && grep -q 'no-such-tree' '$probe_home/out.log'"
+
 echo '--- 11. deploy and drift cover the tree (::drift-covers-skills) ---'
 # Read out of both scripts rather than restated here: a literal in this file would assert a
 # path the check does not actually compare, which is the exact defect tests/test_deploy_drift.sh
@@ -445,6 +462,7 @@ if box_only_with 'the vault the pointer skills name' "$VAULT_SKILLS"; then
   # Existence only. The vault is out of scope for this repo to read; what a pointer promises
   # is that the path resolves, and that is all this checks.
   dangling=$(while IFS=$'\t' read -r _owner skill; do
+    [ -n "$skill" ] || continue
     [ -f "$VAULT_SKILLS/$skill/SKILL.md" ] || echo "$skill"
   done <<<"$live_pairs" | tr '\n' ' ')
   assert "all $n_live pointer target(s) resolve under $VAULT_SKILLS (${dangling:-none} dangle)" \

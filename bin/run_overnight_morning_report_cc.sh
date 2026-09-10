@@ -28,6 +28,9 @@ MODEL="${MORNING_REPORT_MODEL:-claude-sonnet-5}"
 TASK_FILE="$WORKDIR/profiles/overnight_morning_report_cc_task.md"
 
 [ -r "$TASK_FILE" ] || { echo "overnight-morning-report: task file not readable: $TASK_FILE" >&2; exit 1; }
+SKILLS_DIR="${PRAETORIUM_SKILLS_DIR:-$HOME/agent-workforce/skills/marcus}"
+# A --plugin-dir path that does not exist is silent — exit 0, no diagnostic, no skills.
+[ -r "$SKILLS_DIR/.claude-plugin/plugin.json" ] || { echo "overnight-morning-report: skills plugin not readable: $SKILLS_DIR" >&2; exit 1; }
 
 mkdir -p "$HOME/logs/overnight"
 
@@ -40,4 +43,5 @@ exec "$CLAUDE_BIN" -p "$(cat "$TASK_FILE")" \
   --permission-mode dontAsk \
   --strict-mcp-config \
   --mcp-config '{"mcpServers":{}}' \
+  --plugin-dir "$SKILLS_DIR" \
   --allowedTools "Bash,Read,Write,Glob,Grep"

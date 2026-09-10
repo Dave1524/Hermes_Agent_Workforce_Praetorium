@@ -17,7 +17,7 @@ SRC="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="${AGENT_WORKFORCE_RUNTIME:-$HOME/agent-workforce}"
 
 # Only these trees are deployed. Anything else in the runtime dir is runtime state.
-PATHS=(bin profiles docs CLAUDE.md AGENTS.md README.md config systemd)
+PATHS=(bin profiles docs CLAUDE.md AGENTS.md README.md config systemd skills)
 
 DRY_RUN=0
 PRUNE=0

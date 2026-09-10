@@ -18,6 +18,9 @@ INBOX="${KNOWLEDGE_DIGEST_INBOX:-$HOME/agent-worktrees/inbox}"
 TASK_FILE="${KNOWLEDGE_DIGEST_TASK:-$HOME/agent-workforce/profiles/knowledge_digest_cc_task.md}"
 
 [ -r "$TASK_FILE" ] || { echo "knowledge-digest: task file not readable: $TASK_FILE" >&2; exit 1; }
+SKILLS_DIR="${PRAETORIUM_SKILLS_DIR:-$HOME/agent-workforce/skills/claudius}"
+# A --plugin-dir path that does not exist is silent — exit 0, no diagnostic, no skills.
+[ -r "$SKILLS_DIR/.claude-plugin/plugin.json" ] || { echo "knowledge-digest: skills plugin not readable: $SKILLS_DIR" >&2; exit 1; }
 
 if ! "$GUARD" check; then
   echo "knowledge-digest: REFUSING to run — the vault mirror is dirty or stale (see above)." >&2
@@ -34,4 +37,5 @@ exec "$CLAUDE_BIN" -p "$(cat "$TASK_FILE")" \
   --permission-mode dontAsk \
   --strict-mcp-config \
   --mcp-config '{"mcpServers":{}}' \
+  --plugin-dir "$SKILLS_DIR" \
   --allowedTools "Bash,Read,Write,Edit,Glob,Grep"

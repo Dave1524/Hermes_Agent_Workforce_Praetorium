@@ -110,6 +110,16 @@ ls ~/.hermes/profiles/                              # the Hermes profiles below
   immediately, logged `Nothing to do`, and `origin/main` stayed a commit behind. The
   sentence above is what makes this easy to miss: "any dirty tree reaches `origin/main`" is
   true, and says nothing at all about a clean one.
+- `skills/` — the **pointer-skill tree** (T3.1). One plugin per owner
+  (`skills/<owner>/.claude-plugin/plugin.json`, `skills/<owner>/skills/<name>/SKILL.md`); every
+  `SKILL.md` is a few lines naming its canonical vault path, **never a copy** — the vault owns
+  the text. Shipped by `bin/deploy` and compared by `bin/check_deploy_drift.sh` like any other
+  content tree, and loaded by the nine scheduled runners with `--plugin-dir` at an explicit
+  path in the **deployed** tree, never from `~/.claude/skills/`. Two traps it is built around,
+  both measured: a skill directory at a plugin root is silently not discovered, and a
+  `--plugin-dir` path that does not exist is silent too — exit 0, no diagnostic, no skills —
+  which is why each runner proves the manifest readable before it execs. `skills/README.md`
+  owns the allocation, joined to the tree by `tests/test_pointer_skills.sh`.
 - `~/agent-workforce/` — **deployed runtime copy** (no git) that systemd actually execs. Do not
   treat it as canonical. Deploy with **`bin/deploy`** — additive by default; `--dry-run` to
   preview, `--prune` to also drop files deleted from source. Runtime state (`logs/`, `var/`,

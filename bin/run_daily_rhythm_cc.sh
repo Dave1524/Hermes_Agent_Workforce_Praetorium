@@ -29,6 +29,9 @@ case "$job" in
   eod-summary) TASK_FILE="$WORKDIR/profiles/eod_summary_task.md" ;;
 esac
 [ -r "$TASK_FILE" ] || { echo "$job: task file not readable: $TASK_FILE" >&2; exit 1; }
+SKILLS_DIR="${PRAETORIUM_SKILLS_DIR:-$HOME/agent-workforce/skills/marcus}"
+# A --plugin-dir path that does not exist is silent — exit 0, no diagnostic, no skills.
+[ -r "$SKILLS_DIR/.claude-plugin/plugin.json" ] || { echo "$job: skills plugin not readable: $SKILLS_DIR" >&2; exit 1; }
 
 if ! "$GUARD" check; then
   echo "$job: REFUSING to run — the vault mirror is dirty or stale (see above)." >&2
@@ -45,4 +48,5 @@ exec "$CLAUDE_BIN" -p "$(cat "$TASK_FILE")" \
   --permission-mode dontAsk \
   --strict-mcp-config \
   --mcp-config '{"mcpServers":{}}' \
+  --plugin-dir "$SKILLS_DIR" \
   --allowedTools "Bash,Read,Write,Glob,Grep"

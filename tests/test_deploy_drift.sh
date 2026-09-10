@@ -56,7 +56,7 @@ fixture() {
   # `clean` assertion below depend on fleet state.
   echo 'rules' > "$root/src_buzz/shared.toml"
   echo 'rules' > "$root/buzz/shared.toml"
-  # The seven content trees bin/deploy ships. Every existing assertion in this suite calls
+  # The eight content trees bin/deploy ships. Every existing assertion in this suite calls
   # clean(), so leaving these pointed at the real repo would make every one of them depend on
   # the live runtime's prune backlog — the exact fleet-state dependency this fixture exists to
   # avoid. Two trees and one single-file tree is enough to exercise all three directions.
@@ -641,8 +641,8 @@ capture
 assert 'systemd/user/*.conf is not reported as an uninstalled drop-in' "! saw 'user/model.conf'"
 rm -rf "$root"
 
-echo "--- 16. the six content trees bin/deploy ships (W7) ---"
-# Until 2026-09-03 this check compared 2 of the 8 paths bin/deploy ships. The four unit
+echo "--- 16. the eight content trees bin/deploy ships (W7) ---"
+# Until 2026-09-03 this check compared 2 of the 9 paths bin/deploy ships. The four unit
 # groups above cover `bin` and the three unit trees; these cover the rest, and profiles/ is
 # the one that matters most — it holds the agents' actual instructions, so a profile fixed in
 # source and never deployed is a fleet running prose this repo has already corrected.
@@ -830,7 +830,7 @@ assert 'every path bin/deploy ships is compared by this check' \
 assert 'and this check compares nothing bin/deploy does not ship' \
   "[ -z \"\$(comm -13 <(echo \"\$deploy_paths\") <(echo \"\$checked\"))\" ]"
 assert 'both lists actually parsed (an empty comm difference is not evidence)' \
-  "[ \"\$(echo \"\$deploy_paths\" | wc -l)\" = 8 ] && [ \"\$(echo \"\$checked\" | wc -l)\" = 8 ]"
+  "[ \"\$(echo \"\$deploy_paths\" | wc -l)\" = 9 ] && [ \"\$(echo \"\$checked\" | wc -l)\" = 9 ]"
 # The laundering guard, measured rather than grepped for: re-adding `systemd` to the printf
 # leaves it in `checked` twice, which the comm and the count above both catch — and removing
 # it from CONTENT_TREES to compensate is what this asserts. Grepping this file for the old

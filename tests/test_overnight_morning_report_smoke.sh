@@ -51,6 +51,7 @@ make_mr_home() {
                 chmod 000 "$home/agent-workforce/profiles/overnight_morning_report_cc_task.md" ;;
     *)         cp "$TASK" "$home/agent-workforce/profiles/overnight_morning_report_cc_task.md" ;;
   esac
+  make_skills_fixture "$home" marcus >/dev/null
   echo "$home"
 }
 
@@ -144,6 +145,8 @@ assert 'no outward tools in the allowlist (the box holds no outward credential)'
 # absolute path. A cwd change here would silently relocate every relative Read in the profile.
 assert 'runs from the workforce tree, not a vault checkout' \
   "[ \"\$(cat '$home/claude_pwd.log')\" = \"\$(cd '$home/agent-workforce' && pwd -P)\" ]"
+assert "offers marcus's pointer-skill tree by explicit path, not ~/.claude/skills (T3.1)" \
+  "grep -qx -- '--plugin-dir' '$home/claude_argv.log' && grep -qx '$home/agent-workforce/skills/marcus' '$home/claude_argv.log'"
 
 echo "--- overnight-morning-report: umask 077 survives the exec ---"
 # Asserted from the artifact, not from grepping the source for `umask`. Claude Code writes

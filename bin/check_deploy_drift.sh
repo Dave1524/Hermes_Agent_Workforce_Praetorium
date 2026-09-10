@@ -71,12 +71,13 @@ SRC_USER="${DRIFT_SRC_USER:-$REPO/systemd/user}"
 USER_TREE="${DRIFT_USER:-$HOME/.config/systemd/user}"
 OWNERSHIP="${DRIFT_OWNERSHIP:-$REPO/design/unit-ownership.toml}"
 EXCLUSIONS="${DRIFT_EXCLUSIONS:-$REPO/design/deploy-exclusions.toml}"
-# The content trees are compared as $SRC_ROOT/<tree> rather than per-tree variables — seven
-# trees would otherwise mean seven overrides. Overridable as one root so the suite can build a
+# The content trees are compared as $SRC_ROOT/<tree> rather than per-tree variables — eight
+# trees would otherwise mean eight overrides. Overridable as one root so the suite can build a
 # synthetic pair; REPO itself is derived from $0 and cannot be pointed at a fixture.
 SRC_ROOT="${DRIFT_SRC_ROOT:-$REPO}"
-# The seven trees bin/deploy ships that were compared by nothing: six until 2026-09-03 (W7),
-# and `systemd` until 2026-09-04 (W17).
+# The eight trees bin/deploy ships that were compared by nothing: six until 2026-09-03 (W7),
+# `systemd` until 2026-09-04 (W17), and `skills` from 2026-09-10 (T3.1), which joined the
+# list in the same commit that created it rather than after a gap.
 #
 # WHY systemd WAS MISSED FOR A DAY LONGER THAN THE OTHER SIX. It is ONE tree with TWO
 # destinations. The unit half of this script compares systemd/ against /etc directly, and
@@ -90,7 +91,7 @@ SRC_ROOT="${DRIFT_SRC_ROOT:-$REPO}"
 # Kept as a literal list rather than read from bin/deploy:20, because parsing another
 # script's array is a join that breaks silently; tests/test_deploy_drift.sh asserts the
 # two agree instead, which fails loudly in both directions.
-CONTENT_TREES="${DRIFT_CONTENT_TREES:-profiles docs config CLAUDE.md AGENTS.md README.md systemd}"
+CONTENT_TREES="${DRIFT_CONTENT_TREES:-profiles docs config CLAUDE.md AGENTS.md README.md systemd skills}"
 MANIFESTS="${DRIFT_MANIFESTS:-$REPO/design/agents}"
 SRC_BUZZ="${DRIFT_SRC_BUZZ:-$REPO/buzz-team}"
 BUZZ_TREE="${DRIFT_BUZZ:-$HOME/.config/buzz-team}"
@@ -435,7 +436,7 @@ while read -r kind tree path; do
 done <<<"$declarations"
 
 if [ "$SCOPE" = bin ]; then
-  info "scope=bin — the three unit trees are NOT compared by this invocation (the seven content trees above ARE, staging systemd/ among them: bin/deploy writes them)"
+  info "scope=bin — the three unit trees are NOT compared by this invocation (the eight content trees above ARE, staging systemd/ among them: bin/deploy writes them)"
   if [ "$findings" -eq 0 ]; then echo "drift: clean (bin only)"; else echo "drift: $findings finding(s) (bin only)"; fi
   exit $(( findings > 0 ))
 fi

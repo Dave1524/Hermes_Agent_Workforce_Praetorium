@@ -31,6 +31,9 @@ TASK_FILE="${STANDING_RESEARCH_TASK:-$HOME/agent-workforce/profiles/standing_res
 # produces neither a dated proposal nor a decline and FAILS LOUDLY. The guard buys the
 # named path in the journal, not the alert.
 [ -r "$TASK_FILE" ] || { echo "standing-research: task file not readable: $TASK_FILE" >&2; exit 1; }
+SKILLS_DIR="${PRAETORIUM_SKILLS_DIR:-$HOME/agent-workforce/skills/claudius}"
+# A --plugin-dir path that does not exist is silent — exit 0, no diagnostic, no skills.
+[ -r "$SKILLS_DIR/.claude-plugin/plugin.json" ] || { echo "standing-research: skills plugin not readable: $SKILLS_DIR" >&2; exit 1; }
 
 # No MCP servers by design (toolset trim, 2026-07-20): this job reads the vault off disk via
 # its `cd "$INBOX"` checkout with Read/Glob/Grep and needs no qmd retrieval. Declare
@@ -41,4 +44,5 @@ exec "$CLAUDE_BIN" -p "$(cat "$TASK_FILE")" \
   --permission-mode dontAsk \
   --strict-mcp-config \
   --mcp-config '{"mcpServers":{}}' \
+  --plugin-dir "$SKILLS_DIR" \
   --allowedTools "Bash,Read,Write,Edit,Glob,Grep,WebSearch,WebFetch"

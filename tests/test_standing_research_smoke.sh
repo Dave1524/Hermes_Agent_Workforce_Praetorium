@@ -47,6 +47,7 @@ make_sr_fixture() {
     unreadable) cp "$TASK" "$home/task.md"; chmod 000 "$home/task.md" ;;
     *)          cp "$TASK" "$home/task.md" ;;
   esac
+  make_skills_fixture "$home" claudius >/dev/null
   echo "$home"
 }
 
@@ -155,6 +156,8 @@ assert "keeps WebSearch/WebFetch (this job does public web research)" \
   "grep -qE 'WebSearch' '$home/claude_argv.log' && grep -qE 'WebFetch' '$home/claude_argv.log'"
 assert "launches with the standing-research task prompt" \
   "grep -qF 'headless Claude Code (Opus 5)' '$home/claude_argv.log'"
+assert "offers claudius's pointer-skill tree by explicit path, not ~/.claude/skills (T3.1)" \
+  "grep -qx -- '--plugin-dir' '$home/claude_argv.log' && grep -qx '$home/agent-workforce/skills/claudius' '$home/claude_argv.log'"
 
 echo "--- standing-research: task profile carries over the load-bearing claudius instructions ---"
 assert "task profile exists" "[ -f '$TASK' ]"

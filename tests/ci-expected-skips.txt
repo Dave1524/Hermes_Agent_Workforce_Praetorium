@@ -61,6 +61,14 @@
 # one call into bin/buzz_acp_update.sh probe, which the install gate uses too. Net zero lines and
 # one fewer copy of the predicate.
 
+# ONE LINE ADDED 2026-09-10: test_pointer_skills.sh (T3.1). Its subject is skills/, which every
+# checkout carries — groups 0-11 run in CI and cover the whole chain: the tree layout, the README
+# allocation join, the nine runners, and that bin/deploy and check_deploy_drift.sh both name the
+# tree. Only group 12 skips: it resolves each pointer's target under ~/vault/08_skills, which is
+# a symlink into a mirror no runner has. Existence only, never a read. What CI loses is the
+# check that a pointer does not name a vault skill that has been renamed away under it — not the
+# check that the tree reaches the runtime. Twelve lines now.
+
 SKIP: check-team-kinds.py — the live TEAM.md channel table, which is declared excluded from buzz-team/ adoption (absent: ~/.config/buzz-team/TEAM.md)
 SKIP: check_deploy_drift.sh — the deployed trees this check compares against (absent: ~/agent-workforce/bin ~/.config/systemd/user ~/.config/buzz-team)
 SKIP: live OpenCode agent contract tests (set OPENCODE_LIVE_TESTS=1 to spend model tokens)
@@ -72,3 +80,4 @@ SKIP: test_fleet_eval.sh — the live qmd index the anchors resolve against (abs
 SKIP: test_fleet_guards.sh — the live fleet state this suite asserts (absent: ~/.claude/settings.json ~/.config/buzz-team/agent-settings.json ~/.config/systemd/user/buzz-agent@.service)
 SKIP: test_instruction_scaffolding.sh — the box's ~/dev project tree, which no checkout carries (absent: ~/dev)
 SKIP: test_memory_index_budget.sh — the shared memory index every session on this box loads (absent: ~/.claude/projects/-home-dave/memory/MEMORY.md)
+SKIP: test_pointer_skills.sh — the vault the pointer skills name (absent: ~/vault/08_skills)

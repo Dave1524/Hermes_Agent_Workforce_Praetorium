@@ -105,6 +105,22 @@ EOF
   echo "$home/claude"
 }
 
+# T3.1: every scheduled runner offers its owner's pointer-skill tree with --plugin-dir, and
+# refuses to launch when that tree is absent — a --plugin-dir path that does not exist is
+# SILENT (exit 0, no diagnostic, no skills), so the guard is the only thing that would ever
+# say so. Fixtures build the tree at the path the runner derives from HOME, rather than
+# redirecting PRAETORIUM_SKILLS_DIR, so the production default is what gets exercised.
+make_skills_fixture() {
+  local home=$1 owner=$2 dir
+  # Separate statement, not a fourth `local` assignment: a builtin's arguments are all
+  # word-expanded before any of its assignments happen, so `dir=".../$owner"` on that line
+  # reads $owner while it is still unset and dies under `set -u`.
+  dir="$home/agent-workforce/skills/$owner"
+  mkdir -p "$dir/.claude-plugin"
+  printf '{"name": "praetorium-%s", "version": "0.1.0"}\n' "$owner" > "$dir/.claude-plugin/plugin.json"
+  echo "$dir"
+}
+
 env_value() {
   local file=$1 var=$2
   # shellcheck disable=SC1090
@@ -147,7 +163,7 @@ smoke_suite() {
 
   echo "--- $job: refuses to brief off a stale mirror ---"
   root=$(make_vault_fixture stale_behind); home=$(mktemp -d)
-  claude=$(make_mock_claude "$home")
+  claude=$(make_mock_claude "$home"); make_skills_fixture "$home" marcus >/dev/null
   rc=0
   HOME="$home" CLAUDE_BIN="$claude" VAULT_DIR="$root/vault" VAULT_SYNC_GUARD="$GUARD" \
     DAILY_RHYTHM_WORKDIR="$REPO_ROOT" bash "$REPO_ROOT/$runner" >"$home/run.log" 2>&1 || rc=$?
@@ -157,7 +173,7 @@ smoke_suite() {
 
   echo "--- $job: runs on a current mirror ---"
   root=$(make_vault_fixture clean_current); home=$(mktemp -d)
-  claude=$(make_mock_claude "$home")
+  claude=$(make_mock_claude "$home"); make_skills_fixture "$home" marcus >/dev/null
   rc=0
   HOME="$home" CLAUDE_BIN="$claude" VAULT_DIR="$root/vault" VAULT_SYNC_GUARD="$GUARD" \
     DAILY_RHYTHM_WORKDIR="$REPO_ROOT" bash "$REPO_ROOT/$runner" >"$home/run.log" 2>&1 || rc=$?
@@ -170,6 +186,8 @@ smoke_suite() {
     "grep -q -- '--strict-mcp-config' '$home/claude_argv.log' && grep -q 'mcpServers' '$home/claude_argv.log'"
   assert "no outward tools in the allowlist (box holds no outward credential)" \
     "! grep -qE 'WebSearch|WebFetch' '$home/claude_argv.log'"
+  assert "offers marcus's pointer-skill tree by explicit path, not ~/.claude/skills (T3.1)" \
+    "grep -qx -- '--plugin-dir' '$home/claude_argv.log' && grep -qx '$home/agent-workforce/skills/marcus' '$home/claude_argv.log'"
 }
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then

@@ -37,6 +37,7 @@ make_radar_home() {
   [ "$state" = no_task ]  || { mkdir -p "$home/agent-workforce/profiles"
                                cp "$TASK" "$home/agent-workforce/profiles/bd_stall_radar_task.md"; }
   [ "$state" = no_inbox ] || mkdir -p "$home/agent-worktrees/inbox/_inbox/agents"
+  make_skills_fixture "$home" claudius >/dev/null
   [ "$state" != unreadable ] || chmod 000 "$home/agent-workforce/profiles/bd_stall_radar_task.md"
   echo "$home"
 }
@@ -133,6 +134,8 @@ assert 'no web tools in the allowlist (radar flags inward; kernel does Notion RE
   "! grep -qE 'WebSearch|WebFetch' '$home/claude_argv.log'"
 assert 'and from the inbox worktree, which is what makes the relative write land' \
   "[ \"\$(cat '$home/claude_pwd.log')\" = \"\$(cd '$home/agent-worktrees/inbox' && pwd -P)\" ]"
+assert "offers claudius's pointer-skill tree by explicit path, not ~/.claude/skills (T3.1)" \
+  "grep -qx -- '--plugin-dir' '$home/claude_argv.log' && grep -qx '$home/agent-workforce/skills/claudius' '$home/claude_argv.log'"
 
 echo "--- bd-stall-radar: the task points at the kernel and keeps its guards ---"
 assert 'task profile exists' "[ -f '$TASK' ]"

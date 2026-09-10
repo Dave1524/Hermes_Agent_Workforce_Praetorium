@@ -21,6 +21,9 @@ TASK_FILE="$HOME/agent-workforce/profiles/m1_signal_scan_cc_task.md"
 # bin/run_overnight_morning_report_cc.sh:30. `-r`, not `-f`: a present-but-unreadable
 # profile produces the identical empty prompt.
 [ -r "$TASK_FILE" ] || { echo "m1-signal-scan: task file not readable: $TASK_FILE" >&2; exit 1; }
+SKILLS_DIR="${PRAETORIUM_SKILLS_DIR:-$HOME/agent-workforce/skills/claudius}"
+# A --plugin-dir path that does not exist is silent — exit 0, no diagnostic, no skills.
+[ -r "$SKILLS_DIR/.claude-plugin/plugin.json" ] || { echo "m1-signal-scan: skills plugin not readable: $SKILLS_DIR" >&2; exit 1; }
 
 # No MCP servers by design (toolset trim, 2026-07-20): this job reads the vault off disk via
 # its `cd "$INBOX"` checkout with Read/Glob/Grep and needs no qmd retrieval. Declare
@@ -31,4 +34,5 @@ exec "$CLAUDE_BIN" -p "$(cat "$TASK_FILE")" \
   --permission-mode dontAsk \
   --strict-mcp-config \
   --mcp-config '{"mcpServers":{}}' \
+  --plugin-dir "$SKILLS_DIR" \
   --allowedTools "Bash,Read,Write,Edit,Glob,Grep,WebSearch,WebFetch"

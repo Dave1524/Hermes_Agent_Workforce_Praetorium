@@ -21,7 +21,10 @@ there only. This file owns scope, order and the reason for each task.
 - Platform jobs get a light contract each; the `contract` field becomes mandatory for every
   entry.
 - Phase 5 executes every declared acceptance check of every contract, not a subset.
-- The 14-pointer skills allocation drafted on the page is the starting bet.
+- The 13-pointer skills allocation drafted on the page is the starting bet. The page says 14
+  and its own table sums to 13; the table is what T3.1 built. `skills/README.md` carries the
+  correction, and `design/archive/open-decisions-closed-2026-09-07.md` keeps its 14 as the
+  record of what was written.
 
 ## Definition of done for a Claude task
 
@@ -108,12 +111,12 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   canonical vault path, never a copy. Deployed by `bin/deploy`; compared by
   `bin/check_deploy_drift.sh` as an additional tree; loaded by the scheduled runner from an
   explicit path in the deployed tree, not from `~/.claude/skills/`. A test asserts the skill
-  list the runtime sees equals the repo's. The 14 drafted pointers are the initial content.
+  list the runtime sees equals the repo's. The 13 drafted pointers are the initial content.
   Gate: drift covers `skills/`; a headless run lists the skills.
 - **T3.2** [Claude, M, T3.1, T1.2] `skills = [...]` on all 33 entries, an empty list stated
   explicitly, joined to the runner's offer by T1.2's mechanism. Augustus's entries carry
   `skills_mechanism = "heading-extraction"` (`bin/skill_sections.sh`). `agent-model.md`
-  records the allocation as a bet: 1 of 14 grounded in a live workflow. Gate: join green,
+  records the allocation as a bet: 1 of 13 grounded in a live workflow. Gate: join green,
   33 of 33 carry the field.
 - **T3.3** [Claude, S, T3.2] Invocation telemetry: per run, which pointer skills were read,
   from run-log or transcript evidence, summarised by the scorecard. Gate: one week of runs

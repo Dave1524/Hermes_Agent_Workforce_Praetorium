@@ -15,6 +15,9 @@ TASK_FILE="$HOME/agent-workforce/profiles/bd_stall_radar_task.md"
 # `set -e` does not propagate a failure from there. Same shape as
 # bin/run_m1_signal_scan_cc.sh. `-r`, not `-f`.
 [ -r "$TASK_FILE" ] || { echo "bd-stall-radar: task file not readable: $TASK_FILE" >&2; exit 1; }
+SKILLS_DIR="${PRAETORIUM_SKILLS_DIR:-$HOME/agent-workforce/skills/claudius}"
+# A --plugin-dir path that does not exist is silent — exit 0, no diagnostic, no skills.
+[ -r "$SKILLS_DIR/.claude-plugin/plugin.json" ] || { echo "bd-stall-radar: skills plugin not readable: $SKILLS_DIR" >&2; exit 1; }
 
 # No MCP servers by design: Notion I/O is the kernel's REST call, priorities are disk or
 # the qmd CLI inside the kernel, never an MCP tool. Declare AGENT_MCP_DEPS=none in the job
@@ -26,4 +29,5 @@ exec "$CLAUDE_BIN" -p "$(cat "$TASK_FILE")" \
   --permission-mode dontAsk \
   --strict-mcp-config \
   --mcp-config '{"mcpServers":{}}' \
+  --plugin-dir "$SKILLS_DIR" \
   --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
