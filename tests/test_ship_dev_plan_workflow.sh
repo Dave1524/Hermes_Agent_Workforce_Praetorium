@@ -107,14 +107,21 @@ field() { sed -n "s/^$1=//p" "$tmp/$2.out"; }          # $1 key, $2 scenario
 result_key() { field result "$2" | jq -r "$1"; }        # $1 jq path, $2 scenario
 stopped_with() { case "$1" in *"$2"*) return 0 ;; esac; return 1; }
 
-red10=$(printf '%s\n' "$script_missing" | jq -R 'select(length > 0) | "PROBLEM\tcontract-exists\tdesign/contracts/" + . + ".md"' | jq -sc .)
-red5=$(printf '%s\n' "$script_aliases" | jq -R 'select(length > 0) | "PROBLEM\tmodel-alias\t" + .' | jq -sc .)
-red15=$(jq -nc --argjson a "$red10" --argjson b "$red5" '$a + $b')
+# Both red sets are derived from the script's own constants and never counted here. T1.1's
+# shrinks by one on every contract that lands and reaches zero at T4.3, so a count baked into a
+# variable name or an assertion goes stale silently — which is what `red15` did when T4.1 landed.
+red_contracts=$(printf '%s\n' "$script_missing" | jq -R 'select(length > 0) | "PROBLEM\tcontract-exists\tdesign/contracts/" + . + ".md"' | jq -sc .)
+red_aliases=$(printf '%s\n' "$script_aliases" | jq -R 'select(length > 0) | "PROBLEM\tmodel-alias\t" + .' | jq -sc .)
+red_both=$(jq -nc --argjson a "$red_aliases" --argjson b "$red_contracts" '$a + $b')
+red_both_n=$(jq -r 'length' <<< "$red_both")
+red_aliases_short=$(jq -c '.[1:]' <<< "$red_aliases")
 
 G64s=$(ship T6.4 finish 0 '[]');  G64l=$(land T6.4 0 '[]' '[]')
 G13s=$(ship T1.3 finish 0 '[]');  G13l=$(land T1.3 0 '[]' '[]')
-R11s=$(ship T1.1 implement 1 "$red10");  R11l=$(land T1.1 1 "$red10" "$red10")
-R12s=$(ship T1.2 implement 1 "$red5");   R12l=$(land T1.2 1 "$red15" "$red5")
+# T1.2 ships first so the baseline that propagates into the second task is ALIAS_WORKFLOWS, the
+# one red set no task in the plan shrinks.
+R12s=$(ship T1.2 implement 1 "$red_aliases");   R12l=$(land T1.2 1 "$red_aliases" "$red_aliases")
+R11s=$(ship T1.1 implement 1 "$red_contracts"); R11l=$(land T1.1 1 "$red_both" "$red_contracts")
 
 # Happy path: two green tasks.
 run happy "$(args '["T6.4","T1.3"]')" "$(two_tasks T6.4 "$G64s" "$G64l" T1.3 "$G13s" "$G13l")"
@@ -141,15 +148,15 @@ assert 'the land prompt refuses to return on a review that did not run' \
 assert 'both prompts carry the rails' \
   "grep '^prompt:ship:T6.4=' $tmp/happy.out | grep -q 'never run bin/deploy --prune' && grep '^prompt:land:T6.4=' $tmp/happy.out | grep -q 'never run bin/deploy --prune'"
 
-# Ships-red path: T1.1 then T1.2, each landing on verify exit 1 with exactly its named red.
-run red "$(args '["T1.1","T1.2"]')" "$(two_tasks T1.1 "$R11s" "$R11l" T1.2 "$R12s" "$R12l")"
-assert 'ships-red: T1.1 and T1.2 land on verify exit 1 with exactly their named red lines' \
+# Ships-red path: T1.2 then T1.1, each landing on verify exit 1 with exactly its named red.
+run red "$(args '["T1.2","T1.1"]')" "$(two_tasks T1.2 "$R12s" "$R12l" T1.1 "$R11s" "$R11l")"
+assert 'ships-red: T1.2 and T1.1 land on verify exit 1 with exactly their named red lines' \
   '[ "$(result_key ".landed | length" red)" = 2 ]'
-assert 'ships-red: a landed red set becomes the baseline — finalRed carries all 15 lines' \
-  '[ "$(result_key ".finalRed | length" red)" = 15 ]'
-assert 'ships-red: T1.2'"'"'s ship prompt is handed T1.1'"'"'s red lines as its baseline' \
-  "grep '^prompt:ship:T1.2=' $tmp/red.out | grep -q 'design/contracts/augustus-content.md'"
-assert 'ships-red: the ship prompt forbids /finish' "grep '^prompt:ship:T1.1=' $tmp/red.out | grep -q 'Do NOT run /finish'"
+assert "ships-red: a landed red set becomes the baseline — finalRed carries all $red_both_n lines" \
+  '[ "$(result_key ".finalRed | length" red)" = "$red_both_n" ]'
+assert 'ships-red: T1.1'"'"'s ship prompt is handed T1.2'"'"'s red lines as its baseline' \
+  "grep '^prompt:ship:T1.1=' $tmp/red.out | grep -q 'model-alias'"
+assert 'ships-red: the ship prompt forbids /finish' "grep '^prompt:ship:T1.2=' $tmp/red.out | grep -q 'Do NOT run /finish'"
 
 # Deploying task: the prompts carry the runtime-action contract.
 run deploy "$(args '["T6.1"]')" "$(jq -nc --argjson s "$(ship T6.1 finish 0 '[]')" --argjson l "$(land T6.1 0 '[]' '[]')" '{"ship:T6.1":$s, "land:T6.1":$l}')"
@@ -188,13 +195,12 @@ expect_stop null-land "$(args "$T2")" "$(two_tasks T6.4 "$G64s" null T1.3 "$G13s
   'land agent returned null' 'ship:T6.4,land:T6.4'
 expect_stop red-extra "$(args "$T2")" "$(two_tasks T6.4 "$G64s" "$(land T6.4 0 '["FAIL: x"]' '["FAIL: x"]')" T1.3 "$G13s" "$G13l")" \
   'red set mismatch: extra=' 'ship:T6.4,land:T6.4'
-nine=$(jq -c '.[1:]' <<< "$red10")
-expect_stop red-missing "$(args '["T1.1","T1.2"]')" "$(two_tasks T1.1 "$R11s" "$(land T1.1 1 "$nine" "$nine")" T1.2 "$R12s" "$R12l")" \
-  'missing=' 'ship:T1.1,land:T1.1'
+expect_stop red-missing "$(args '["T1.2","T1.1"]')" "$(two_tasks T1.2 "$R12s" "$(land T1.2 1 "$red_aliases_short" "$red_aliases_short")" T1.1 "$R11s" "$R11l")" \
+  'missing=' 'ship:T1.2,land:T1.2'
 expect_stop green-exit-1 "$(args "$T2")" "$(two_tasks T6.4 "$G64s" "$(land T6.4 1 '[]' '[]')" T1.3 "$G13s" "$G13l")" \
   'verify.sh exit 1' 'ship:T6.4,land:T6.4'
-expect_stop red-exit-0 "$(args '["T1.1","T1.2"]')" "$(two_tasks T1.1 "$R11s" "$(land T1.1 0 "$red10" "$red10")" T1.2 "$R12s" "$R12l")" \
-  'verify.sh exit 0' 'ship:T1.1,land:T1.1'
+expect_stop red-exit-0 "$(args '["T1.2","T1.1"]')" "$(two_tasks T1.2 "$R12s" "$(land T1.2 0 "$red_aliases" "$red_aliases")" T1.1 "$R11s" "$R11l")" \
+  'verify.sh exit 0' 'ship:T1.2,land:T1.2'
 expect_stop gate-not-met "$(args "$T2")" "$(two_tasks T6.4 "$G64s" "$(land T6.4 0 '[]' '[]' '.gateVerdict = "not met"')" T1.3 "$G13s" "$G13l")" \
   'plan gate: exit 0, verdict not met' 'ship:T6.4,land:T6.4'
 expect_stop gate-exit "$(args "$T2")" "$(two_tasks T6.4 "$G64s" "$(land T6.4 0 '[]' '[]' '.gateExit = 1')" T1.3 "$G13s" "$G13l")" \

@@ -194,13 +194,17 @@ graded against an empty vocabulary and the tree would read clean.
 
 ## Status
 
-Written: `knowledge-digest` (converted to the executable check syntax, 2026-09-10) and
-`buzz-interactive` (exempt from the check rules — five always-on units, `kind = "service"`).
+Written: `knowledge-digest` (converted to the executable check syntax, 2026-09-10),
+`buzz-interactive` (exempt from the check rules — five always-on units, `kind = "service"`),
+and Marcus's four — `praetorium-daily-plan`, `praetorium-eod-summary`,
+`overnight-morning-report`, `weekly-pre-assembly` (T4.1, 2026-09-10).
 
 **Counted under `tomllib` on 2026-09-10**, replacing the 2026-09-01 figures this section
 carried while the manifests grew under it: 33 `[[workflows]]` entries, 17 of which carry a
-`contract` field, resolving to 12 distinct paths of which 2 exist. The 10 absent are T1.1's
-red list and Phase 4's work, one brief per owner. Trajan's platform jobs still carry no
+`contract` field, resolving to 12 distinct paths — of which **6 exist** after T4.1, up from 2.
+The 6 still absent are T1.1's remaining red list: Claudius's five (`standing-research`,
+`raw-ingest`, `m1-signal-scan`, `bd-stall-radar`, `bd-followup-drafts`, T4.2) and Augustus's
+`augustus-content` (T4.3). Trajan's platform jobs still carry no
 `contract` field at all — a deterministic job promises an artifact and a cadence like any
 other, and those are exactly the promises this box breaks silently. Whether they get contracts
 belongs with the coverage checker (D6), which must first decide what an entry naming no
