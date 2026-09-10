@@ -47,7 +47,7 @@ status_line() {  # status_line <record>
         "$outcome" "${ts%%T*}" "$proposal" "$secs" ;;
     NOPROPOSAL)
       reason=$(decline_reason)
-      [ -n "$reason" ] || reason='DECLINE: no reason recorded in agent_run.log'
+      [ -n "$reason" ] || reason="DECLINE: no reason recorded in $ATTEMPT_LOG"
       printf '%s — %s (%ss)' "$outcome" "${reason#DECLINE: }" "$secs" ;;
     *)
       printf '%s (%ss)' "${outcome:-unknown outcome}" "$secs" ;;

@@ -151,7 +151,7 @@ never writes Notion pipeline state.
 Override files set only non-secret keys:
 
 - `AGENT_PROFILE` (optional; else parsed from `AGENT_RUNTIME_CMD -p …`)
-- `AGENT_TASK_SLUG` (metrics / cost.log label)
+- `AGENT_TASK_SLUG` (metrics / cost.log label — also keys `logs/last-attempt/<slug>.log`, the run's own output that `proposal_or_decline.sh` and `deliver_proposal.sh` read their decline sentinel from, so changing it renames that file)
 - `AGENT_RUNTIME_CMD` (the actual runner invocation — `bin/run_*_cc.sh` or `bin/run_content_via_buzz.sh` today; paths point at the **deployed** tree `~/agent-workforce/`. It read "hermes / kanban invocation" until 2026-09-02; no live job has invoked either since 2026-08-13, proven from the `run attempt N/M:` journal line of all 14 units that set this key)
 - `AGENT_RUN_MODE` (`proposal` default, or `ops` for non-inbox LLM jobs — NUC-36)
 
@@ -354,7 +354,7 @@ newer than `$AGENT_RUN_STARTED_AT`, so yesterday's receipt cannot satisfy today'
 | Symptom | Cause | Fix |
 |---|---|---|
 | Unit failed, journal says `REFUSING to run` | `vault_sync_guard.sh check` refused: `~/vault` is dirty or lagging `origin/main` by >24h | Route the named drift (see below), then re-run by hand |
-| Unit failed, log says `AGENT_VERIFY_CMD found no artifact` | the agent produced no Notion write | Read `logs/agent_run.log` for the real error; do **not** trust the exit code |
+| Unit failed, log says `AGENT_VERIFY_CMD found no artifact` | the agent produced no Notion write | Read `logs/last-attempt/<task>.log` — this run's own output, the only file attributable to it — then `logs/agent_run.log` for history; do **not** trust the exit code |
 | No Discord message, unit green | `deliver_report.sh` is fail-soft | `~/logs/deliver_report.log` |
 | Two rows for one date | something wrote Notion outside `notion_daily.py` | Archive the duplicate; keep the title-keyed path |
 

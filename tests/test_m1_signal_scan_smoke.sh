@@ -106,13 +106,23 @@ assert 'and resolves to an executable script' "[ -x '${verify_resolved%% *}' ]"
 # no-signal Monday and Wednesday into a hard FAIL.
 sandbox=$(mktemp -d)
 mkdir -p "$sandbox/agent-worktrees/inbox/_inbox/agents" "$sandbox/agent-workforce/logs"
-run_verify() { # log-tail -> rc, or 127 when nothing is wired
+run_verify() { # this run's own output -> rc, or 127 when nothing is wired
   local rc=0
   # An empty AGENT_VERIFY_CMD makes `bash -lc ""` exit 0, which would let an UNWIRED job pass
   # the accept-a-DECLINE assertion below — a check that cannot fail. Fail closed instead.
   [ -n "$verify_resolved" ] || { echo 127; return 0; }
-  printf 'an earlier line from the run\n%s\n' "$1" > "$sandbox/agent-workforce/logs/agent_run.log"
-  HOME="$sandbox" RUN_DATE="$(date +%F)" AGENT_RUN_STARTED_AT="$(date +%s)" \
+  # T7.1: the sentinel is read from THIS run's own output, at the per-task path
+  # agent_propose.sh writes — never from the shared agent_run.log, where any job's decline
+  # used to satisfy every other job's check. Left unexported on purpose so the slug-derived
+  # default is what gets exercised, since that is what a hand invocation resolves.
+  local slug started log
+  slug=${verify_resolved##* }
+  started=$(date +%s)
+  log="$sandbox/agent-workforce/logs/last-attempt/$slug.log"
+  mkdir -p "$(dirname "$log")"
+  printf 'an earlier line from the run\n%s\n' "$1" > "$log"
+  touch -d "@$((started + 1))" "$log"
+  HOME="$sandbox" RUN_DATE="$(date +%F)" AGENT_RUN_STARTED_AT="$started" \
     bash -lc "$verify_resolved" >/dev/null 2>&1 || rc=$?
   echo "$rc"
 }

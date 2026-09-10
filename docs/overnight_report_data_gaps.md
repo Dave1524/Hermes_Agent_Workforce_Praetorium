@@ -185,8 +185,9 @@ two days.
 has for free text, and a `NOPROPOSAL` run by definition does not write one.
 
 **Fix (needs a shape decision before anyone builds it).** The mechanism already half exists:
-`decline_reason()` lifts a `DECLINE:` line out of `agent_run.log` and puts it in the delivered
-message. The symmetrical extension is an `ANALYSIS:` block lifted the same way. That is a small
+`decline_reason()` lifts a `DECLINE:` line out of the run's own output — since T7.1
+(2026-09-10) `logs/last-attempt/<task>.log`, not the shared `agent_run.log` — and puts it in
+the delivered message. The symmetrical extension is an `ANALYSIS:` block lifted the same way. That is a small
 change to an existing path, not new infrastructure — but it is a change to the delivery contract,
 so it is Dave's call, not an implementer's.
 
