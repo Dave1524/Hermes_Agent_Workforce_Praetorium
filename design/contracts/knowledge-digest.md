@@ -86,34 +86,134 @@ task never writes `~/vault` directly on any branch.
 
 ## Acceptance checks
 
-1. **Artifact exists and is this run's.** `_inbox/agents/<RUN_DATE>_knowledge-digest.md`
-   is present and newer than `AGENT_RUN_STARTED_AT` — `bin/proposal_or_decline.sh
-   knowledge-digest` (already wired as `AGENT_VERIFY_CMD`).
-2. **Or a decline was declared**, `^DECLINE:` in this run's own `$AGENT_ATTEMPT_LOG`.
-   Same command; the check must assert **which branch passed**, never merely that the
-   command exited 0 — and must assert it against a sibling job's decline, which is the
-   way branch 2 passed for the wrong job until T7.1.
-3. **Body is under 500 words.** `wc -w` on the file body.
-4. **Header carries the weekly-pre-assembly disclaimer** — `grep -q 'weekly-pre-assembly'`.
-5. **Write boundary held**: `git -C ~/agent-worktrees/inbox diff --name-only HEAD~1` lists
-   only paths under `_inbox/agents/`.
-6. **Every path cited in the digest exists in the mirror**, or is explicitly named under
-   *Confidence & gaps* as renamed/removed within the window.
-7. **The run was not silently skipped**: the run log for this trigger does **not** contain
-   `SKIP: previous run still active`. Without this, a lock collision reads as a clean night
-   (`agent-model.md` §6.6).
-8. **The timer actually fired this week**: the unit's `LastTriggerUSec` is within 8 days.
-   Assert against systemd, not against a report that says it ran.
-9. **The vault guard ran and passed** — the refusal message is absent from the run log.
+Converted to the executable syntax on 2026-09-10 (T4.0). Three of the nine were wrong as
+prose, and writing the command is what showed it — each says so under its own item. Ids are
+the stable names; `## Known failure modes` below references them, never the numbers.
 
-Checks 7–9 are the ones that catch the failures this box actually produces; 1–6 catch a
-bad digest. D3 needs both.
+1. **The artifact is this run's**, not last week's left in place. Not applicable on a run
+   that declined, which is the only other legitimate outcome.
+
+   ```check id=artifact-is-this-run
+   f="$AGENT_INBOX_DIR/${RUN_DATE}_knowledge-digest.md"
+   if [ ! -f "$f" ] && grep -qE '^DECLINE:' "$AGENT_ATTEMPT_LOG" 2>/dev/null; then
+     echo "n/a: no artifact and a declared decline"
+     exit 77
+   fi
+   [ -n "$(find "$AGENT_INBOX_DIR" -maxdepth 1 -name "${RUN_DATE}_knowledge-digest.md" \
+             -newermt "@$AGENT_RUN_STARTED_AT" 2>/dev/null)" ]
+   ```
+
+2. **Or the decline is this run's own.** The two branches are polarised against each other —
+   an artifact makes this one n/a, its absence makes the one above n/a — so exactly one of
+   them decides, and a run producing neither fails both rather than passing both. The
+   sentinel is read from `$AGENT_ATTEMPT_LOG` and its freshness asserted, because until T7.1
+   a sibling job's decline in the shared `agent_run.log` satisfied this check.
+
+   ```check id=decline-is-this-runs-own
+   f="$AGENT_INBOX_DIR/${RUN_DATE}_knowledge-digest.md"
+   [ -f "$f" ] && { echo "n/a: the run produced an artifact"; exit 77; }
+   fresh="$(find "$(dirname "$AGENT_ATTEMPT_LOG")" -maxdepth 1 \
+              -name "$(basename "$AGENT_ATTEMPT_LOG")" \
+              -newermt "@$AGENT_RUN_STARTED_AT" 2>/dev/null)"
+   [ -n "$fresh" ] && grep -qE '^DECLINE:' "$AGENT_ATTEMPT_LOG"
+   ```
+
+3. **The body is under 500 words.** "Body" had to be made exact before it could be decided:
+   the 2026-09-09 digest is **508 words whole and 499 from line 2**, so the obvious
+   `wc -w < file` would have shipped a red on a run that complied. The H1 title line is not
+   body.
+
+   ```check id=body-under-500-words
+   f="$AGENT_INBOX_DIR/${RUN_DATE}_knowledge-digest.md"
+   [ -f "$f" ] || { echo "n/a: no artifact this run"; exit 77; }
+   [ "$(tail -n +2 "$f" | wc -w)" -lt 500 ]
+   ```
+
+4. **The header carries the `weekly-pre-assembly` disclaimer.** In the header, not anywhere
+   in the file — a mention buried in the body does not stop the two reports being read as
+   each other.
+
+   ```check id=names-weekly-pre-assembly
+   f="$AGENT_INBOX_DIR/${RUN_DATE}_knowledge-digest.md"
+   [ -f "$f" ] || { echo "n/a: no artifact this run"; exit 77; }
+   [ -n "$(head -12 "$f" | grep -F 'weekly-pre-assembly')" ]
+   ```
+
+5. **The write boundary held**: the commit that added this run's file touched nothing outside
+   `_inbox/agents/`. It resolves that commit by path rather than taking `HEAD~1`, which was
+   the prose version and is wrong here: the inbox worktree takes commits from every job, and
+   on 2026-09-10 its three most recent were all scorecard commits, none of them a digest.
+
+   ```check id=write-boundary-held
+   rel="_inbox/agents/${RUN_DATE}_knowledge-digest.md"
+   [ -f "$INBOX_WORKTREE/$rel" ] || { echo "n/a: no artifact this run"; exit 77; }
+   c="$(git -C "$INBOX_WORKTREE" log -1 --format=%H -- "$rel")"
+   [ -n "$c" ] || exit 1
+   [ -z "$(git -C "$INBOX_WORKTREE" show --name-only --pretty=format: "$c" \
+             | grep -Ev '^(_inbox/agents/|$)')" ]
+   ```
+
+6. **Every vault note the digest cites resolves**, or is named under *Confidence & gaps* as
+   renamed or removed inside the window. The digest cites `[[wikilinks]]`, not backticked
+   paths.
+
+   ```check id=cited-paths-resolve
+   f="$AGENT_INBOX_DIR/${RUN_DATE}_knowledge-digest.md"
+   [ -f "$f" ] || { echo "n/a: no artifact this run"; exit 77; }
+   gaps="$(sed -n '/^## Confidence & gaps/,$p' "$f")"
+   missing=""
+   for link in $(grep -o '\[\[[^]|]*' "$f" | sed 's/^\[\[//' | sort -u); do
+     [ -f "$VAULT/$link.md" ] && continue
+     case "$gaps" in *"$link"*) continue ;; esac
+     missing="$missing $link"
+   done
+   [ -z "$missing" ] || echo "unresolved:$missing"
+   [ -z "$missing" ]
+   ```
+
+7. **The run was not silently skipped by the global lock.** `sweep`, because the failure is
+   that nothing ran. It reads the **unit's journal** since the timer's last trigger, not "the
+   run log": `SKIP: previous run still active` is written through `log()`
+   (`bin/agent_propose.sh:144`), which tees to the shared `logs/agent_propose.log` naming no
+   job — `2026-09-04T01:34:49+02:00 SKIP: previous run still active` and nothing else on the
+   line. That is T7.1's defect one layer over. journald scopes by unit; the shared file does
+   not.
+
+   ```check id=not-lock-skipped when=sweep
+   t="$($SYSTEMCTL show "$UNIT.timer" -p LastTriggerUSec --value --timestamp=unix)"
+   case "$t" in @*) ;; *) echo "the timer has never fired"; exit 1 ;; esac
+   [ -z "$($JOURNALCTL --unit "$UNIT.service" --since "$t" --no-pager \
+             | grep -F 'SKIP: previous run still active')" ]
+   ```
+
+8. **The timer actually fired this week.** `sweep`, and asserted against systemd rather than
+   against a report that says it ran. A never-fired timer reports a `LastTriggerUSec` that is
+   not an epoch, and fails rather than reading as 1970.
+
+   ```check id=timer-fired-this-week when=sweep
+   t="$($SYSTEMCTL show "$UNIT.timer" -p LastTriggerUSec --value --timestamp=unix)"
+   case "$t" in @*) ;; *) echo "the timer has never fired"; exit 1 ;; esac
+   [ "$(( $(date +%s) - ${t#@} ))" -lt 691200 ]
+   ```
+
+9. **The vault guard ran and passed.** The `OK:` line must be **present**, not merely the
+   refusal absent — `bin/vault_sync_guard.sh check` prints `OK:` on every success path
+   (`:129`, `:137`), so its absence means the guard never ran, which is the same silence a
+   dead run produces.
+
+   ```check id=vault-guard-passed
+   [ -n "$(grep -F 'vault_sync_guard[check]: OK:' "$AGENT_ATTEMPT_LOG")" ] &&
+   [ -z "$(grep -F 'REFUSING to run' "$AGENT_ATTEMPT_LOG")" ]
+   ```
+
+`not-lock-skipped`, `timer-fired-this-week` and `vault-guard-passed` catch the failures this
+box actually produces; the first six catch a bad digest. D3 needs both.
 
 ## Known failure modes
 
 - **Silent lock skip.** `agent_propose.sh:144` exits 0 after logging `SKIP: previous run
   still active`. No alert, no artifact, and `OnFailure` never fires because nothing
-  failed. Signal: check 7.
+  failed. Signal: `not-lock-skipped`.
 - **Stale mirror.** Guarded — this is the one already closed by
   `bin/vault_sync_guard.sh check`, and the reason the guard exists.
 - **Provider death reading as a clean no-op.** The ancestor failure: an OpenRouter 402
@@ -122,7 +222,8 @@ bad digest. D3 needs both.
   never reached the attempt's stdout. `proposal_or_decline.sh` was written for exactly
   this and closes it — a run that produces neither artifact nor sentinel now fails.
 - **Confusion with `weekly-pre-assembly`.** Both are weekly, both land in the research
-  route, both are pre-reads. Mitigated by the mandatory header line; check 4.
+  route, both are pre-reads. Mitigated by the mandatory header line;
+  `names-weekly-pre-assembly`.
 - **Kind mismatch on delivery.** The research route is a forum (45001). A producer
   publishing kind 9 there is receipted `ok` and invisible. Not currently possible for this
   job — `deliver.sh` reads the kind from the route table — but it is the failure this

@@ -176,7 +176,8 @@ status = "spent" entry would still have to name a unit that is deliberately not 
 # design/contracts/*.md and the [[workflows]] entries that name them, and both change only
 # when a human edits them. The rules are in tests/test_contract_schema.py; the ids below are
 # anchored in the .sh, which asserts one per rule on the live tree after proving each on a
-# fixture. T4.0 adds the executable-check rule here when it lands.
+# fixture. Six of them are T4.0's check rules, added 2026-09-10: they grade the fenced
+# ```check blocks under ## Acceptance checks, which were prose until that date.
 [[suite]]
 path    = "tests/test_contract_schema.sh"
 owner   = "fleet"
@@ -195,6 +196,13 @@ asserts = [
   "schema-sections",          # the eight section names are read from design/contract-schema.md, and are eight
   "exempt-named",             # every rule-1 exemption is printed by name, never skipped
   "validated-count",          # the count reported equals the files on disk, computed independently
+  "checks-vocabulary",        # the executor's variables and the vantages are read from the schema doc
+  "checks-executable",        # one ```check fence per numbered item, and every fence inside an item
+  "checks-declared",          # the fence declares a unique id, and any `when` is a declared vantage
+  "checks-decidable",         # the block is neither empty nor trivially true — `true` decides nothing
+  "checks-syntax",            # bash -n accepts the block, so a fence that exists also runs
+  "checks-env",               # every variable read is exported by the executor or set in the block
+  "checks-graded",            # the check rules ran against real blocks and a real environment, not zero
 ]
 why_no_workflow = """
 It grades the contracts against the manifests, not a job's output. The schema doc said "D3's

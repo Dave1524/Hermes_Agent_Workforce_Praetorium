@@ -68,6 +68,8 @@ CHECK_ATTRS = ("id", "when")
 # A block whose every command is one of these decides nothing. The schema's own rule: a check
 # that cannot fail is not a check.
 TRIVIAL = re.compile(r"^(true|:|exit\s+0|echo(\s.*)?)$")
+# A sed or awk script is single-quoted, and its $p is not a shell read.
+SINGLE_QUOTED = re.compile(r"'[^']*'")
 VAR_READ = re.compile(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)")
 VAR_SET = re.compile(r"(?:^\s*|[;&|(]\s*|\bfor\s+)([A-Za-z_][A-Za-z0-9_]*)(?:=|\s+in\b)")
 
@@ -277,6 +279,7 @@ def block_reads(body):
     """Variables the block reads without setting them earlier in the same block."""
     known, unknown = set(), []
     for line in body:
+        line = SINGLE_QUOTED.sub("''", line)
         for var in VAR_READ.findall(line):
             if var not in known and var not in ENV_VARS and var not in unknown:
                 unknown.append(var)

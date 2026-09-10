@@ -33,17 +33,48 @@
 #     could not read would grade every contract against an empty list and call it clean —
 #     which is why every fixture root below is given a copy of the real one.
 #
-# WHAT THIS DOES NOT ASSERT. That a contract named by a manifest exists — T1.1's rule in
-# tests/test_workflow_coverage.py, which ships red on the ten missing files. That an
-# acceptance check is executable — T4.0 extends the validator for that.
+# THE CHECK RULES, added 2026-09-10 (T4.0). ## Acceptance checks was prose until then: every
+# check named a command in English and nothing could run one, so "the gate is green" and "the
+# checks pass" were different claims and no one could tell them apart.
+#   checks-vocabulary  the executor's variables and the vantages are READ from
+#     design/contract-schema.md's #### Executor environment and #### Vantage blocks, the same
+#     way the section names are. An unread vocabulary would grade every block against an empty
+#     environment and call every read undeclared — so this fires on the schema doc, once, and
+#     the rules below then have something to grade against.
+#   checks-executable  every numbered item under ## Acceptance checks carries exactly one
+#     ```check fence, and every fence belongs to an item. Association is by INDENTATION, not by
+#     "the nearest item above": a fence at column 0 has closed the markdown list, so it belongs
+#     to nobody and is reported rather than silently adopted by the item above it.
+#   checks-declared    the fence's info string declares a unique `id` matching [a-z][a-z0-9-]*
+#     and, optionally, a `when` that is one of the declared vantages. Ids are how
+#     ## Known failure modes cites a check; numbers renumber when a check is inserted.
+#   checks-decidable   the block is not empty and not trivially true. `true`, `:`, `exit 0` and
+#     a bare `echo` decide nothing, and a check that cannot fail is prose with a fence on it.
+#   checks-syntax      bash -n accepts the block, so a fence that exists is also a command that
+#     runs. Blocks are bash under `set -u`, with no `-e` and no `pipefail` — see the SIGPIPE
+#     paragraph in CLAUDE.md, which cost this gate one run in seven.
+#   checks-env         every variable the block reads is either exported by the executor (the
+#     #### Executor environment list) or set earlier in the same block. Single-quoted spans are
+#     stripped first: a sed script's $p is a sed command, not a shell read.
+# A contract whose declaring [[workflows]] entries all carry `kind = "service"` is EXEMPT from
+# all six, by the manifest join rather than by its own prose — an always-on unit has no run, so
+# there is no RUN_DATE, no attempt log and no LastTriggerUSec to decide a check from.
+# tests/test_fleet_ownership.sh::kind-matches-unit-files already joins `kind` against the unit
+# files on disk, so a contract cannot exempt itself by claiming to be a service.
 #
-# FIXTURES FIRST, LIVE TREE SECOND. Group 1 builds five roots under mktemp: a healthy one that
+# WHAT THIS DOES NOT ASSERT. That a contract named by a manifest exists — T1.1's rule in
+# tests/test_workflow_coverage.py, which ships red on the ten missing files. That a check
+# block PASSES: this grades the syntax, T5.1's executor runs it. The two are deliberately
+# separate — a validator that ran the blocks would need the box's live state to be green.
+#
+# FIXTURES FIRST, LIVE TREE SECOND. Group 1 builds nine roots under mktemp: a healthy one that
 # must yield no PROBLEM, a broken one where each rule has exactly one offender and the total is
-# asserted so a rule that stopped firing is red rather than quiet, and three small ones for the
-# rules whose offenders cannot share a root without doubling another rule's count. Fixture
-# output goes to a file and is grepped, never printed, so no PROBLEM line reaches the gate
-# output on a pass. No box precondition: every checkout carries both inputs, so this never
-# prints SKIP.
+# asserted so a rule that stopped firing is red rather than quiet, a third (1f) doing the same
+# for the six check rules, with two healthy controls standing beside the offenders, and small
+# single-purpose ones for the rules whose offenders cannot share a root without doubling
+# another rule's count. Fixture output goes to a file and is grepped, never printed, so no
+# PROBLEM line reaches the gate output on a pass. No box precondition: every checkout carries
+# both inputs, so this never prints SKIP.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -366,6 +397,22 @@ mk_entry "$FM" healthy-checks design/contracts/healthy-checks.md
 mk_contract "$F/design/contracts/healthy-checks.md" \
   '| Unit | `healthy-checks.service` |' '| Owner | **claudius** |'
 
+# The second control: a sed script's $p is a sed command, not a shell read. Without the
+# single-quote strip in block_reads, checks-env names it and every contract that greps or
+# seds has to work around the validator.
+mk_entry "$FM" quoted-script design/contracts/quoted-script.md
+mk_contract "$F/design/contracts/quoted-script.md" \
+  '| Unit | `quoted-script.service` |' '| Owner | **claudius** |' \
+  '' "$(cat <<'EOF'
+1. **A block that reads a file through sed and grep.**
+
+   ```check id=quoted-script
+   tail="$(sed -n '/^## Gaps/,$p' "$AGENT_ATTEMPT_LOG")"
+   [ -n "$tail" ]
+   ```
+EOF
+)"
+
 mk_offender no-check "$(cat <<'EOF'
 1. **Artifact exists.** `bin/proposal_or_decline.sh` decides it. This is the shape the
    schema has always forbidden and nothing has ever caught: the command is named in prose,
@@ -492,6 +539,8 @@ assert 'a block reading a variable the executor does not export is named, by var
   "grep -q '^PROBLEM	checks-env	design/contracts/undeclared-var.md: check 1 (id=phantom): reads \$NOT_DECLARED' '$fx/checks.out'"
 assert 'the healthy contract is named by none of them' \
   "! grep -q 'healthy-checks.md' '$fx/checks.out'"
+assert "a sed script's \$p is a sed command, not a variable the executor must export" \
+  "! grep -q 'quoted-script.md' '$fx/checks.out'"
 assert 'and those ten are the only findings — every new rule fired exactly once' \
   "[ \"\$(grep -c '^PROBLEM	' '$fx/checks.out')\" = 10 ]"
 [ "$(grep -c '^PROBLEM	' "$fx/checks.out")" = 10 ] || sed -n 's/^PROBLEM\t/      /p' "$fx/checks.out"
