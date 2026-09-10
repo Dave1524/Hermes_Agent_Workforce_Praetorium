@@ -66,8 +66,31 @@ validate() {                  # $1 root — the report on stdout, exit status is
 }
 
 # --- fixture builders ----------------------------------------------------------------------
+# The conforming ## Acceptance checks body every fixture gets unless it is overriding it to be
+# the one offender of a rule. Two items, so "exactly one block per item" is exercised in the
+# healthy direction; the second declares a vantage and an exit-77 branch, which are the two
+# things T4.0 added that a single trivial block would never reach.
+DEFAULT_CHECKS=$(cat <<'EOF'
+1. **Artifact exists and is this run's.**
+
+   ```check id=artifact-is-this-run
+   test -n "$(find "$AGENT_INBOX_DIR" -maxdepth 1 -name "${RUN_DATE}_thing.md" \
+                -newermt "@$AGENT_RUN_STARTED_AT" 2>/dev/null)"
+   ```
+
+2. **The timer fired.**
+
+   ```check id=timer-fired when=sweep
+   t="$($SYSTEMCTL show "$UNIT.timer" -p LastTriggerUSec --value --timestamp=unix)"
+   case "$t" in @*) ;; *) exit 77 ;; esac
+   [ "$(( $(date +%s) - ${t#@} ))" -lt 691200 ]
+   ```
+EOF
+)
+
 # A contract with all eight sections in order. $1 path, $2 the Unit(s) row, $3 the Owner(s)
-# row (empty string for none), $4 optional preamble line before ## Identity.
+# row (empty string for none), $4 optional preamble line before ## Identity, $5 an override
+# for the ## Acceptance checks body (default: DEFAULT_CHECKS).
 mk_contract() {
   {
     echo "# Contract: $(basename "$1" .md)"
@@ -108,7 +131,9 @@ none
 
 ## Acceptance checks
 
-1. **Artifact exists.** `test -f`.
+EOF
+    printf '%s\n' "${5:-$DEFAULT_CHECKS}"
+    cat <<'EOF'
 
 ## Known failure modes
 
@@ -168,8 +193,8 @@ assert 'an escaped pipe, a pipe inside a code span and a %n specifier leave one 
   "! grep -q 'pipe-thing.md' '$fx/healthy.out'"
 assert 'the shared contract whose manifests declare rule1_exempt is EXEMPT by name, once' \
   "[ \"\$(grep -c '^EXEMPT	' '$fx/healthy.out')\" = 1 ] && grep -q '^EXEMPT	design/contracts/shared-thing.md	.*rule1_exempt on 2 of 2' '$fx/healthy.out'"
-assert 'the summary counts all three contracts, the declared paths, the one exemption and the eight sections' \
-  "grep -q '^SUMMARY	contracts=3 declared=3 absent=0 exempt=1 sections=8\$' '$fx/healthy.out'"
+assert 'the summary counts all three contracts, the declared paths, the one exemption, the eight sections and the six check blocks it graded' \
+  "grep -q '^SUMMARY	contracts=3 declared=3 absent=0 exempt=1 sections=8 checks=6 env=' '$fx/healthy.out'"
 
 echo "--- 1b. fixtures: each rule names exactly its offender ---"
 B="$fx/broken"
@@ -284,9 +309,28 @@ assert 'the shapes root reports exactly those three findings' \
   "[ \"\$(grep -c '^PROBLEM	' '$fx/shapes.out')\" = 3 ]"
 
 echo "--- 1e. fixtures: the schema list is read, and a list that is not eight is named ---"
+# Each of these roots has exactly one offence, so `mk_schema_vocab` writes the check
+# vocabulary the T4.0 rules read; a root missing THAT is the next fixture down.
+mk_schema_vocab() {            # $1 schema doc — appends the two vocabulary blocks
+  cat >>"$1" <<'EOF'
+
+#### Executor environment
+
+- `UNIT` — the unit
+- `RUN_DATE` — the run's date
+
+#### Vantage
+
+- `run` — from inside the run
+- `sweep` — from outside, on a cadence
+EOF
+}
 X="$fx/schema-short"; mkdir -p "$X/design"
 printf '### `## Identity`\n### `## Trigger`\n### `## Inputs`\n' >"$X/design/contract-schema.md"
+mk_schema_vocab "$X/design/contract-schema.md"
 N="$fx/schema-absent"; mkdir -p "$N/design"
+V="$fx/schema-novocab"; mkdir -p "$V/design"
+sed -n '/^### `## /p' "$REPO_ROOT/design/contract-schema.md" >"$V/design/contract-schema.md"
 
 assert 'a schema doc declaring three sections is named with the count it found' \
   "validate '$X' 2>&1 | grep -q '^PROBLEM	schema-sections	design/contract-schema.md: declares 3 '"
@@ -294,6 +338,186 @@ assert 'and it is the only finding — a short schema is not also reported as mi
   "[ \"\$(validate '$X' 2>&1 | grep -c '^PROBLEM	')\" = 1 ]"
 assert 'a root with no schema doc at all is named, not graded against an empty list' \
   "validate '$N' 2>&1 | grep -q '^PROBLEM	schema-sections	design/contract-schema.md: absent'"
+assert 'a schema doc declaring the eight sections and no executor environment is named' \
+  "validate '$V' 2>&1 | grep -q '^PROBLEM	checks-vocabulary	design/contract-schema.md: declares no executor environment'"
+assert 'and its missing vantage list is named too — both halves of the vocabulary are read' \
+  "validate '$V' 2>&1 | grep -q '^PROBLEM	checks-vocabulary	design/contract-schema.md: declares no vantage'"
+assert 'and those two are its only findings — the eight sections it does declare are not re-reported' \
+  "[ \"\$(validate '$V' 2>&1 | grep -c '^PROBLEM	')\" = 2 ]"
+
+echo "--- 1f. fixtures: the executable-check rules, one offender each ---"
+# T4.0. A contract's ## Acceptance checks are the executor's suite (T5.1), so each item must
+# carry a block it can RUN. Every offender below is a shape a hand-written contract actually
+# reaches: prose next to the assertion instead of the command that decides it, a block that
+# cannot fail, a block naming a variable nothing exports.
+F="$fx/checks"
+mk_root "$F"
+FM="$F/design/agents/claudius.toml"
+
+mk_offender() {               # $1 stem (also its unit), $2 the ## Acceptance checks body
+  mk_entry "$FM" "$1" "design/contracts/$1.md"
+  mk_contract "$F/design/contracts/$1.md" "| Unit | \`$1.service\` |" '| Owner | **claudius** |' \
+    '' "$2"
+}
+
+# The healthy control: mk_contract's default body — one block per item, a declared vantage,
+# an exit-77 branch, and every variable either exported by the executor or set in the block.
+mk_entry "$FM" healthy-checks design/contracts/healthy-checks.md
+mk_contract "$F/design/contracts/healthy-checks.md" \
+  '| Unit | `healthy-checks.service` |' '| Owner | **claudius** |'
+
+mk_offender no-check "$(cat <<'EOF'
+1. **Artifact exists.** `bin/proposal_or_decline.sh` decides it. This is the shape the
+   schema has always forbidden and nothing has ever caught: the command is named in prose,
+   which is not the same as carrying one.
+EOF
+)"
+
+mk_offender stray-check "$(cat <<'EOF'
+1. **Artifact exists.**
+
+   ```check id=has-a-block
+   test -f /tmp
+   ```
+
+```check id=at-column-zero
+test -f /tmp
+```
+EOF
+)"
+
+mk_offender two-checks "$(cat <<'EOF'
+1. **Two assertions wearing one number.**
+
+   ```check id=first
+   test -f /tmp
+   ```
+
+   ```check id=second
+   test -d /tmp
+   ```
+EOF
+)"
+
+mk_offender no-id "$(cat <<'EOF'
+1. **Nameless.**
+
+   ```check
+   test -f /tmp
+   ```
+EOF
+)"
+
+mk_offender dup-id "$(cat <<'EOF'
+1. **First.**
+
+   ```check id=twice
+   test -f /tmp
+   ```
+
+2. **Second, under the same name.**
+
+   ```check id=twice
+   test -d /tmp
+   ```
+EOF
+)"
+
+mk_offender bad-vantage "$(cat <<'EOF'
+1. **From nowhere in particular.**
+
+   ```check id=vantage when=whenever
+   test -f /tmp
+   ```
+EOF
+)"
+
+mk_offender bad-attr "$(cat <<'EOF'
+1. **Carrying an attribute the executor does not read.**
+
+   ```check id=attr retries=3
+   test -f /tmp
+   ```
+EOF
+)"
+
+mk_offender trivial "$(cat <<'EOF'
+1. **A check that cannot fail is not a check.**
+
+   ```check id=vacuous
+   true
+   ```
+EOF
+)"
+
+mk_offender bad-syntax "$(cat <<'EOF'
+1. **A fence exists; a command does not.**
+
+   ```check id=unparseable
+   [ -f /tmp ] &&
+   ```
+EOF
+)"
+
+mk_offender undeclared-var "$(cat <<'EOF'
+1. **Reading something nothing exports.**
+
+   ```check id=phantom
+   [ -n "$NOT_DECLARED" ]
+   ```
+EOF
+)"
+
+rc=0; validate "$F" >"$fx/checks.out" 2>&1 || rc=$?
+assert "the validator runs on the checks root (rc=$rc)" "[ '$rc' = 0 ] && [ -s '$fx/checks.out' ]"
+assert 'a prose-only check is named by its item number — the gate T4.0 was written for' \
+  "grep -q '^PROBLEM	checks-executable	design/contracts/no-check.md: check 1 carries no check block' '$fx/checks.out'"
+assert 'a check block outside any numbered item is named by line, not silently adopted by the item above' \
+  "grep -qE '^PROBLEM	checks-executable	design/contracts/stray-check.md: the check block on line [0-9]+ sits outside any numbered item' '$fx/checks.out'"
+assert 'two blocks under one item are named with the count' \
+  "grep -q '^PROBLEM	checks-executable	design/contracts/two-checks.md: check 1 carries 2 check blocks' '$fx/checks.out'"
+assert 'a block declaring no id is named — a receipt has nothing to call it' \
+  "grep -q '^PROBLEM	checks-declared	design/contracts/no-id.md: check 1 declares no id=' '$fx/checks.out'"
+assert 'an id used twice in one file is named, with the check that had it first' \
+  "grep -q '^PROBLEM	checks-declared	design/contracts/dup-id.md: check 2 (id=twice): already used by check 1' '$fx/checks.out'"
+assert 'a when= outside the declared vantages is named, with the ones that exist' \
+  "grep -q '^PROBLEM	checks-declared	design/contracts/bad-vantage.md: check 1 (id=vantage): when=whenever is not a declared vantage' '$fx/checks.out'"
+assert 'an attribute the executor does not read is named rather than ignored' \
+  "grep -q '^PROBLEM	checks-declared	design/contracts/bad-attr.md: check 1 (id=attr): unknown attribute retries=' '$fx/checks.out'"
+assert 'a block that cannot fail is named' \
+  "grep -q '^PROBLEM	checks-decidable	design/contracts/trivial.md: check 1 (id=vacuous): the block cannot fail' '$fx/checks.out'"
+assert 'a block bash -n rejects is named as the block, not as a missing section' \
+  "grep -q '^PROBLEM	checks-syntax	design/contracts/bad-syntax.md: check 1 (id=unparseable): bash -n rejects the block' '$fx/checks.out'"
+assert 'a block reading a variable the executor does not export is named, by variable' \
+  "grep -q '^PROBLEM	checks-env	design/contracts/undeclared-var.md: check 1 (id=phantom): reads \$NOT_DECLARED' '$fx/checks.out'"
+assert 'the healthy contract is named by none of them' \
+  "! grep -q 'healthy-checks.md' '$fx/checks.out'"
+assert 'and those ten are the only findings — every new rule fired exactly once' \
+  "[ \"\$(grep -c '^PROBLEM	' '$fx/checks.out')\" = 10 ]"
+[ "$(grep -c '^PROBLEM	' "$fx/checks.out")" = 10 ] || sed -n 's/^PROBLEM\t/      /p' "$fx/checks.out"
+assert 'the summary counts the blocks it graded and the variables the schema declares' \
+  "grep -qE '^SUMMARY	.* checks=[0-9]+ env=[0-9]+\$' '$fx/checks.out'"
+
+echo "--- 1g. fixtures: a contract for an always-on unit is exempt from the check rules ---"
+# By the manifest join, never by its own prose: a unit with kind = "service" has no run, so
+# there is no RUN_DATE, no attempt log and no LastTriggerUSec for the executor to be given.
+# `kind` is not self-assertion — tests/test_fleet_ownership.sh::kind-matches-unit-files
+# already joins it against the unit files on disk.
+A="$fx/always-on"
+mk_root "$A"
+printf '[[workflows]]\nunit = "always-on"\nkind = "service"\ncontract = "design/contracts/always-on.md"\n\n' \
+  >"$A/design/agents/marcus.toml"
+mk_contract "$A/design/contracts/always-on.md" '| Unit | `always-on.service` |' '| Owner | **marcus** |' \
+  '' '1. **Prose, and no block.** There is no run to decide it from.'
+
+rc=0; validate "$A" >"$fx/always-on.out" 2>&1 || rc=$?
+assert "the validator runs on the always-on root (rc=$rc)" "[ '$rc' = 0 ] && [ -s '$fx/always-on.out' ]"
+assert 'a contract whose declaring entries are all kind = service yields no check finding' \
+  "! grep -q '^PROBLEM	checks-' '$fx/always-on.out'"
+assert 'and it is EXEMPT by name, never merely skipped' \
+  "grep -q '^EXEMPT	design/contracts/always-on.md	.*always-on.service.*no run' '$fx/always-on.out'"
+assert 'the exemption is the whole finding — the section rules still ran on it' \
+  "[ \"\$(grep -c '^PROBLEM	' '$fx/always-on.out')\" = 0 ]"
 
 echo "--- 2. the live tree: $REPO_ROOT/design/contracts against design/agents ---"
 report="$fx/live.out"
@@ -333,6 +557,18 @@ check contract-parseable \
   'every code fence in every contract is closed, so the headings below it are headings'  # (::contract-parseable)
 check schema-sections \
   'design/contract-schema.md declares the eight sections this validator grades against'  # (::schema-sections)
+check checks-vocabulary \
+  'design/contract-schema.md declares the executor environment and the vantages, so the check rules grade against a vocabulary rather than an empty one'  # (::checks-vocabulary)
+check checks-executable \
+  'every acceptance check carries exactly one runnable block, and every block belongs to a check'  # (::checks-executable)
+check checks-declared \
+  'every check block declares a unique id and, if it declares a vantage, a declared one'  # (::checks-declared)
+check checks-decidable \
+  'no check block is empty or trivially true — a check that cannot fail is not a check'  # (::checks-decidable)
+check checks-syntax \
+  'bash -n accepts every check block, so a fence that exists is also a command that runs'  # (::checks-syntax)
+check checks-env \
+  'every variable a check block reads is exported by the executor or set in the block itself'  # (::checks-env)
 
 sections_counted=$(sed -n 's/^SUMMARY\t.*sections=\([0-9]*\).*/\1/p' "$report")
 assert "the eight section names came from the schema doc, not from an empty read (${sections_counted:-none})" \
@@ -345,6 +581,13 @@ assert 'every rule-1 exemption is printed by name, never merely skipped' \
 
 # The vacuity guard: the count the validator reports is compared to one computed here, so a
 # validator that read an empty directory — or the wrong one — is red rather than clean.
+# The same guard for the T4.0 half: a validator that parsed no blocks would report every
+# check rule clean. knowledge-digest.md alone carries nine.
+checks_graded=$(sed -n 's/^SUMMARY\t.* checks=\([0-9]*\).*/\1/p' "$report")
+env_declared=$(sed -n 's/^SUMMARY\t.* env=\([0-9]*\).*/\1/p' "$report")
+assert "the check rules graded real blocks (${checks_graded:-none}), against a real environment (${env_declared:-none} vars)" \
+  "[ -n \"\$checks_graded\" ] && [ \"\$checks_graded\" -ge 9 ] && [ -n \"\$env_declared\" ] && [ \"\$env_declared\" -ge 1 ]"  # (::checks-graded)
+
 here=$(find "$REPO_ROOT/design/contracts" -maxdepth 1 -name '*.md' | wc -l)
 counted=$(sed -n 's/^SUMMARY\tcontracts=\([0-9]*\) .*/\1/p' "$report")
 assert "the validator judged every contract on disk ($here), not fewer" \

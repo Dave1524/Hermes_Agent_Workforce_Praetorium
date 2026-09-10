@@ -68,9 +68,73 @@ contract, and the runner's write boundary should make it impossible rather than 
 prohibited.
 
 ### `## Acceptance checks`
-Numbered, each independently decidable, each naming the command that decides it. These
-become D3's suite. A check that cannot fail is not a check — assert against what the
-system reports, never against a whitelist of things you already expect to be fine.
+A numbered list. Each item states the assertion in prose and carries **exactly one** fenced
+block that decides it:
+
+    ```check id=<slug> when=<vantage>
+    <bash>
+    ```
+
+These become D3's suite and T5.1's executor runs them verbatim. A check that cannot fail is not
+a check — assert against what the system reports, never against a whitelist of things you
+already expect to be fine.
+
+- `id` is mandatory and unique in the file, `[a-z][a-z0-9-]*`. It is the stable name a receipt
+  and the scorecard give a failed check, so prose elsewhere in the contract references a check
+  by id and never by number: renumbering the list must not rename anything.
+- `when` is optional, default `run`, and names a vantage declared below.
+- The block is bash run with `set -u`, **no `-e` and no `pipefail`**. These are boolean
+  conditions, and `pipefail` under an early-exiting reader already cost this gate one run in
+  seven (`CLAUDE.md` § Verification) — inverted twice, it makes a true check red and a negated
+  one green without reading anything. The block's status is its last command's, so the decision
+  goes last.
+- **Exit 0 passes, 77 is "not applicable", anything else fails.** 77 is this box's green skip
+  already (`bin/verify.sh` treats 0 and 77 alike). A check that does not apply to this run —
+  every artifact check on a run that declined — says so with 77 rather than exiting 0, so a
+  receipt can tell "passed" from "never applied". Whatever the block prints lands in the
+  receipt; a check that decides between branches prints which it took.
+
+#### Executor environment
+
+The executor exports these and nothing else, and a block reading anything else is reported by
+name. Three are exported by the runner today at the lines cited; the rest the executor derives
+per unit, and T5.1 is what makes them true.
+
+- `UNIT` — the unit name with no suffix, from the manifest entry.
+- `SYSTEMCTL` — `systemctl`, or `systemctl --user` where the entry says `scope = "user"`.
+  Never hardcode one: half this fleet is `--user` and half is not.
+- `JOURNALCTL` — the same, for `journalctl`.
+- `RUN_DATE` — `YYYY-MM-DD`, exported once (`bin/agent_propose.sh:317`) and read, never
+  recomputed, so a run spanning midnight cannot disagree with itself.
+- `AGENT_RUN_STARTED_AT` — epoch seconds at the top of the run (`bin/agent_propose.sh:34`).
+  It is what makes "this run's artifact" decidable rather than "an artifact".
+- `AGENT_ATTEMPT_LOG` — this attempt's own output, truncated per attempt
+  (`bin/agent_propose.sh:192`).
+- `AGENT_INBOX_DIR` — where the run's artifact belongs, `$INBOX_WORKTREE/_inbox/agents`.
+- `INBOX_WORKTREE` — the inbox worktree, `$HOME/agent-worktrees/inbox`
+  (`bin/agent_propose.sh:24`).
+- `VAULT` — the vault the run read, already resolved. `~/vault` is a symlink and a check that
+  records the link rather than its target does not survive cutover.
+- `HOME` — the box account's home.
+
+**`logs/agent_run.log` is deliberately absent.** One stream carries every job with no run
+boundary in it, so a line in it belongs to nobody; scoping the decline sentinel out of it was
+T7.1 (2026-09-10), and handing the executor its path would invite that back. A check that wants
+this run's output reads `$AGENT_ATTEMPT_LOG`; one that wants the unit's history reads the
+journal, which journald scopes by unit.
+
+#### Vantage
+
+- `run` — decided from inside the run that just finished. It sees the artifact, the attempt log
+  and the worktree, and cannot see a run that never happened, because nothing calls it.
+- `sweep` — decided from outside on a cadence, over systemd and the journal. The only vantage
+  that catches a timer that stopped firing or a run the global lock skipped. A check whose
+  failure mode is "nothing ran" is `sweep`, or it is vacuous.
+
+A contract for an always-on unit has no run to be decided from — no `RUN_DATE`, no attempt log,
+no `LastTriggerUSec`. Where every declaring `[[workflows]]` entry carries `kind = "service"` the
+check rules are skipped and the exemption is printed by name on every run; `kind` is joined
+against the unit files on disk by `tests/test_fleet_ownership.sh`, so it is not self-assertion.
 
 ### `## Known failure modes`
 Ways this workflow has actually failed or plausibly can, each with the signal that
@@ -116,18 +180,28 @@ shape as `suite_exempt` in the coverage checker — printed as an exemption on e
 which cannot be read for polarity: a contract saying that some *other* file breaks rule 1
 exempted itself, and so did one that merely quoted the rule.
 
-A manifest naming a contract that does not exist is T1.1's finding, not this one's. T4.0 adds
-the check syntax.
+A manifest naming a contract that does not exist is T1.1's finding, not this one's.
+
+**The check syntax is validated too, since 2026-09-10 (T4.0).** Every numbered item under
+`## Acceptance checks` carries exactly one ```` ```check ```` block and every block belongs to
+an item, so a check written as prose beside the command that would decide it is reported by its
+item number. Each block declares an id unique in the file, a `when` from the vantages above if
+it declares one, and no other attribute; `bash -n` must accept it; it must not be empty or
+trivially true; and every variable it reads is either in the executor environment above or set
+in the block. Both lists are READ from the two `#### ` blocks above rather than retyped in the
+validator, and a schema doc declaring neither is reported — otherwise every contract would be
+graded against an empty vocabulary and the tree would read clean.
 
 ## Status
 
-Written: `knowledge-digest`. **Corrected 2026-09-01 (W5):** the other 25 entries do *not*
-all carry a pointer. Counted under `tomllib`, 14 of the 26 workflow entries have a
-`contract` field — marcus 4, claudius 6, augustus 4 — resolving to 13 distinct paths (the
-`augustus-content` / `content-change-dispatch` pair shares one, per rule 1). **Trajan's 12
-platform jobs carry no `contract` field at all**, which is an omission nobody decided: a
-deterministic job still promises an artifact and a cadence, and those are exactly the
-promises this box breaks silently. Writing the 12 remaining persona contracts is Phase B,
-one brief per owner. Whether the platform jobs get contracts too is open and belongs with
-the coverage checker (D6), because the checker must decide what an entry naming no
+Written: `knowledge-digest` (converted to the executable check syntax, 2026-09-10) and
+`buzz-interactive` (exempt from the check rules — five always-on units, `kind = "service"`).
+
+**Counted under `tomllib` on 2026-09-10**, replacing the 2026-09-01 figures this section
+carried while the manifests grew under it: 33 `[[workflows]]` entries, 17 of which carry a
+`contract` field, resolving to 12 distinct paths of which 2 exist. The 10 absent are T1.1's
+red list and Phase 4's work, one brief per owner. Trajan's platform jobs still carry no
+`contract` field at all — a deterministic job promises an artifact and a cadence like any
+other, and those are exactly the promises this box breaks silently. Whether they get contracts
+belongs with the coverage checker (D6), which must first decide what an entry naming no
 contract means.

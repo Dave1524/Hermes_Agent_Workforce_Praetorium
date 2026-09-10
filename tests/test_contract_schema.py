@@ -37,6 +37,7 @@ rule in the coverage checker, which ships red on the ten missing files. Counted 
 """
 import pathlib
 import re
+import subprocess
 import sys
 import tomllib
 
@@ -53,6 +54,22 @@ BRACES = re.compile(r"([A-Za-z0-9@._%-]*)\{([^{}]+)\}([A-Za-z0-9@._%-]*)")
 TOKEN = re.compile(r"[A-Za-z0-9@._%-]+")
 UNIT_SUFFIX = re.compile(r"\.(service|timer)$")
 SUBHEADING = re.compile(r"^#{3,6} ")
+
+# T4.0. The check syntax, and the two vocabularies it grades against — both READ from the
+# schema doc's `#### ` blocks, never retyped here, for the same reason the section list is.
+ENV_BLOCK = "#### Executor environment"
+VANTAGE_BLOCK = "#### Vantage"
+ENV_BULLET = re.compile(r"^- `([A-Z][A-Z0-9_]*)`")
+VANTAGE_BULLET = re.compile(r"^- `([a-z][a-z0-9-]*)`")
+CHECKS_SECTION = "Acceptance checks"
+ITEM = re.compile(r"^(\d+)\.\s")
+CHECK_ID = re.compile(r"^[a-z][a-z0-9-]*$")
+CHECK_ATTRS = ("id", "when")
+# A block whose every command is one of these decides nothing. The schema's own rule: a check
+# that cannot fail is not a check.
+TRIVIAL = re.compile(r"^(true|:|exit\s+0|echo(\s.*)?)$")
+VAR_READ = re.compile(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)")
+VAR_SET = re.compile(r"(?:^\s*|[;&|(]\s*|\bfor\s+)([A-Za-z_][A-Za-z0-9_]*)(?:=|\s+in\b)")
 
 problems = []
 exempt = []
@@ -82,6 +99,50 @@ def schema_sections():
 SECTIONS = schema_sections()
 
 
+def schema_bullets(heading, bullet):
+    """The bullets of one `#### ` block in the schema doc, until the next heading."""
+    doc = ROOT / SCHEMA_DOC
+    if not doc.is_file():
+        return []
+    found, inside = [], False
+    for line in doc.read_text().splitlines():
+        if line.startswith("#"):
+            inside = line.strip() == heading
+            continue
+        if inside:
+            m = bullet.match(line)
+            if m:
+                found.append(m.group(1))
+    return found
+
+
+def check_vocabulary():
+    """The executor environment and the vantages, or a finding if either is missing.
+
+    This is the vacuity guard for the five rules below, and it is the whole reason they can
+    be trusted: a schema doc these could not be read from would leave every block graded
+    against an empty vocabulary — no variable undeclared, no vantage wrong — and the tree
+    would read clean.
+    """
+    if not (ROOT / SCHEMA_DOC).is_file():
+        return set(), set()          # schema-sections already named the absent doc
+    env = schema_bullets(ENV_BLOCK, ENV_BULLET)
+    vantages = schema_bullets(VANTAGE_BLOCK, VANTAGE_BULLET)
+    if not env:
+        problem("checks-vocabulary",
+                f"{SCHEMA_DOC}: declares no executor environment — no `{ENV_BLOCK}` block with "
+                "`VAR` bullets, so every check block would be graded against an empty "
+                "vocabulary and no variable could be undeclared")
+    if not vantages:
+        problem("checks-vocabulary",
+                f"{SCHEMA_DOC}: declares no vantages — no `{VANTAGE_BLOCK}` block with "
+                "`name` bullets, so no `when=` could be wrong")
+    return set(env), set(vantages)
+
+
+ENV_VARS, VANTAGES = check_vocabulary()
+
+
 # --- contract parsing -------------------------------------------------------------------
 def parse_contract(text):
     """([(heading, body lines)...], line of an unclosed fence or None), split on `## `.
@@ -94,7 +155,7 @@ def parse_contract(text):
     sections = []
     opened = None
     for n, line in enumerate(text.splitlines(), 1):
-        if line.startswith("```"):
+        if line.lstrip().startswith("```"):
             opened = None if opened else n
         if opened is None and line.startswith("## "):
             sections.append((line[3:].strip(), []))
@@ -166,6 +227,141 @@ def units_in(cell):
     return found
 
 
+def acceptance_checks(text):
+    """([item numbers], [check blocks]) under `## Acceptance checks`, with real line numbers.
+
+    A block belongs to the item it is indented under; one at column 0 has closed the list and
+    belongs to nobody, which is a finding rather than something to adopt into the item above.
+    """
+    items, blocks = [], []
+    inside, item, fence = False, None, None
+    for n, line in enumerate(text.splitlines(), 1):
+        stripped = line.strip()
+        if fence is not None:
+            if stripped.startswith("```"):
+                if fence["info"].split(" ")[0] == "check" and fence["inside"]:
+                    blocks.append(fence)
+                fence = None
+            else:
+                fence["body"].append(line)
+            continue
+        if stripped.startswith("```"):
+            fence = {"line": n, "indent": len(line) - len(line.lstrip()), "item": item,
+                     "info": stripped[3:].strip(), "body": [], "inside": inside}
+            continue
+        if line.startswith("## "):
+            inside = line[3:].strip() == CHECKS_SECTION
+            item = None
+            continue
+        if inside:
+            m = ITEM.match(line)
+            if m:
+                item = int(m.group(1))
+                items.append(item)
+    return items, blocks
+
+
+def attrs_of(info):
+    """The info line's attributes after the leading `check`, and the tokens that are not."""
+    good, bad = {}, []
+    for token in info.split()[1:]:
+        key, sep, value = token.partition("=")
+        if sep and key in CHECK_ATTRS and key not in good:
+            good[key] = value
+        else:
+            bad.append(token)
+    return good, bad
+
+
+def block_reads(body):
+    """Variables the block reads without setting them earlier in the same block."""
+    known, unknown = set(), []
+    for line in body:
+        for var in VAR_READ.findall(line):
+            if var not in known and var not in ENV_VARS and var not in unknown:
+                unknown.append(var)
+        known.update(VAR_SET.findall(line))
+    return unknown
+
+
+def grade_checks(rel, text):
+    """The T4.0 rules over one contract. Returns the number of blocks graded."""
+    items, blocks = acceptance_checks(text)
+    by_item = {}
+    for block in blocks:
+        if block["indent"] and block["item"] is not None:
+            by_item.setdefault(block["item"], []).append(block)
+        else:
+            problem("checks-executable",
+                    f"{rel}: the check block on line {block['line']} sits outside any numbered "
+                    "item — indent it under the item it decides, or the list ends above it")
+    if not items:
+        problem("checks-executable",
+                f"{rel}: ## {CHECKS_SECTION} carries no numbered check")
+    for n in items:
+        got = by_item.get(n, [])
+        if not got:
+            problem("checks-executable",
+                    f"{rel}: check {n} carries no check block — a command named in prose is "
+                    "not a command the executor can run")
+        elif len(got) > 1:
+            problem("checks-executable",
+                    f"{rel}: check {n} carries {len(got)} check blocks — one item, one block, "
+                    "so one result per check")
+
+    seen = {}
+    graded = 0
+    for n in sorted(by_item):
+        for block in by_item[n]:
+            graded += 1
+            good, bad = attrs_of(block["info"])
+            ident = good.get("id")
+            label = f"check {n} (id={ident})" if ident else f"check {n}"
+            if ident is None:
+                problem("checks-declared",
+                        f"{rel}: check {n} declares no id= — a receipt and the scorecard have "
+                        "nothing to call it, and a renumbered list would rename it")
+            elif not CHECK_ID.match(ident):
+                problem("checks-declared",
+                        f"{rel}: {label}: an id is [a-z][a-z0-9-]*")
+            elif ident in seen:
+                problem("checks-declared",
+                        f"{rel}: {label}: already used by check {seen[ident]}")
+            else:
+                seen[ident] = n
+            if "when" in good and VANTAGES and good["when"] not in VANTAGES:
+                problem("checks-declared",
+                        f"{rel}: {label}: when={good['when']} is not a declared vantage "
+                        f"({', '.join(sorted(VANTAGES))})")
+            for token in bad:
+                problem("checks-declared",
+                        f"{rel}: {label}: unknown attribute {token} — the info line takes "
+                        f"{' and '.join(a + '=' for a in CHECK_ATTRS)}")
+
+            commands = [ln.strip() for ln in block["body"]
+                        if ln.strip() and not ln.strip().startswith("#")]
+            if not commands:
+                problem("checks-decidable", f"{rel}: {label}: the block is empty")
+            elif all(TRIVIAL.match(c) for c in commands):
+                problem("checks-decidable",
+                        f"{rel}: {label}: the block cannot fail — {commands[0]!r} decides "
+                        "nothing, and a check that cannot fail is not a check")
+            else:
+                syntax = subprocess.run(["bash", "-n"], input="\n".join(block["body"]),
+                                        capture_output=True, text=True)
+                if syntax.returncode:
+                    detail = (syntax.stderr.strip().splitlines() or ["no message"])[-1]
+                    problem("checks-syntax",
+                            f"{rel}: {label}: bash -n rejects the block: {detail}")
+
+            if ENV_VARS:
+                for var in block_reads(block["body"]):
+                    problem("checks-env",
+                            f"{rel}: {label}: reads ${var}, which the executor does not export "
+                            "and the block does not set")
+    return graded
+
+
 def has_content(body):
     """Whether a section says anything.
 
@@ -204,7 +400,8 @@ for manifest in manifests:
                     f"{manifest.name}: a [[workflows]] entry names contract "
                     f"{w['contract']} and no unit — the join has no left-hand side")
         declared.setdefault(w["contract"], []).append(
-            {"owner": manifest.stem, "unit": w.get("unit"), "exempt": w.get("rule1_exempt")})
+            {"owner": manifest.stem, "unit": w.get("unit"), "exempt": w.get("rule1_exempt"),
+             "kind": w.get("kind")})
 
 by_unit = {}
 for path, entries in declared.items():
@@ -219,9 +416,11 @@ for unit, paths in sorted(by_unit.items()):
 
 # --- the contract side -------------------------------------------------------------------
 contracts = sorted((ROOT / "design" / "contracts").glob("*.md"))
+graded = 0
 for contract in contracts:
     rel = contract.relative_to(ROOT).as_posix()
-    sections, open_fence = parse_contract(contract.read_text())
+    text = contract.read_text()
+    sections, open_fence = parse_contract(text)
     if open_fence:
         problem("contract-parseable",
                 f"{rel}: the code fence opened on line {open_fence} is never closed, so every "
@@ -250,6 +449,15 @@ for contract in contracts:
             problem("sections-nonempty", f'{rel}: ## {heading} is empty — write "none"')
 
     entries = declared.get(rel, [])
+    units_named = sorted({e["unit"] for e in entries if e["unit"]})
+    if entries and all(e["kind"] == "service" for e in entries):
+        exempt.append((rel, "every declaring entry is kind = \"service\" ("
+                            + ", ".join(f"{u}.service" for u in units_named)
+                            + ") — an always-on unit has no run for the executor to decide a "
+                              "check from: no RUN_DATE, no attempt log, no LastTriggerUSec"))
+    else:
+        graded += grade_checks(rel, text)
+
     if not entries:
         problem("contract-declared",
                 f"{rel}: named by no [[workflows]].contract in any manifest")
@@ -299,6 +507,7 @@ print("  exempt from rule 1 (named for the unit) — named, never merely skipped
 for rel, reason in exempt:
     print(f"EXEMPT\t{rel}\t{reason}")
 print(f"SUMMARY\tcontracts={len(contracts)} declared={len(declared)} "
-      f"absent={len(absent)} exempt={len(exempt)} sections={len(SECTIONS)}")
+      f"absent={len(absent)} exempt={len(exempt)} sections={len(SECTIONS)} "
+      f"checks={graded} env={len(ENV_VARS)}")
 for rule, detail in problems:
     print(f"PROBLEM\t{rule}\t{detail}")
