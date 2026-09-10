@@ -74,7 +74,7 @@ Two columns. 2026-09-07 is what the plan was written against and what T1.1's gat
 | Workflow entries in `design/agents/*.toml` | 33 (29 standing, 2 dormant, 2 spent) | 33 (**31 standing**, 2 spent) — the two BD entries went dormant → standing with T2.4 |
 | **Logical** standing workflows | not distinguished | **30** — `augustus-content` and `content-change-dispatch` are two triggers for one workflow, not two products |
 | Contracts named / existing / missing | 12 / 2 / 10 (marcus 4, claudius 5, augustus 1) | 12 / **12** / **0** |
-| Contracts carrying the review's actionability fields | n/a | **0 of 12** — the gap T4.1–T4.4 now own |
+| Contracts carrying the review's actionability fields | n/a | **12 of 12** (`063e6ce`) — measured **0 of 12** earlier the same day; backfilled with T4.1-T4.3 and now enforced as `outputs-actionability` |
 | Workflows declaring `claude-sonnet` but running an alias | 5 | **0** (T2.1) |
 | Fields the coverage checker joins | status, suite, unit, owner | + contract path, runner, model, tools, mcp (T1.1, T1.2) |
 | Scheduled runners passing `bypassPermissions` | 9 of 9 | **0 of 9** (T2.2) |
@@ -127,6 +127,11 @@ an operator product:
    no-output conditions; benefit hypothesis and measurement signal; and an acceptance assertion
    proving the artifact belongs to this run. Explicitly *not* a new schema — these live inside the
    eight sections already in `design/contract-schema.md`.
+   **LANDED 2026-09-10, `063e6ce`**, as *five* `## Outputs` bullets rather than six: beneficiary,
+   next actor, next action, benefit hypothesis, benefit signal. The valid no-output state stayed in
+   `## Decline conditions`, which already enumerates and validates those states — a second copy in
+   `## Outputs` would be a second owner of one fact, the shape this schema keeps deleting. The
+   deviation is recorded in the schema doc and in the suite header, not only here.
 2. **A uniform run receipt** (T5.1, T5.2). One structured receipt per run: workflow id, run id,
    start/end, **exactly one** terminal outcome, artifact URI or state-change evidence, assertion
    results, next actor and action due, cost/runtime. A silent skip is never a success.
@@ -147,14 +152,15 @@ an operator product:
   2026-09-07), not 38, and wave one added two. Two minutes later wave two added the four T5.3
   sub-cards, taking it to **43**, which is what the header now records.
 
-**Where it leaves the contracts already written.** T4.1, T4.2 and T4.3 landed against this file's
-*original* gates: the `contract-exists` red list is empty and `bin/verify.sh` is green. Against the
-*reviewed* gates they are half done. All 12 contracts carry the mechanism half — artifact, location,
-freshness, valid decline, and a run-anchored assertion, four of the seven — and **none** declares a
-beneficiary, next actor, next action or benefit hypothesis. Verified by grep across
-`design/contracts/`: zero matches for any of those as a declared field. That is why those three
-cards are In Progress rather than Done, and why the remaining work is an edit to `## Outputs` in
-twelve files plus one validator rule in T4.5, not a new phase.
+**Where it leaves the contracts already written — closed the same day.** T4.1, T4.2 and T4.3 first
+landed against this file's *original* gates: the `contract-exists` red list is empty and
+`bin/verify.sh` is green. Against the *reviewed* gates they were half done — all 12 contracts
+carried the mechanism half (artifact, location, freshness, valid decline, a run-anchored assertion)
+and **none** declared a beneficiary, next actor, next action or benefit hypothesis, verified by grep
+across `design/contracts/` with zero matches. `063e6ce` closed that half: five bullets defined once
+in `design/contract-schema.md`, backfilled into all twelve, and enforced as `outputs-actionability`
+rather than left to T4.5. T4.1 and T4.2 are Done. T4.3 is not — its reviewed gate also asks that a
+deliberately missing board movement fail by name, and that assertion does not exist yet.
 
 ## Tasks
 
@@ -250,8 +256,9 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   merely reads it; weekly pre-assembly → the weekly review decision. A report with no named next
   action is incomplete.
   Gate: T1.1's red list shrinks by four **and** all four carry the actionability fields.
-  **HALF LANDED 2026-09-10, `37d9563`** — four contracts, 24 executable checks, red list 10 → 6,
-  mechanism half complete. Outstanding: beneficiary / next actor / next action / benefit hypothesis.
+  **DONE 2026-09-10, `37d9563` + `063e6ce`** — four contracts, 24 executable checks, red list
+  10 → 6, and the actionability fields backfilled and enforced. All four answer `Unknown` for the
+  benefit signal and say why: nothing on this box measures whether Dave read the report.
 - **T4.2** [Claude, L, T4.0, T2.3] Claudius's five: standing-research, raw-ingest,
   m1-signal-scan, bd-stall-radar, bd-followup-drafts.
   Reviewed requirement: each names the next commercial or editorial move its artifact enables —
@@ -261,8 +268,11 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   a copy-ready pack closing the radar-to-send-material handoff. BD benefit evidence is a draft used,
   edited, parked or rejected — never invented revenue.
   Gate: red list shrinks by five **and** all five join to a real run and a downstream action.
-  **HALF LANDED 2026-09-10, `28cc156`** — five contracts, 47 checks, red list 5 → 0, gate green.
-  Outstanding: the same four actionability fields.
+  **DONE 2026-09-10, `28cc156` + `063e6ce`** — five contracts, 47 checks, red list 5 → 0, gate
+  green, and the actionability fields backfilled and enforced. Two of the five name a benefit signal
+  that is already computable and computed by nothing — `raw-ingest`'s ingest backlog, which is this
+  job's own input, and `standing-research`'s Mac-side promotion rate. The other three answer
+  `Unknown`, which is the finding rather than a gap in the writing.
 - **T4.3** [Claude, M, T4.0] augustus-content, shared by two triggers. Must carry the
   corpus-freshness check that would have caught the nine-night failure, and the three-state exit.
   Reviewed requirement: the two triggers are **one logical workflow**, not two products. The
@@ -272,8 +282,14 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   whether the draft was scheduled or published — ROI stays `Unknown` until consumption is measured.
   Gate: T1.1's red list is empty, the two manifest entries reconcile to one logical workflow, **and**
   a deliberately missing board movement fails by name.
-  **HALF LANDED 2026-09-10, `9c36094`** — one contract for both triggers, red list 6 → 5.
-  Outstanding: the actionability fields and the named board-movement assertion.
+  **HALF LANDED 2026-09-10, `9c36094` + `063e6ce`** — one contract for both triggers, red list
+  6 → 5, and the actionability fields backfilled: the beneficiary splits by trigger — Dave for a
+  board row, **augustus** for a `content-change-dispatch` tick, the only artifact on this box whose
+  reader is an agent — and the benefit signal is the board delta, already computed by
+  `deliver_content.sh` and read by nothing. Outstanding: **the named board-movement assertion.**
+  `run-ended-in-a-named-outcome` accepts `no board movement and no reply within` as one of the seven
+  terminal branches, so a night that moved nothing still passes by name. The reviewed gate asks for
+  the opposite, and closing it is a decision about the three-state exit, not a line to bolt on.
 - **T4.4** [Claude, L, T4.0] Light contracts for Trajan's 14 standing platform jobs: trigger,
   artifact, cadence and at least one check (fired within window, artifact is this run's).
   Inputs and side effects may read `none`. The two spent entries get `contract_exempt` with a
@@ -291,11 +307,13 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   artifact or state change plus a retirement condition where one applies.
 - **T4.5** [Claude, S, T4.1, T4.2, T4.3, T4.4] Field mandatory: T1.1 flips from "resolves if
   present" to "present and resolves". Exemption only for `status = "spent"`.
-  Reviewed requirement: the validator **also** rejects a standing workflow whose contract does not
-  identify an artifact or state change, a beneficiary, a next actor and action, a valid no-output
-  state, and a benefit metric or an explicit `Unknown`. This is where the actionability fields stop
-  being prose and become enforced — it is the one new validator rule the review implies, and it is
-  what makes T4.1–T4.4's outstanding half impossible to forget.
+  Reviewed requirement, **half of it already landed**: the actionability rule became enforced with
+  T4.1-T4.3 (`063e6ce`, `outputs-actionability`), because all twelve contracts complied the moment
+  they were backfilled and enforcing over a compliant tree costs nothing. So T4.5 keeps only the
+  manifest-side flip — `contract` from "resolves if present" to "present and resolves", exempt only
+  for the two spent entries — and that half genuinely must wait for T4.4's fourteen files. The valid
+  no-output state is enforced in `## Decline conditions`, where it already lived; T4.5 does not add a
+  second copy of it to `## Outputs`.
   Gate: green with no exemption beyond the two spent, **and** the 31 standing manifest entries
   reconcile to 30 logical standing workflows with no unexplained duplicate.
 
@@ -517,15 +535,20 @@ Order as of **2026-09-10**, after the 09-10 batch (T3.1, T4.0, T4.1, T4.2, T4.3,
 the two 2026-09-10 review waves rewrote the board. Status for every row lives in the Notion
 tracker; this section is the sequence for what is left.
 
-**The gate is green and that is now the smaller half of the signal.** `bash bin/verify.sh` exits 0:
-zero FAIL lines, zero `contract-exists` PROBLEM lines, drift clean, one declared skip. Every
-standing unit has a contract and every contract's checks are executable. What the gate does *not*
-assert is the half the review named — those twelve contracts describe how a job runs and none of
-them names who the output is for, what they do next, or what benefit is claimed. So the ordering
-principle inverts: Phase 4 no longer exists to turn the gate green, it exists to make the green
-mean something.
+**The gate is green and, since `063e6ce`, the green means more than it did this morning.**
+`bash bin/verify.sh` exits 0: zero FAIL lines, zero `contract-exists` PROBLEM lines, drift clean,
+one declared skip. Every standing unit has a contract, every contract's checks are executable, and
+every `## Outputs` now names a beneficiary, a next actor, a next action, a benefit hypothesis and a
+benefit signal. Until that commit the gate asserted that a contract named an artifact, a path, a
+freshness requirement and a legitimate decline, and asserted nothing whatever about whether the
+artifact was for anyone — twelve contracts were green and not one of them named a beneficiary. So
+the ordering principle held: Phase 4 no longer exists to turn the gate green, it exists to make the
+green mean something, and eight of the twelve answering `Unknown` for the benefit signal is that
+phase reporting rather than failing.
 
-**Next: the actionability fields**, finishing T4.1-T4.3, then T4.4, then T4.5.
+**The actionability fields landed 2026-09-10 (`063e6ce`)** — defined once in
+`design/contract-schema.md`, enforced as `outputs-actionability`, and present in all twelve
+contracts. **Next: T4.4**, then T4.5.
 
 **T4.5 stays last, and its field definition goes first.** The temptation is to put T4.5 at the head
 of the phase because it is the enforcement point — but T4.5 flips the `contract` field from
@@ -535,37 +558,34 @@ is the one thing this repo's loop does not allow. Split it instead: the *shape* 
 in `design/contract-schema.md`, everything is written to that shape, and the validator turns
 mandatory only once nothing violates it.
 
-1. **Define the actionability fields in `design/contract-schema.md`** — beneficiary, next actor,
-   next action, valid no-output state, benefit hypothesis and measurement signal, all inside the
-   existing `## Outputs` section. S, and it is the precondition for everything below: written once
-   here, nothing gets written twice.
-2. **Finish T4.1, T4.2 and T4.3** — backfill those fields into the twelve contracts already on
-   disk. This is an edit to one section in twelve files, not new engineering; it is what moves those
-   three cards from In Progress to Done against their reviewed gates.
-3. **T4.4** — Trajan's fourteen platform jobs, written once, to the finished shape.
-4. **T4.5** — now the flip is safe: both rules turn mandatory over a tree that already complies, so
+**Steps 1 and 2 are done** (`063e6ce`): the fields were defined once in the schema doc and
+backfilled into all twelve contracts, and the validator rule turned mandatory in the same commit
+because nothing violated it. T4.1 and T4.2 closed; T4.3 keeps one assertion, named in its row.
+
+1. **T4.4** — Trajan's fourteen platform jobs, written once, to the finished shape.
+2. **T4.5** — now the flip is safe: both rules turn mandatory over a tree that already complies, so
    the gate stays green through the change instead of going red and waiting to be caught up with.
-5. **T5.1**, then **T5.2**. The receipt is the artifact every downstream view reads; nothing in
+3. **T5.1**, then **T5.2**. The receipt is the artifact every downstream view reads; nothing in
    Phase 5 can be built ahead of it. T5.2's own trap is stated in its row: an always-on service has
    no timer cadence to hang a receipt off.
-6. **T5.3** — the Control Room, read-only. It is the only place the 30-vs-31 reconciliation becomes
+4. **T5.3** — the Control Room, read-only. It is the only place the 30-vs-31 reconciliation becomes
    visible to Dave rather than to a test, and every card below it renders into it.
-7. **T5.3c** next among the sub-cards, not last: it is the S, it rides the delivery mechanism that
+5. **T5.3c** next among the sub-cards, not last: it is the S, it rides the delivery mechanism that
    already exists, and an exception stream is worth having before the browser is finished. Then
    **T5.3a** (controls), then **T5.3b** (schedule/retirement PRs). **T5.3d** trails — it needs the
    handoff fields T5.1 is asked to carry and there is no second agent in a scheduled path today.
-8. **T5.4**. Its Keep/Improve/Retire decisions need a full week of receipts behind them, so it
+6. **T5.4**. Its Keep/Improve/Retire decisions need a full week of receipts behind them, so it
    genuinely trails T5.2 rather than merely being sequenced after it.
-9. **T7.2**, in parallel with any of the above — `augustus-content.service` is still failing most
+7. **T7.2**, in parallel with any of the above — `augustus-content.service` is still failing most
    nights and every failed night is 20 minutes burnt. It is not blocked on anything; it is here
    rather than at the top only because T4.3's contract now gives it named checks to diagnose
    against.
-10. **T3.2**, unblocked since T3.1 and T1.2 both landed. Then **T3.3**.
-11. **T6.1**, alongside any of the above; nothing depends on it.
-12. **T0.3** — S, and it closes W20 either way.
-13. **T6.3** when Dave says.
+8. **T3.2**, unblocked since T3.1 and T1.2 both landed. Then **T3.3**.
+9. **T6.1**, alongside any of the above; nothing depends on it.
+10. **T0.3** — S, and it closes W20 either way.
+11. **T6.3** when Dave says.
 
-Startable today with no blocker: the schema-shape edit, T7.2, T3.2, T6.1, T0.3. Everything else
+Startable today with no blocker: T4.4, T7.2, T3.2, T6.1, T0.3. Everything else
 waits on one of those or on a Dave item.
 
 Dave's queue, unchanged by this sweep: D2, D3, D4, D5, D6, L1, T6.3. D1 closed with T2.4; D7 and
