@@ -2,14 +2,16 @@
 
 **Source:** Notion page *Agent Workforce — Agents, Workflows, Skills, Tools* (MEASURED 2026-09-07).
 **Tracker:** Notion database *Agent Workforce — Dev Plan*, a child of that page:
-https://app.notion.com/p/071af559943649fb86494b88a67106a6 (39 rows, MEASURED 2026-09-10). Status lives
+https://app.notion.com/p/071af559943649fb86494b88a67106a6 (43 rows, MEASURED 2026-09-10). Status lives
 there only. This file owns scope, order and the reason for each task.
 **Questionnaire:** 2026-09-07, Dave and Claude. Decisions below are his.
 **Review:** *Workflow Portfolio & Automation Governance Proposal — 2026-09-10*, by the vault's
 Process & Automation Architect persona (`06_resources/prompts/ops_process_automation_architect.md`).
-It rewrote thirteen cards in the tracker and widened the gates on Phases 4, 5 and 7. Its
-requirements are folded into the task text below; § *What the 2026-09-10 review changed* records the
-delta and two corrections to the review itself.
+It arrived in two waves on the same day: a **governance wave** (13:00 UTC) that rewrote thirteen
+cards and widened the gates on Phases 4, 5 and 7, and a **confirmed-operator-requirements wave**
+(15:21-15:23 UTC) that rewrote all four Phase 5 cards and split T5.3 into a Control Room plus four
+sub-cards. Both are folded into the task text below; § *What the 2026-09-10 review changed* records
+the delta and two corrections to the review itself.
 
 ## Decisions taken
 
@@ -34,6 +36,16 @@ delta and two corrections to the review itself.
   read model and its benefit evidence arrive through the existing Phase 4 and Phase 5 cards. No
   second roadmap, and no parallel contract schema — the actionability fields land inside the
   eight sections that already exist.
+- **The Control Room reads; the repo writes** (review, wave two). The operator surface is a private
+  browser interface on this box for Dave only. It renders manifests, contracts and receipts and
+  never becomes a second source of truth: live controls go through a root-owned allowlisted broker
+  that accepts a known workflow id and a named action only, and schedule changes and retirements are
+  produced as reviewed source-repo PRs rather than as edits to the deployed tree. Notion is where an
+  artifact opens, not where the portfolio lives.
+- **Unavailable is a value; zero is a measurement.** Receipts carry per-run tokens and cost with an
+  explicit unavailable state. `tokens=unknown` and a frozen OpenRouter-derived `0.000000` are being
+  rendered today as if they were measured — every benefit number built on them inherits the lie.
+  Same rule as `Unknown` for benefit, one layer down.
 - **Actionability is part of a contract, not a later reporting layer.** A workflow ending in
   "recommendation generated" has not closed its loop. Every standing workflow names an artifact or
   state change, a beneficiary, a next actor and next action, a valid no-output state, and a benefit
@@ -66,7 +78,7 @@ Two columns. 2026-09-07 is what the plan was written against and what T1.1's gat
 | Workflows declaring `claude-sonnet` but running an alias | 5 | **0** (T2.1) |
 | Fields the coverage checker joins | status, suite, unit, owner | + contract path, runner, model, tools, mcp (T1.1, T1.2) |
 | Scheduled runners passing `bypassPermissions` | 9 of 9 | **0 of 9** (T2.2) |
-| Tracker rows | 37 | 39 |
+| Tracker rows | 37 | 43 |
 | `bash bin/verify.sh` | red on 10 `contract-exists` | **green, rc=0**, one declared skip |
 | `augustus-content.timer` | active; fired 09-07 01:31 | active, and **failing most nights** — see T7.2 |
 
@@ -81,9 +93,32 @@ truth for what a workflow *is* and systemd for whether it *ran*; nothing joins e
 *produced* or who *acted* on it. So "the timer fired" is easier to see than "the workflow produced
 something useful", and the primary failure mode is open-loop output.
 
-**What it did to the board.** Thirteen cards rewritten (T3.1, T4.0–T4.5, T5.1–T5.4, T7.1, T7.2), two
-added (T7.1 and T7.2 — both were in this file and in neither the board), one status corrected
-(T3.1 Todo → In Progress).
+**What it did to the board, wave one (13:00 UTC).** Thirteen cards rewritten (T3.1, T4.0–T4.5,
+T5.1–T5.4, T7.1, T7.2), two added (T7.1 and T7.2 — both were in this file and in neither the
+board), one status corrected (T3.1 Todo → In Progress).
+
+**What it did to the board, wave two (15:21–15:23 UTC), sourced as *confirmed operator
+requirements*.** All four Phase 5 cards rewritten again and four sub-cards added, taking the tracker
+from 39 rows to 43. This is the wave that turns Phase 5 from "emit receipts and surface them" into
+an operator product:
+
+- **T5.3 renamed a second time** — "Publish workflow portfolio and surface contract results" →
+  **"Build the read-only Praetorium Control Room"**: a private browser interface hosted on this box,
+  for Dave only, opening on workflow health, incomplete or failed runs, and token usage by agent.
+  Notion stops being the portfolio surface and becomes the place an artifact opens.
+- **T5.3a** live workflow controls (pause / resume / run now / retry / stop) through a root-owned,
+  allowlisted broker.
+- **T5.3b** schedule changes and retirements land as **reviewed source-repo PRs**, never as a direct
+  mutation of the deployed tree.
+- **T5.3c** a dedicated Buzz stream for workflow *incidents* — exceptions only, deduplicated, with a
+  daily digest of what is still unresolved.
+- **T5.3d** agent-to-agent handoff traces (Marcus → Trajan) as structured run events.
+- **T5.1 and T5.2 gain a telemetry requirement** that is really a defect report: the receipt must
+  carry per-run tokens and cost with an explicit *unavailable* state, because today's
+  `tokens=unknown` and a frozen OpenRouter-derived `0.000000` are being rendered as if they were
+  measured zero.
+- **T5.4 splits the consumption signal** into four distinct observations — opened, approved,
+  sent/published, manually marked useful — and forbids collapsing them into one score.
 
 **What it adds here**, in its own priority order:
 
@@ -97,7 +132,7 @@ added (T7.1 and T7.2 — both were in this file and in neither the board), one s
    results, next actor and action due, cost/runtime. A silent skip is never a success.
 3. **A published control surface** (T5.3). Portfolio, exception and benefit views generated from
    manifests, contracts and receipts. The default operator experience is the exception queue, not a
-   wall of 30 healthy rows.
+   wall of 30 healthy rows. Wave two made this a **box-local browser interface** — see below.
 4. **Forced keep / improve / retire** (T5.4), one decision per logical workflow, on evidence.
 
 **Two corrections to the review**, both measured here:
@@ -107,8 +142,10 @@ added (T7.1 and T7.2 — both were in this file and in neither the board), one s
   including the recorded headless-run output the card's own gate asks for. The review's risk
   register predicted exactly this ("commit evidence remains buried in git"); it is why T3.1 is Done
   below and not In Progress.
-- It puts the database at 40 cards. Measured over the REST API on 2026-09-10: **39**. The
-  pre-review figure was 37 (this file, MEASURED 2026-09-07), not 38.
+- It puts the database at 40 cards (38 + 2). It was never 40 at any moment. Measured over the REST
+  API on 2026-09-10 at 17:19 CEST: **39** — the pre-review figure was 37 (this file, MEASURED
+  2026-09-07), not 38, and wave one added two. Two minutes later wave two added the four T5.3
+  sub-cards, taking it to **43**, which is what the header now records.
 
 **Where it leaves the contracts already written.** T4.1, T4.2 and T4.3 landed against this file's
 *original* gates: the `contract-exists` red list is empty and `bin/verify.sh` is green. Against the
@@ -274,8 +311,16 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   meaningful. **Exactly one** terminal outcome is legal: artifact, valid decline/no-op, failed, or
   skipped. Silent success is invalid. The schema must be consumable by T5.3 without scraping prose,
   and must preserve T7.1's run identity rather than re-flattening it.
+  Confirmed telemetry requirement (wave two) — **this half is a defect report, not a feature.** The
+  receipt carries agent/model plus input, output, cache and total token counts when the runtime
+  provides them, and cost amount, currency, source and confidence. Where the runtime provides
+  neither, the receipt says **unavailable**. Today's `tokens=unknown` and the frozen
+  OpenRouter-derived `0.000000` are rendered as though they were measured zero, and every benefit
+  number downstream inherits that. Optional `parent run id` and handoff actor/recipient/event fields
+  land here too, so T5.3d never has to reconstruct causality from logs.
   Gate: green on knowledge-digest fixtures including checks 7-9; a run producing neither a current
-  artifact nor a valid decline fails; the receipt validates against the declared workflow.
+  artifact nor a valid decline fails; the receipt validates against the declared workflow, carries
+  truthful tokens and cost, and **never renders unavailable usage as zero**.
 - **T5.2** [Claude, L, T5.1, T4.5] Wiring: S2 and S4 runs call it from `agent_propose.sh`
   after `AGENT_VERIFY_CMD`; platform jobs through a post-run hook or a sweep timer, the brief
   decides which. Results land in one receipt directory keyed by workflow and run.
@@ -283,23 +328,83 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   evidence, and preserves two-trigger/one-workflow semantics for augustus-content. Interactive
   services need a request/response receipt strategy — **do not pretend an always-on service has a
   timer cadence**, which is the shape `buzz-interactive` already refuses to fake.
+  Confirmed wiring requirement (wave two): per-run token and cost fields come from the runtime's own
+  output, **not** from the obsolete shared-key delta. Parent/child ids survive agent-to-agent
+  dispatch. Missing data stays `Unknown` and is never synthesized.
   Gate: every standing workflow produces a valid receipt within one cadence or triggering
   interaction; the 31 standing entries reconcile to 30 logical workflows; no success exists without
   artifact or state-change evidence, or an accepted no-output state.
-- **T5.3** [Claude, M, T5.2] **Publish the workflow portfolio and surface contract results**
-  (renamed by the review from "Surfacing"). overnight-morning-report and fleet-eval read the
-  receipts and name failed checks; the scorecard counts them; Notion presents the portfolio
-  **without becoming a second source of truth** — it is generated from manifests, contracts and
-  receipts, and workflow truth is still edited in the repo.
-  Three required views: **Portfolio** — 30 logical standing workflows with owner, purpose, trigger,
+- **T5.3** [Claude, M, T5.2] **Build the read-only Praetorium Control Room** — renamed twice by the
+  review, first from "Surfacing" to "Publish the workflow portfolio", then to this. A private
+  browser interface **hosted on this box, for Dave only**, generated from manifests, contracts and
+  receipts. Notion stops being the portfolio surface and becomes where an artifact opens; workflow
+  truth is still edited in the repo, so the Control Room never becomes a second source of truth.
+  overnight-morning-report and fleet-eval still read the receipts and name failed checks, and the
+  scorecard still counts them — the browser is an additional surface over the same receipts, not a
+  replacement for the morning delivery.
+  **Opening screen:** workflow health, incomplete and failed runs, token usage by agent. Each
+  logical workflow appears **once**, even with multiple triggers.
+  **Workflow page:** purpose, all triggers and schedules, last and next run, latest valid artifact,
+  incomplete runs, reliability, tokens and cost, benefit and consumption signals, contract and Dev
+  Plan links. The latest output opens directly in Notion. For research, render the full lineage:
+  source → selection rule and reason → trigger → agent → Notion output → human action.
+  **Three required views:** *Portfolio* — 30 logical standing workflows with owner, purpose, trigger,
   artifact/state change, beneficiary, next action, benefit status, last run, last valid artifact,
-  contract and Dev Plan links. **Exceptions** — only failed, stale-input, missed-cadence,
-  missing-artifact, unconsumed-output and overdue-next-action rows. **Benefit** — baseline, eligible
+  contract and Dev Plan links. *Exceptions* — only failed, stale-input, missed-cadence,
+  missing-artifact, unconsumed-output and overdue-next-action rows. *Benefit* — baseline, eligible
   runs, valid-artifact rate, consumption signal, latency, manual minutes avoided, and the
   Keep/Improve/Retire state, where `Unknown` is valid and preferred when unmeasured.
-  The default operator experience is the exception queue, not a wall of 30 healthy rows.
-  Gate: a deliberately failing check appears by name the next morning, and all standing workflows
-  reconcile into the portfolio with no unexplained duplicate or missing artifact field.
+  Output-use signals are counted **separately** — opened, approved, sent/published, manually marked
+  useful — never collapsed into one opaque score. Healthy workflows recede; exceptions and owed
+  decisions lead. The default operator experience is the exception queue, not a wall of 30 healthy
+  rows.
+  Gate: a deliberately failing check appears by name the next morning; the local browser reconciles
+  30 logical workflows with no unexplained duplicate or missing artifact field, and shows health,
+  incomplete runs, truthful agent usage, research lineage and one-click Notion output links.
+- **T5.3a** [Claude, M, T5.3] **Live workflow controls**, through a **root-owned, allowlisted
+  broker**. The browser submits a known workflow id and a named action and **never** arbitrary
+  shell, unit or path input — that constraint is the card, not a detail of it. Pause (future fires
+  stop; the current run finishes by default), resume (showing any `Persistent=true` catch-up
+  implication *before* applying), run now (returns a run id), retry (only where the contract
+  declares the operation idempotent), stop current run (destructive confirmation plus a reason).
+  Every action records actor, reason where required, before/after state, timestamp, result, next
+  scheduled run and links.
+  Gate: unknown ids, units, actions or arguments are refused; pausing during an active run does not
+  kill it; UI state is **reconciled from systemd after each action**, never assumed from the click;
+  every action — successful or refused — emits an audit receipt; tests prove system-scope and
+  user-scope units are addressed correctly. Creating a workflow, changing its schedule and retiring
+  it are all out of scope here — they are T5.3b or a conversation.
+- **T5.3b** [Claude, M, T5.3] **Schedule changes and retirements as reviewed PRs.** Dave requests
+  one from the Control Room; the implementation is a source-repo branch and pull request. Never a
+  direct edit of the deployed tree, never an auto-merge. A schedule change carries current and
+  proposed schedule, timezone and catch-up behaviour, the unit and manifest diff, and the schedule,
+  manifest, deploy and drift checks. A retirement carries the removal across manifests, units,
+  runners, profiles and contracts, route and producer joins and deploy exclusions, **a residue
+  report derived from the W19 failure class**, and an explicit artifact-retention decision.
+  Gate: the exact diff is previewed before the PR exists; no action mutates live workflow truth
+  directly; the PR carries test evidence and names any Dave-only cleanup; retirement **fails closed**
+  while any executable or deployed residue remains.
+- **T5.3c** [Claude, S, T5.3] **Route actionable incidents to Buzz.** One dedicated stream, and it
+  is an exception channel — not a heartbeat, not an activity feed. `bin/deliver.sh` and
+  `bin/buzz_routes.env` stay the transport and routing owners; systemd stays the scheduler and Buzz
+  scheduled workflows are not used. Send immediately only when Dave must act: incomplete run, failed
+  assertion, stale or missing artifact, blocked next action, control failure. One daily digest of
+  what is still unresolved. Deduplicate repeated observations of one incident and emit a recovery
+  update when it closes. Each message names workflow, agent, failure, time, required action, and
+  links to the incident and its evidence.
+  Gate: healthy runs and valid no-output outcomes stay **silent**; a persistent incident does not
+  produce repeated immediate alerts; the digest holds only unresolved ones; recovery is visible; and
+  **a delivery failure cannot make the originating workflow fail**.
+- **T5.3d** [Claude, M, T5.3, T5.1] **Agent handoff traces.** Capture agent-to-agent handoffs as
+  structured run events and render them as a timeline in the run detail page: parent run/request id,
+  requesting and receiving agent, Buzz event or pointer where safe, sent/accepted/replied timestamps,
+  outcome, resulting artifact, terminal failure or timeout. Store metadata and bounded summaries,
+  **not** full private prompts.
+  Gate: a multi-agent run preserves parent/child causality across at least one Marcus → Trajan
+  handoff; the timeline distinguishes requested, accepted, working, replied, failed and timed-out;
+  each terminal handoff links to its artifact or explicit failure evidence; the view works without
+  opening Buzz Desktop; missing telemetry shows as `Unknown` and is never reconstructed from
+  guesswork.
 - **T5.4** [Claude, M, T5.2] Proof on real runs: one full week with every declared check of
   every contract executed against real runs; the pass matrix recorded in the brief.
   Reviewed requirement — **passing assertions prove delivery, not value.** Add a consumption and
@@ -310,8 +415,12 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   spent NeKoVri entries and the two-trigger augustus-content design explicitly. Do not invent
   financial ROI; benefit stays `Unknown` until baselined. Phase 6 cleanup executes from these
   decisions, not from age or intuition.
+  Confirmed consumption interpretation (wave two): opened, approved, sent/published and manually
+  marked useful are **four distinct observations**. Opening is not approval and approval is not
+  downstream use. Reliability, output use and cost are the three benefit dimensions.
   Gate: matrix complete with no check skipped, and 30 logical standing workflows each carry
-  Keep/Improve/Retire with evidence and an owner for the resulting action.
+  Keep/Improve/Retire on reliability, cost and the four distinct use signals, with evidence and an
+  owner for the resulting action.
 
 ### Phase 6 — Retire the residue
 
@@ -405,8 +514,8 @@ losing artifacts today.
 ## Execution order for Claude
 
 Order as of **2026-09-10**, after the 09-10 batch (T3.1, T4.0, T4.1, T4.2, T4.3, T7.1) landed and
-the 2026-09-10 review rewrote the board. Status for every row lives in the Notion tracker; this
-section is the sequence for what is left.
+the two 2026-09-10 review waves rewrote the board. Status for every row lives in the Notion
+tracker; this section is the sequence for what is left.
 
 **The gate is green and that is now the smaller half of the signal.** `bash bin/verify.sh` exits 0:
 zero FAIL lines, zero `contract-exists` PROBLEM lines, drift clean, one declared skip. Every
@@ -439,18 +548,22 @@ mandatory only once nothing violates it.
 5. **T5.1**, then **T5.2**. The receipt is the artifact every downstream view reads; nothing in
    Phase 5 can be built ahead of it. T5.2's own trap is stated in its row: an always-on service has
    no timer cadence to hang a receipt off.
-6. **T5.3**, then **T5.4**. The portfolio and the exception queue are the review's Priority 3 and
-   the only place the 30-vs-31 reconciliation becomes visible to Dave rather than to a test. T5.4's
-   Keep/Improve/Retire decisions need at least one week of receipts behind them, so it genuinely
-   trails T5.2 rather than merely being sequenced after it.
-7. **T7.2**, in parallel with any of the above — `augustus-content.service` is still failing most
+6. **T5.3** — the Control Room, read-only. It is the only place the 30-vs-31 reconciliation becomes
+   visible to Dave rather than to a test, and every card below it renders into it.
+7. **T5.3c** next among the sub-cards, not last: it is the S, it rides the delivery mechanism that
+   already exists, and an exception stream is worth having before the browser is finished. Then
+   **T5.3a** (controls), then **T5.3b** (schedule/retirement PRs). **T5.3d** trails — it needs the
+   handoff fields T5.1 is asked to carry and there is no second agent in a scheduled path today.
+8. **T5.4**. Its Keep/Improve/Retire decisions need a full week of receipts behind them, so it
+   genuinely trails T5.2 rather than merely being sequenced after it.
+9. **T7.2**, in parallel with any of the above — `augustus-content.service` is still failing most
    nights and every failed night is 20 minutes burnt. It is not blocked on anything; it is here
    rather than at the top only because T4.3's contract now gives it named checks to diagnose
    against.
-8. **T3.2**, unblocked since T3.1 and T1.2 both landed. Then **T3.3**.
-9. **T6.1**, alongside any of the above; nothing depends on it.
-10. **T0.3** — S, and it closes W20 either way.
-11. **T6.3** when Dave says.
+10. **T3.2**, unblocked since T3.1 and T1.2 both landed. Then **T3.3**.
+11. **T6.1**, alongside any of the above; nothing depends on it.
+12. **T0.3** — S, and it closes W20 either way.
+13. **T6.3** when Dave says.
 
 Startable today with no blocker: the schema-shape edit, T7.2, T3.2, T6.1, T0.3. Everything else
 waits on one of those or on a Dave item.
