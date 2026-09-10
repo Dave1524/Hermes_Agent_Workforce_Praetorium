@@ -416,33 +416,44 @@ them names who the output is for, what they do next, or what benefit is claimed.
 principle inverts: Phase 4 no longer exists to turn the gate green, it exists to make the green
 mean something.
 
-**Next: T4.5**, then T4.4, then T5.1.
+**Next: the actionability fields**, finishing T4.1-T4.3, then T4.4, then T4.5.
 
-1. **T4.5 first, not last.** It was written as the closing S of Phase 4 — flip `contract-exists`
-   from tolerant to mandatory once every contract exists. The review adds the actionability fields
-   to it, which turns it into the enforcement point for Priority 1: extend the schema validator to
-   require beneficiary, next actor, next action and benefit hypothesis under `## Outputs`, then
-   backfill the twelve contracts that already exist against it. Doing it first means T4.4's
-   fourteen new contracts are written once, to the finished shape, instead of twice.
-2. **T4.4** — Trajan's fourteen platform jobs, now against the widened schema.
-3. **T5.1**, then **T5.2**. The receipt is the artifact every downstream view reads; nothing in
+**T4.5 stays last, and its field definition goes first.** The temptation is to put T4.5 at the head
+of the phase because it is the enforcement point — but T4.5 flips the `contract` field from
+"resolves if present" to "present and resolves", and Trajan's fourteen platform entries do not name
+a contract yet. Enforcing before T4.4 lands would hold the gate red across several sessions, which
+is the one thing this repo's loop does not allow. Split it instead: the *shape* is defined up front
+in `design/contract-schema.md`, everything is written to that shape, and the validator turns
+mandatory only once nothing violates it.
+
+1. **Define the actionability fields in `design/contract-schema.md`** — beneficiary, next actor,
+   next action, valid no-output state, benefit hypothesis and measurement signal, all inside the
+   existing `## Outputs` section. S, and it is the precondition for everything below: written once
+   here, nothing gets written twice.
+2. **Finish T4.1, T4.2 and T4.3** — backfill those fields into the twelve contracts already on
+   disk. This is an edit to one section in twelve files, not new engineering; it is what moves those
+   three cards from In Progress to Done against their reviewed gates.
+3. **T4.4** — Trajan's fourteen platform jobs, written once, to the finished shape.
+4. **T4.5** — now the flip is safe: both rules turn mandatory over a tree that already complies, so
+   the gate stays green through the change instead of going red and waiting to be caught up with.
+5. **T5.1**, then **T5.2**. The receipt is the artifact every downstream view reads; nothing in
    Phase 5 can be built ahead of it. T5.2's own trap is stated in its row: an always-on service has
    no timer cadence to hang a receipt off.
-4. **T5.3**, then **T5.4**. The portfolio and the exception queue are the review's Priority 3 and
+6. **T5.3**, then **T5.4**. The portfolio and the exception queue are the review's Priority 3 and
    the only place the 30-vs-31 reconciliation becomes visible to Dave rather than to a test. T5.4's
    Keep/Improve/Retire decisions need at least one week of receipts behind them, so it genuinely
    trails T5.2 rather than merely being sequenced after it.
-5. **T7.2**, in parallel with any of the above — `augustus-content.service` is still failing most
+7. **T7.2**, in parallel with any of the above — `augustus-content.service` is still failing most
    nights and every failed night is 20 minutes burnt. It is not blocked on anything; it is here
    rather than at the top only because T4.3's contract now gives it named checks to diagnose
    against.
-6. **T3.2**, unblocked since T3.1 and T1.2 both landed. Then **T3.3**.
-7. **T6.1**, alongside any of the above; nothing depends on it.
-8. **T0.3** — S, and it closes W20 either way.
-9. **T6.3** when Dave says.
+8. **T3.2**, unblocked since T3.1 and T1.2 both landed. Then **T3.3**.
+9. **T6.1**, alongside any of the above; nothing depends on it.
+10. **T0.3** — S, and it closes W20 either way.
+11. **T6.3** when Dave says.
 
-Startable today with no blocker: T4.5, T4.4, T7.2, T3.2, T6.1, T0.3. Everything else waits on one
-of those or on a Dave item.
+Startable today with no blocker: the schema-shape edit, T7.2, T3.2, T6.1, T0.3. Everything else
+waits on one of those or on a Dave item.
 
 Dave's queue, unchanged by this sweep: D2, D3, D4, D5, D6, L1, T6.3. D1 closed with T2.4; D7 and
 L2 are closed.
