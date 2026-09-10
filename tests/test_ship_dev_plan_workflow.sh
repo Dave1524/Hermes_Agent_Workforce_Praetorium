@@ -56,8 +56,15 @@ script_missing=$(sed -n "s/^const MISSING_CONTRACTS = \[\(.*\)\]$/\1/p" "$SCRIPT
 live_missing=$(comm -23 \
   <(grep -h '^contract *=' design/agents/*.toml | sed -E 's/^contract *= *"design\/contracts\/([^"]*)\.md".*/\1/' | sort -u) \
   <(ls design/contracts/ | sed 's/\.md$//' | sort -u))
-assert "T1.1's expected red equals the contracts the manifests name and design/contracts/ lacks ($(echo "$live_missing" | wc -l))" \
-  '[ -n "$script_missing" ] && [ "$script_missing" = "$live_missing" ]'
+# Two assertions, not one: `$script_missing` is empty both when the constant is absent and
+# when it reads `MISSING_CONTRACTS = []`, and the second is the healthy end state (T4.2,
+# 2026-09-10 — every contract the manifests name now exists). Folding the declaration check
+# into the equality check turned an empty red list into a FAIL. `wc -l` had the mirror-image
+# defect in the description, reporting 1 for no reds at all.
+assert 'the script declares MISSING_CONTRACTS' \
+  "grep -q '^const MISSING_CONTRACTS = \[' $SCRIPT"
+assert "T1.1's expected red equals the contracts the manifests name and design/contracts/ lacks ($(printf '%s\n' "$live_missing" | grep -c . || true))" \
+  '[ "$script_missing" = "$live_missing" ]'
 
 script_entries=$(sed -n 's/^const WORKFLOW_ENTRIES = \([0-9]*\)$/\1/p' "$SCRIPT")
 live_entries=$(cat design/agents/*.toml | grep -c '^\[\[workflows\]\]')
