@@ -64,6 +64,17 @@ Everything this job reasons over is in-bubble by construction.
   `Next action date` — and it never drafts the message. The draft is 23:30's job; the state
   change is Dave's, from the Mac.
 
+- **Beneficiary:** Dave — and `bd-followup-drafts` one slot later, which is the only job on
+  this box whose input is another job's artifact.
+- **Next actor:** `bd-followup-drafts` at 23:30, then Dave.
+- **Next action:** the 23:30 job drafts a message for each flagged deal; Dave sends it and
+  moves `Stage` and `Last contact` from the Mac. The radar flags and stops.
+- **Benefit hypothesis:** a deal that has gone quiet surfaces while it is still warm instead
+  of at the next pipeline review.
+- **Benefit signal:** `Unknown`. The right measure is flagged-to-sent within the week, and it
+  needs Notion `Last contact`, which is known-unreliable on this box for exactly the reason
+  `bd-followup-drafts` forbids any claim about elapsed silence.
+
 ## Decline conditions
 
 One legitimate decline: **no genuine new stalls tonight**, after suppression and the 3-day

@@ -56,6 +56,16 @@
 #   checks-env         every variable the block reads is either exported by the executor (the
 #     #### Executor environment list) or set earlier in the same block. Single-quoted spans are
 #     stripped first: a sed script's $p is a sed command, not a shell read.
+#
+# THE ACTIONABILITY RULE, added 2026-09-10 (T4.1-T4.3). ## Outputs described the mechanism and
+# nothing else: twelve contracts were green and not one named who the artifact was for.
+#   outputs-actionability  every label declared in design/contract-schema.md's #### Outputs
+#     fields block heads a bullet in every contract's ## Outputs. The labels are READ from that
+#     block on the same vacuity guard as the section list — a schema doc this could not be read
+#     from would grade every contract against an empty field list and call a tree in which no
+#     output has a beneficiary clean. A valid empty output is NOT one of the fields: that fact
+#     is enumerated and validated in ## Decline conditions, and a second copy here would be a
+#     second owner of it.
 # A contract whose declaring [[workflows]] entries all carry `kind = "service"` is EXEMPT from
 # all six, by the manifest join rather than by its own prose — an always-on unit has no run, so
 # there is no RUN_DATE, no attempt log and no LastTriggerUSec to decide a check from.
@@ -152,6 +162,12 @@ One file. The fence below carries a required heading that must not count:
 ## Inputs
 ```
 
+- **Beneficiary:** the fixture's reader.
+- **Next actor:** the fixture's reader.
+- **Next action:** reads it.
+- **Benefit hypothesis:** the healthy roots stay healthy.
+- **Benefit signal:** `Unknown`.
+
 ## Decline conditions
 
 none
@@ -224,8 +240,8 @@ assert 'an escaped pipe, a pipe inside a code span and a %n specifier leave one 
   "! grep -q 'pipe-thing.md' '$fx/healthy.out'"
 assert 'the shared contract whose manifests declare rule1_exempt is EXEMPT by name, once' \
   "[ \"\$(grep -c '^EXEMPT	' '$fx/healthy.out')\" = 1 ] && grep -q '^EXEMPT	design/contracts/shared-thing.md	.*rule1_exempt on 2 of 2' '$fx/healthy.out'"
-assert 'the summary counts all three contracts, the declared paths, the one exemption, the eight sections and the six check blocks it graded' \
-  "grep -q '^SUMMARY	contracts=3 declared=3 absent=0 exempt=1 sections=8 checks=6 env=' '$fx/healthy.out'"
+assert 'the summary counts all three contracts, the declared paths, the one exemption, the eight sections, the six check blocks it graded and the five output fields' \
+  "grep -q '^SUMMARY	contracts=3 declared=3 absent=0 exempt=1 sections=8 checks=6 env=[0-9]* fields=5$' '$fx/healthy.out'"
 
 echo "--- 1b. fixtures: each rule names exactly its offender ---"
 B="$fx/broken"
@@ -261,6 +277,10 @@ mk_entry "$C" dup-unit design/contracts/dup-a.md 'stem is the surface, not the u
 mk_entry "$B/design/agents/marcus.toml" dup-unit design/contracts/dup-b.md 'stem is the surface, not the unit'
 mk_contract "$B/design/contracts/dup-a.md" '| Unit | `dup-unit.service` |' '| Owner | **claudius** |'
 mk_contract "$B/design/contracts/dup-b.md" '| Unit | `dup-unit.service` |' '| Owner | **marcus** |'
+# outputs-actionability: the mechanism half described, the half naming a consumer deleted
+mk_entry "$C" no-beneficiary design/contracts/no-beneficiary.md
+mk_contract "$B/design/contracts/no-beneficiary.md" '| Unit | `no-beneficiary.service` |' '| Owner | **claudius** |'
+sed -i '/^- \*\*Beneficiary:\*\*/d' "$B/design/contracts/no-beneficiary.md"
 # manifest-parse
 printf '[[workflows\nunit = "x"\n' >"$B/design/agents/broken.toml"
 
@@ -290,9 +310,13 @@ assert 'a unit named by two contract paths is named once, with both paths' \
   "[ \"\$(grep -c '^PROBLEM	one-contract-per-unit	' '$fx/broken.out')\" = 1 ] && grep '^PROBLEM	one-contract-per-unit	dup-unit: ' '$fx/broken.out' | grep -q 'dup-a.md.*dup-b.md'"
 assert 'a manifest that does not parse is named' \
   "grep -q '^PROBLEM	manifest-parse	broken.toml: does not parse' '$fx/broken.out'"
-assert 'and those eleven are the only findings — every rule fired exactly once' \
-  "[ \"\$(grep -c '^PROBLEM	' '$fx/broken.out')\" = 11 ]"
-[ "$(grep -c '^PROBLEM	' "$fx/broken.out")" = 11 ] || sed -n 's/^PROBLEM\t/      /p' "$fx/broken.out"
+assert 'an ## Outputs that describes an artifact and names nobody it is for is named, by field' \
+  "grep -q '^PROBLEM	outputs-actionability	design/contracts/no-beneficiary.md: ## Outputs names no \*\*Beneficiary\*\*' '$fx/broken.out'"
+assert 'and it is named once — one bullet deleted is one finding, not five' \
+  "[ \"\$(grep -c 'no-beneficiary.md' '$fx/broken.out')\" = 1 ]"
+assert 'and those twelve are the only findings — every rule fired exactly once' \
+  "[ \"\$(grep -c '^PROBLEM	' '$fx/broken.out')\" = 12 ]"
+[ "$(grep -c '^PROBLEM	' "$fx/broken.out")" = 12 ] || sed -n 's/^PROBLEM\t/      /p' "$fx/broken.out"
 assert 'the two rule-1 exemptions in the broken root are printed by name' \
   "[ \"\$(grep -c '^EXEMPT	' '$fx/broken.out')\" = 2 ]"
 
@@ -340,9 +364,9 @@ assert 'the shapes root reports exactly those three findings' \
   "[ \"\$(grep -c '^PROBLEM	' '$fx/shapes.out')\" = 3 ]"
 
 echo "--- 1e. fixtures: the schema list is read, and a list that is not eight is named ---"
-# Each of these roots has exactly one offence, so `mk_schema_vocab` writes the check
-# vocabulary the T4.0 rules read; a root missing THAT is the next fixture down.
-mk_schema_vocab() {            # $1 schema doc — appends the two vocabulary blocks
+# Each of these roots has exactly one offence, so `mk_schema_vocab` writes the three
+# vocabularies the rules below read; a root missing THOSE is the next fixture down.
+mk_schema_vocab() {            # $1 schema doc — appends the three vocabulary blocks
   cat >>"$1" <<'EOF'
 
 #### Executor environment
@@ -354,6 +378,11 @@ mk_schema_vocab() {            # $1 schema doc — appends the two vocabulary bl
 
 - `run` — from inside the run
 - `sweep` — from outside, on a cadence
+
+#### Outputs fields
+
+- **Beneficiary** — who it is for
+- **Next actor** — who acts on it next
 EOF
 }
 X="$fx/schema-short"; mkdir -p "$X/design"
@@ -373,8 +402,10 @@ assert 'a schema doc declaring the eight sections and no executor environment is
   "validate '$V' 2>&1 | grep -q '^PROBLEM	checks-vocabulary	design/contract-schema.md: declares no executor environment'"
 assert 'and its missing vantage list is named too — both halves of the vocabulary are read' \
   "validate '$V' 2>&1 | grep -q '^PROBLEM	checks-vocabulary	design/contract-schema.md: declares no vantage'"
-assert 'and those two are its only findings — the eight sections it does declare are not re-reported' \
-  "[ \"\$(validate '$V' 2>&1 | grep -c '^PROBLEM	')\" = 2 ]"
+assert 'a schema doc declaring no output fields is named on the doc, so no contract is graded against an empty list' \
+  "validate '$V' 2>&1 | grep -q '^PROBLEM	outputs-actionability	design/contract-schema.md: declares no output fields'"
+assert 'and those three are its only findings — the eight sections it does declare are not re-reported' \
+  "[ \"\$(validate '$V' 2>&1 | grep -c '^PROBLEM	')\" = 3 ]"
 
 echo "--- 1f. fixtures: the executable-check rules, one offender each ---"
 # T4.0. A contract's ## Acceptance checks are the executor's suite (T5.1), so each item must
@@ -544,8 +575,8 @@ assert "a sed script's \$p is a sed command, not a variable the executor must ex
 assert 'and those ten are the only findings — every new rule fired exactly once' \
   "[ \"\$(grep -c '^PROBLEM	' '$fx/checks.out')\" = 10 ]"
 [ "$(grep -c '^PROBLEM	' "$fx/checks.out")" = 10 ] || sed -n 's/^PROBLEM\t/      /p' "$fx/checks.out"
-assert 'the summary counts the blocks it graded and the variables the schema declares' \
-  "grep -qE '^SUMMARY	.* checks=[0-9]+ env=[0-9]+\$' '$fx/checks.out'"
+assert 'the summary counts the blocks it graded, the variables the schema declares and the fields it requires' \
+  "grep -qE '^SUMMARY	.* checks=[0-9]+ env=[0-9]+ fields=[0-9]+\$' '$fx/checks.out'"
 
 echo "--- 1g. fixtures: a contract for an always-on unit is exempt from the check rules ---"
 # By the manifest join, never by its own prose: a unit with kind = "service" has no run, so
@@ -618,6 +649,8 @@ check checks-syntax \
   'bash -n accepts every check block, so a fence that exists is also a command that runs'  # (::checks-syntax)
 check checks-env \
   'every variable a check block reads is exported by the executor or set in the block itself'  # (::checks-env)
+check outputs-actionability \
+  "every contract's ## Outputs names a beneficiary, a next actor, a next action, a benefit hypothesis and the signal that would show it"  # (::outputs-actionability)
 
 sections_counted=$(sed -n 's/^SUMMARY\t.*sections=\([0-9]*\).*/\1/p' "$report")
 assert "the eight section names came from the schema doc, not from an empty read (${sections_counted:-none})" \
@@ -636,6 +669,10 @@ checks_graded=$(sed -n 's/^SUMMARY\t.* checks=\([0-9]*\).*/\1/p' "$report")
 env_declared=$(sed -n 's/^SUMMARY\t.* env=\([0-9]*\).*/\1/p' "$report")
 assert "the check rules graded real blocks (${checks_graded:-none}), against a real environment (${env_declared:-none} vars)" \
   "[ -n \"\$checks_graded\" ] && [ \"\$checks_graded\" -ge 9 ] && [ -n \"\$env_declared\" ] && [ \"\$env_declared\" -ge 1 ]"  # (::checks-graded)
+
+fields_declared=$(sed -n 's/^SUMMARY\t.* fields=\([0-9]*\).*/\1/p' "$report")
+assert "the actionability rule graded against a real field list (${fields_declared:-none})" \
+  "[ -n \"\$fields_declared\" ] && [ \"\$fields_declared\" -ge 1 ]"  # (::outputs-graded)
 
 here=$(find "$REPO_ROOT/design/contracts" -maxdepth 1 -name '*.md' | wc -l)
 counted=$(sed -n 's/^SUMMARY\tcontracts=\([0-9]*\) .*/\1/p' "$report")

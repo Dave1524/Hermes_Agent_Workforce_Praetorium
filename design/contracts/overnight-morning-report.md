@@ -70,6 +70,15 @@ carry it and this job must not.
 - **Shape:** no markdown tables, no horizontal rules (`profiles/…:165`, `:173`), target under
   1800 characters (`:176`). See `## Known failure modes` for the target.
 
+- **Beneficiary:** Dave, first thing. Delivery is to him twice — Discord and the ops
+  channel — and to nobody else.
+- **Next actor:** Dave.
+- **Next action:** read what changed overnight and act on it. The mode-600 file under
+  `~/logs/overnight/` is the record; the message is the delivery.
+- **Benefit hypothesis:** overnight state arrives in one message instead of being assembled
+  from journals and inboxes by hand each morning.
+- **Benefit signal:** `Unknown`. `deliver_report.sh` receipts the send, not the read.
+
 ## Decline conditions
 
 **None.** A night with nothing wrong is still a report — "all nine timers fired, nothing

@@ -70,6 +70,17 @@ channel's row in `bin/buzz_routes.env` declares:
 `45003` (forum comment) is not a legal value here: buzz-cli requires `--reply-to` for it and
 no producer on this box replies to an existing thread.
 
+- **Beneficiary:** Dave, in the channel, in the turn he asked for. `--respond-to owner-only`
+  means there is no other reader, and no unattended one at all.
+- **Next actor:** Dave, in the same conversation.
+- **Next action:** read the reply and continue the turn, or act on it outside Buzz. These
+  agents hold no outward credential, so anything outward a turn produces is a draft he sends.
+- **Benefit hypothesis:** the personas are reachable interactively on the same charters the
+  timer fleet runs, so a question does not have to wait for a scheduled job.
+- **Benefit signal:** `Unknown`, and per-run it is the wrong shape to ask for: this is a
+  conversation surface, not a producer. A turn that publishes nothing is the correct outcome
+  and the first obligation of this contract.
+
 ## The three obligations
 
 ### 1. Send — buzz-acp never auto-publishes

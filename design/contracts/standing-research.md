@@ -63,6 +63,16 @@ registry §2 recorded this as "daily" off a next-elapse value (`agent-model.md` 
   channel is receipted `ok` and shown to nobody.
 - Downstream: the proposal syncs to the Notion Agent Inbox and is Mac-gated for approval.
 
+- **Beneficiary:** the vault, through Dave. The artifact is a proposed vault change, not a
+  report, and it is inert until he promotes it.
+- **Next actor:** Dave, from the Mac.
+- **Next action:** review the `## Proposed vault change` block in the Notion Agent Inbox and
+  promote it into `05_knowledge/` or drop it.
+- **Benefit hypothesis:** the vault gains researched, contradiction-checked claims on a
+  cadence rather than when someone has time to research.
+- **Benefit signal:** the promotion rate — proposals merged Mac-side over proposals produced.
+  Countable from the canonical vault's history, counted by nothing today.
+
 ## Decline conditions
 
 One legitimate decline: **nothing in the queue or the standing missions can be completed at

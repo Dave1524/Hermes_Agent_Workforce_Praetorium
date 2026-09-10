@@ -55,6 +55,28 @@ The artifact: exact path pattern, format, and any hard size or shape limit. If t
 delivers, name the route and the event kind from `bin/buzz_routes.env` — a kind mismatch
 is receipted `ok` and shown to nobody.
 
+#### Outputs fields
+
+Five bullets, each a bold label at the head of its own bullet in this section. The paragraph
+above describes the mechanism — path, format, route, kind. These describe who it is for, which
+the gate did not ask for until 2026-09-10 and consequently never had.
+
+- **Beneficiary** — the person or system the artifact exists for, named. "The team" is not a
+  beneficiary; `none` is an answer, and an alarming one.
+- **Next actor** — who acts on it next. `none` where the artifact terminates rather than
+  feeding something else, which is a different claim from having no beneficiary.
+- **Next action** — the concrete thing that actor does with it. A beneficiary with no next
+  action is an audience, not a consumer.
+- **Benefit hypothesis** — what changes for the beneficiary when this runs, stated so it could
+  turn out false.
+- **Benefit signal** — what would show that it did. `Unknown` is the correct value wherever
+  nothing measures it, and is preferred to a figure nobody derived: an invented number here is
+  metric theatre, and the gap is the finding.
+
+A valid empty output belongs to `## Decline conditions`, not here. Those states are enumerated
+and validated there, and a second copy in this section would be a second owner of one fact —
+the shape this schema keeps deleting.
+
 ### `## Decline conditions`
 The enumerated states in which producing nothing is the **correct** result, and the exact
 sentinel that says so. On this box that is a line matching `^DECLINE:`; anything else is a
@@ -154,6 +176,9 @@ outlived its boundary.
    because exit status was never sufficient.
 5. **Cite what you read.** A claim in a contract without a path, a command, or a dated
    measurement is lore and will be wrong within a month.
+6. **Every output names who it is for.** The five `#### Outputs fields` bullets are required
+   in `## Outputs`. A workflow that cannot name a beneficiary and a next action is one nobody
+   consumes, and that is a finding the gate should carry rather than a quarterly review.
 
 **Validated in the gate since 2026-09-08 (T1.4)** by `tests/test_contract_schema.sh` /
 `.py`. The eight sections above, each once, in order, none empty — and the validator reads
@@ -192,6 +217,14 @@ in the block. Both lists are READ from the two `#### ` blocks above rather than 
 validator, and a schema doc declaring neither is reported — otherwise every contract would be
 graded against an empty vocabulary and the tree would read clean.
 
+**Actionability is validated too, since 2026-09-10 (T4.1-T4.3).** Each of the five labels
+under `#### Outputs fields` must head a bullet in every contract's `## Outputs`, reported as
+`outputs-actionability` and READ from that block on the same vacuity guard as the section list
+and the check vocabulary. Until that date the gate asserted that a contract named an artifact,
+a path, a freshness requirement and a legitimate decline, and asserted nothing whatever about
+whether the artifact was for anyone: twelve contracts were green and not one of them named a
+beneficiary.
+
 ## Status
 
 Written: all 12. `knowledge-digest` (converted to the executable check syntax, 2026-09-10),
@@ -201,6 +234,13 @@ Marcus's four — `praetorium-daily-plan`, `praetorium-eod-summary`,
 the one contract two units share (T4.3, 2026-09-10), and Claudius's five —
 `standing-research`, `raw-ingest`, `m1-signal-scan`, `bd-stall-radar`, `bd-followup-drafts`
 (T4.2, 2026-09-10).
+
+**All twelve carry the five `#### Outputs fields` bullets as of 2026-09-10**, backfilled with
+T4.1-T4.3's second half. Eight of the twelve answer `Unknown` for the benefit signal and say why;
+four name a signal that is already computable and computed by nothing — `raw-ingest`'s ingest
+backlog, `augustus-content`'s board delta, and the Mac-side promotion rate behind
+`standing-research` and `weekly-pre-assembly`. That distribution is the finding, and
+`outputs-actionability` is what stops it being quietly re-lost.
 
 **Counted under `tomllib` on 2026-09-10**, replacing the 2026-09-01 figures this section
 carried while the manifests grew under it: 33 `[[workflows]]` entries, 17 of which carry a

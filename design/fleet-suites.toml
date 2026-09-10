@@ -203,6 +203,8 @@ asserts = [
   "checks-syntax",            # bash -n accepts the block, so a fence that exists also runs
   "checks-env",               # every variable read is exported by the executor or set in the block
   "checks-graded",            # the check rules ran against real blocks and a real environment, not zero
+  "outputs-actionability",    # ## Outputs names a beneficiary, a next actor and the benefit it claims
+  "outputs-graded",           # the field list it graded against was read and non-empty, not zero
 ]
 why_no_workflow = """
 It grades the contracts against the manifests, not a job's output. The schema doc said "D3's

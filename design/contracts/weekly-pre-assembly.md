@@ -87,6 +87,17 @@ so `agent_propose.sh:167` defaults it to `proposal`.
 
 - **No Notion row and no receipt.** The proposal file is the artifact.
 
+- **Beneficiary:** Dave, ahead of the weekly assembly. The route notifies claudius while the
+  owner is marcus (see above) — the *reader* is Dave either way.
+- **Next actor:** Dave, from the Mac.
+- **Next action:** review the proposal in the Notion Agent Inbox and promote it into the vault
+  or drop it. The commit on the `agents` branch is not a vault change until he merges it.
+- **Benefit hypothesis:** the week's open loops and stale items are enumerated before the
+  assembly, so the assembly spends its time deciding rather than recalling.
+- **Benefit signal:** the promotion decision — a proposal merged Mac-side is evidence it was
+  read. That decision is visible in the canonical vault's history and in nothing on this box,
+  so it is a real signal that is currently unmeasured here rather than an absent one.
+
 ## Decline conditions
 
 **Two legitimate no-file outcomes, and neither emits the sentinel the tooling reads.**

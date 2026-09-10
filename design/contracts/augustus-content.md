@@ -69,6 +69,19 @@ rows it never saw as seen.
   mentioning augustus, sent by `bin/deliver.sh`, which is the only script permitted to call
   `buzz messages send`.
 
+- **Beneficiary:** Dave, for the board rows — an Idea or a Draft he edits, publishes or
+  kills. For `content-change-dispatch` the beneficiary is **augustus**: the message is what
+  wakes him on a `Picked` row, and it is the only artifact on this box whose reader is an agent.
+- **Next actor:** Dave for a board row; augustus for a dispatch.
+- **Next action:** Dave moves a row out of Idea or Draft, or deletes it. augustus picks up the
+  `Picked` row the dispatch names and writes against it.
+- **Benefit hypothesis:** the top of the content funnel stays non-empty without Dave
+  generating the ideas, and a `Picked` row is acted on the same day rather than when someone
+  notices it.
+- **Benefit signal:** board state, and this one is genuinely measurable — the share of
+  appended rows that leave Idea or Draft. `deliver_content.sh`'s `board_delta` is the raw
+  material; nothing computes the ratio today.
+
 ## Decline conditions
 
 Exactly one legitimate decline: **augustus judges there is nothing to draft.** He replies in

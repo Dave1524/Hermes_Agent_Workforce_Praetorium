@@ -70,6 +70,17 @@ A daily-cadence freshness window would report every Monday morning as a stopped 
   2000-char splitter breaks a table across messages mid-row. Target under 1800 characters;
   see `## Known failure modes` for what that target is actually worth.
 
+- **Beneficiary:** Dave, before the working day starts. Nobody else reads the ops channel,
+  and no job downstream reads the row.
+- **Next actor:** Dave.
+- **Next action:** open the Daily Plans row (or the ops message) and set the day's order of
+  work against it, editing the row where it is wrong.
+- **Benefit hypothesis:** the day is ordered from a written plan built off live Notion state
+  rather than from whatever the inbox surfaced first.
+- **Benefit signal:** `Unknown`. The receipt proves Notion accepted the upsert, which is not
+  the same as the row being opened, and nothing on this box records the second. T5.3's benefit
+  view is where that would come from.
+
 ## Decline conditions
 
 **None. There is no state in which this job legitimately produces nothing**, and that is a

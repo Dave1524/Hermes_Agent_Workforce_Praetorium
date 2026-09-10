@@ -9,7 +9,7 @@ report plus one machine line per finding — the same protocol as tests/test_wor
 
     PROBLEM<TAB><rule-id><TAB><detail>
     EXEMPT<TAB><contract path><TAB><reason>
-    SUMMARY<TAB>contracts=N declared=M absent=A exempt=E sections=S
+    SUMMARY<TAB>contracts=N declared=M absent=A exempt=E sections=S checks=C env=V fields=F
 
 Exit status is always 0 — the caller decides, so a run that finds eleven problems prints all
 eleven instead of dying on the first.
@@ -72,6 +72,13 @@ TRIVIAL = re.compile(r"^(true|:|exit\s+0|echo(\s.*)?)$")
 SINGLE_QUOTED = re.compile(r"'[^']*'")
 VAR_READ = re.compile(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)")
 VAR_SET = re.compile(r"(?:^\s*|[;&|(]\s*|\bfor\s+)([A-Za-z_][A-Za-z0-9_]*)(?:=|\s+in\b)")
+
+# T4.1-T4.3. The actionability labels every `## Outputs` must carry, READ from the schema
+# doc's `#### Outputs fields` block for the same reason the section list is.
+OUTPUTS_BLOCK = "#### Outputs fields"
+OUTPUTS_BULLET = re.compile(r"^- \*\*([A-Z][A-Za-z ]+)\*\*")
+OUTPUTS_SECTION = "Outputs"
+BULLET_LABEL = re.compile(r"^\s*[-*]\s+\*\*([^*]+?)\*\*")
 
 problems = []
 exempt = []
@@ -143,6 +150,26 @@ def check_vocabulary():
 
 
 ENV_VARS, VANTAGES = check_vocabulary()
+
+
+def outputs_fields():
+    """The labels `## Outputs` must carry, read from the schema doc.
+
+    The vacuity guard is check_vocabulary()'s: a schema doc this could not be read from would
+    grade every contract against an empty field list, and a tree in which no output names
+    anyone it is for would report clean — which is what it did until 2026-09-10.
+    """
+    if not (ROOT / SCHEMA_DOC).is_file():
+        return []                    # schema-sections already named the absent doc
+    fields = schema_bullets(OUTPUTS_BLOCK, OUTPUTS_BULLET)
+    if not fields:
+        problem("outputs-actionability",
+                f"{SCHEMA_DOC}: declares no output fields — no `{OUTPUTS_BLOCK}` block with "
+                "`**Label**` bullets, so no contract could be missing one")
+    return fields
+
+
+OUTPUT_FIELDS = outputs_fields()
 
 
 # --- contract parsing -------------------------------------------------------------------
@@ -386,6 +413,19 @@ def has_content(body):
     return False
 
 
+def bold_labels(body):
+    """The bold label heading each bullet of a section, fenced lines excluded."""
+    fenced, labels = False, set()
+    for line in body:
+        if line.strip().startswith("```"):
+            fenced = not fenced
+            continue
+        m = None if fenced else BULLET_LABEL.match(line)
+        if m:
+            labels.add(m.group(1).strip().rstrip(":").lower())
+    return labels
+
+
 # --- the manifest side -------------------------------------------------------------------
 declared = {}          # contract path -> [{owner, unit, exempt}]
 manifests = sorted((ROOT / "design" / "agents").glob("*.toml"))
@@ -451,6 +491,14 @@ for contract in contracts:
         if heading in SECTIONS and not has_content(body):
             problem("sections-nonempty", f'{rel}: ## {heading} is empty — write "none"')
 
+    if OUTPUT_FIELDS and OUTPUTS_SECTION in headings:
+        labelled = bold_labels(sections[headings.index(OUTPUTS_SECTION)][1])
+        for field in OUTPUT_FIELDS:
+            if field.lower() not in labelled:
+                problem("outputs-actionability",
+                        f"{rel}: ## {OUTPUTS_SECTION} names no **{field}** — the artifact is "
+                        "described and the person it is for is not")
+
     entries = declared.get(rel, [])
     units_named = sorted({e["unit"] for e in entries if e["unit"]})
     if entries and all(e["kind"] == "service" for e in entries):
@@ -511,6 +559,6 @@ for rel, reason in exempt:
     print(f"EXEMPT\t{rel}\t{reason}")
 print(f"SUMMARY\tcontracts={len(contracts)} declared={len(declared)} "
       f"absent={len(absent)} exempt={len(exempt)} sections={len(SECTIONS)} "
-      f"checks={graded} env={len(ENV_VARS)}")
+      f"checks={graded} env={len(ENV_VARS)} fields={len(OUTPUT_FIELDS)}")
 for rule, detail in problems:
     print(f"PROBLEM\t{rule}\t{detail}")

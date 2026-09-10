@@ -76,6 +76,17 @@ No web tools: `run_bd_followup_drafts_cc.sh` passes an allowlist without
 - **The job never writes Notion.** `Stage`, `Last contact` and `Next action date` stay Dave's
   call from the Mac — the same boundary the radar holds one slot earlier.
 
+- **Beneficiary:** Dave, the next morning.
+- **Next actor:** Dave, from the Mac.
+- **Next action:** copy a draft, send it, and update `Stage`, `Last contact` and
+  `Next action date` in Notion by hand. This job writes no Notion state, so the pack is inert
+  until he acts on it.
+- **Benefit hypothesis:** the missing artifact for an overdue follow-up is the message text,
+  not the task row — three sends sat `Planned` in the Task Inbox for five days with the task
+  already written.
+- **Benefit signal:** `Unknown`, and structurally hard here: outbound email and LinkedIn leave
+  no trace on this box, which is the same fact that forbids a draft from asserting silence.
+
 ## Decline conditions
 
 One legitimate decline: **no Dave-owed BD next action today**, across all three sources, after

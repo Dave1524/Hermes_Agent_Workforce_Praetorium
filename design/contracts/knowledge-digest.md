@@ -45,6 +45,15 @@ mtimes, which are unreliable across a re-clone or resync.
   into that channel is receipted `ok` and shown to nobody.
 - Downstream: the proposal syncs to the Notion Agent Inbox and is Mac-gated for approval.
 
+- **Beneficiary:** Dave, weekly; claudius is the notified reader on the route.
+- **Next actor:** Dave, from the Mac.
+- **Next action:** read the digest and decide whether anything it points at needs promoting.
+  The proposal syncs to the Notion Agent Inbox and is Mac-gated for approval.
+- **Benefit hypothesis:** a week's growth in `05_knowledge/` and `11_entities/` is visible
+  without reading the git log, so knowledge that landed is knowledge known to exist.
+- **Benefit signal:** `Unknown`. This is a pointer digest, so a promotion is the wrong measure
+  — the question is whether the pointers were followed, and nothing records that.
+
 ## Decline conditions
 
 Exactly one legitimate decline: **no `05_knowledge/` or `11_entities/` paths changed in

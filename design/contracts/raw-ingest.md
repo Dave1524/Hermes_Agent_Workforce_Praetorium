@@ -55,6 +55,17 @@ would be summarising something Dave never filed.
 - **Delivery:** `ExecStartPost=bin/deliver_proposal.sh`, `DELIVERY_ROUTE=research` → channel
   `6ea596af-…`, **event kind 45001** (forum), notify `claudius`.
 
+- **Beneficiary:** the vault, through Dave — and `standing-research` at 04:30, which reads
+  `05_knowledge/` the same morning. That ordering is why this job runs at 03:00.
+- **Next actor:** Dave, from the Mac.
+- **Next action:** promote the distillation into `05_knowledge/` and append the proposed
+  `00_system/ingest_log.md` line. This job proposes that line and never writes it.
+- **Benefit hypothesis:** sources dropped into `05_knowledge/raw/` become distilled notes
+  without a human doing the distilling — one per night, oldest first.
+- **Benefit signal:** the backlog itself, and it is already measurable because it is this
+  job's own input: `05_knowledge/raw/` minus `00_system/ingest_log.md`. A gap that does not
+  shrink is the job not landing, whatever the receipts say.
+
 ## Decline conditions
 
 One legitimate decline, and it is mechanical rather than a judgement call: **every file under

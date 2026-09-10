@@ -58,6 +58,16 @@ fetched URLs leave the bubble, so client names do not go into them
   routes are 45001. A 45001 post into this channel is receipted `ok` and shown to nobody,
   which is why `delivery-was-receipted` asserts the kind rather than the outcome alone.
 
+- **Beneficiary:** Dave, on the signals channel — and the content board indirectly, since
+  every signal carries a `content-angle`.
+- **Next actor:** Dave.
+- **Next action:** promote the `## Proposed vault change`, or take a `content-angle` onto the
+  content board by hand. Nothing routes an angle there automatically.
+- **Benefit hypothesis:** second-order signals reach Dave before they are common knowledge.
+  The first-order news is already in his feed, and a scan that reports it is a press review.
+- **Benefit signal:** `Unknown`. Whether an angle became a post is visible only on the content
+  board, and nothing joins the two ends.
+
 ## Decline conditions
 
 One legitimate decline: **fewer than three genuine second-order signals this run.** The run

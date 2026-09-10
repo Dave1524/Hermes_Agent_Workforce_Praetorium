@@ -66,6 +66,18 @@ reports that state.
   (`profiles/eod_summary_task.md:162`). See `## Known failure modes` for what the target is
   worth in practice.
 
+- **Beneficiary:** Dave that evening, through the EOD Summary row; and Dave's future self
+  through the Daily Log row, which is the one artifact here with a reader more than a day out.
+- **Next actor:** Dave.
+- **Next action:** read the summary, correct energy, focus and tags where they are wrong, and
+  leave the Daily Log row standing as the day's record. `weekly-pre-assembly` reads that
+  record, not this run.
+- **Benefit hypothesis:** the day is closed in writing rather than remembered, so the weekly
+  pre-read has a dated record to work from instead of reconstruction.
+- **Benefit signal:** `Unknown` for whether either row is read. Half of it is already
+  measurable in the other direction: a receipt carrying an empty `log_page` says the Daily Log
+  never landed, and that is the only consumption failure this job can see today.
+
 ## Decline conditions
 
 **None.** The profile is explicit at `:150`: *"Never end the run by concluding 'the summary is
