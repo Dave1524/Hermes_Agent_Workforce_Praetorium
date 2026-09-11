@@ -376,6 +376,12 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   useful — never collapsed into one opaque score. Healthy workflows recede; exceptions and owed
   decisions lead. The default operator experience is the exception queue, not a wall of 30 healthy
   rows.
+  **Backend foundation landed 2026-09-11:** `bin/control_room_api.py` now exposes the versioned,
+  read-only JSON surface for overview, workflows, runs, incidents, usage and activity. It reconciles
+  the 31 standing manifest entries to 30 logical workflows, validates future T5.1 receipts, and
+  reports missing contracts, receipts or systemd visibility as degraded/Unknown rather than fake
+  health, usage or cost. This is an enabling slice, not completion of T5.3: T5.1/T5.2 still own the
+  real receipt stream, and the production frontend plus durable private hosting remain on this card.
   Gate: a deliberately failing check appears by name the next morning; the local browser reconciles
   30 logical workflows with no unexplained duplicate or missing artifact field, and shows health,
   incomplete runs, truthful agent usage, research lineage and one-click Notion output links.
