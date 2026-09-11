@@ -227,36 +227,54 @@ beneficiary.
 
 ## Status
 
-Written: all 12. `knowledge-digest` (converted to the executable check syntax, 2026-09-10),
+Written: all 26. `knowledge-digest` (converted to the executable check syntax, 2026-09-10),
 `buzz-interactive` (exempt from the check rules — five always-on units, `kind = "service"`),
 Marcus's four — `praetorium-daily-plan`, `praetorium-eod-summary`,
 `overnight-morning-report`, `weekly-pre-assembly` (T4.1, 2026-09-10) — `augustus-content`,
 the one contract two units share (T4.3, 2026-09-10), and Claudius's five —
 `standing-research`, `raw-ingest`, `m1-signal-scan`, `bd-stall-radar`, `bd-followup-drafts`
-(T4.2, 2026-09-10).
+(T4.2, 2026-09-10) — and Trajan's fourteen platform jobs, each a **light contract** named for
+its unit: `fleet-turn-check`, `fleet-eval`, `local-tier-eval`, `memory-consolidation`,
+`agent-inbox-sync`, `inbox-backlog-alert`, `scorecard`, `qmd-refresh`,
+`agent-workforce-auto-sync`, `ttm-pool-drain`, `overnight-pre-snapshot`, `buzz-pr-watch`
+(user scope), `agent-drift-check`, `agent-buzz-acp-update` (T4.4, 2026-09-11).
 
-**All twelve carry the five `#### Outputs fields` bullets as of 2026-09-10**, backfilled with
-T4.1-T4.3's second half. Eight of the twelve answer `Unknown` for the benefit signal and say why;
+**A light contract is the same eight sections with the deterministic job's six facts in
+them** — trigger and cadence, the artifact or state change, where the evidence of a run is,
+who fixes a failure, and the retirement condition — and exactly two `sweep` checks: the timer
+fired inside its cadence window, and the run's own evidence (journal verdict, dated artifact,
+adapter log, receipt) exists for the run `LastTriggerUSec` names. There is no `run` vantage,
+because none of these jobs runs under `bin/agent_propose.sh`; the anchor is the timer, not an
+attempt log. Every one answers `Unknown` for the benefit signal, with the reason. Two things
+they surfaced by being written: `buzz-pr-watch` retires itself the day block/buzz#3816 closes,
+and its second check is the status transition the manifest note said nothing would announce;
+and `ttm-pool-drain`'s runner lives outside the repo and is drift-checked by nothing. Both are
+recorded in the contracts, not fixed. The two spent `nekovri-subsidy-*` entries carry
+`contract_exempt` naming the reason instead of a contract for a promise nobody makes any more.
+
+**All twenty-six carry the five `#### Outputs fields` bullets** — the first twelve backfilled
+with T4.1-T4.3's second half on 2026-09-10, the fourteen light contracts written with them on
+2026-09-11. Of the twelve model-run contracts, eight answer `Unknown` for the benefit signal and say why;
 four name a signal that is already computable and computed by nothing — `raw-ingest`'s ingest
 backlog, `augustus-content`'s board delta, and the Mac-side promotion rate behind
 `standing-research` and `weekly-pre-assembly`. That distribution is the finding, and
 `outputs-actionability` is what stops it being quietly re-lost.
 
-**Counted under `tomllib` on 2026-09-10**, replacing the 2026-09-01 figures this section
-carried while the manifests grew under it: 33 `[[workflows]]` entries, 17 of which carry a
-`contract` field, resolving to 12 distinct paths — of which **12 exist**, up from 2. T1.1's
-`contract-exists` red list is empty, and `.claude/workflows/ship-dev-plan.js` carries
-`MISSING_CONTRACTS = []` to match; the two are joined by
-`tests/test_ship_dev_plan_workflow.sh`, so the constant cannot quietly outlive the reds it
-names.
+**Counted under `tomllib` on 2026-09-11**, overwriting the 2026-09-10 figures: 33
+`[[workflows]]` entries, 31 of which carry a `contract` field and 2 `contract_exempt`,
+resolving to 26 distinct paths — of which **26 exist**. `python3 tests/test_contract_schema.py`
+reports `contracts=26 declared=26 absent=0 exempt=3`; T1.1's `contract-exists` red list is
+empty, and `.claude/workflows/ship-dev-plan.js` carries `MISSING_CONTRACTS = []` to match; the
+two are joined by `tests/test_ship_dev_plan_workflow.sh`, so the constant cannot quietly
+outlive the reds it names.
 
 `standing-research` is the one contract whose stem is not its unit — the unit is the generic
 `agent-proposal`, and the entry carries `rule1_exempt` rather than the file carrying a
 disclaimer. Three contracts are exempt from rule 1 in total; the validator names each one and
 its reason rather than skipping it silently.
 
-Trajan's platform jobs still carry no
-`contract` field at all — a deterministic job promises an artifact and a cadence like any
-other, and those are exactly the promises this box breaks silently. Whether they get contracts
-belongs with the coverage checker (D6), which must first decide what an entry naming no
-contract means.
+Until 2026-09-11 this section ended by saying Trajan's platform jobs carried no `contract`
+field at all and that whether they should was a question for the coverage checker. They do
+now; a deterministic job promises an artifact and a cadence like any other, and those were
+exactly the promises this box broke silently. The coverage checker's answer to "an entry
+naming no contract" is `contract_exempt` with a reason, and nothing else.

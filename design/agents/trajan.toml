@@ -57,6 +57,7 @@ present = false
 # --- which is not the same question as whether the repo copy has it (agent-model.md §6.3).
 [[workflows]]
 unit = "fleet-turn-check"
+contract = "design/contracts/fleet-turn-check.md"
 surface = "platform"
 status = "standing"
 suite    = ["tests/test_fleet_turn_check.sh"]
@@ -86,6 +87,7 @@ systemd unit with a minimal environment resolves its binaries.
 
 [[workflows]]
 unit = "fleet-eval"
+contract = "design/contracts/fleet-eval.md"
 surface = "platform"
 status = "standing"
 suite    = ["tests/test_fleet_eval.sh"]
@@ -105,6 +107,7 @@ run. Do not "fix" this.
 
 [[workflows]]
 unit = "local-tier-eval"
+contract = "design/contracts/local-tier-eval.md"
 surface = "platform"
 status = "standing"
 suite    = ["tests/test_local_tier_eval_score.sh"]
@@ -115,6 +118,7 @@ in_repo = true
 
 [[workflows]]
 unit = "memory-consolidation"
+contract = "design/contracts/memory-consolidation.md"
 surface = "platform"
 status = "standing"
 suite    = ["tests/test_consolidate_memory.sh"]
@@ -130,6 +134,7 @@ lands. Retire the timer or repoint MEM_DIR; do not do both.
 
 [[workflows]]
 unit = "agent-inbox-sync"
+contract = "design/contracts/agent-inbox-sync.md"
 surface = "platform"
 status = "standing"
 suite    = ["tests/test_agent_inbox_body_sync.sh",
@@ -141,6 +146,7 @@ in_repo = true
 
 [[workflows]]
 unit = "inbox-backlog-alert"
+contract = "design/contracts/inbox-backlog-alert.md"
 surface = "platform"
 status = "standing"
 suite    = ["tests/test_buzz_adapters.sh"]
@@ -152,6 +158,7 @@ in_repo = true
 
 [[workflows]]
 unit = "scorecard"
+contract = "design/contracts/scorecard.md"
 surface = "platform"
 status = "standing"
 suite    = ["tests/test_scorecard.sh"]
@@ -163,6 +170,7 @@ in_repo = true
 
 [[workflows]]
 unit = "qmd-refresh"
+contract = "design/contracts/qmd-refresh.md"
 surface = "platform"
 status = "standing"
 suite    = ["tests/test_vault_sync_guard.sh"]
@@ -174,6 +182,7 @@ notes = "Its repeat alerts are the case bin/agent_alert.sh was written to thrott
 
 [[workflows]]
 unit = "agent-workforce-auto-sync"
+contract = "design/contracts/agent-workforce-auto-sync.md"
 surface = "platform"
 status = "standing"
 suite    = ["tests/test_auto_sync.sh"]
@@ -185,6 +194,7 @@ notes = "The one unit that execs from ~/dev/agent-workforce rather than the depl
 
 [[workflows]]
 unit = "ttm-pool-drain"
+contract = "design/contracts/ttm-pool-drain.md"
 surface = "platform"
 status = "standing"
 suite    = []
@@ -196,6 +206,7 @@ in_repo = true                   # adopted into systemd/ 2026-09-01 (D2)
 
 [[workflows]]
 unit = "overnight-pre-snapshot"
+contract = "design/contracts/overnight-pre-snapshot.md"
 surface = "platform"
 status = "standing"
 suite    = ["tests/test_overnight_pre_snapshot.sh"]
@@ -211,6 +222,7 @@ glob from. Recorded here so it has an owner.
 
 [[workflows]]
 unit = "buzz-pr-watch"
+contract = "design/contracts/buzz-pr-watch.md"
 surface = "platform"
 scope = "user"       # --user manager; invisible to system-scope systemctl (W3, 2026-09-02)
 status = "standing"          # standing by schedule, but its subject ends: see notes
@@ -232,6 +244,7 @@ notes = "systemctl --user. Every other job here is system scope; do not debug it
 
 [[workflows]]
 unit = "agent-drift-check"
+contract = "design/contracts/agent-drift-check.md"
 surface = "platform"
 status = "standing"
 suite    = ["tests/test_deploy_drift.sh"]
@@ -251,6 +264,7 @@ Named `agent-*` so the reporting globs match it (bin/local_tier_eval.sh:51). A n
 
 [[workflows]]
 unit = "agent-buzz-acp-update"
+contract = "design/contracts/agent-buzz-acp-update.md"
 surface = "platform"
 status = "standing"
 suite    = ["tests/test_buzz_acp_update.sh"]
@@ -286,6 +300,7 @@ a second copy of that policy.
 
 [[workflows]]
 unit = "nekovri-subsidy-kickoff"
+contract_exempt = "spent: its one absolute OnCalendar fired 2026-08-03 and the timer is disabled; nothing is promised any more, so there is nothing to contract (T4.4, 2026-09-11)"
 surface = "platform"
 scope = "user"       # --user manager; invisible to system-scope systemctl (W3, 2026-09-02)
 status = "spent"
@@ -306,6 +321,7 @@ of whose siblings had no source of truth at all.
 
 [[workflows]]
 unit = "nekovri-subsidy-watchdog"
+contract_exempt = "spent: the kickoff it watched fired once on 2026-08-03 and the timer is disabled; nothing is promised any more, so there is nothing to contract (T4.4, 2026-09-11)"
 surface = "platform"
 scope = "user"       # --user manager; invisible to system-scope systemctl (W3, 2026-09-02)
 status = "spent"

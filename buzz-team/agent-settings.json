@@ -11,6 +11,8 @@
       "Edit(//home/dave/.config/agent-workforce/**)",
       "Read(//home/dave/.config/buzz-agents/**)",
       "Edit(//home/dave/.config/buzz-agents/**)",
+      "Read(//home/dave/.config/google-docs-mcp/**)",
+      "Edit(//home/dave/.config/google-docs-mcp/**)",
       "mcp__claude_ai_Notion",
       "mcp__claude_ai_Gmail",
       "mcp__claude_ai_Microsoft_365",
