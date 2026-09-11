@@ -176,9 +176,10 @@ Rules that are easy to get wrong:
   sides cited, under `## Contradictions` — never silently superseded.
 
 ## BD follow-up drafts (2026-07-30)
-**`bd-followup-drafts.timer`** — Sun-Thu 23:30, headless Claude Code pinned to
-`claude-opus-5`, one slot after `bd-stall-radar` so each pack consumes that night's fresh
-radar output. It writes up to 5 copy-paste-ready drafts for every **Dave-owed** BD next
+**`bd-followup-drafts.timer`** — monthly, second Monday 09:37 (since 2026-09-11; Sun-Thu
+23:30 before that), headless Claude Code pinned to `claude-opus-5`, half an hour after the
+weekly `bd-stall-radar` (Mon 09:07) so each pack consumes that morning's fresh radar output.
+It writes up to 10 copy-paste-ready drafts (5 while it was nightly) for every **Dave-owed** BD next
 action — the union of radar stalls, Client Pipeline rows past their `Next action date`, and
 due BD-scoped Task Inbox rows — into
 `_inbox/agents/YYYY-MM-DD_bd-followup-drafts.md`, delivered to Discord by

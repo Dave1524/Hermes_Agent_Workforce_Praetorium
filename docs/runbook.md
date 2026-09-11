@@ -27,8 +27,8 @@ Scheduled **proposal** agent jobs share `bin/agent_propose.sh` (lock, preflight,
 | M1 signal scan (NUC-32/34) | **Mon,Wed 05:30** | `m1-signal-scan.{service,timer}` | `~/.config/agent-workforce/m1_signal_scan.env` | `profiles/m1_signal_scan_cc_task.md` | *(headless Claude Code)* |
 | Augustus content pitch+draft | daily **01:30** (backstop) | `augustus-content.{service,timer}` | `~/.config/agent-workforce/augustus-content.env` | `profiles/augustus_content_task.md` | **`buzz-agent@augustus`** via `bin/run_content_via_buzz.sh` (NUC-46) |
 | Content change-dispatch (poll) | every **15 min** | `content-change-dispatch.{service,timer}` | `~/.config/agent-workforce/augustus-content.env` (reused) | *(triggers the augustus run)* | inherits the row above |
-| BD stall radar | **Sun–Thu 23:00** | `bd-stall-radar.{service,timer}` | `~/.config/agent-workforce/bd_stall_radar.env` | `profiles/bd_stall_radar_task.md` | `claudius` |
-| BD follow-up drafts | **Sun–Thu 23:30** | `bd-followup-drafts.{service,timer}` | `~/.config/agent-workforce/bd_followup_drafts.env` | `profiles/bd_followup_drafts_cc_task.md` | *(headless Claude Code)* |
+| BD stall radar | weekly **Mon 09:07** | `bd-stall-radar.{service,timer}` | `~/.config/agent-workforce/bd_stall_radar.env` | `profiles/bd_stall_radar_task.md` | `claudius` |
+| BD follow-up drafts | monthly, **2nd Mon 09:37** | `bd-followup-drafts.{service,timer}` | `~/.config/agent-workforce/bd_followup_drafts.env` | `profiles/bd_followup_drafts_cc_task.md` | *(headless Claude Code)* |
 | Weekly pre-assembly | **Fri 22:00** | `weekly-pre-assembly.{service,timer}` | `~/.config/agent-workforce/weekly_pre_assembly.env` | `profiles/weekly_pre_assembly_cc_task.md` | *(headless Claude Code; owner **marcus**)* |
 | Overnight pre-snapshot (no LLM) | daily **04:25** | `overnight-pre-snapshot.{service,timer}` | n/a | `bin/overnight_pre_snapshot.sh` | n/a |
 | Overnight morning report (ops) | daily **06:15** | `overnight-morning-report.{service,timer}` | `~/.config/agent-workforce/overnight_morning_report.env` | `profiles/overnight_morning_report_cc_task.md` | *(headless Claude Code; owner **marcus**)* |
@@ -139,12 +139,14 @@ the board moved, or he replied `DECLINE: <reason>` — the runtime records that 
 event id in the snapshot so `content_moved.sh` can pass an unmoved board on evidence Dave can
 re-read (`buzz social event --event <id>`) rather than on the run's own say-so.
 
-**BD follow-up drafts is chained after the radar, deliberately.** `bd-stall-radar` (23:00)
-decides *which* deals are owed a touch and stops at flagging; `bd-followup-drafts` (23:30)
-reads that night's pack as one of its three inputs and writes the actual text, so the 30-min
-offset is a data dependency, not cosmetic — and both slots clear the 04:30/05:30/06:00
-morning jobs that share `agent_propose.sh`'s global `flock` on `/tmp/agent_propose.lock`,
-where a collision is a **silent** `SKIP: previous run still active`. The pack is send
+**BD follow-up drafts is chained after the radar, deliberately.** `bd-stall-radar` (every
+Monday 09:07) decides *which* deals are owed a touch and stops at flagging;
+`bd-followup-drafts` (second Monday of the month, 09:37) reads that morning's pack as one of
+its three inputs and writes the actual text, so the 30-min offset is a data dependency, not
+cosmetic — and both slots sit off the `*:0/15` ticks of `content-change-dispatch`, which
+shares `agent_propose.sh`'s global `flock` on `/tmp/agent_propose.lock`, where a collision is
+a **silent** `SKIP: previous run still active` (exit 0 — at weekly/monthly cadence that costs
+a week or a month, not a night). Both were Sun–Thu 23:00/23:30 until 2026-09-11. The pack is send
 material, not a vault proposal: it carries `target: none`, is never promoted, and the job
 never writes Notion pipeline state.
 

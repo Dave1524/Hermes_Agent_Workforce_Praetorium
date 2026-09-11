@@ -34,13 +34,16 @@ assert "reads the day's task deltas, not just the open backlog" "grep -q -- '--s
 assert "declares itself a draft the Mac's eod-wrap overwrites in place" \
   "grep -q 'overwrites this row in place' '$TASK'"
 
-echo "--- eod-summary: the evening slot precedes bd-stall-radar ---"
+echo "--- eod-summary: the evening slot closes the day before bd-stall-radar reads it ---"
+# Until 2026-09-11 the radar ran 23:00, after this job's 22:15, so the day was closed out
+# under it. It runs Monday mornings now, so the day it reads was closed the evening before;
+# the invariant to keep is that the radar stays on the morning side of the EOD slot.
 EOD_TIMER="$REPO_ROOT/systemd/praetorium-eod-summary.timer"
 RADAR_TIMER="$REPO_ROOT/systemd/bd-stall-radar.timer"
 eod_at=$(grep -oE 'OnCalendar=.*[0-9]{2}:[0-9]{2}' "$EOD_TIMER" | grep -oE '[0-9]{2}:[0-9]{2}')
 radar_at=$(grep -oE 'OnCalendar=.*[0-9]{2}:[0-9]{2}' "$RADAR_TIMER" | grep -oE '[0-9]{2}:[0-9]{2}')
-assert "EOD ($eod_at) runs before bd-stall-radar ($radar_at) so the radar sees a closed day" \
-  "[[ '$eod_at' < '$radar_at' ]]"
+assert "bd-stall-radar ($radar_at) runs the morning after EOD ($eod_at) closed the day it reads" \
+  "[[ '$radar_at' < '12:00' && '$eod_at' > '12:00' ]]"
 assert "both new timers are Persistent (a reboot spanning the slot still catches up)" \
   "grep -q '^Persistent=true' '$EOD_TIMER' && grep -q '^Persistent=true' '$REPO_ROOT/systemd/praetorium-daily-plan.timer'"
 

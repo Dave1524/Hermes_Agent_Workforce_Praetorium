@@ -27,14 +27,18 @@ of the attempt log rather than judging the artifact's reasoning.
 
 ## Trigger
 
-`OnCalendar=Sun,Mon,Tue,Wed,Thu 23:00`, `RandomizedDelaySec=5min`, `Persistent=true`.
-Recurring; no expiry. Installed-but-disabled until T2.4 (2026-09-09) — registry §7.5 called it
-"not yet wired" and this repo's manifest called it `planned`; it is `standing` now because the
-box says so. The Fri/Sat pair is the longest legitimate gap, 48h plus jitter.
+`OnCalendar=Mon 09:07`, `RandomizedDelaySec=5min`, `Persistent=true`. Weekly; no expiry.
+Installed-but-disabled until T2.4 (2026-09-09) — registry §7.5 called it "not yet wired" and
+this repo's manifest called it `planned`; it is `standing` now because the box says so. Ran
+Sun-Thu 23:00 until 2026-09-11, when Dave took both BD jobs off the nightly cadence: radar
+weekly, drafts monthly. The legitimate gap is a week plus jitter — longer than the kernel's
+3-day dedup window, so nothing carries over between runs and every weekly pack lists every
+stall still open. That is the intended shape of a weekly list, not a dedup fault.
 
-23:00 exists to feed 23:30: `bd-followup-drafts.service` has `After=bd-stall-radar.service`
-and consumes this pack the same night. That half-hour is a budget, not a coincidence — see
-`cleared-the-2330-slot`.
+09:07 exists to feed 09:37: on the second Monday of the month `bd-followup-drafts.service`
+(`After=bd-stall-radar.service`) consumes this pack the same morning. That half-hour is a
+budget, not a coincidence — see `cleared-the-drafts-slot`. On the other Mondays the pack is
+for Dave alone.
 
 ## Inputs
 
@@ -61,13 +65,13 @@ Everything this job reasons over is in-bubble by construction.
 - **Delivery:** `ExecStartPost=bin/deliver_proposal.sh`, `DELIVERY_ROUTE=bd` → channel
   `97b5cf17-…`, **event kind 45001** (forum), notify `claudius`.
 - **The radar flags and stops.** It never writes Notion — not `Stage`, not `Last contact`, not
-  `Next action date` — and it never drafts the message. The draft is 23:30's job; the state
-  change is Dave's, from the Mac.
+  `Next action date` — and it never drafts the message. The draft is `bd-followup-drafts`'
+  job, monthly at 09:37; the state change is Dave's, from the Mac.
 
-- **Beneficiary:** Dave — and `bd-followup-drafts` one slot later, which is the only job on
-  this box whose input is another job's artifact.
-- **Next actor:** `bd-followup-drafts` at 23:30, then Dave.
-- **Next action:** the 23:30 job drafts a message for each flagged deal; Dave sends it and
+- **Beneficiary:** Dave — and, on the second Monday of the month, `bd-followup-drafts` half
+  an hour later, which is the only job on this box whose input is another job's artifact.
+- **Next actor:** `bd-followup-drafts` at 09:37 on the second Monday; otherwise Dave.
+- **Next action:** the 09:37 job drafts a message for each flagged deal; Dave sends it and
   moves `Stage` and `Last contact` from the Mac. The radar flags and stops.
 - **Benefit hypothesis:** a deal that has gone quiet surfaces while it is still warm instead
   of at the next pipeline review.
@@ -77,7 +81,7 @@ Everything this job reasons over is in-bubble by construction.
 
 ## Decline conditions
 
-One legitimate decline: **no genuine new stalls tonight**, after suppression and the 3-day
+One legitimate decline: **no genuine new stalls this run**, after suppression and the 3-day
 dedup window. The kernel prints, as its own line, exactly:
 
 ```
@@ -108,7 +112,7 @@ exist because all three of those produce the same clean, quiet, correct-looking 
   decorative.
 - Touches `/home/dave/logs/run-markers/bd-stall-radar.service`.
 - Takes `${AGENT_PROPOSE_LOCK:-/tmp/agent_propose.lock}`, the fleet-wide propose lock — and
-  must give it back before 23:30.
+  must give it back before 09:37.
 - Delivery receipt appended by `bin/deliver.sh` to `~/logs/delivery-receipts.jsonl`.
 
 Nothing else. `agent_propose.sh:404` discards the whole run when anything outside
@@ -118,7 +122,7 @@ Nothing else. `agent_propose.sh:404` discards the whole run when anything outsid
 
 Ids are the stable names; `## Known failure modes` references them, never the numbers.
 
-1. **The artifact is this run's**, not last night's left in place.
+1. **The artifact is this run's**, not last week's left in place.
 
    ```check id=artifact-is-this-run
    f="$AGENT_INBOX_DIR/${RUN_DATE}_bd-stall-radar.md"
@@ -192,7 +196,8 @@ Ids are the stable names; `## Known failure modes` references them, never the nu
 
 7. **The file the kernel wrote is dated for this run.** The kernel takes its date from
    `dt.date.today()`; everything else on the path takes it from `RUN_DATE`, exported once at
-   `agent_propose.sh:317`. At 23:00 plus jitter, with retries, those two can disagree — and
+   `agent_propose.sh:317`. At a slot near midnight, with jitter and retries, those two can
+   disagree (dormant at 09:07, live at the old 23:00) — and
    when they do, every check keyed on `RUN_DATE` reports a missing artifact for a file that
    exists under tomorrow's name.
 
@@ -205,12 +210,14 @@ Ids are the stable names; `## Known failure modes` references them, never the nu
    [ "$wrote" = "$want" ]
    ```
 
-8. **The run cleared the 23:30 slot.** `sweep`. `bd-followup-drafts` takes the same fleet-wide
-   flock half an hour later and consumes this pack; an overrun does not fail this job, it
-   makes the *next* one exit 0 with `SKIP: previous run still active` and no alert. 1500s is
-   the budget: 23:00 plus up to 5 minutes of jitter leaves ~25 minutes.
+8. **The run cleared the 09:37 slot.** `sweep`. On the second Monday `bd-followup-drafts`
+   takes the same fleet-wide flock half an hour later and consumes this pack; an overrun does
+   not fail this job, it makes the *next* one exit 0 with `SKIP: previous run still active`
+   and no alert — and at monthly cadence that skip costs a month. 1500s is the budget: 09:07
+   plus up to 5 minutes of jitter leaves ~25 minutes. Checked every week so the overrun is
+   seen before the Monday it matters.
 
-   ```check id=cleared-the-2330-slot when=sweep
+   ```check id=cleared-the-drafts-slot when=sweep
    c="$HOME/agent-workforce/logs/cost.log"
    [ -f "$c" ] || { echo "n/a: no cost.log on this box"; exit 77; }
    row="$(grep -F ' task=bd-stall-radar ' "$c" | tail -1)"
@@ -238,8 +245,8 @@ Ids are the stable names; `## Known failure modes` references them, never the nu
 
 10. **The write boundary held**: the commit that added this run's file touched nothing outside
     `_inbox/agents/`. Resolved by path rather than `HEAD~1`, because the inbox worktree takes
-    commits from every job — and at 23:00 the sibling half an hour behind is the likeliest
-    author of the previous one.
+    commits from every job — and the previous one is routinely another job's, on a second
+    Monday the sibling's from the month before.
 
     ```check id=write-boundary-held
     rel="_inbox/agents/${RUN_DATE}_bd-stall-radar.md"
@@ -261,36 +268,39 @@ Ids are the stable names; `## Known failure modes` references them, never the nu
               | grep -F 'SKIP: previous run still active')" ]
     ```
 
-12. **The timer fired inside its window.** `sweep`, asserted against systemd. 4 days covers
-    the Fri/Sat gap plus jitter with room to spare.
+12. **The timer fired inside its window.** `sweep`, asserted against systemd. 8 days covers
+    the weekly gap plus jitter with a day to spare.
 
     ```check id=timer-fired-this-window when=sweep
     t="$($SYSTEMCTL show "$UNIT.timer" -p LastTriggerUSec --value --timestamp=unix)"
     case "$t" in @*) ;; *) echo "the timer has never fired"; exit 1 ;; esac
     age=$(( $(date +%s) - ${t#@} ))
-    [ "$age" -lt 345600 ] || echo "$UNIT.timer last fired ${age}s ago, past the Fri/Sat gap plus jitter"
-    [ "$age" -lt 345600 ]
+    [ "$age" -lt 691200 ] || echo "$UNIT.timer last fired ${age}s ago, past the weekly gap plus jitter"
+    [ "$age" -lt 691200 ]
     ```
 
 ## Known failure modes
 
 - **The vacuous decline.** The defining failure of this job: an empty pipeline read, a
   suppression list that swallowed everything, or a dedup window that ate a re-raise all end in
-  `DECLINE: no genuine new stalls` — the same line a healthy quiet night produces, delivered
+  `DECLINE: no genuine new stalls` — the same line a healthy quiet week produces, delivered
   to the same forum, receipted the same way. Signals: `deal-count-was-not-zero`,
   `priorities-suppression-was-live`, `kernel-actually-ran`.
 - **Midnight rollover between the kernel and the run.** `bd_stall_radar_kernel.py` computes
   its date with `dt.date.today()` while everything around it uses `RUN_DATE`, exported once at
-  `agent_propose.sh:317` and never recomputed. A 23:00 run with jitter and up to two retries
-  can cross midnight; the kernel then writes tomorrow's filename into today's run, and every
+  `agent_propose.sh:317` and never recomputed. A 09:07 run cannot cross midnight, so this is
+  dormant at the current slot — it bit at the old 23:00 slot, where jitter and up to two
+  retries crossed midnight routinely, and it returns the moment the slot moves back past
+  midnight: the kernel writes tomorrow's filename into today's run, and every
   `RUN_DATE`-keyed check reports a missing artifact that is sitting right there. Signal:
   `kernel-date-matched-the-run`. The real fix is passing `RUN_DATE` into the kernel, which is
   a change to `bin/`, not to this file.
-- **Overrunning into the 23:30 slot.** This job's overrun is charged to its sibling:
+- **Overrunning into the 09:37 slot.** This job's overrun is charged to its sibling:
   `bd-followup-drafts` finds the flock held, logs `SKIP: previous run still active`, exits 0
-  (`agent_propose.sh:144`), and Dave gets no drafts with nothing red anywhere. The `After=`
-  ordering makes 23:30 wait for 23:00 to *finish starting*, not to release the lock. Signals:
-  `cleared-the-2330-slot` here, `not-lock-skipped` in the sibling's contract.
+  (`agent_propose.sh:144`), and Dave gets no drafts with nothing red anywhere — for a month,
+  now that the sibling is monthly. The `After=` ordering makes 09:37 wait for 09:07 to
+  *finish starting*, not to release the lock. Signals: `cleared-the-drafts-slot` here,
+  `not-lock-skipped` in the sibling's contract.
 - **Rules drifting into prose.** The thresholds live in Python precisely so a task profile
   cannot quietly hold a second copy. A profile that reimplements "7 days" is a fork of the
   rule that no test compares. `kernel-actually-ran` catches the extreme case — the kernel not

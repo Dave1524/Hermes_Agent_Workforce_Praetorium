@@ -107,7 +107,9 @@ assert "and the inference basis is named in the draft block, so Dave can overrul
 assert "channel selection: Email present -> email with a subject line, otherwise LinkedIn" \
   "grep -q 'subject line' '$TASK' && grep -q 'LinkedIn' '$TASK'"
 assert "a LinkedIn connection note is budgeted at 300 characters" "grep -q '300 character' '$TASK'"
-assert "the pack is capped at 5 drafts" "grep -qi 'at most 5 drafts\|maximum of 5 drafts' '$TASK'"
+assert "the pack is capped at 10 drafts (Dave, 2026-09-11: monthly needs more than 5)" \
+  "grep -qi 'at most 10 drafts\|maximum of 10 drafts' '$TASK'"
+assert "and no stale 5-draft cap wording survives" "! grep -qiE '(at most|maximum of|cap at) (5|five)\b|5-draft cap' '$TASK'"
 assert "and nothing dropped by the cap is silently truncated" \
   "grep -qi 'never silently truncate\|no silent truncation' '$TASK'"
 assert "every input source is restricted to Stage Prospect (the work not being done)" \
@@ -147,17 +149,22 @@ unquoted=$(grep -E '^Environment=[^"]*=[^"]* ' "$SERVICE" || true)
 assert "no unquoted multi-word Environment= value" "[ -z '$unquoted' ]"
 
 assert "timer exists" "[ -f '$TIMER' ]"
-assert "runs Sun-Thu 23:30, mirroring the radar's cadence one slot later" \
-  "grep -q '^OnCalendar=Sun,Mon,Tue,Wed,Thu 23:30$' '$TIMER'"
+assert "runs monthly on the second Monday, 09:37 (Dave, 2026-09-11: drafts monthly, radar weekly)" \
+  "grep -q '^OnCalendar=Mon \*-\*-08\.\.14 09:37$' '$TIMER'"
 assert "Persistent (a reboot spanning the slot still catches up)" "grep -q '^Persistent=true' '$TIMER'"
 assert "enabled into timers.target" "grep -q '^WantedBy=timers.target' '$TIMER'"
 
-# 23:00 radar -> 23:30 drafts: the pack consumes that night's fresh radar output, and both
-# clear the 04:30/05:30/06:00 morning jobs sharing agent_propose.sh's global flock (a
-# collision there is a SILENT "SKIP: previous run still active").
+# 09:07 radar -> 09:37 drafts, both on a Monday: the monthly pack consumes a radar pack
+# written the same morning, and both slots clear the *:0/15 ticks of content-change-dispatch,
+# which shares agent_propose.sh's global flock (a collision there is a SILENT
+# "SKIP: previous run still active" that exits 0).
 radar_at=$(grep -oE 'OnCalendar=.*[0-9]{2}:[0-9]{2}' "$REPO_ROOT/systemd/bd-stall-radar.timer" | grep -oE '[0-9]{2}:[0-9]{2}')
 drafts_at=$(grep -oE 'OnCalendar=.*[0-9]{2}:[0-9]{2}' "$TIMER" | grep -oE '[0-9]{2}:[0-9]{2}')
 assert "the radar ($radar_at) runs before the draft pack ($drafts_at)" "[[ '$radar_at' < '$drafts_at' ]]"
+assert "and on the same weekday, so every drafts elapse has a same-morning radar pack" \
+  "grep -q '^OnCalendar=Mon ' '$REPO_ROOT/systemd/bd-stall-radar.timer' && grep -q '^OnCalendar=Mon ' '$TIMER'"
+assert "off the :00/:15/:30/:45 ticks that share the global flock with content-change-dispatch" \
+  "! grep -qE '^OnCalendar=.*(00|15|30|45)$' '$TIMER'"
 assert "and the service is ordered after it" "grep -q '^After=.*bd-stall-radar.service' '$SERVICE'"
 
 exit $fail

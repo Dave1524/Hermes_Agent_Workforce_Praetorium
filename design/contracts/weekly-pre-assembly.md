@@ -36,7 +36,9 @@ own weekend weekly review — the job assembles a pre-read, it does not do the r
 
 `TimeoutStartSec=45min`, three times the two daily-rhythm jobs' 15. It reads a full week of
 daily logs, so the budget is real rather than generous — and it means this job holds the
-shared `agent_propose.sh` lock across `bd-stall-radar` at 23:00 whenever it runs long.
+shared `agent_propose.sh` lock across the Friday-night `*:0/15` content-change-dispatch ticks
+whenever it runs long. (`bd-stall-radar` at 23:00 was the victim until 2026-09-11; it is
+weekly, Mon 09:07, now and off Friday altogether.)
 
 The unit also carries `ConditionPathExists=/home/dave/agent-worktrees/inbox`, which is not a
 trigger condition so much as a silent off-switch; see `## Known failure modes`.

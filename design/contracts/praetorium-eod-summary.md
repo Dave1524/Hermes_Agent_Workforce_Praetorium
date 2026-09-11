@@ -26,8 +26,10 @@ claims below come from the committed `.env.example` it mirrors.
 weekends — unlike its morning sibling, because a Saturday still has a day to close even when
 nobody planned it.
 
-`bd-stall-radar` runs at 23:00 and `bd-followup-drafts` at 23:30, both under the same global
-`agent_propose.sh` lock. A 15-minute job starting as late as 22:20 has margin; a slow one does
+`bd-stall-radar` ran at 23:00 and `bd-followup-drafts` at 23:30 until 2026-09-11 (weekly Mon
+09:07 and monthly 09:37 since), both under the same global `agent_propose.sh` lock. The
+neighbours still sharing it are the `*:0/15` content-change-dispatch ticks, so the race is
+smaller but not gone: a 15-minute job starting as late as 22:20 has margin; a slow one does
 not, and the loser of that race exits 0 having done nothing (see `## Known failure modes`).
 
 ## Inputs
@@ -198,8 +200,10 @@ exist in the sibling contract and is the highest-value check here.
    that nothing ran at all. Reads the unit's own journal since the timer's last trigger, not
    the shared `logs/agent_propose.log`, whose `SKIP: previous run still active` line names no
    job (`bin/agent_propose.sh:144`) — journald scopes by unit, that file does not. This is the
-   likeliest of the nine to fire: 22:15 sits 45 minutes ahead of `bd-stall-radar` and 75 ahead
-   of `bd-followup-drafts`, all three sharing one lock.
+   likeliest of the nine to fire: until 2026-09-11, 22:15 sat 45 minutes ahead of
+   `bd-stall-radar` and 75 ahead of `bd-followup-drafts`, all three sharing one lock; those
+   two are on Monday mornings now, and the `*:0/15` content-change-dispatch ticks are what
+   remains on the lock at this hour.
 
    ```check id=not-lock-skipped when=sweep
    t="$($SYSTEMCTL show "$UNIT.timer" -p LastTriggerUSec --value --timestamp=unix)"

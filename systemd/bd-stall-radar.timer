@@ -1,11 +1,16 @@
 [Unit]
-Description=BD pipeline stall radar, overnight Sun-Thu — NUC-24
-# Sun-Thu 23:00 Europe/Amsterdam (box timezone fixed 2026-07-09). Skips Fri/Sat
-# nights since weekly-pre-assembly.timer covers Friday and the BD tracks are
-# quiet weekends.
+Description=BD pipeline stall radar, weekly Monday 09:07 — NUC-24
+# Weekly, Monday 09:07 Europe/Amsterdam (box timezone fixed 2026-07-09). Was Sun-Thu
+# 23:00 until 2026-09-11, when Dave took both BD jobs off the nightly cadence: radar
+# weekly, bd-followup-drafts monthly on the second Monday at 09:37 — so the monthly
+# pack always finds a radar pack written the same morning.
+# :07 rather than :00 because agent_propose.sh's global flock is shared with
+# content-change-dispatch (*:0/15, up to 2min jitter). A collision there is a SILENT
+# "SKIP: previous run still active" that exits 0, and at weekly cadence it costs a
+# week, not a night.
 
 [Timer]
-OnCalendar=Sun,Mon,Tue,Wed,Thu 23:00
+OnCalendar=Mon 09:07
 RandomizedDelaySec=5min
 Persistent=true
 

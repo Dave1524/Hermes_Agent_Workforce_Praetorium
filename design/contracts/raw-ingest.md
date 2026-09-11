@@ -292,7 +292,9 @@ Ids are the stable names; `## Known failure modes` references them, never the nu
   guards it so the journal names the path instead.
 - **Silent lock skip.** `agent_propose.sh:144` exits 0 after logging the SKIP. No alert, no
   artifact, and `OnFailure` never fires because nothing failed. 03:00 is the fleet's quietest
-  slot, but a 23:30 bd-followup-drafts run that overran by 3.5h lands exactly here. Signal:
+  slot; until 2026-09-11 a 23:30 bd-followup-drafts run that overran by 3.5h landed exactly
+  here (that job is monthly at 09:37 now, so only a `*:0/15` content-change-dispatch tick
+  remains near). Signal:
   `not-lock-skipped`.
 - **A distillation that duplicates an existing note.** Not caught by anything mechanical —
   `existing-notes-checked-answered` asserts the section was written, not that the search was

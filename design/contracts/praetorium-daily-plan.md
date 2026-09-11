@@ -247,7 +247,8 @@ modes` references them, never the numbers.
   contract should not pretend one was made.
 - **Silent lock skip.** `agent_propose.sh:144` exits 0 after logging `SKIP: previous run
   still active`. No alert, no artifact, and `OnFailure` never fires because nothing failed.
-  22:15 EOD and 23:00 bd-stall-radar are the near neighbours; 06:00 is quiet, which makes
+  22:15 EOD is the near neighbour (bd-stall-radar was until 2026-09-11; it is Mon 09:07 now
+  and out of range); 06:00 is quiet, which makes
   this the least likely of the three to be caught by someone noticing. Signal:
   `not-lock-skipped`.
 - **Stale mirror.** Guarded — this is the closed one, and the reason `vault_sync_guard.sh`

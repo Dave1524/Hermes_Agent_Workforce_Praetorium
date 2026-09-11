@@ -169,7 +169,10 @@ assert 'OnFailure is wired' "grep -q '^OnFailure=agent-alert@%n.service$' '$SERV
 unquoted=$(grep -E '^Environment=[^"]*=[^"]* ' "$SERVICE" || true)
 assert 'no unquoted multi-word Environment= value' "[ -z '$unquoted' ]"
 assert 'timer exists' "[ -f '$TIMER' ]"
-assert 'runs Sun-Thu 23:00' "grep -q '^OnCalendar=Sun,Mon,Tue,Wed,Thu 23:00$' '$TIMER'"
+assert 'runs weekly, Monday 09:07 (Dave, 2026-09-11: radar weekly, drafts monthly)' \
+  "grep -q '^OnCalendar=Mon 09:07$' '$TIMER'"
+assert 'off the :00/:15/:30/:45 ticks that share the global flock with content-change-dispatch' \
+  "! grep -qE '^OnCalendar=.*(00|15|30|45)$' '$TIMER'"
 assert 'Persistent (a reboot spanning the slot still catches up)' "grep -q '^Persistent=true' '$TIMER'"
 assert 'enabled into timers.target' "grep -q '^WantedBy=timers.target' '$TIMER'"
 

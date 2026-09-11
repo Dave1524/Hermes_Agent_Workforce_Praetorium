@@ -1,14 +1,19 @@
 [Unit]
-Description=BD follow-up draft pack, overnight Sun-Thu — one slot after the stall radar
-# 23:30 for two reasons:
-#  1. It mirrors bd-stall-radar's Sun-Thu cadence one slot later, so each pack consumes
-#     that night's fresh radar output and lands for a Mon-Fri morning.
-#  2. It clears the 04:30 / 05:30 / 06:00 morning jobs that share agent_propose.sh's
-#     global flock on /tmp/agent_propose.lock — a collision there is a SILENT
-#     "SKIP: previous run still active", not a failure anyone would see.
+Description=BD follow-up draft pack, monthly second Monday 09:37 — half an hour after the stall radar
+# Monthly, second Monday (Mon *-*-08..14 is the one Monday in the 8th-14th window),
+# 09:37 Europe/Amsterdam. Was Sun-Thu 23:30 until 2026-09-11, when Dave set the drafts
+# monthly and the radar weekly. Two reasons for the slot:
+#  1. bd-stall-radar runs every Monday at 09:07, so on the second Monday this pack
+#     consumes a radar pack written half an hour earlier. After= in the service orders
+#     the start, not the lock release — the half hour is the radar's budget to finish.
+#  2. :37 clears the *:0/15 ticks of content-change-dispatch, which shares
+#     agent_propose.sh's global flock on /tmp/agent_propose.lock — a collision there is
+#     a SILENT "SKIP: previous run still active" (exit 0), and at monthly cadence that
+#     costs a month.
+# Second Monday rather than first so the first elapse is Mon 2026-09-14, not 5 Oct.
 
 [Timer]
-OnCalendar=Sun,Mon,Tue,Wed,Thu 23:30
+OnCalendar=Mon *-*-08..14 09:37
 RandomizedDelaySec=3min
 Persistent=true
 

@@ -7,7 +7,8 @@ subscription. This is a fresh session with no prior chat memory. Your working di
 the vault inbox worktree; `_inbox/agents/` is directly under it. The vault mirror itself is
 readable at `~/vault` (NOT your working directory, and NOT writable by you).
 
-`bd-stall-radar` (23:00) flags which deals are stalled and stops there. You write the text.
+`bd-stall-radar` (every Monday 09:07; you run monthly on the second Monday, 09:37) flags
+which deals are stalled and stops there. You write the text.
 The evidenced failure this closes: three overdue BD sends sat `Planned` in the Notion Task
 Inbox with due dates for five straight days (07-22 log). The missing artifact was never the
 decision or the task row — it was a copy-paste-ready message. Produce that.
@@ -19,7 +20,7 @@ Run `date +%F` for today's date, then `ls -1 _inbox/agents/ | grep bd-followup-d
 - Otherwise read the most recent previous pack, if any. You need it in step 6: a deal you
   already drafted for, where nothing about that deal has changed since, must NOT get a
   fresh near-identical draft — it gets one line, `carried (unchanged from <date>)`. A pack
-  that re-nags the same three deals every night is a file Dave stops opening.
+  that re-nags the same three deals every run is a file Dave stops opening.
 
 1. Build the input set — the union of THREE sources, de-duplicated by deal, restricted to
    Stage `Prospect` throughout. Not radar stalls alone: the evidenced failures were task
@@ -27,8 +28,9 @@ Run `date +%F` for today's date, then `ls -1 _inbox/agents/ | grep bd-followup-d
    deals are already in motion and Dave sees them elsewhere; this pack is for the Prospect
    backlog only.
 
-   (a) Last night's stall radar. `ls -1 _inbox/agents/ | grep _bd-stall-radar.md` and read
-       the newest one if present. Each deal it flagged is a candidate — both silent stalls
+   (a) The most recent stall radar pack — normally this morning's, written half an hour
+       before you started. `ls -1 _inbox/agents/ | grep _bd-stall-radar.md` and read the
+       newest one if present. Each deal it flagged is a candidate — both silent stalls
        and never-contacted rows; the radar itself is Prospect-only, so no extra filtering
        is needed here. Absent = fine, the radar may have declined; the other two sources
        still stand.
@@ -66,13 +68,14 @@ Run `date +%F` for today's date, then `ls -1 _inbox/agents/ | grep bd-followup-d
      looks like: DP World "none owed — keep warm". A deliberately parked deal is not an
      overdue one.
 
-3. Rank what survives, then cap at five. Rank by how overdue the next action is —
+3. Rank what survives, then cap at ten. Rank by how overdue the next action is —
    most overdue first. Every row is Stage `Prospect` now, so there is no revenue-proximity
    tier to rank within first. Rows with no `Next action date` follow, longest-silent first
    by `Last contact`; never-contacted rows come last, in the order the radar listed them.
-   Draft at most 5 drafts — the cap applies AFTER ranking, so the five you write are the
-   five most overdue. Anything the cap drops is named in a one-line tail at the end of the
-   pack: never silently truncate the list.
+   Draft at most 10 drafts — the cap applies AFTER ranking, so the ten you write are the
+   ten most overdue. This pack is monthly, which is why the cap is ten and not five: it
+   is a month's sends, not a morning's. Anything the cap drops is named in a one-line
+   tail at the end of the pack: never silently truncate the list.
 
 4. Ground every draft — the make-or-break rule.
 
@@ -173,7 +176,7 @@ survived suppression, and how many are drafted below>
 <one line per deal already drafted in a previous pack with nothing changed since:
 `<Company> — carried (unchanged from <date>)`, or "none">
 
-## Dropped by the 5-draft cap
+## Dropped by the 10-draft cap
 <one line naming each deal ranked below the cap, or "none — everything owed is drafted">
 
 ## Confidence & gaps

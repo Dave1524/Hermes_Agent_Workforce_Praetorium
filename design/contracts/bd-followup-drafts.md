@@ -28,12 +28,14 @@ more item on a list.
 
 ## Trigger
 
-`OnCalendar=Sun,Mon,Tue,Wed,Thu 23:30`, `RandomizedDelaySec=3min`, `Persistent=true`.
-Recurring; no expiry. Installed-but-disabled until T2.4 (2026-09-09). The Fri/Sat pair is the
-longest legitimate gap, 48h plus jitter.
+`OnCalendar=Mon *-*-08..14 09:37`, `RandomizedDelaySec=3min`, `Persistent=true`. Monthly,
+on the second Monday (the one Monday in the 8th-14th window — systemd has no native
+"nth weekday" form); no expiry. Installed-but-disabled until T2.4 (2026-09-09). Ran Sun-Thu
+23:30 until 2026-09-11, when Dave set the drafts monthly and the radar weekly. The
+legitimate gap is now four or five weeks plus jitter.
 
 `After=network-online.target qmd-mcp.service bd-stall-radar.service` and a **3-minute** jitter
-rather than the fleet's 5: this slot consumes the 23:00 radar's fresh pack, and the narrower
+rather than the fleet's 5: this slot consumes the 09:07 radar's fresh pack, and the narrower
 window keeps the two from overlapping on `agent_propose.sh`'s global flock. `After=` orders
 the *start*, not the lock release — a radar run that overruns 25 minutes makes this job log
 `SKIP: previous run still active` and exit 0 with no alert (`agent_propose.sh:144`).
@@ -42,7 +44,7 @@ the *start*, not the lock release — a radar run that overruns 25 minutes makes
 
 | Source | Freshness requirement | If stale or absent |
 |---|---|---|
-| tonight's `_inbox/agents/<date>_bd-stall-radar.md` | same night | **proceed**: the radar pack is one of three sources, and its absence is normal — the radar declines most nights |
+| this morning's `_inbox/agents/<date>_bd-stall-radar.md` | same morning | **proceed**: the radar pack is one of three sources, and its absence is normal — the radar declines when nothing new has stalled |
 | Notion Client Pipeline `e5b6fe9a-f0d9-45b9-9320-d4f20c1f1e0e`, rows past `Next action date` | live read | proceed-and-flag; a row with no evidenced last exchange becomes an `⚠ Unverified:` line, never a confident opener |
 | Notion Task Inbox `4dbb4389-…`, due BD-scoped rows | live read | same |
 | `04_operations/current_priorities.md` for parked-deal suppression | the mirror's own state | **refuses**: `bin/vault_sync_guard.sh check` runs first (`bin/run_bd_followup_drafts_cc.sh:26`) and exits 1 with `REFUSING to run — the vault mirror is dirty or stale` |
@@ -61,10 +63,11 @@ No web tools: `run_bd_followup_drafts_cc.sh` passes an allowlist without
 - **Mandated shape:** `## Task` carrying `target: none — send material, not a vault change`,
   then `## Drafts` with one `### <N>. <Company> — <Person>` block each carrying
   `- **Channel:**`, `- **Locale:**`, `- **Why now:**` and `- **The ask:**`, then `## Carried`,
-  `## Dropped by the 5-draft cap`, `## Confidence & gaps`.
-- **At most five drafts**, after ranking. The cap is real: six copy-paste messages at 23:30 is
-  a backlog, not a morning's work, and `## Dropped by the 5-draft cap` is where the rest go so
-  the ranking is visible rather than silent.
+  `## Dropped by the 10-draft cap`, `## Confidence & gaps`.
+- **At most ten drafts**, after ranking. The cap is real: it was five when the pack was
+  nightly, and Dave raised it to ten on 2026-09-11 when the pack went monthly — a month's
+  sends, not a morning's. Past ten is a backlog, and `## Dropped by the 10-draft cap` is where
+  the rest go so the ranking is visible rather than silent.
 - **`target: none`.** The pack is send material and the inbox tooling must never promote it
   into the vault.
 - **Delivery:** `ExecStartPost=bin/deliver_report.sh` — **not** `deliver_proposal.sh`, the only
@@ -102,9 +105,11 @@ keeps) and exits 0. Not the shared `agent_run.log`: until T7.1 (2026-09-10) any 
 satisfied every other job's check.
 
 A decline here has a second consequence the other jobs do not have: `deliver_report.sh` will
-happily deliver the newest matching file it finds, and on a declined night that is *yesterday's
-pack*, up to 26 hours old. The run marker is the only thing that turns that into an
-`artifact_error` fault instead of a confident re-send of five messages Dave already sent.
+happily deliver the newest matching file it finds, and on a declined run that is *the previous
+pack* if it is under 26 hours old — at monthly cadence only a manual `systemctl start` inside a
+day of the scheduled run, but the hazard is the adapter's, not the schedule's. The run marker
+is the only thing that turns that into an `artifact_error` fault instead of a confident
+re-send of ten messages Dave already sent.
 `delivery-is-anchored-to-this-run` asserts it.
 
 Suppression is not a decline either: Stage `Closed` / `On Hold` rows and priorities-parked
@@ -133,7 +138,7 @@ Nothing else. `agent_propose.sh:404` discards the whole run when anything outsid
 
 Ids are the stable names; `## Known failure modes` references them, never the numbers.
 
-1. **The artifact is this run's**, not last night's left in place — which for this job is also
+1. **The artifact is this run's**, not a previous one left in place — which for this job is also
    a delivery hazard, not only a stale read.
 
    ```check id=artifact-is-this-run
@@ -203,19 +208,19 @@ Ids are the stable names; `## Known failure modes` references them, never the nu
    [ "$asks" -ge "$n" ]
    ```
 
-6. **The five-draft cap was respected.** Ranking is the job; the cap is what forces it. Six
-   drafts at 23:30 is a backlog Dave triages instead of sends.
+6. **The ten-draft cap was respected.** Ranking is the job; the cap is what forces it. Eleven
+   drafts in a monthly pack is a backlog Dave triages instead of sends.
 
-   ```check id=cap-of-five-was-respected
+   ```check id=cap-of-ten-was-respected
    f="$AGENT_INBOX_DIR/${RUN_DATE}_bd-followup-drafts.md"
    [ -f "$f" ] || { echo "n/a: no artifact this run"; exit 77; }
    n="$(grep -c '^### [0-9]' "$f")"
-   [ "$n" -le 5 ] || echo "$n drafts — the cap is 5, and everything past it belongs under 'Dropped by the 5-draft cap'"
-   [ "$n" -le 5 ]
+   [ "$n" -le 10 ] || echo "$n drafts — the cap is 10, and everything past it belongs under 'Dropped by the 10-draft cap'"
+   [ "$n" -le 10 ]
    ```
 
 7. **The pack is send material, not a vault change.** `target: none` is what keeps the inbox
-   tooling from promoting five draft messages into `05_knowledge/`.
+   tooling from promoting ten draft messages into `05_knowledge/`.
 
    ```check id=target-is-none
    f="$AGENT_INBOX_DIR/${RUN_DATE}_bd-followup-drafts.md"
@@ -238,8 +243,9 @@ Ids are the stable names; `## Known failure modes` references them, never the nu
    ```
 
 9. **The delivery is anchored to this run.** `sweep`. `deliver_report.sh` picks the newest
-   file by name inside a 26-hour age budget and is fail-soft — on a declined night that is
-   yesterday's pack, delivered again, receipted `ok`. The run marker is the only thing that
+   file by name inside a 26-hour age budget and is fail-soft — on a declined run inside a day
+   of a delivered one that is the previous pack, delivered again, receipted `ok`. The run
+   marker is the only thing that
    turns it into an `artifact_error` fault (`deliver.sh:229`).
 
    ```check id=delivery-is-anchored-to-this-run when=sweep
@@ -255,7 +261,7 @@ Ids are the stable names; `## Known failure modes` references them, never the nu
 
 10. **The write boundary held**: the commit that added this run's file touched nothing outside
     `_inbox/agents/`. Resolved by path rather than `HEAD~1`, because the inbox worktree takes
-    commits from every job — and at 23:30 the previous one is routinely the radar's.
+    commits from every job — and at 09:37 the previous one is routinely the radar's.
 
     ```check id=write-boundary-held
     rel="_inbox/agents/${RUN_DATE}_bd-followup-drafts.md"
@@ -267,8 +273,8 @@ Ids are the stable names; `## Known failure modes` references them, never the nu
     ```
 
 11. **The run was not silently skipped by the global lock.** `sweep`, and the likeliest red in
-    this file: the 23:00 radar holds the same flock, `After=` orders the start rather than the
-    release, and a skip here exits 0 with no alert and no drafts.
+    this file: the 09:07 radar holds the same flock, `After=` orders the start rather than the
+    release, and a skip here exits 0 with no alert and no drafts — for a month.
 
     ```check id=not-lock-skipped when=sweep
     t="$($SYSTEMCTL show "$UNIT.timer" -p LastTriggerUSec --value --timestamp=unix)"
@@ -277,15 +283,16 @@ Ids are the stable names; `## Known failure modes` references them, never the nu
               | grep -F 'SKIP: previous run still active')" ]
     ```
 
-12. **The timer fired inside its window.** `sweep`, asserted against systemd. 4 days covers
-    the Fri/Sat gap plus jitter with room to spare.
+12. **The timer fired inside its window.** `sweep`, asserted against systemd. 36 days covers
+    the longest second-Monday-to-second-Monday gap (five weeks) plus jitter with a day to
+    spare.
 
     ```check id=timer-fired-this-window when=sweep
     t="$($SYSTEMCTL show "$UNIT.timer" -p LastTriggerUSec --value --timestamp=unix)"
     case "$t" in @*) ;; *) echo "the timer has never fired"; exit 1 ;; esac
     age=$(( $(date +%s) - ${t#@} ))
-    [ "$age" -lt 345600 ] || echo "$UNIT.timer last fired ${age}s ago, past the Fri/Sat gap plus jitter"
-    [ "$age" -lt 345600 ]
+    [ "$age" -lt 3110400 ] || echo "$UNIT.timer last fired ${age}s ago, past the five-week gap plus jitter"
+    [ "$age" -lt 3110400 ]
     ```
 
 ## Known failure modes
@@ -298,19 +305,20 @@ Ids are the stable names; `## Known failure modes` references them, never the nu
   `no-draft-asserts-silence-or-elapsed-time`.
 - **Yesterday's pack, re-delivered.** `deliver_report.sh` is fail-soft (always exit 0), picks
   the newest file matching `*_bd-followup-drafts.md`, and accepts anything under 26 hours old.
-  On a declined night that is last night's five drafts — sent to the same forum, receipted
-  `ok`, indistinguishable from a fresh pack. Only `DELIVERY_RUN_MARKER` makes `deliver.sh:229`
+  On a declined run inside that window that is the previous pack — sent to the same forum,
+  receipted `ok`, indistinguishable from a fresh one. Only `DELIVERY_RUN_MARKER` makes `deliver.sh:229`
   fault it. Signal: `delivery-is-anchored-to-this-run`.
 - **Silent lock skip behind the radar.** `After=bd-stall-radar.service` orders the start, not
   the flock release. A radar run that overruns its ~25-minute budget makes this job log `SKIP:
   previous run still active` and exit 0 (`agent_propose.sh:144`): no alert, no drafts, nothing
-  red. Signals: `not-lock-skipped` here, `cleared-the-2330-slot` in the radar's contract.
+  red — and at monthly cadence, a month with no drafts. Signals: `not-lock-skipped` here,
+  `cleared-the-drafts-slot` in the radar's contract.
 - **A stale or dirty mirror.** The drafts are grounded in vault evidence of the last
   substantive exchange; a mirror the Mac has since replaced produces confident references to
   a conversation that went differently. This is one of only two jobs running the pre-flight,
   and it is the one that most needs it. Signal: `vault-guard-passed`.
-- **Cap creep.** Six or seven drafts is what happens when ranking is skipped rather than done,
-  and it converts a 5-minute morning task into triage. Signal: `cap-of-five-was-respected`;
+- **Cap creep.** Eleven or twelve drafts is what happens when ranking is skipped rather than
+  done, and it converts a morning's sends into triage. Signal: `cap-of-ten-was-respected`;
   the ranking's *quality* is Dave's read, not a check.
 - **A closed or parked deal in the pack.** Suppression runs on Stage `Closed`/`On Hold` and on
   priorities-parked deals, upstream of ranking. Not checked here — the radar's
@@ -323,5 +331,5 @@ Ids are the stable names; `## Known failure modes` references them, never the nu
   propagate cat(1)'s failure. Guarded in the wrapper so the journal names the path.
 - **Midnight rollover.** `RUN_DATE` and `AGENT_RUN_STARTED_AT` are exported once
   (`agent_propose.sh:317`, `:34`) and read, never recomputed, so this job cannot disagree with
-  itself about the filename the way the radar's kernel can — 23:30 plus 3 minutes of jitter
-  plus retries crosses midnight routinely, and the date stays the run's own throughout.
+  itself about the filename the way the radar's kernel can — at the old 23:30 slot, jitter
+  plus retries crossed midnight routinely, and the date stayed the run's own throughout.
