@@ -12,14 +12,19 @@ active thread (right evidence, wrong boolean). The signals it was guessing at ar
 available structurally, so we take them deterministically instead.
 
 Rules (all exact):
-  candidate : Stage active AND last_contact != null AND days_silent > 7
-  suppress  : company is named in current_priorities.md (Dave is actively
-              managing it) OR Next action date is in the future (scheduled)
+  candidate : Stage == Prospect AND (never contacted OR days_silent > 7)
+  suppress  : company is named in current_priorities.md, matched on its full
+              normalised name (Dave is actively managing it) OR Next action
+              date is in the future (scheduled)
   aging tag : days_silent > 60 -> likely cold rather than a warm stall
-  => proposal lists the remaining stalls; else a clean decline.
+  never tag : no Last contact at all -> a lead nobody has opened yet
+  => proposal lists what survives; else a clean decline.
 
-Deliberate parks / dead deals are already excluded upstream by the Stage guard
-(On Hold / Closed are not active stages).
+Scope (Dave, 2026-09-11): this radar surfaces the BD work Dave is NOT doing.
+Qualified / Proposal / Active rows are the accounts he is working, and listing
+them is what made the report unread, so they are out of scope by design; On
+Hold / Closed never were in scope. Never-contacted Prospect rows are included
+on the same reasoning: unopened is the most unworked a lead can be.
 
 Contract (unchanged, matches agent_propose.sh): CWD is the inbox worktree;
 writes ONE dated proposal to _inbox/agents/YYYY-MM-DD_bd-stall-radar.md or
@@ -37,21 +42,31 @@ import urllib.request
 
 DATA_SOURCE = "e5b6fe9a-f0d9-45b9-9320-d4f20c1f1e0e"  # Notion Client Pipeline
 NOTION_VERSION = "2025-09-03"
-ACTIVE_STAGES = {"Prospect", "Qualified", "Proposal", "Active"}
+IN_SCOPE_STAGES = {"Prospect"}  # the rest are being worked; see module docstring
 STALL_DAYS = 7    # strictly greater-than
 AGING_FLOOR = 60  # silent longer than this => likely cold, tagged (still flagged)
 PRIORITIES_PATH = "04_operations/current_priorities.md"
 MEM_FILE = os.path.expanduser("~/.hermes/profiles/claudius/memories/MEMORY.md")
 DEDUP_WINDOW_DAYS = 3
 
-# Tokens too generic to identify a company inside the priorities prose. A name is
-# matched only on a distinctive token (>= 6 chars, word-boundary) not in this set,
-# so a shared word like "logistics" or a bare first name never triggers suppression.
+# Tokens that never identify a company on their own. A name is matched on its
+# full normalised form first; the short form drops these tokens so that
+# "Rhenus Logistics" still finds "Rhenus", while "Embassy Freight Rotterdam" can
+# never match the city alone (measured 2026-09-11: suppressed on 'rotterdam'
+# against unrelated prose). City names are a floor here, not the fix.
 GENERIC_TOKENS = {
-    "logistics", "logistiek", "netherlands", "nederland", "holding", "group",
+    "the", "logistics", "logistiek", "netherlands", "nederland", "holding", "group",
     "coldstore", "global", "control", "transport", "international", "solutions",
     "warehousing", "terminals", "shipping", "consulting", "benelux", "europe",
+    "contract", "freight", "cargo", "food", "cold", "chain", "services",
+    "rotterdam", "amsterdam", "antwerpen", "antwerp", "tilburg", "venlo",
+    "eindhoven", "utrecht", "breda", "schiphol", "moerdijk", "waalwijk",
+    "nijmegen", "zwolle", "arnhem", "groningen", "duisburg", "hamburg",
 }
+LEGAL_SUFFIXES = {"bv", "nv", "cv", "vof", "bvba", "gmbh", "ag", "ltd", "plc",
+                  "inc", "llc", "sa", "srl", "sarl", "ab", "oy", "aps"}
+MIN_SHORT_FORM = 6   # chars; the old single-token floor, kept for the short form
+PHRASE_WINDOW = 6    # max words a folded company name may span in the prose
 
 
 # ── Notion ────────────────────────────────────────────────────────────────
@@ -123,13 +138,12 @@ def days_silent(deal, today):
 
 
 def is_candidate(deal, today):
-    """Active-stage deal with a REAL prior dialogue (non-null last contact) that has
-    gone silent > 7 days. Never-contacted prospects (null last contact) are cold-list
-    entries, not stalls, and are excluded."""
-    if deal["stage"] not in ACTIVE_STAGES:
-        return False, "non-active stage"
+    """In-scope (Prospect) deal that is not being worked: either never contacted at
+    all, or with a real prior dialogue that has gone silent > 7 days."""
+    if deal["stage"] not in IN_SCOPE_STAGES:
+        return False, "out-of-scope stage"
     if not deal["last_contact"]:
-        return False, "never contacted"
+        return True, "never contacted"
     ds = days_silent(deal, today)
     if ds is None:
         return False, "unparseable last-contact date"
@@ -138,15 +152,46 @@ def is_candidate(deal, today):
     return True, f"silent {ds}d"
 
 
-def named_in_priorities(client, priorities_lc):
-    """True if a distinctive token of the company name appears in current_priorities.md
-    -> Dave is actively managing/tracking it this week, so it is not a forgotten stall.
-    Distinctive = >= 6 chars, word-boundary, not a generic industry word."""
-    base = re.sub(r"\(.*?\)", " ", client).lower()
-    for tok in re.split(r"[^a-z0-9]+", base):
-        if len(tok) >= 6 and tok not in GENERIC_TOKENS \
-                and re.search(r"\b" + re.escape(tok) + r"\b", priorities_lc):
-            return tok
+def _name_tokens(client):
+    base = re.sub(r"\(.*?\)", " ", client).lower().replace(".", "")
+    tokens = [t for t in re.split(r"[^a-z0-9]+", base) if t]
+    while tokens and tokens[-1] in LEGAL_SUFFIXES:
+        tokens.pop()
+    return tokens
+
+
+def name_forms(client):
+    """Folded forms of a company name, most specific first: the full name with
+    parentheticals and legal suffixes dropped, then (if distinct and long enough)
+    the name with generic tokens dropped too. Whitespace is folded away so Notion's
+    "The ColdHub" and the vault's "The Cold Hub" are the same string."""
+    tokens = _name_tokens(client)
+    forms = []
+    if tokens:
+        forms.append(("".join(tokens), " ".join(tokens)))
+    core = [t for t in tokens if t not in GENERIC_TOKENS]
+    if core and core != tokens and len("".join(core)) >= MIN_SHORT_FORM:
+        forms.append(("".join(core), " ".join(core)))
+    return forms
+
+
+def priority_phrases(priorities_lc):
+    """Every run of 1..PHRASE_WINDOW consecutive words in the prose, folded the same
+    way as name_forms, so a match is always on whole words."""
+    words = re.findall(r"[a-z0-9]+", priorities_lc)
+    return {"".join(words[i:i + k])
+            for i in range(len(words)) for k in range(1, PHRASE_WINDOW + 1)}
+
+
+def named_in_priorities(client, phrases):
+    """The readable form of the company name that appears in current_priorities.md
+    -> Dave is actively managing/tracking it this week, so it is not a forgotten
+    stall. None when no form matches. A Notion title that carries a descriptor after
+    the company name will not match its priorities heading; that fails towards
+    surfacing the row, which is the cheap direction."""
+    for folded, readable in name_forms(client):
+        if folded in phrases:
+            return readable
     return None
 
 
@@ -160,9 +205,9 @@ def next_action_future(deal, today):
         return False
 
 
-def suppression(deal, priorities_lc, today):
-    """Reason to NOT flag this silent deal, or None if it is a genuine stall."""
-    hit = named_in_priorities(deal["client"], priorities_lc)
+def suppression(deal, phrases, today):
+    """Reason to NOT flag this unworked deal, or None if it is a genuine stall."""
+    hit = named_in_priorities(deal["client"], phrases)
     if hit:
         return f"actively managed (named in priorities: '{hit}')"
     if next_action_future(deal, today):
@@ -212,48 +257,75 @@ def append_memory(line):
 
 
 # ── proposal ──────────────────────────────────────────────────────────────
+def _counts(stalls):
+    never = sum(1 for s in stalls if s["never"])
+    aging = sum(1 for s in stalls if s["aging"])
+    return len(stalls) - never - aging, aging, never
+
+
+def _headline(stalls):
+    warm, aging, never = _counts(stalls)
+    parts = [f"{warm} warm stall{'s' if warm != 1 else ''}"]
+    if aging:
+        parts.append(f"{aging} aging")
+    if never:
+        parts.append(f"{never} never contacted")
+    return ", ".join(parts)
+
+
+def _finding(s):
+    na = f" Next action {s['next_action_date']}." if s["next_action_date"] else ""
+    trig = f" {s['trigger'][:160]}" if s["trigger"] else ""
+    if s["never"]:
+        return (f"- **{s['client']}** — FACT: Stage {s['stage']}, never contacted."
+                f"{na}{trig} **[never contacted — no dialogue yet; open it or retire it]**")
+    tag = (" **[aging — >60d silent, likely cold rather than a warm stall; "
+           "consider Closed/On Hold]**" if s["aging"] else "")
+    return (f"- **{s['client']}** — FACT: Stage {s['stage']}, last contact "
+            f"{s['last_contact']} ({s['days']}d silent).{na}{trig}{tag}")
+
+
 def build_proposal(stalls, today, n_deals):
-    warm = [s for s in stalls if not s["aging"]]
-    lines = [f"# BD Pipeline Stall Radar — {len(warm)} warm stall"
-             f"{'s' if len(warm) != 1 else ''}"
-             f"{f', {len(stalls) - len(warm)} aging' if len(stalls) - len(warm) else ''}"
+    lines = [f"# BD Pipeline Stall Radar — {_headline(stalls)}"
              f" ({today}, claudius/deterministic)",
              "target: vault", "",
              "## Task",
              f"Standing BD stall radar (NUC-24) over {n_deals} Client Pipeline deals: "
-             f"flag active-stage deals silent >{STALL_DAYS} days that Dave is not "
-             "already managing. Deterministic run — no model inference, $0 API.",
+             f"flag Stage-Prospect deals that are not being worked — silent >{STALL_DAYS} "
+             "days, or never contacted — and that Dave is not already managing. "
+             "Qualified / Proposal / Active are out of scope by design: those are the "
+             "accounts being worked. Deterministic run — no model inference, $0 API.",
              "", "## Key findings (fact vs inference labeled)"]
-    for s in stalls:
-        na = f" Next action {s['next_action_date']}." if s["next_action_date"] else ""
-        trig = f" {s['trigger'][:160]}" if s["trigger"] else ""
-        tag = (" **[aging — >60d silent, likely cold rather than a warm stall; "
-               "consider Closed/On Hold]**" if s["aging"] else "")
-        lines.append(
-            f"- **{s['client']}** — FACT: Stage {s['stage']}, last contact "
-            f"{s['last_contact']} ({s['days']}d silent).{na}{trig}{tag}")
+    lines += [_finding(s) for s in stalls]
     lines += ["", "## Implications for Vantage Point",
               "Warm stalls are engaged threads that have gone quiet past the threshold "
               "and are not in this week's focus — each is a candidate for one concrete "
               "re-engagement touch (Priority 1). Aging entries are single-touch prospects "
-              "that never progressed; decide to work or retire them (Closed/On Hold).",
+              "that never progressed; decide to work or retire them (Closed/On Hold). "
+              "Never-contacted rows are leads nobody has opened: each is a cold first "
+              "touch to write, or a row to retire.",
               "", "## Proposed vault change (target canonical file + exact content)",
               "None — flag only. Pipeline-state changes (Last contact / Stage / "
               "Blocked reason) are Dave's call from the Mac.",
               "", "## Confidence & gaps",
-              "- Stage guard, non-null-contact guard, >7-day recency, and the 'named in "
+              "- Stage scope, >7-day recency, the never-contacted rule and the 'named in "
               "current_priorities.md' suppression are all computed exactly — no model, "
               "no false positives from inference.",
-              "- Suppression relies on the priorities doc naming actively-managed deals "
-              "and on Notion field hygiene (e.g. a stale Last-contact date reads as more "
-              "silent than reality). Verify borderline items.",
-              "- Never-contacted cold-list prospects (null last contact) are excluded by "
-              "design; this radar covers deals with a real prior dialogue only."]
+              "- Suppression matches the full normalised company name against the "
+              "priorities doc (whitespace and legal suffixes folded), so a Notion title "
+              "that carries a descriptor after the company name will not match its "
+              "heading and surfaces here instead. It also relies on Notion field hygiene "
+              "(a stale Last-contact date reads as more silent than reality). Verify "
+              "borderline items.",
+              "- Never-contacted Prospect rows are included (Dave, 2026-09-11). Qualified "
+              "/ Proposal / Active rows are excluded by design — this radar covers the "
+              "work not being done, not the accounts being worked."]
     return "\n".join(lines) + "\n"
 
 
 def memory_line(stalls, today, proposal_name):
-    found = ",".join(f"{s['client']}:{s['days']}" for s in stalls) or "none"
+    found = ",".join(f"{s['client']}:{'never' if s['never'] else s['days']}"
+                     for s in stalls) or "none"
     prop = proposal_name or "none: no genuine stalls"
     return (f"[run:{today.isoformat()}] task=bd-stall-radar; stalls_found={found}; "
             f"proposal={prop}; runtime=deterministic-kernel($0,no-LLM); "
@@ -267,17 +339,21 @@ def classify(today):
         raise RuntimeError("NOTION_API_TOKEN not in environment")
     deals = fetch_deals(token)
     priorities_lc = get_priorities().lower()
+    phrases = priority_phrases(priorities_lc)
     already = recently_flagged(today)
     candidates = []
     for d in deals:
         if not is_candidate(d, today)[0]:
             continue
         d["days"] = days_silent(d, today)
-        reason = suppression(d, priorities_lc, today)
-        candidates.append({**d, "suppress": reason, "aging": d["days"] > AGING_FLOOR,
+        never = not d["last_contact"]
+        candidates.append({**d, "suppress": suppression(d, phrases, today),
+                           "never": never,
+                           "aging": not never and d["days"] > AGING_FLOOR,
                            "dedup": d["client"] in already})
     stalls = [c for c in candidates if not c["suppress"] and not c["dedup"]]
-    stalls.sort(key=lambda c: (c["aging"], -c["days"]))  # warm (actionable) first, then aging by age
+    # warm (actionable) first, then aging by age, then never-contacted by name
+    stalls.sort(key=lambda c: (c["never"], c["aging"], -(c["days"] or 0), c["client"].lower()))
     return deals, candidates, stalls, priorities_lc
 
 
@@ -288,11 +364,11 @@ def main():
     today = dt.date.today()
 
     deals, candidates, stalls, priorities_lc = classify(today)
-    warm = sum(1 for s in stalls if not s["aging"])
+    warm, aging, never = _counts(stalls)
 
     print(f"bd-stall-radar (deterministic) {today} — {len(deals)} deals, "
-          f"{len(candidates)} active&silent, {len(stalls)} flagged "
-          f"({warm} warm, {len(stalls) - warm} aging)")
+          f"{len(candidates)} Prospect&unworked, {len(stalls)} flagged "
+          f"({warm} warm, {aging} aging, {never} never contacted)")
     if not priorities_lc:
         print("[warn] current_priorities.md empty via qmd — suppression degraded")
     for c in candidates:
@@ -300,12 +376,15 @@ def main():
             tag = "SKIP"
         elif c["dedup"]:
             tag = "DEDUP"
+        elif c["never"]:
+            tag = "NEVER"
         elif c["aging"]:
             tag = "AGING"
         else:
             tag = "STALL"
         note = c["suppress"] or ("already flagged <3d" if c["dedup"] else "")
-        print(f"  [{tag:6}] {c['client'][:34]:34} {c['stage']:9} {c['days']:>4}d  {note[:52]}")
+        age = "never" if c["never"] else f"{c['days']}d"
+        print(f"  [{tag:6}] {c['client'][:34]:34} {c['stage']:9} {age:>5}  {note[:52]}")
 
     if not stalls:
         print("DECLINE: no genuine new stalls, no proposal written")
