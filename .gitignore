@@ -15,3 +15,6 @@ var/opencode-observability/
 # on that property regardless, but a refusal is a stopped sync plus a Discord alert every 15
 # minutes — ignoring the path we KNOW about keeps the guard for the ones we do not.
 .claude/worktrees/
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
