@@ -45,6 +45,13 @@ every script in `bin/` and any `tests/*.sh`. It must pass before you commit.
   regardless of cwd). That file carries this box's off-limits paths — including
   `~/.config/agent-workforce/`, whose contents must never be `git add`ed into this repo — and the
   vault MCP entry point.
+- **Notion writes use REST broker first.** For a user-requested Notion task/page/status/comment
+  update, start with `bin/notion_rest.py --transport broker` or its mapped broker-backed
+  page/block operation. A hosted Notion MCP write can need an approval this box cannot grant; that
+  denial is not a reason to stop before trying the broker. Never read, source, print, or pass the
+  integration token or any credentials; do not force the adapter's HTTPS transport. Fetch the
+  target first, make the smallest exact update, and re-fetch it to verify persisted content and
+  status. If the broker lacks an operation, do not invent a raw endpoint.
 
 ## Code style
 
