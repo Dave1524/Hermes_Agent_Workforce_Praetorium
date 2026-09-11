@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Fake journalctl for tests/test_contract_exec.py. Prints state/journal.txt beside the copied
+# script, whatever the unit and window asked for, and records the call in state/journal-calls.log.
+set -u
+state="$(dirname "$0")/state"
+scope=system
+if [ "${1:-}" = "--user" ]; then scope=user; shift; fi
+printf '%s %s\n' "$scope" "$*" >>"$state/journal-calls.log"
+cat "$state/journal.txt" 2>/dev/null
+exit 0

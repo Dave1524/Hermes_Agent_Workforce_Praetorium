@@ -127,6 +127,16 @@ ls ~/.hermes/profiles/                              # the Hermes profiles below
   running this and the runtime keeps executing the old code — that is how this tree fell 6
   days behind and kept serving the retired de-identification posture (NUC-44).
   Job wiring map: `docs/runbook.md` § Job wiring (NUC-28).
+- `~/agent-workforce/var/workflow-receipts/<workflow_id>/<run_id>.json` — **run receipts**
+  (T5.1, 2026-09-11), written by `bin/contract_exec.py` and read by `bin/control_room_api.py`;
+  the shape is `bin/workflow_receipt.py`, one owner for writer and reader. One receipt per run,
+  and it carries **exactly one** terminal outcome — `artifact`, `decline`, `failed` or
+  `skipped` — derived from the contract's check results and the run's own attempt log, never
+  defaulted to success: a receipt with no outcome cannot be written. `usage` and `cost` are
+  `measured` or `unavailable`, and `unavailable` is a value the Control Room renders, not an
+  absence — its token and amount fields are null, never 0. Not to be confused with the two
+  other "receipt" files: `bin/delivery_receipt.py` (Buzz delivery, JSONL) and
+  `bin/run_record.sh` (`cost.log` records).
 
 ## Daily rhythm jobs (NUC-45)
 Two jobs own Dave's day and run unattended on this box, both under `agent_propose.sh`
