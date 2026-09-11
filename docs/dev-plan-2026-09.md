@@ -598,12 +598,12 @@ because nothing violated it. T4.1 and T4.2 closed; T4.3 keeps one assertion, nam
    nights and every failed night is 20 minutes burnt. It is not blocked on anything; it is here
    rather than at the top only because T4.3's contract now gives it named checks to diagnose
    against.
-8. **T3.2**, unblocked since T3.1 and T1.2 both landed. Then **T3.3**.
+8. **T3.3**, unblocked since T3.2 landed 2026-09-11.
 9. **T6.1**, alongside any of the above; nothing depends on it.
 10. **T0.3** — S, and it closes W20 either way.
 11. **T6.3** when Dave says.
 
-Startable today with no blocker: T4.4, T7.2, T3.2, T6.1, T0.3. Everything else
+Startable today with no blocker: T4.4, T7.2, T3.3, T6.1, T0.3. Everything else
 waits on one of those or on a Dave item.
 
 Dave's queue, unchanged by this sweep: D2, D3, D4, D5, D6, L1, T6.3. D1 closed with T2.4; D7 and
