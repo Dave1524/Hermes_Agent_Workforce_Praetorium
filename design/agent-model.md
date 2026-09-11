@@ -195,6 +195,21 @@ allowlist affects a `-z` oneshot is **unverified**, and "S3 is gone" is not evid
 either way.
 **Deciding what to do about that is §8, decision 3.**
 
+**Declared per entry 2026-09-11 (T3.2), and the allocation is a bet with these numbers.**
+Every `[[workflows]]` entry now carries `skills = [...]`, joined by
+`tests/test_workflow_coverage.py` against the offer its mechanism really delivers (ids
+`skills-declared`, `skills-mechanism`, `skills-join`, `skills-join-counted`). Measured on
+the live tree at 33 of 33 entries: the pointer tree holds **13** skills; **7** are offered
+on at least one live entry — 6 by `--plugin-dir` across the 10 claudius and marcus
+scheduled entries, 1 by heading-extraction across augustus's 2 content triggers; **1 of
+13** (`linkedin-content-engine`) is named by any live profile; **6 reach nobody** —
+trajan's 4 (every trajan workflow is `surface = "platform"`, no model to offer to) and
+augustus's `linkedin-review` and `blog-engine` (no profile extracts them). Those six are
+recorded as `skills = []` on 16 trajan entries and as absent from augustus's lists, which
+is the honest state, not a gap to close by inventing a runner. What the join proves is
+*offer*, not *use*: whether a run ever opens a skill it is handed is unmeasured until
+T3.3's invocation telemetry.
+
 ## 3. What a manifest is
 
 One file per persona: `design/agents/<name>.toml`. It is the single normative statement
@@ -289,6 +304,23 @@ alerted     = true                # platform jobs: is OnFailure present ON THE L
 in_repo     = false               # is there a source UNIT FILE in systemd/ at all (§6.7)
 suite       = ["tests/test_knowledge_digest_smoke.sh"]   # REQUIRED on every entry (R15b)
 suite_exempt = "script lives outside this repo at <path>" # presence = exempt from needing a suite
+skills      = ["meeting-prep"]    # REQUIRED on every entry (T3.2): the pointer skills the run is
+                                  # OFFERED, by name under skills/<owner>/skills/. Joined by
+                                  # tests/test_workflow_coverage.py against what the mechanism
+                                  # below actually delivers, so a name the run cannot reach
+                                  # is a failing join, not a wish. `[]` is a statement — an
+                                  # entry offered nothing writes the empty list, never omits
+                                  # the key. NOT the kanban surface's `skills = 25`: that is a
+                                  # COUNT of the retired hermes profile's allowlist (§2), this
+                                  # is a LIST of what this run is handed. Same word, two
+                                  # concepts, different tables.
+skills_mechanism = "heading-extraction" # optional; the only value. How the offer reaches the
+                                  # run: absent = the runner's `--plugin-dir` (the offer is
+                                  # every pointer in that tree); "heading-extraction" = the
+                                  # profile's bin/skill_sections.sh calls (the offer is the
+                                  # 08_skills/<name>/SKILL.md paths they name). The field
+                                  # exists because the runner cannot say: augustus-content's
+                                  # runner is agent_propose.sh, which carries no --plugin-dir.
 notes       = """..."""
 
 [[must_not]]                      # one block per prohibition
@@ -716,6 +748,11 @@ claims.
    `docs/skills_allowlist.md`.** They write and document
    `~/.hermes/profiles/<p>/config.yaml`, which `bin/local_tier_eval.sh:105` reads six
    times a day via `hermes -p marcus`. (a) and (b) are untouched and still open.
+
+   **(b) DECLARED 2026-09-11 by T3.2.** Every entry now states its offer in `skills = [...]`
+   and the coverage suite joins it to the mechanism that delivers it (§2 carries the
+   numbers: 7 of 13 pointers offered somewhere, 1 of 13 named by a live profile, 6 offered
+   to nobody). Offered is settled per entry; what remains open is invocation evidence — T3.3.
 5. **Confirm the manifest is the source of truth** for tools/owner/coverage, i.e. that
    Phase B may generate the wrappers' `--allowedTools` from it rather than the reverse.
 6. **Do you want a *standing* content-research workflow at all?** (Replaces the withdrawn

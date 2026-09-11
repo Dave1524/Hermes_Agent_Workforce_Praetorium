@@ -63,12 +63,18 @@ beside them would be a second owner of one job. Asserted as
 trajan's `agent-inbox-sync` is a `surface = "platform"` systemd timer that runs a script and
 no model. Different things, same name.
 
-**Trajan's and Augustus's trees reach no scheduled runner today.** Trajan's fifteen workflows
-are all `surface = "platform"` (no model to offer a skill to) and Augustus's scheduled work is
-`buzz_dispatch` on codex-acp, which takes no `--plugin-dir`. Their trees exist because the
-frozen allocation names them and because T3.2 joins `skills = [...]` in `design/agents/*.toml`
-against them. That they are offered to nobody is recorded state, not an omission — do not
-close the gap by inventing a runner.
+**Trajan's tree and two of Augustus's three pointers reach no runner, and the manifests say so.**
+Since T3.2 (2026-09-11) every `[[workflows]]` entry in `design/agents/*.toml` carries
+`skills = [...]`, and `tests/test_workflow_coverage.py` joins each list to the offer its
+mechanism really delivers: claudius's and marcus's scheduled entries declare their three
+pointers (the runner's `--plugin-dir` tree); augustus's two content triggers declare
+`["linkedin-content-engine"]` under `skills_mechanism = "heading-extraction"` (the only
+pointer their profile extracts through `bin/skill_sections.sh`); trajan's sixteen platform
+entries (no model to offer a skill to) and the five `buzz-agent@*` entries (codex-acp and
+claude-agent-acp take no `--plugin-dir`) declare `[]`. Of the 13 pointers, 7 are offered
+on at least one live entry and 6 — trajan's four, `linkedin-review`, `blog-engine` — are
+offered to nobody. That is recorded state, not an omission — do not close the gap by
+inventing a runner. Offered is not used: which pointers a run opens is T3.3's question.
 
 **The gate cannot list what a live session loaded.** `claude plugin details` does not accept
 `--plugin-dir`, so there is no deterministic CLI way to enumerate a session-loaded plugin's
