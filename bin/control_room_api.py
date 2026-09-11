@@ -118,9 +118,14 @@ class SourcePaths:
 
     @classmethod
     def defaults(cls) -> "SourcePaths":
-        repo = pathlib.Path(
-            os.environ.get("CONTROL_ROOM_REPO_ROOT", pathlib.Path(__file__).resolve().parents[1])
-        ).resolve()
+        script_root = pathlib.Path(__file__).resolve().parents[1]
+        # bin/deploy copies this script into ~/agent-workforce, but design/ deliberately
+        # remains source-only. Prefer the adjacent checkout during development and the
+        # canonical source checkout when running from the deployed tree.
+        default_repo = script_root
+        if not (default_repo / "design" / "agents").is_dir():
+            default_repo = pathlib.Path.home() / "dev" / "agent-workforce"
+        repo = pathlib.Path(os.environ.get("CONTROL_ROOM_REPO_ROOT", default_repo)).resolve()
         runtime = pathlib.Path(
             os.environ.get("CONTROL_ROOM_RUNTIME_ROOT", pathlib.Path.home() / "agent-workforce")
         ).resolve()

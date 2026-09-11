@@ -228,9 +228,11 @@ class ControlRoomApiTest(unittest.TestCase):
             with self.assertRaises(urllib.error.HTTPError) as raised:
                 urllib.request.urlopen(request, timeout=3)
             self.assertEqual(raised.exception.code, 405)
+            raised.exception.close()
             with self.assertRaises(urllib.error.HTTPError) as raised:
                 urllib.request.urlopen(base + "/api/v1/workflows/%2e%2e", timeout=3)
             self.assertEqual(raised.exception.code, 400)
+            raised.exception.close()
         finally:
             server.shutdown()
             server.server_close()
