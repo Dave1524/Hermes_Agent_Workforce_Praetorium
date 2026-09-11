@@ -69,6 +69,7 @@ bin/deliver.sh is the ONLY script permitted to call buzz messages send.
 
 [[workflows]]
 unit     = "augustus-content"
+logical_workflow = "augustus-content" # one product; content-change-dispatch is its second trigger
 surface  = "buzz_dispatch"
 trigger  = "daily 01:30 (RandomizedDelaySec=5min, Persistent=true)"
 model    = "n/a — dispatches to the live augustus session"
@@ -86,6 +87,7 @@ keeps the record); that campaign is retired and the slot is its own.
 
 [[workflows]]
 unit     = "content-change-dispatch"
+logical_workflow = "augustus-content" # one product; augustus-content is its scheduled backstop
 surface  = "buzz_dispatch"
 trigger  = "every 15 min"
 runner   = "bin/content_change_dispatch.sh"
