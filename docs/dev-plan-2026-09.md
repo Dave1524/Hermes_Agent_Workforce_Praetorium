@@ -305,6 +305,16 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   record `Unknown` rather than estimate.
   Gate: 14 files pass the validator, and every standing platform workflow exposes an actionable
   artifact or state change plus a retirement condition where one applies.
+  **DONE 2026-09-11, `96c9019` (PR #31, merged `d11be38`)** — fourteen light contracts, two
+  `sweep` checks each (timer fired within its window; this run's own evidence exists), all 28
+  dry-run to 0/77/1, validator and gate green. The two spent entries carry `contract_exempt` with a
+  reason; the manifest counts 33 entries, 31 `contract`, 2 exempt, 26 distinct contract paths, 26
+  on disk. All fourteen answer `Unknown` for the benefit signal, which is the finding, not a gap.
+  Two things surfaced and left as written: `buzz-pr-watch` self-retires — its second check fails by
+  name once block/buzz#3816 is closed **and** announced (still open on 2026-09-11) — and
+  `/usr/local/bin/ttm-pool-drain` sits outside the repo, so no drift check covers it. Written while
+  the fleet was paused, so every timer check currently says "not loaded or never fired", which is
+  the correct answer; `qmd-refresh` stayed enabled and is green.
 - **T4.5** [Claude, S, T4.1, T4.2, T4.3, T4.4] Field mandatory: T1.1 flips from "resolves if
   present" to "present and resolves". Exemption only for `status = "spent"`.
   Reviewed requirement, **half of it already landed**: the actionability rule became enforced with
@@ -554,7 +564,8 @@ phase reporting rather than failing.
 
 **The actionability fields landed 2026-09-10 (`063e6ce`)** — defined once in
 `design/contract-schema.md`, enforced as `outputs-actionability`, and present in all twelve
-contracts. **Next: T4.4**, then T4.5.
+contracts. **T4.4 landed 2026-09-11 (`96c9019`)**: twenty-six contracts on disk, every standing
+manifest entry names one or carries `contract_exempt`. **Next: T4.5.**
 
 **T4.5 stays last, and its field definition goes first.** The temptation is to put T4.5 at the head
 of the phase because it is the enforcement point — but T4.5 flips the `contract` field from
@@ -568,7 +579,8 @@ mandatory only once nothing violates it.
 backfilled into all twelve contracts, and the validator rule turned mandatory in the same commit
 because nothing violated it. T4.1 and T4.2 closed; T4.3 keeps one assertion, named in its row.
 
-1. **T4.4** — Trajan's fourteen platform jobs, written once, to the finished shape.
+1. ~~**T4.4**~~ — done `96c9019`: Trajan's fourteen platform jobs, written once, to the finished
+   shape.
 2. **T4.5** — now the flip is safe: both rules turn mandatory over a tree that already complies, so
    the gate stays green through the change instead of going red and waiting to be caught up with.
 3. **T5.1**, then **T5.2**. The receipt is the artifact every downstream view reads; nothing in
