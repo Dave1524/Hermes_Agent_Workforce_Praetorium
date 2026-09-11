@@ -6,7 +6,7 @@
 # evidence the work happened: this asks the board, not the run's own prose.
 #
 # It passes on either of two things:
-#   - the board differs from the snapshot the runtime took before dispatching, or
+#   - a page that was Picked in the snapshot is now exactly Draft, or
 #   - the runtime recorded a `decline_event=<id>` — augustus said, in his own hand and
 #     under his own key, that there was nothing to draft.
 # The decline record is bounded trust and deliberately carries the relay event id, so
@@ -32,22 +32,42 @@ fi
 # The runtime appends `key=value` metadata after the digest lines. Digest rows are
 # `<page-id>:<status>` and never contain `=`, so stripping the metadata cannot eat one.
 before=$(grep -v '^[a-z_][a-z0-9_]*=' "$SNAPSHOT")
+run_id=$(sed -n 's/^run_id=//p' "$SNAPSHOT" | tail -1)
+entry_point=$(sed -n 's/^entry_point=//p' "$SNAPSHOT" | tail -1)
+if [[ ! "$run_id" =~ ^[0-9a-f]{64}$ ]]; then
+  log "missing or malformed run_id in $SNAPSHOT — the dispatch cannot be correlated to its receipt"
+  exit 1
+fi
+case "$entry_point" in
+  nightly|picked-change) ;;
+  *) log "missing or malformed entry_point in $SNAPSHOT"; exit 1 ;;
+esac
 
 if ! current=$("$DIGEST_BIN"); then
   log "the board could not be read — refusing to certify it as unchanged"
   exit 1
 fi
 
-if [ "$current" != "$before" ]; then
-  log "board moved since the pre-run snapshot"
+transition=""
+while IFS=: read -r page status; do
+  [ "$status" = Picked ] || continue
+  if grep -Fqx "$page:Draft" <<<"$current"; then
+    transition=$page
+    break
+  fi
+done <<<"$before"
+
+if [ -n "$transition" ]; then
+  log "content-board-transition-produced-draft: run_id=$run_id entry_point=$entry_point page=$transition from=Picked to=Draft"
   exit 0
 fi
 
 decline=$(sed -n 's/^decline_event=//p' "$SNAPSHOT" | tail -1)
-if [ -n "$decline" ]; then
-  log "board unchanged, but augustus declined on the record (event $decline)"
+if [[ "$decline" =~ ^[0-9a-f]{64}$ ]]; then
+  log "owned-reply-evidences-decline: run_id=$run_id entry_point=$entry_point decline_event=$decline"
   exit 0
 fi
 
-log "board unchanged and no decline on the record — nothing was drafted"
+log "content-board-transition-produced-draft: no pre-dispatch Picked row reached Draft (run_id=$run_id)"
+log "owned-reply-evidences-decline: no post-dispatch Augustus DECLINE: reply is recorded (run_id=$run_id)"
 exit 1

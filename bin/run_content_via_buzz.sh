@@ -11,7 +11,8 @@
 #                   records CRASHED and does NOT retry.
 #   1               augustus was asked and produced nothing within the wait. Recorded
 #                   as FAIL and retried.
-#   0               the board moved, or augustus replied `DECLINE: <reason>`.
+#   0               a pre-dispatch `Picked` row reached `Draft`, or augustus replied
+#                   `DECLINE: <reason>`.
 # NUC-44 is the reason those are separate: for twenty nights a crashed run logged as
 # NOPROPOSAL and read exactly like a quiet night. A dispatched-but-silent run is a
 # failure, never a decline — a decline has an author.
@@ -37,6 +38,7 @@ IDENTITY="${BUZZ_SERVICE_IDENTITY:-praetorium}"
 PROFILE="${CONTENT_TASK_PROFILE:-$HOME/agent-workforce/profiles/augustus_content_task.md}"
 JOB="${AGENT_TASK_SLUG:-augustus-content}"
 ROUTE=content
+ENTRY_POINT="${CONTENT_ENTRY_POINT:-nightly}"
 
 CRASH_EXIT=4
 
@@ -52,6 +54,10 @@ channel=$(sed -n "s/^ROUTE_${ROUTE}=//p" "$ROUTES_FILE" 2>/dev/null | tail -1 | 
 augustus=$(sed -n 's/^AGENT_augustus=//p' "$AGENTS_FILE" 2>/dev/null | tail -1 | tr -d "\"' \\r")
 [ -n "$channel" ]  || crash "route '$ROUTE' has no channel UUID in $ROUTES_FILE"
 [ -n "$augustus" ] || crash "augustus has no pubkey in $AGENTS_FILE"
+case "$ENTRY_POINT" in
+  nightly|picked-change) ;;
+  *) crash "CONTENT_ENTRY_POINT must be nightly or picked-change (got '$ENTRY_POINT')" ;;
+esac
 
 # ── 1. baseline ───────────────────────────────────────────────────────────────────
 # Taken BEFORE the trigger goes out, so the comparison cannot straddle augustus's own
@@ -114,8 +120,9 @@ DELIVER_DISCORD=0 "$DELIVER_BIN" \
   --subject "[Praetorium] Augustus content — run now" \
   --message "$trigger" >/dev/null 2>&1
 
-if ! python3 - "$RECEIPTS" "$receipts_before" "$JOB" <<'PY'
+if ! run_id=$(python3 - "$RECEIPTS" "$receipts_before" "$JOB" <<'PY'
 import json, sys
+import re
 path, before, job = sys.argv[1], int(sys.argv[2]), sys.argv[3]
 try:
     with open(path) as f:
@@ -129,13 +136,21 @@ for raw in reversed(lines):
         continue
     if receipt.get("job") != job:
         continue
-    sys.exit(0 if receipt.get("buzz_result") == "ok" else 1)
+    event_id = receipt.get("buzz_event_id", "")
+    if receipt.get("buzz_result") == "ok" and re.fullmatch(r"[0-9a-f]{64}", event_id):
+        print(event_id)
+        sys.exit(0)
+    sys.exit(1)
 sys.exit(3)
 PY
-then
-  crash "the trigger was not published to route '$ROUTE' — augustus was never asked"
+); then
+  crash "the trigger was not published with a valid event id to route '$ROUTE' — augustus was never asked"
 fi
-log "trigger published to $ROUTE (channel $channel, mention $augustus)"
+# The relay event ID is the content run identity.  It joins the trigger receipt, attempt
+# output, board snapshot, and (when this was a change-triggered run) the dispatch log
+# without introducing another receipt store or a parallel database.
+printf 'run_id=%s\nentry_point=%s\n' "$run_id" "$ENTRY_POINT" >>"$SNAPSHOT"
+log "trigger published to $ROUTE (channel $channel, mention $augustus) run_id=$run_id entry_point=$ENTRY_POINT"
 
 # ── 3. wait ───────────────────────────────────────────────────────────────────────
 # `messages get`, never `messages thread`: thread returns only e-tagged replies, so a
@@ -171,8 +186,24 @@ sys.exit(1)
 ' "$augustus" "$1" "$2"
 }
 
+# A valid draft is deliberately narrower than any digest mutation.  The runner is allowed
+# to certify only a page that was Picked in its own pre-dispatch baseline and is Draft now.
+# An unrelated edit, Idea creation, deletion, or a status change in the other direction is
+# useful diagnosis but is never an artifact from this run.
+picked_to_draft_transition() {  # picked_to_draft_transition <current-digest> -> page id
+  local current=$1 page status
+  while IFS=: read -r page status; do
+    [ "$status" = Picked ] || continue
+    if grep -Fqx "$page:Draft" <<<"$current"; then
+      printf '%s\n' "$page"
+      return 0
+    fi
+  done <<<"$baseline"
+  return 1
+}
+
 # THE OUTCOMES AUGUSTUS CAN NAME, as a table rather than a branch each. The three the
-# header names are board-moved (0), DECLINE: (0) and asked-but-silent (1). Every other
+# header names are Picked-to-Draft (0), DECLINE: (0) and asked-but-silent (1). Every other
 # sentinel is a reply that IS an answer and is NOT a decline — a skill section that no
 # longer resolves, a mandatory step that exited non-zero.
 #
@@ -203,6 +234,7 @@ sentinel_log() {  # sentinel_log <prefix> <event-id> <line>
       # Recorded so content_moved.sh can pass an unmoved board without re-reading the
       # relay, and so the claim stays checkable: `buzz social event --event $2`.
       printf 'decline_event=%s\n' "$2" >>"$SNAPSHOT"
+      log "owned-reply-evidences-decline run_id=$run_id entry_point=$ENTRY_POINT decline_event=$2"
       log "augustus declined (event $2) — nothing to draft" ;;
   esac
 }
@@ -210,8 +242,9 @@ sentinel_log() {  # sentinel_log <prefix> <event-id> <line>
 deadline=$(( dispatch_epoch + wait_secs ))
 while :; do
   current=$("$DIGEST_BIN") || current=""
-  if [ -n "$current" ] && [ "$current" != "$baseline" ]; then
-    log "board moved — augustus drafted"
+  if [ -n "$current" ] && page=$(picked_to_draft_transition "$current"); then
+    printf 'page=%s from=Picked to=Draft\n' "$page" >>"$SNAPSHOT"
+    log "content-board-transition-produced-draft run_id=$run_id entry_point=$ENTRY_POINT page=$page from=Picked to=Draft"
     exit 0
   fi
 
@@ -234,6 +267,8 @@ done
 # Deliberately OUTSIDE the poll loop. A catch-all inside it would fire on the first
 # `STATUS:`-shaped progress line and kill a run that was still working.
 if last_reply=$(sentinel_reply "$dispatch_epoch" '') && [ -n "$last_reply" ]; then
+  log "content-board-transition-produced-draft failed run_id=$run_id entry_point=$ENTRY_POINT — no pre-dispatch Picked row reached Draft"
+  log "owned-reply-evidences-decline failed run_id=$run_id entry_point=$ENTRY_POINT — the reply was not DECLINE:"
   log "augustus replied and no sentinel matched — ${last_reply#* }"
   log "  (event ${last_reply%% *}) the wait ended on his reply, not on the clock."
   log "  Add this prefix as one row in SENTINELS with a message in sentinel_log. The table"
@@ -241,5 +276,7 @@ if last_reply=$(sentinel_reply "$dispatch_epoch" '') && [ -n "$last_reply" ]; th
   exit 1
 fi
 
+log "content-board-transition-produced-draft failed run_id=$run_id entry_point=$ENTRY_POINT — no pre-dispatch Picked row reached Draft"
+log "owned-reply-evidences-decline failed run_id=$run_id entry_point=$ENTRY_POINT — no post-dispatch Augustus DECLINE: reply"
 log "no board movement and no reply within ${wait_secs}s — recording FAIL"
 exit 1

@@ -30,11 +30,21 @@ f = os.environ.get("STUB_JSON_FILE", "")
 sys.stdout.write(open(f).read() if f and os.path.exists(f) else "[]")
 PY
 
-  # Stub agent_propose.sh: record one call + the AGENT_JOB_OVERRIDES it inherited.
+  # Stub agent_propose.sh: record one call + the AGENT_JOB_OVERRIDES it inherited,
+  # then leave the same receipt-keyed terminal evidence the real runtime must leave.
   cat > "$h/bin/agent_propose.sh" <<'SH'
 #!/usr/bin/env bash
 echo "call" >> "$AP_CALLS_FILE"
 printf '%s\n' "${AGENT_JOB_OVERRIDES:-UNSET}" >> "$AP_OVERRIDES_FILE"
+printf '%s\n' "${CONTENT_ENTRY_POINT:-UNSET}" >> "$AP_ENTRY_POINT_FILE"
+printf 'ts=%s schema=3 profile=augustus model=openai/gpt-5.5 task=augustus-content outcome=%s proposal=none\n' \
+  "$(date -Is)" "${AP_OUTCOME:-OPS}" >> "$AGENT_COST_LOG"
+mkdir -p "$(dirname "$CONTENT_BOARD_SNAPSHOT")"
+printf 'baseline:Picked\nrun_id=%s\nentry_point=picked-change\n' "$(printf 'a%.0s' {1..64})" > "$CONTENT_BOARD_SNAPSHOT"
+case "${AP_TERMINAL:-draft}" in
+  draft) printf 'page=%s from=Picked to=Draft\n' "${AP_DRAFT_PAGE:-id-B}" >> "$CONTENT_BOARD_SNAPSHOT" ;;
+  decline) printf 'decline_event=%s\n' "$(printf 'e%.0s' {1..64})" >> "$CONTENT_BOARD_SNAPSHOT" ;;
+esac
 exit "${AP_RC:-0}"
 SH
   chmod +x "$h/bin/agent_propose.sh"
@@ -43,17 +53,21 @@ SH
 
 # Run the script under test against a sandbox, with all paths overridden.
 run() {
-  local h=$1 jsonfile=$2 stubfail=$3
+  local h=$1 jsonfile=$2 stubfail=$3 draft_page=${4:-id-B}
   CONTENT_DISPATCH_ROOT="$h" \
   NOTION_REST_BIN="$h/bin/notion_rest.py" \
   AGENT_PROPOSE_BIN="$h/bin/agent_propose.sh" \
   CONTENT_PICKED_STATE="$h/var/content_picked.state" \
   LOG_DIR="$h/logs" \
+  AGENT_COST_LOG="$h/logs/cost.log" \
+  CONTENT_BOARD_SNAPSHOT="$h/var/content_board.snapshot" \
   AUGUSTUS_CONTENT_ENV="$h/augustus-content.env" \
   STUB_JSON_FILE="$jsonfile" \
   STUB_FAIL="$stubfail" \
   AP_CALLS_FILE="$h/ap_calls" \
   AP_OVERRIDES_FILE="$h/ap_overrides" \
+  AP_ENTRY_POINT_FILE="$h/ap_entry_point" \
+  AP_DRAFT_PAGE="$draft_page" \
   bash "$SCRIPT" >/dev/null 2>&1
   echo $?
 }
@@ -84,16 +98,17 @@ rc=$(run "$hb" "$jb" "")
 assert 'exits 0' "[ '$rc' = 0 ]"
 assert 'agent_propose called exactly once' "[ \"\$(ncalls '$hb')\" -eq 1 ]"
 assert 'AGENT_JOB_OVERRIDES pointed at augustus-content.env' "grep -qx '$hb/augustus-content.env' '$hb/ap_overrides'"
-assert 'state advanced to include new id-B' "grep -qx id-B '$(state "$hb")'"
+assert 'the dispatched run records its picked-change entry point' "grep -qx picked-change '$hb/ap_entry_point'"
+assert 'drafted id-B is removed from the eligible Picked state' "! grep -qx id-B '$(state "$hb")'"
 assert 'state still includes id-A' "grep -qx id-A '$(state "$hb")'"
 
 echo '--- scenario (b2): first run, no state file -> all Picked new -> dispatch ---'
 hb2=$(sandbox); jb2="$hb2/board.json"
 mkjson "$jb2" id-X
-rc=$(run "$hb2" "$jb2" "")
+rc=$(run "$hb2" "$jb2" "" id-X)
 assert 'exits 0' "[ '$rc' = 0 ]"
 assert 'agent_propose called once on first run' "[ \"\$(ncalls '$hb2')\" -eq 1 ]"
-assert 'state created with id-X' "grep -qx id-X '$(state "$hb2")'"
+assert 'drafted id-X is not retained as eligible' "[ ! -s '$(state "$hb2")' ]"
 
 echo '--- scenario (c): Notion failure -> exit 0, state byte-unchanged, no dispatch ---'
 hc=$(sandbox); jc="$hc/board.json"
@@ -115,6 +130,7 @@ before=$(md5sum "$(state "$hd")" | awk '{print $1}')
 CONTENT_DISPATCH_ROOT="$hd" NOTION_REST_BIN="$hd/bin/notion_rest.py" \
   AGENT_PROPOSE_BIN="$hd/bin/agent_propose.sh" CONTENT_PICKED_STATE="$(state "$hd")" \
   LOG_DIR="$hd/logs" AUGUSTUS_CONTENT_ENV="$hd/augustus-content.env" \
+  AGENT_COST_LOG="$hd/logs/cost.log" CONTENT_BOARD_SNAPSHOT="$hd/var/content_board.snapshot" \
   STUB_JSON_FILE="$jd" STUB_FAIL="" AP_CALLS_FILE="$hd/ap_calls" \
   AP_OVERRIDES_FILE="$hd/ap_overrides" AP_RC=3 bash "$SCRIPT" >/dev/null 2>&1
 rc=$?

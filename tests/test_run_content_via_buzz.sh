@@ -317,14 +317,31 @@ echo '--- completion: the board moved ---'
 reset_case
 touch "$STUB_DIGEST_MOVE"
 run_dispatch; rc=$?
-assert 'a board that moved exits 0' "[ $rc -eq 0 ]"
-assert 'and says so' "grep -qi 'board moved' '$WORK/out'"
+assert 'a pre-dispatch Picked row that becomes Draft exits 0' "[ $rc -eq 0 ]"
+assert 'and names the exact Picked-to-Draft transition' \
+  "grep -q 'content-board-transition-produced-draft.*page=page-1 from=Picked to=Draft' '$WORK/out'"
+assert 'the delivery receipt event id is the run id in the snapshot' \
+  "grep -q '^run_id=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa$' '$WORK/board.snapshot'"
+assert 'the nightly entry point is recorded beside the run id' \
+  "grep -q '^entry_point=nightly$' '$WORK/board.snapshot'"
+
+echo '--- completion rejects an unrelated board mutation ---'
+reset_case
+printf 'page-1:Picked\npage-2:Idea\n' >"$STUB_DIGEST_AFTER"
+touch "$STUB_DIGEST_MOVE"
+run_dispatch; rc=$?
+assert 'an unrelated status change exits 1' "[ $rc -eq 1 ]"
+assert 'and fails the named draft-transition assertion' \
+  "grep -q 'content-board-transition-produced-draft failed' '$WORK/out'"
+assert 'it never treats the unrelated mutation as a draft' \
+  "! grep -q 'page=page-1 from=Picked to=Draft' '$WORK/out'"
+printf 'page-1:Draft\npage-2:Draft\n' >"$STUB_DIGEST_AFTER"
 
 echo '--- completion: dispatched but silent is a FAILURE, not a decline ---'
 reset_case
 run_dispatch; rc=$?
 assert 'a timeout with neither movement nor a reply exits 1 (outcome=FAIL)' "[ $rc -eq 1 ]"
-assert 'and it is NOT reported as a decline' "! grep -qi 'decline' '$WORK/out'"
+assert 'and it is NOT reported as an owned decline' "! grep -qi 'augustus declined' '$WORK/out'"
 # The silence line survives the sentinel table: it is now the LAST word, reached only after
 # a re-read finds no reply at all. It must still be reachable, or genuine silence would be
 # mislabelled as an unknown sentinel.
@@ -363,14 +380,18 @@ assert 'and nothing was published on an unknown baseline' \
 
 echo '--- content_moved.sh: the independent artifact check (NUC-44) ---'
 reset_case
-printf 'page-1:Picked\n' >"$WORK/board.snapshot"
+printf 'page-1:Picked\nrun_id=%s\nentry_point=nightly\n' "$(printf 'a%.0s' {1..64})" >"$WORK/board.snapshot"
+touch "$STUB_DIGEST_MOVE"
+# content_moved reads the board once (unlike the runner, which first captures a baseline),
+# so seed the digest counter at one to present its post-run value on that call.
+printf '1' >"$STUB_DIGEST_N"
 rc=0
 env CONTENT_DIGEST_BIN="$WORK/digest.sh" CONTENT_BOARD_SNAPSHOT="$WORK/board.snapshot" \
     bash "$MOVED" >"$WORK/out" 2>&1 || rc=$?
-assert 'a board that differs from the snapshot verifies clean' "[ $rc -eq 0 ]"
+assert 'a pre-dispatch Picked row that becomes Draft verifies clean' "[ $rc -eq 0 ]"
 
 reset_case
-cp "$STUB_DIGEST_BEFORE" "$WORK/board.snapshot"
+printf '%s\nrun_id=%s\nentry_point=nightly\n' "$(cat "$STUB_DIGEST_BEFORE")" "$(printf 'a%.0s' {1..64})" >"$WORK/board.snapshot"
 rc=0
 env CONTENT_DIGEST_BIN="$WORK/digest.sh" CONTENT_BOARD_SNAPSHOT="$WORK/board.snapshot" \
     bash "$MOVED" >"$WORK/out" 2>&1 || rc=$?
@@ -383,7 +404,7 @@ env CONTENT_DIGEST_BIN="$WORK/digest.sh" CONTENT_BOARD_SNAPSHOT="$WORK/absent.sn
 assert 'a missing snapshot fails — the runtime never ran, so nothing is proven' "[ $rc -ne 0 ]"
 
 reset_case
-cp "$STUB_DIGEST_BEFORE" "$WORK/board.snapshot"
+printf '%s\nrun_id=%s\nentry_point=nightly\n' "$(cat "$STUB_DIGEST_BEFORE")" "$(printf 'a%.0s' {1..64})" >"$WORK/board.snapshot"
 printf 'decline_event=%s\n' "$(printf 'e%.0s' {1..64})" >>"$WORK/board.snapshot"
 rc=0
 env CONTENT_DIGEST_BIN="$WORK/digest.sh" CONTENT_BOARD_SNAPSHOT="$WORK/board.snapshot" \
@@ -394,7 +415,7 @@ assert 'and the receipt names the event id, so the claim is checkable' \
 
 reset_case
 echo 3 >"$STUB_DIGEST_RC"
-cp "$STUB_DIGEST_BEFORE" "$WORK/board.snapshot"
+printf '%s\nrun_id=%s\nentry_point=nightly\n' "$(cat "$STUB_DIGEST_BEFORE")" "$(printf 'a%.0s' {1..64})" >"$WORK/board.snapshot"
 rc=0
 env CONTENT_DIGEST_BIN="$WORK/digest.sh" CONTENT_BOARD_SNAPSHOT="$WORK/board.snapshot" \
     bash "$MOVED" >"$WORK/out" 2>&1 || rc=$?
@@ -414,15 +435,15 @@ assert 'the record is a line of its own, not fused onto the last digest row' \
   "grep -q '^decline_event=' '$WORK/board.snapshot'"
 assert 'no digest row was corrupted by the appended record' \
   "! grep -q '[^=]decline_event=' '$WORK/board.snapshot'"
-assert 'the snapshot is the digest plus exactly one metadata line' \
-  "[ \$(wc -l <'$WORK/board.snapshot') -eq \$(( \$(wc -l <'$STUB_DIGEST_BEFORE') + 1 )) ]"
+assert 'the snapshot is the digest plus run identity, entry point and decline evidence' \
+  "[ \$(wc -l <'$WORK/board.snapshot') -eq \$(( \$(wc -l <'$STUB_DIGEST_BEFORE') + 3 )) ]"
 
 rc=0
 env CONTENT_DIGEST_BIN="$WORK/digest.sh" CONTENT_BOARD_SNAPSHOT="$WORK/board.snapshot" \
     bash "$MOVED" >"$WORK/out" 2>&1 || rc=$?
 assert 'the verify passes on the unmoved board' "[ $rc -eq 0 ]"
-assert 'and it passes BECAUSE of the decline, not because the board looks moved' \
-  "grep -qi 'declined' '$WORK/out'"
+assert 'and it passes BECAUSE of the owned decline, not because the board looks moved' \
+  "grep -qi 'owned-reply-evidences-decline' '$WORK/out'"
 assert 'it never claims movement that did not happen' \
   "! grep -qi 'board moved' '$WORK/out'"
 
