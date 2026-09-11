@@ -24,12 +24,23 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable, Iterable
 
+# The receipt schema — version, vocabularies, validation, time helpers — lives in the sibling
+# bin/workflow_receipt.py since 2026-09-11 (T5.1), so the executor that writes receipts and
+# this reader validate one shape. Sibling import, as the other bin/*.py do.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from workflow_receipt import (  # noqa: E402
+    ASSERTION_STATUSES,
+    MEASUREMENT_STATUSES,
+    SCHEMA_VERSION as RECEIPT_SCHEMA_VERSION,
+    TERMINAL_OUTCOMES,
+    iso_utc,
+    parse_time,
+    utc_now,
+    validate as validate_receipt,
+)
+
 
 API_VERSION = "v1"
-RECEIPT_SCHEMA_VERSION = 1
-TERMINAL_OUTCOMES = {"artifact", "decline", "failed", "skipped"}
-ASSERTION_STATUSES = {"passed", "failed", "not_applicable"}
-MEASUREMENT_STATUSES = {"measured", "unavailable"}
 OUTPUT_LABELS = (
     "Beneficiary",
     "Next actor",
@@ -37,28 +48,6 @@ OUTPUT_LABELS = (
     "Benefit hypothesis",
     "Benefit signal",
 )
-
-
-def utc_now() -> dt.datetime:
-    return dt.datetime.now(dt.timezone.utc)
-
-
-def iso_utc(value: dt.datetime | None = None) -> str:
-    value = value or utc_now()
-    return value.astimezone(dt.timezone.utc).isoformat().replace("+00:00", "Z")
-
-
-def parse_time(value: Any) -> dt.datetime | None:
-    if not isinstance(value, str) or not value.strip():
-        return None
-    raw = value.strip().replace("Z", "+00:00")
-    try:
-        parsed = dt.datetime.fromisoformat(raw)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=dt.timezone.utc)
-    return parsed.astimezone(dt.timezone.utc)
 
 
 def clean_markdown(value: str | None) -> str | None:
@@ -256,59 +245,7 @@ class ControlRoomReadModel:
 
     @staticmethod
     def _validate_receipt(data: Any, path: pathlib.Path) -> list[str]:
-        errors: list[str] = []
-        if not isinstance(data, dict):
-            return ["root is not an object"]
-        for key in ("schema_version", "workflow_id", "run_id", "started_at", "ended_at"):
-            if data.get(key) in (None, ""):
-                errors.append(f"missing {key}")
-        if data.get("schema_version") != RECEIPT_SCHEMA_VERSION:
-            errors.append(f"schema_version is not {RECEIPT_SCHEMA_VERSION}")
-        terminal = data.get("terminal")
-        if not isinstance(terminal, dict) or terminal.get("outcome") not in TERMINAL_OUTCOMES:
-            errors.append("terminal.outcome is invalid")
-        assertions = data.get("assertions")
-        if not isinstance(assertions, list):
-            errors.append("assertions is not a list")
-        else:
-            seen: set[str] = set()
-            for index, assertion in enumerate(assertions):
-                if not isinstance(assertion, dict):
-                    errors.append(f"assertions[{index}] is not an object")
-                    continue
-                assertion_id = assertion.get("id")
-                if not isinstance(assertion_id, str) or not assertion_id:
-                    errors.append(f"assertions[{index}] has no id")
-                elif assertion_id in seen:
-                    errors.append(f"duplicate assertion id: {assertion_id}")
-                else:
-                    seen.add(assertion_id)
-                if assertion.get("status") not in ASSERTION_STATUSES:
-                    errors.append(f"assertions[{index}].status is invalid")
-        for key in ("usage", "cost"):
-            measurement = data.get(key)
-            if not isinstance(measurement, dict) or measurement.get("status") not in MEASUREMENT_STATUSES:
-                errors.append(f"{key}.status is invalid")
-                continue
-            if measurement.get("status") == "unavailable":
-                numeric = ("input_tokens", "output_tokens", "cache_tokens", "total_tokens")
-                if key == "cost":
-                    numeric = ("amount",)
-                if any(measurement.get(field) is not None for field in numeric):
-                    errors.append(f"{key} unavailable values must be null")
-        started, ended = parse_time(data.get("started_at")), parse_time(data.get("ended_at"))
-        if started is None or ended is None:
-            errors.append("started_at/ended_at must be ISO-8601 timestamps")
-        elif ended < started:
-            errors.append("ended_at precedes started_at")
-        if isinstance(terminal, dict) and terminal.get("outcome") == "artifact":
-            artifact = data.get("artifact")
-            state_change = data.get("state_change")
-            has_artifact = isinstance(artifact, dict) and bool(artifact.get("uri"))
-            has_state = isinstance(state_change, dict) and bool(state_change.get("evidence"))
-            if not has_artifact and not has_state:
-                errors.append("artifact outcome has no artifact URI or state-change evidence")
-        return errors
+        return validate_receipt(data)
 
     def receipts(self) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str]]:
         files, source_errors = self._receipt_files()

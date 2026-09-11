@@ -205,7 +205,8 @@ shape as `suite_exempt` in the coverage checker — printed as an exemption on e
 which cannot be read for polarity: a contract saying that some *other* file breaks rule 1
 exempted itself, and so did one that merely quoted the rule.
 
-A manifest naming a contract that does not exist is T1.1's finding, not this one's.
+A manifest naming a contract that does not exist — or, since T4.5, naming none at all — is
+T1.1's finding in `tests/test_workflow_coverage.py`, not this one's.
 
 **The check syntax is validated too, since 2026-09-10 (T4.0).** Every numbered item under
 `## Acceptance checks` carries exactly one ```` ```check ```` block and every block belongs to
@@ -268,6 +269,20 @@ empty, and `.claude/workflows/ship-dev-plan.js` carries `MISSING_CONTRACTS = []`
 two are joined by `tests/test_ship_dev_plan_workflow.sh`, so the constant cannot quietly
 outlive the reds it names.
 
+**The field is mandatory since T4.5 (2026-09-11): present and resolves, not resolves if
+present.** `tests/test_workflow_coverage.py` reads every entry: one that names no `contract`
+and claims no `contract_exempt` is red (`contract-declared`), and so is one that does both;
+`contract_exempt` is accepted only on a `status = "spent"` entry and only with a reason
+(`contract-exempt-spent`), and every accepted exemption is printed by name on every run so it
+cannot become a silent skip. The rules turned mandatory over a tree that already complied —
+`31 declared, 2 exempt (spent), 0 missing` — which is the ordering the dev-plan argued for:
+the shape first, the tree written to it, the enforcement last. The same run reconciles the
+31 standing entries to 30 logical workflows by the `logical_workflow` field
+(`logical-workflow-reconciled`): `content-change-dispatch` folds into `augustus-content` as
+its second trigger, a unit declared twice is a duplicate no field explains, a fold key that
+names no standing entry is dangling, and every trigger of one workflow must name one
+contract. The fold is declared in the manifest, never inferred from a name.
+
 `standing-research` is the one contract whose stem is not its unit — the unit is the generic
 `agent-proposal`, and the entry carries `rule1_exempt` rather than the file carrying a
 disclaimer. Three contracts are exempt from rule 1 in total; the validator names each one and
@@ -277,4 +292,5 @@ Until 2026-09-11 this section ended by saying Trajan's platform jobs carried no 
 field at all and that whether they should was a question for the coverage checker. They do
 now; a deterministic job promises an artifact and a cadence like any other, and those were
 exactly the promises this box broke silently. The coverage checker's answer to "an entry
-naming no contract" is `contract_exempt` with a reason, and nothing else.
+naming no contract" is `contract_exempt` with a reason on a spent entry, and nothing else —
+enforced, not advised, since T4.5.

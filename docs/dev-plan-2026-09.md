@@ -337,6 +337,18 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   second copy of it to `## Outputs`.
   Gate: green with no exemption beyond the two spent, **and** the 31 standing manifest entries
   reconcile to 30 logical standing workflows with no unexplained duplicate.
+  **DONE 2026-09-11, `993c41d`** — four rules in `tests/test_workflow_coverage.py`, declared in
+  `design/fleet-suites.toml` and anchored in the `.sh`: `contract-declared` (neither field is
+  red, both is red), `contract-exempt-spent` (exempt only on `status = "spent"`, with a reason),
+  `contract-exempt-named` (named equals counted) and `logical-workflow-reconciled` (fold by the
+  `logical_workflow` field the manifests already carried; duplicate unit, dangling key or two
+  contracts per workflow is red). Live tree: `31 declared, 2 exempt (spent), 0 missing`;
+  `31 entries -> 30 logical workflow(s); 1 second trigger(s)`, `content-change-dispatch ->
+  augustus-content`. No manifest or contract edit was needed, which is what the ordering was
+  for. The tree complied before the flip, so two mktemp fixture roots prove the rules fire —
+  each by exact offender count — and the validator takes a root argument for that, as
+  `tests/test_contract_schema.py` already did. The "present" applies to every status, not
+  only standing: a future `planned` or `dormant` entry names its contract before it is listed.
 
 ### Phase 5 — Execute the contracts
 
@@ -360,6 +372,14 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   Gate: green on knowledge-digest fixtures including checks 7-9; a run producing neither a current
   artifact nor a valid decline fails; the receipt validates against the declared workflow, carries
   truthful tokens and cost, and **never renders unavailable usage as zero**.
+  **DONE 2026-09-11** — `bin/contract_exec.py`, driven by `tests/test_contract_exec.sh` against
+  the live knowledge-digest contract: all nine checks run from fixtures, one outcome derived,
+  receipts land at `~/agent-workforce/var/workflow-receipts/<workflow_id>/<run_id>.json` and
+  read back `valid` through `control_room_api.py`. Two extractions so T5.2 reads the right
+  owner: the check-block parser moved from the validator to `bin/contract_checks.py`, and the
+  receipt schema (version, vocabularies, validation) moved from the API to
+  `bin/workflow_receipt.py`. Usage is measured only from a `claude -p --output-format json`
+  envelope, which nothing produces yet — every live receipt says `unavailable` until T5.2.
 - **T5.2** [Claude, L, T5.1, T4.5] Wiring: S2 and S4 runs call it from `agent_propose.sh`
   after `AGENT_VERIFY_CMD`; platform jobs through a post-run hook or a sweep timer, the brief
   decides which. Results land in one receipt directory keyed by workflow and run.
@@ -576,7 +596,9 @@ phase reporting rather than failing.
 **The actionability fields landed 2026-09-10 (`063e6ce`)** — defined once in
 `design/contract-schema.md`, enforced as `outputs-actionability`, and present in all twelve
 contracts. **T4.4 landed 2026-09-11 (`96c9019`)**: twenty-six contracts on disk, every standing
-manifest entry names one or carries `contract_exempt`. **Next: T4.5.**
+manifest entry names one or carries `contract_exempt`. **T4.5 landed 2026-09-11 (`993c41d`)**:
+the field is mandatory, the exemption is spent-only, and the 31-to-30 reconciliation is a rule
+rather than a sentence. Phase 4 is closed. **Next: T5.1.**
 
 **T4.5 stays last, and its field definition goes first.** The temptation is to put T4.5 at the head
 of the phase because it is the enforcement point — but T4.5 flips the `contract` field from
@@ -592,8 +614,9 @@ because nothing violated it. T4.1 and T4.2 closed; T4.3 keeps one assertion, nam
 
 1. ~~**T4.4**~~ — done `96c9019`: Trajan's fourteen platform jobs, written once, to the finished
    shape.
-2. **T4.5** — now the flip is safe: both rules turn mandatory over a tree that already complies, so
-   the gate stays green through the change instead of going red and waiting to be caught up with.
+2. ~~**T4.5**~~ — done `993c41d`: the flip was safe, and it was — both rules turned mandatory
+   over a tree that already complied, and the gate stayed green through the change instead of
+   going red and waiting to be caught up with.
 3. **T5.1**, then **T5.2**. The receipt is the artifact every downstream view reads; nothing in
    Phase 5 can be built ahead of it. T5.2's own trap is stated in its row: an always-on service has
    no timer cadence to hang a receipt off.

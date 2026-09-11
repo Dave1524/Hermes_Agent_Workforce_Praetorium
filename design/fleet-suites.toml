@@ -77,6 +77,10 @@ asserts = [
   "runner-tools",           # T1.2: --allowedTools equals surfaces.scheduled.tools (+ tools_web if web)
   "runner-mcp",             # T1.2: empty mcp means --strict-mcp-config and empty mcpServers
   "runner-join-counted",    # T1.2: the join reports entries checked, and that equals the manifest count
+  "contract-declared",      # T4.5: every entry names a contract or carries contract_exempt — never neither, never both
+  "contract-exempt-spent",  # T4.5: contract_exempt is accepted only on status = "spent", with a non-empty reason
+  "contract-exempt-named",  # T4.5: every accepted exemption is printed by name, and named equals counted
+  "logical-workflow-reconciled",  # T4.5: standing entries reconcile by logical_workflow — no duplicate unit, no dangling key, one contract per workflow
   "skills-declared",        # T3.2: every entry carries skills = [...], a list of distinct strings; [] is explicit
   "skills-mechanism",       # T3.2: skills_mechanism is only "heading-extraction", over a profile that extracts owner-tree pointers
   "skills-join",            # T3.2: sorted(skills) equals the offer the entry's mechanism delivers to the run
@@ -289,4 +293,32 @@ asserts = [
 why_no_workflow = """
 It tests the portfolio projection and HTTP trust boundary. Assigning it to one rendered
 workflow would credit that workflow with a suite that primarily tests every other one.
+"""
+
+# T5.1 — the contract executor. It runs the check blocks every contracted workflow declares
+# and writes the receipt every downstream view reads, so it belongs to the fleet the same way
+# the schema validator does: a suite of the machinery, not of any one row.
+[[suite]]
+path    = "tests/test_contract_exec.sh"
+owner   = "fleet"
+asserts = [
+  "exec-one-result-per-check",       # every declared check yields one assertion, in contract order; wrong vantage is n/a, never omitted
+  "exec-env-is-schema-list",         # the child sees the schema doc's variables plus PATH and nothing of the parent's
+  "exec-artifact-is-this-run",       # check class: artifact is this run's (knowledge-digest check 1)
+  "exec-decline-is-own",             # check class: sentinel branch — fresh ^DECLINE: in this run's own attempt log
+  "exec-write-boundary",             # check class: write boundary (knowledge-digest check 5)
+  "exec-lock-skip",                  # check class: lock skip (check 7, sweep)
+  "exec-timer-window",               # check class: timer fired within window (check 8, sweep)
+  "exec-input-freshness",            # check class: input freshness (check 9, vault-guard-passed)
+  "exec-outcome-is-exactly-one",     # failed / decline / artifact / skipped, derived and never defaulted to success
+  "exec-receipt-validates",          # every receipt passes workflow_receipt.validate and control_room_api reads it as valid; atomic write
+  "exec-run-identity",               # INVOCATION_ID, else <unit>-<started>; at sweep, systemd's InvocationID
+  "exec-usage-never-zero",           # unavailable is null, measured is the envelope's exact integers; a zero is only the runtime's zero
+  "exec-next-action-from-contract",  # next_action copied from ## Outputs; `none` becomes null
+  "exec-refuses-non-contract-rows",  # kind = "service" and contract_exempt exit 2 with a reason and no receipt
+]
+why_no_workflow = """
+It tests the executor every contracted workflow will call, against the live knowledge-digest
+contract. Assigning it to knowledge-digest would credit one workflow with a suite that decides
+the receipt shape for all thirty.
 """
