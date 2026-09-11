@@ -21,12 +21,17 @@ Run `date +%F` for today's date, then `ls -1 _inbox/agents/ | grep bd-followup-d
   fresh near-identical draft — it gets one line, `carried (unchanged from <date>)`. A pack
   that re-nags the same three deals every night is a file Dave stops opening.
 
-1. Build the input set — the union of THREE sources, de-duplicated by deal. Not radar
-   stalls alone: the evidenced failures were task rows, not radar flags.
+1. Build the input set — the union of THREE sources, de-duplicated by deal, restricted to
+   Stage `Prospect` throughout. Not radar stalls alone: the evidenced failures were task
+   rows, not radar flags. Stage scope mirrors `bd-stall-radar`: Qualified/Proposal/Active
+   deals are already in motion and Dave sees them elsewhere; this pack is for the Prospect
+   backlog only.
 
    (a) Last night's stall radar. `ls -1 _inbox/agents/ | grep _bd-stall-radar.md` and read
-       the newest one if present. Each deal it flagged is a candidate. Absent = fine, the
-       radar may have declined; the other two sources still stand.
+       the newest one if present. Each deal it flagged is a candidate — both silent stalls
+       and never-contacted rows; the radar itself is Prospect-only, so no extra filtering
+       is needed here. Absent = fine, the radar may have declined; the other two sources
+       still stand.
 
    (b) Client Pipeline rows whose `Next action date` has passed. Notion is reached over the
        REST API ONLY — there is no Notion MCP server on this box (none exists; do not look
@@ -36,13 +41,14 @@ Run `date +%F` for today's date, then `ls -1 _inbox/agents/ | grep bd-followup-d
            -H "Authorization: Bearer $NOTION_API_TOKEN" -H "Notion-Version: 2025-09-03" \
            -H "Content-Type: application/json" -d '{"page_size":100}' | jq '.results[].properties'
        Read per row: `Stage`, `Locale`, `Email`, `Next action date`, `Decision-maker`,
-       `Trigger event`, `Notes`, `Chain status`. A row qualifies when `Next action date` is
-       today or earlier.
+       `Trigger event`, `Notes`, `Chain status`. A row qualifies when its `Stage` is
+       `Prospect` AND `Next action date` is today or earlier.
 
    (c) Notion Task Inbox rows that are Dave-owed BD work and due. Same REST pattern against
        data source `4dbb4389-6c4a-4f57-b70f-10d899483c21`. A row qualifies when ALL hold:
        it is not Done/Cancelled; it is BD-scoped (`Client` relation non-empty OR the `Area`
-       / `Track` name is BD); and its `Due date` is today or earlier.
+       / `Track` name is BD); when a `Client` relation is present, that deal's `Stage` is
+       `Prospect`; and its `Due date` is today or earlier.
 
    If any REST response is an error (`"object":"error"`), note it in the pack's Confidence
    & gaps section and continue on the sources you did reach — never retry in a loop, never
@@ -56,14 +62,14 @@ Run `date +%F` for today's date, then `ls -1 _inbox/agents/ | grep bd-followup-d
    - NEVER draft for a track that `04_operations/current_priorities.md` marks parked or
      counterparty-owned. Read it with `qmd get 04_operations/current_priorities.md` (fast,
      path-based — do NOT use the slow semantic `qmd query`; your working directory is the
-     inbox worktree, which does NOT contain `04_operations/`). Examples of what parked
-     looks like: The Cold Hub "no touch before September", DP World "none owed — keep
-     warm". A deliberately parked deal is not an overdue one.
+     inbox worktree, which does NOT contain `04_operations/`). Example of what parked
+     looks like: DP World "none owed — keep warm". A deliberately parked deal is not an
+     overdue one.
 
-3. Rank what survives, then cap at five. Rank by revenue proximity —
-   `Stage` Proposal/Active > Qualified > Prospect — and within a stage, by how overdue the
-   next action is. Draft at most 5 drafts — the cap applies AFTER ranking, so the five you write
-   are the five closest to revenue. Anything the cap drops is named in a one-line tail at
+3. Rank what survives, then cap at five. Rank by how overdue the next action is, oldest
+   first — every row is Stage `Prospect` now, so there is no revenue-proximity tier to rank
+   within first. Draft at most 5 drafts — the cap applies AFTER ranking, so the five you
+   write are the five most overdue. Anything the cap drops is named in a one-line tail at
    the end of the pack: never silently truncate the list.
 
 4. Ground every draft — the make-or-break rule.
