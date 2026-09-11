@@ -77,6 +77,10 @@ asserts = [
   "runner-tools",           # T1.2: --allowedTools equals surfaces.scheduled.tools (+ tools_web if web)
   "runner-mcp",             # T1.2: empty mcp means --strict-mcp-config and empty mcpServers
   "runner-join-counted",    # T1.2: the join reports entries checked, and that equals the manifest count
+  "contract-declared",      # T4.5: every entry names a contract or carries contract_exempt — never neither, never both
+  "contract-exempt-spent",  # T4.5: contract_exempt is accepted only on status = "spent", with a non-empty reason
+  "contract-exempt-named",  # T4.5: every accepted exemption is printed by name, and named equals counted
+  "logical-workflow-reconciled",  # T4.5: standing entries reconcile by logical_workflow — no duplicate unit, no dangling key, one contract per workflow
 ]
 why_no_workflow = """
 It grades the registry, not a job. Nothing execs it and nothing ever should — its subject is
