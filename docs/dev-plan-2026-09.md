@@ -263,8 +263,9 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   reads zero invocations across the last 30 scheduled runs — the same zero measured by hand.
   Gate ran green against a scratch copy of the runtime (`AGENT_WORKFORCE_RUNTIME`, the T3.2
   precedent) because the live runtime carried T7.2's unmerged deploy of four `bin/` scripts,
-  which a full deploy from this branch would have reverted. **The gate's calendar half is
-  open:** it needs `bin/deploy` after the merge (the fleet is paused since 2026-09-11 12:05
+  which a full deploy from this branch would have reverted; T7.2 merged as PR #35 the same
+  afternoon, so the live deploy now waits only on this branch's merge. **The gate's calendar
+  half is open:** it needs `bin/deploy` after the merge (the fleet is paused since 2026-09-11 12:05
   CEST, so nothing runs before Dave resumes it either way), then seven days of scheduled runs,
   then the first Monday digest showing a row per offered skill with a count. Record the live
   deploy date here when it happens; the Notion card stays In Progress until that digest excerpt
