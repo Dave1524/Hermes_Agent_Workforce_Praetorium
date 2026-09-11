@@ -270,3 +270,19 @@ is exactly when bin/verify.sh already runs it. The one thing a timer could add â
 headless session sees the tree â€” is the thing no deterministic call can do, so a nightly run
 would re-assert the static chain against an unchanged input and prove nothing new.
 """
+
+# The Control Room read model/API is an operator surface over the portfolio, not a workflow
+# systemd schedules. Its fixture suite owns the join across manifests, contracts, systemd
+# state and receipts and therefore belongs to the fleet rather than to any one row it renders.
+# When durable hosting lands, the service gets its own workflow entry and contract; these
+# read-model rules remain fleet-wide.
+[[suite]]
+path    = "tests/test_control_room_api.sh"
+owner   = "fleet"
+asserts = [
+  "control-room-api", # logical reconciliation, truthful unavailable states and read-only HTTP boundary
+]
+why_no_workflow = """
+It tests the portfolio projection and HTTP trust boundary. Assigning it to one rendered
+workflow would credit that workflow with a suite that primarily tests every other one.
+"""
