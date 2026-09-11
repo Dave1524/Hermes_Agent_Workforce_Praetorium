@@ -251,7 +251,9 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
 - **T3.3** [Claude, S, T3.2] Invocation telemetry: per run, which pointer skills were read,
   from run-log or transcript evidence, summarised by the scorecard. Gate: one week of runs
   yields a per-skill count.
-  **DONE (repo half) 2026-09-11, `db0012e`; NOT yet live-deployed.** Evidence is the run's
+  **DONE (repo half) 2026-09-11, `db0012e`; merged `8b720b9` (PR #37) and LIVE-DEPLOYED
+  2026-09-11 14:25 CEST** (`bin/deploy` from `main`, `verify.sh` green against the live runtime,
+  drift clean). The seven-day clock starts at fleet resume. Evidence is the run's
   Claude Code transcript located by session id: `agent_propose.sh` mints `AGENT_SESSION_ID` per
   attempt, the nine Claude runners pass `--session-id`, `bin/skill_telemetry.py` parses the
   transcript (a parser, not a grep — the Skill tool's own schema sits in every transcript as
@@ -651,14 +653,14 @@ because nothing violated it. T4.1 and T4.2 closed; T4.3 keeps one assertion, nam
    nights and every failed night is 20 minutes burnt. It is not blocked on anything; it is here
    rather than at the top only because T4.3's contract now gives it named checks to diagnose
    against.
-8. ~~**T3.3**~~ — repo half done `db0012e`; its calendar half (seven days of runs on deployed
-   code, then a Monday digest) starts at the post-merge deploy and fleet resume.
+8. ~~**T3.3**~~ — repo half done `db0012e`, merged #37, live-deployed 2026-09-11; its calendar
+   half (seven days of runs on deployed code, then a Monday digest) starts at fleet resume.
 9. **T6.1**, alongside any of the above; nothing depends on it.
 10. **T0.3** — S, and it closes W20 either way.
 11. **T6.3** when Dave says.
 
 Startable today with no blocker: T7.2, T6.1, T0.3. Everything else waits on one of those,
-on a merge-and-deploy (T3.3's calendar half), or on a Dave item.
+on fleet resume (T3.3's calendar half), or on a Dave item.
 
 Dave's queue, unchanged by this sweep: D2, D3, D4, D5, D6, L1, T6.3. D1 closed with T2.4; D7 and
 L2 are closed.
