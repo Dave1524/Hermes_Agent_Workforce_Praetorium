@@ -20,9 +20,14 @@ orphan's recommended fix is deletion.
 import json
 import pathlib
 import re
+import sys
 import tomllib
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
+# An explicit root is how tests/test_workflow_coverage.sh points this at a mktemp fixture;
+# every read below is is_file()-guarded, so a root carrying only design/agents/ and
+# design/contracts/ runs to its report rather than to a traceback.
+ROOT = pathlib.Path(sys.argv[1]).resolve() if len(sys.argv) > 1 \
+    else pathlib.Path(__file__).resolve().parents[1]
 STATUSES = {"standing", "campaign", "spent", "dormant", "planned"}
 DECLARES_WORKFLOWS = re.compile(r"^\s*\[\[workflows\]\]\s*$", re.M)
 EXEC_LINE = re.compile(r"^\s*Exec[A-Za-z]*=")
@@ -299,19 +304,45 @@ for owner, w in entries:
             problem("suite-paths-exist",
                     f"{w.get('unit')} ({owner}): declared suite {path} is not a file")
 
-# --- contract-path join (T1.1) -------------------------------------------------------
-# Resolves if present. T4.5 flips this to present-and-resolves. A missing field is
-# counted so the join cannot pass by only walking the entries that name one. Two
-# entries sharing one missing path produce one PROBLEM, not two — the gate is ten
-# distinct files, and augustus-content is named twice.
+# --- contract-path join (T1.1, mandatory since T4.5) ----------------------------------
+# Present and resolves. Every entry names a contract that is a file, or carries
+# contract_exempt naming the reason — and the exemption is accepted only on a spent entry,
+# because a promise nobody makes any more is the one thing that has nothing to contract.
+# Neither field is red; both is red (an exemption claimed for a promise that is named is
+# two owners of one fact). Two entries sharing one missing path produce one PROBLEM, not
+# two — augustus-content is named twice.
 contract_checked = 0
+contract_declared = 0
+contract_exempted = []
 missing_contract_paths = []
 seen_missing_contracts = set()
 for owner, w in entries:
     contract_checked += 1
+    unit = w.get("unit")
     path = w.get("contract")
-    if not isinstance(path, str) or not path.strip():
+    named = isinstance(path, str) and bool(path.strip())
+    exempt_claimed = "contract_exempt" in w
+    if not named and not exempt_claimed:
+        problem("contract-declared",
+                f"{unit} ({owner}): names no contract and claims no contract_exempt")
         continue
+    if named and exempt_claimed:
+        problem("contract-declared",
+                f"{unit} ({owner}): names {path.strip()} and claims contract_exempt too")
+        continue
+    if exempt_claimed:
+        reason = w["contract_exempt"]
+        if not isinstance(reason, str) or not reason.strip():
+            problem("contract-exempt-spent",
+                    f"{unit} ({owner}): contract_exempt names no reason")
+        elif w.get("status") != "spent":
+            problem("contract-exempt-spent",
+                    f"{unit} ({owner}): contract_exempt on a status = "
+                    f"{w.get('status')!r} entry — only spent is exempt")
+        else:
+            contract_exempted.append((unit, reason.strip()))
+        continue
+    contract_declared += 1
     path = path.strip()
     if (ROOT / path).is_file():
         continue
@@ -324,6 +355,39 @@ for owner, w in entries:
 if entries and contract_checked < len(entries):
     problem("contract-join-counted",
             f"checked {contract_checked} of {len(entries)} entries — the join skipped some")
+
+# --- standing reconciliation (T4.5) ---------------------------------------------------
+# 31 entries are 30 workflows: a logical_workflow field folds a second trigger into the
+# entry it triggers (content-change-dispatch -> augustus-content). The fold is declared,
+# never inferred, so the only unexplained duplicate left is a unit name declared twice —
+# and a fold is honest only if its key is a declared unit and every trigger of one
+# workflow names one contract.
+unit_counts = {}
+for _, w in entries:
+    unit_counts[w.get("unit")] = unit_counts.get(w.get("unit"), 0) + 1
+for unit, n in sorted(unit_counts.items(), key=lambda item: str(item[0])):
+    if n > 1:
+        problem("logical-workflow-reconciled",
+                f"{unit}: declared by {n} entries — a duplicate no field explains")
+
+standing_units = {w.get("unit") for _, w in standing}
+logical_groups = {}
+for owner, w in standing:
+    key = w.get("logical_workflow") or w.get("unit")
+    if key not in standing_units:
+        problem("logical-workflow-reconciled",
+                f"{w.get('unit')} ({owner}): logical_workflow = {key!r} names no "
+                "standing entry")
+    logical_groups.setdefault(key, []).append(w)
+
+second_triggers = []
+for key, members in sorted(logical_groups.items(), key=lambda item: str(item[0])):
+    contracts = {str(m.get("contract", "")).strip() for m in members}
+    if len(members) > 1 and len(contracts) > 1:
+        problem("logical-workflow-reconciled",
+                f"{key}: its {len(members)} triggers name {len(contracts)} contracts "
+                f"({', '.join(sorted(contracts))}) — one workflow, one contract")
+    second_triggers += [(m.get("unit"), key) for m in members if m.get("unit") != key]
 
 # --- runner join (T1.2) ----------------------------------------------------------------
 # surfaces.scheduled tools / tools_web / mcp and each workflow's model against the named
@@ -638,7 +702,10 @@ print(f"  {len(claimed)} distinct suite paths claimed "
 print(f"  asserts join: {joined_ids} anchored id(s) matched across {joined_suites} "
       f"declared suite(s)")
 print(f"  contract join: checked {contract_checked} of {len(entries)} entries, "
+      f"{contract_declared} declared, {len(contract_exempted)} exempt (spent), "
       f"{len(missing_contract_paths)} missing file(s)")
+print(f"  standing reconciliation: {len(standing)} entries -> {len(logical_groups)} "
+      f"logical workflow(s); {len(second_triggers)} second trigger(s)")
 print(f"  runner join: checked {runner_checked} of {len(entries)} entries, "
       f"{len(model_alias)} model-alias(es)")
 print(f"  skills join: checked {skills_checked} of {len(entries)} entries, "
@@ -647,11 +714,19 @@ print(f"  skills join: checked {skills_checked} of {len(entries)} entries, "
 print("  exempt from needing a suite — named, never merely skipped:")
 for unit, reason in exempt:
     print(f"EXEMPT\t{unit}\t{reason}")
+print("  exempt from naming a contract — spent, and named, never merely skipped:")
+for unit, reason in contract_exempted:
+    print(f"CONTRACT_EXEMPT\t{unit}\t{reason}")
+print("  second triggers folded into the workflow they trigger:")
+for unit, key in second_triggers:
+    print(f"SECOND_TRIGGER\t{unit}\t{key}")
 
 print(f"SUMMARY\tentries={len(entries)} standing={len(standing)} covered={len(covered)} "
       f"exempt={len(exempt)} uncovered={len(uncovered)} unclaimed={len(unclaimed)} "
       f"orphans={len(orphans)} contract_checked={contract_checked} "
-      f"contract_missing={len(missing_contract_paths)} runner_checked={runner_checked} "
+      f"contract_declared={contract_declared} contract_exempt={len(contract_exempted)} "
+      f"contract_missing={len(missing_contract_paths)} "
+      f"standing_logical={len(logical_groups)} runner_checked={runner_checked} "
       f"model_alias={len(model_alias)} skills_checked={skills_checked} "
       f"skills_he={skills_he} skills_offered={skills_offered}")
 for assertion, detail in problems:

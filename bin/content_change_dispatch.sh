@@ -23,6 +23,7 @@ AGENT_PROPOSE="${AGENT_PROPOSE_BIN:-$ROOT/bin/agent_propose.sh}"
 STATE="${CONTENT_PICKED_STATE:-$ROOT/var/content_picked.state}"
 LOG_DIR="${LOG_DIR:-$ROOT/logs}"
 AUGUSTUS_OVERRIDES="${AUGUSTUS_CONTENT_ENV:-$HOME/.config/agent-workforce/augustus-content.env}"
+SNAPSHOT="${CONTENT_BOARD_SNAPSHOT:-$ROOT/var/content_board.snapshot}"
 
 mkdir -p "$(dirname "$STATE")" 2>/dev/null || true
 mkdir -p "$LOG_DIR" 2>/dev/null || true
@@ -75,15 +76,19 @@ fi
 
 # ── 3b. New Picked row(s) => dispatch the existing Augustus draft run ──
 count=$(printf '%s\n' "$new_ids" | grep -c . || true)
-log "detected $count new Picked row(s) — dispatching Augustus draft run via agent_propose.sh"
+new_page_ids=$(tr '\n' ',' <<<"$new_ids" | sed 's/,$//')
+log "detected $count new Picked row(s) — dispatching Augustus draft run via agent_propose.sh entry_point=picked-change pages=$new_page_ids"
 
 # Reuse the nightly wiring: agent_propose.sh sources secrets.env + this override
 # itself and drafts up to 2 Picked rows. We do NOT source the override here.
 export AGENT_JOB_OVERRIDES="$AUGUSTUS_OVERRIDES"
+export CONTENT_ENTRY_POINT=picked-change
+export CONTENT_BOARD_SNAPSHOT="$SNAPSHOT"
 # NUC-44: mark where cost.log ends BEFORE dispatching, so the outcome check below reads
 # only the record this dispatch produced and never an older one.
 COST_LOG="${AGENT_COST_LOG:-$LOG_DIR/cost.log}"
 cost_lines_before=$(wc -l < "$COST_LOG" 2>/dev/null || echo 0)
+snapshot_before=$(cksum "$SNAPSHOT" 2>/dev/null || echo absent)
 rc=0
 "$AGENT_PROPOSE" || rc=$?
 if [ "$rc" -ne 0 ]; then
@@ -108,7 +113,68 @@ if [ "${crashed:-0}" -gt 0 ]; then
   exit 0
 fi
 
-# ── 4. Only after a successful dispatch, commit the new state ──
-printf '%s\n' "$current" | grep -v '^[[:space:]]*$' > "$STATE" || true
-log "dispatch complete — state advanced to current Picked set ($(printf '%s\n' "$current" | grep -c . || true) rows)"
+# A successful exit is still only a claim.  The exact content run must have written a
+# fresh, receipt-keyed snapshot and an OPS record.  This closes the clean-flock-SKIP hole:
+# a skipped runner returns 0 but writes neither record, so the Picked row stays eligible.
+run_record=$(awk -v skip="$cost_lines_before" \
+  'NR > skip && /task=augustus-content/ && /outcome=OPS/ { line=$0 } END { print line }' \
+  "$COST_LOG" 2>/dev/null || true)
+if [ -z "$run_record" ]; then
+  log "agent_propose.sh exited 0 but recorded no successful augustus-content OPS run — leaving state unchanged"
+  exit 0
+fi
+
+snapshot_after=$(cksum "$SNAPSHOT" 2>/dev/null || echo absent)
+if [ "$snapshot_after" = "$snapshot_before" ]; then
+  log "agent_propose.sh recorded OPS but left no fresh content snapshot — leaving state unchanged"
+  exit 0
+fi
+
+run_id=$(sed -n 's/^run_id=//p' "$SNAPSHOT" 2>/dev/null | tail -1)
+entry_point=$(sed -n 's/^entry_point=//p' "$SNAPSHOT" 2>/dev/null | tail -1)
+if [[ ! "$run_id" =~ ^[0-9a-f]{64}$ ]] || [ "$entry_point" != picked-change ]; then
+  log "snapshot has no valid picked-change run identity — leaving state unchanged"
+  exit 0
+fi
+
+draft_page=$(sed -n 's/^page=\([^[:space:]]*\) from=Picked to=Draft$/\1/p' "$SNAPSHOT" | tail -1)
+decline_event=$(sed -n 's/^decline_event=//p' "$SNAPSHOT" | tail -1)
+terminal=""
+if [ -n "$draft_page" ]; then
+  page_was_new=false
+  while IFS= read -r page; do
+    [ "$page" = "$draft_page" ] && page_was_new=true
+  done <<<"$new_ids"
+  if ! $page_was_new; then
+    log "run_id=$run_id drafted page=$draft_page, not one of this tick's new Picked rows — leaving state unchanged"
+    exit 0
+  fi
+  terminal="draft page=$draft_page"
+elif [[ "$decline_event" =~ ^[0-9a-f]{64}$ ]]; then
+  terminal="decline event=$decline_event"
+else
+  log "run_id=$run_id has neither Picked-to-Draft evidence nor an owned decline — leaving state unchanged"
+  exit 0
+fi
+
+# A draft resolves only the newly Picked page it names.  Any sibling new rows remain
+# absent from state and therefore eligible on the next tick; a valid owned decline is the
+# one terminal answer that resolves the full observed set.
+if [ -n "$draft_page" ]; then
+  next_state=""
+  while IFS= read -r page; do
+    [ -n "$page" ] || continue
+    is_new=false
+    while IFS= read -r new_page; do
+      [ "$page" = "$new_page" ] && is_new=true
+    done <<<"$new_ids"
+    $is_new || next_state+="$page"$'\n'
+  done <<<"$current"
+else
+  next_state="$current"
+fi
+
+# ── 4. Only after an evidenced terminal outcome, commit state ──
+printf '%s\n' "$next_state" | grep -v '^[[:space:]]*$' > "$STATE" || true
+log "dispatch complete — entry_point=picked-change run_id=$run_id $terminal state advanced to $(printf '%s\n' "$next_state" | grep -c . || true) eligible Picked row(s)"
 exit 0

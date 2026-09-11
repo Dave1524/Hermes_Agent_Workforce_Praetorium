@@ -20,7 +20,7 @@ table and the write boundary two places to drift.
 | Owner | **augustus** (`design/agents/augustus.toml`) |
 | Surface | `buzz_dispatch` — a timer triggers the live augustus session over the content route and waits |
 | Executor | none on this box. `run_content_via_buzz.sh` sends a trigger; the model is augustus's own `buzz-agent@augustus` session on `codex-acp`, inside its bwrap namespace |
-| Contract version | 1 (2026-09-10) |
+| Contract version | 2 (2026-09-11, T7.2 terminal-evidence repair) |
 | Alerted | yes — `OnFailure=agent-alert@%n.service` on both live units |
 
 The executor row is the reason this contract reads unlike its siblings. Nothing here runs a
@@ -44,9 +44,9 @@ Both are declared values from the unit files, not next-elapse.
 | `vantagepointconsulting.nl` published corpus, via `bin/published_corpus.py snapshot` on the **host** | a live `git fetch` in this run — the snapshot refuses to be written from anything else (`:314-319`) | **crash (4)**: `:84-87`. Augustus cannot fetch from inside bwrap, so a run dispatched without this gate drafts with the duplicate-title check silently not running |
 | `~/agent-workforce/var/published_corpus.json` — the file augustus actually reads | written this run by the gate above; `published_corpus.py` treats a snapshot older than `SNAPSHOT_MAX_AGE_HOURS` (24) as absent | augustus's read falls through to `local-ref`, which prints `OFFLINE — origin unreachable and no host snapshot` and **exits 0**. Failing open is the nine-night failure; the gate above is what closes it |
 | `profiles/augustus_content_task.md` (deployed copy) | must be readable by augustus in his own namespace | he replies `SKILL-READ-FAILED:` or `RUN-FAILED:`; the runner exits 1 and names which |
-| `~/logs/delivery-receipts.jsonl` | this run's own tail, sliced at `receipts_before` | **crash (4)**: no `buzz_result == "ok"` receipt means the trigger never reached the relay — `:136`, "augustus was never asked" |
+| `~/logs/delivery-receipts.jsonl` | this run's own tail, sliced at `receipts_before`; its lowercase 64-hex `buzz_event_id` is the canonical run ID | **crash (4)**: no `buzz_result == "ok"` receipt with a valid event ID means the trigger never reached the relay — augustus was never asked |
 | Notion `Picked` rows, via `notion_rest.py board --status Picked --json --max-rows 0` (`content-change-dispatch` only) | current at the tick | **fail-soft**: log `FAIL-SOFT:`, exit 0, `STATE` byte-for-byte untouched. A transient Notion outage must never mark an undrafted row as seen |
-| `~/agent-workforce/var/content_picked.state` (`content-change-dispatch` only) | advanced only after a dispatch that returned and recorded no `outcome=CRASHED` | absent on a fresh deploy, which makes every current `Picked` row new — deliberate |
+| `~/agent-workforce/var/content_picked.state` (`content-change-dispatch` only) | advanced only after a fresh, receipt-keyed `OPS` record has an exact new-row `Picked -> Draft` transition or an owned `DECLINE:` | absent on a fresh deploy, which makes every current `Picked` row new — deliberate |
 
 `--max-rows 0` is load-bearing in the dispatcher. The tool caps at 2 rows for the agent that
 has to draft them; a capped read here would write a truncated set to `STATE` and mark the
@@ -54,9 +54,9 @@ rows it never saw as seen.
 
 ## Outputs
 
-- **No file artifact, by design.** The output is Notion board rows — an Idea or a Draft
-  appended by augustus through `notion_rest.py`, capped at 2 per run. `deliver_content.sh`
-  says so in its header and carries board state instead of attaching an invented file.
+- **No file artifact, by design.** The valid output is a named Notion page moved from
+  `Picked` to `Draft` by augustus, capped at 2 per run. An Idea, an unrelated row mutation,
+  deletion or any other status change is diagnostic evidence, not a content artifact.
 - **Delivery (`augustus-content`):** `ExecStartPost=bin/deliver_content.sh`,
   `DELIVERY_ROUTE=content` → channel `36dc03cb-…`, **event kind 45001** (forum), notify
   `augustus`. The summary is `board_delta` + `corpus_line` + the run line, and a failing
@@ -69,25 +69,25 @@ rows it never saw as seen.
   mentioning augustus, sent by `bin/deliver.sh`, which is the only script permitted to call
   `buzz messages send`.
 
-- **Beneficiary:** Dave, for the board rows — an Idea or a Draft he edits, publishes or
-  kills. For `content-change-dispatch` the beneficiary is **augustus**: the message is what
-  wakes him on a `Picked` row, and it is the only artifact on this box whose reader is an agent.
-- **Next actor:** Dave for a board row; augustus for a dispatch.
-- **Next action:** Dave moves a row out of Idea or Draft, or deletes it. augustus picks up the
-  `Picked` row the dispatch names and writes against it.
+- **Beneficiary:** Dave, for the named Draft page he can review, edit, schedule, publish or
+  reject. For `content-change-dispatch` the beneficiary is **augustus**: the trigger wakes him
+  only for a newly Picked page.
+- **Next actor:** Dave after a valid terminal Draft; augustus only while the dispatch is active.
+- **Next action:** Dave reviews/edits the Draft, then schedules, publishes or rejects it.
 - **Benefit hypothesis:** the top of the content funnel stays non-empty without Dave
   generating the ideas, and a `Picked` row is acted on the same day rather than when someone
   notices it.
-- **Benefit signal:** board state, and this one is genuinely measurable — the share of
-  appended rows that leave Idea or Draft. `deliver_content.sh`'s `board_delta` is the raw
-  material; nothing computes the ratio today.
+- **Benefit signal:** raw Picked-observed to Draft-observed latency and valid-terminal-artifact
+  rate, keyed by the receipt event ID. The observation window is an estimate; human edits,
+  publication and ROI are not measured here.
 
 ## Decline conditions
 
 Exactly one legitimate decline: **augustus judges there is nothing to draft.** He replies in
 the channel with a single line beginning `DECLINE:` and the reason, the runner logs
 `augustus declined (event <id>) — nothing to draft`, appends `decline_event=<id>` to
-`~/agent-workforce/var/content_board.snapshot`, and exits 0.
+`~/agent-workforce/var/content_board.snapshot`, alongside `run_id=<receipt event id>` and
+`entry_point=nightly|picked-change`, and exits 0.
 
 The decline is read off the **relay**, not off a log file: `sentinel_reply` gates on
 augustus's pubkey and on `created_at >= dispatch_epoch`, so a decline from a previous night
@@ -111,9 +111,10 @@ is a failed run, not a quiet night.
 
 ## Side effects
 
-- Writes `~/agent-workforce/var/content_board.snapshot` (the pre-dispatch board digest, plus
-  `decline_event=` on a decline) and `~/agent-workforce/var/published_corpus.json` (the host
-  corpus capture, replaced atomically).
+- Writes `~/agent-workforce/var/content_board.snapshot` (the pre-dispatch board digest plus
+  `run_id=`, `entry_point=`, and either `page=<id> from=Picked to=Draft` or
+  `decline_event=`) and `~/agent-workforce/var/published_corpus.json` (the host corpus capture,
+  replaced atomically).
 - `content-change-dispatch` writes `~/agent-workforce/var/content_picked.state` and appends
   to `~/agent-workforce/logs/content_change_dispatch.log`.
 - Sends one message to the content route and appends a delivery receipt to
@@ -129,7 +130,7 @@ is a failed run, not a quiet night.
 
 ## Acceptance checks
 
-Ten checks — six `run`, four `sweep`. Every block branches on `$UNIT`, because the executor
+Twelve checks — eight `run`, four `sweep`. Every block branches on `$UNIT`, because the executor
 runs this file once per declaring unit and the two units are not decidable the same way: a
 dispatch tick writes no attempt log of its own, and the run it dispatches records itself
 under `augustus-content`. A check that does not apply to the unit it is running for exits 77
@@ -194,28 +195,43 @@ and says which.
    exit 1
    ```
 
-4. **The run ended on exactly one of the seven branches this contract names.** Not "it exited
-   0" — `TimeoutStartSec=45min` kills the unit with none of them written, and the three-state
-   exit is only meaningful if every terminal path names itself. Two present would mean the
-   wait loop fell through a branch it should have exited on.
+4. **The run has exactly one valid terminal outcome.** A timeout, failure sentinel, unknown
+   reply or generic board mutation is named for diagnosis but cannot satisfy this check.
 
    ```check id=run-ended-in-a-named-outcome
    case "$UNIT" in
      content-change-dispatch) echo "n/a: decided for the run this tick dispatched"; exit 77 ;;
    esac
    n=0
-   for phrase in "board moved" "augustus declined (event" \
-                 "augustus could not read the skill" \
-                 "augustus could not complete a mandatory step" \
-                 "augustus replied and no sentinel matched" \
-                 "no board movement and no reply within" "CRASH: "; do
-     [ -n "$(grep -F "$phrase" "$AGENT_ATTEMPT_LOG")" ] && n=$(( n + 1 ))
-   done
-   [ "$n" -eq 1 ] || echo "$n of the seven terminal lines present — the run ended on no named branch"
+   grep -Eq 'content-board-transition-produced-draft run_id=[0-9a-f]{64} .*page=.+ from=Picked to=Draft' "$AGENT_ATTEMPT_LOG" && n=$(( n + 1 ))
+   grep -Eq 'owned-reply-evidences-decline run_id=[0-9a-f]{64} .*decline_event=[0-9a-f]{64}' "$AGENT_ATTEMPT_LOG" && n=$(( n + 1 ))
+   [ "$n" -eq 1 ] || echo "$n valid terminal outcomes — timeout, silence and generic board changes are failures"
    [ "$n" -eq 1 ]
    ```
 
-5. **Augustus was not answering with a failure.** `RUN-FAILED:` is what the profile makes him
+5. **A successful draft is an exact baseline `Picked -> Draft` transition.** A valid owned
+   decline is n/a; every other outcome, including a timeout, fails by this check's name.
+
+   ```check id=content-board-transition-produced-draft
+   case "$UNIT" in content-change-dispatch) echo "n/a: decided by the dispatched run"; exit 77 ;; esac
+   grep -Eq 'owned-reply-evidences-decline run_id=[0-9a-f]{64} .*decline_event=[0-9a-f]{64}' "$AGENT_ATTEMPT_LOG" \
+     && { echo "n/a: valid owned decline"; exit 77; }
+   grep -Eq 'content-board-transition-produced-draft run_id=[0-9a-f]{64} .*page=.+ from=Picked to=Draft' "$AGENT_ATTEMPT_LOG" \
+     || { echo "no baseline Picked page reached Draft"; exit 1; }
+   ```
+
+6. **An empty output is an owned, post-dispatch decline.** A valid transition is n/a; every
+   other outcome, including silence and an unknown reply, fails by this check's name.
+
+   ```check id=owned-reply-evidences-decline
+   case "$UNIT" in content-change-dispatch) echo "n/a: decided by the dispatched run"; exit 77 ;; esac
+   grep -Eq 'content-board-transition-produced-draft run_id=[0-9a-f]{64} .*page=.+ from=Picked to=Draft' "$AGENT_ATTEMPT_LOG" \
+     && { echo "n/a: valid Draft transition"; exit 77; }
+   grep -Eq 'owned-reply-evidences-decline run_id=[0-9a-f]{64} .*decline_event=[0-9a-f]{64}' "$AGENT_ATTEMPT_LOG" \
+     || { echo "no owned post-dispatch DECLINE event"; exit 1; }
+   ```
+
+7. **Augustus was not answering with a failure.** `RUN-FAILED:` is what the profile makes him
    say when his own `published_corpus.py list` exits non-zero, so this is the agent-side tell
    for a corpus split that `corpus-gate-armed` cannot see from the host. Both prefixes were
    once handled as special cases and both were once read as declines.
@@ -224,13 +240,15 @@ and says which.
    case "$UNIT" in
      content-change-dispatch) echo "n/a: decided for the run this tick dispatched"; exit 77 ;;
    esac
+   valid="$(grep -E -e 'content-board-transition-produced-draft run_id=[0-9a-f]{64} .*page=.+ from=Picked to=Draft' -e 'owned-reply-evidences-decline run_id=[0-9a-f]{64} .*decline_event=[0-9a-f]{64}' "$AGENT_ATTEMPT_LOG")"
+   [ -n "$valid" ] || { echo "no valid terminal outcome — failure/silence cannot pass this check"; exit 1; }
    hits="$(grep -F -e 'augustus could not read the skill' \
                   -e 'augustus could not complete a mandatory step' "$AGENT_ATTEMPT_LOG")"
    [ -z "$hits" ] || echo "answered, and the answer was a failure: $hits"
    [ -z "$hits" ]
    ```
 
-6. **A decline names the event that carries it.** The decline is the one exit-0 path that
+8. **A decline names the event that carries it.** The decline is the one exit-0 path that
    produces nothing at all, so it is the one that most needs to stay checkable after the fact.
    `decline_event=` is appended to this run's board snapshot; `buzz social event --event <id>`
    is how a reader gets back to the words.
@@ -239,8 +257,10 @@ and says which.
    case "$UNIT" in
      content-change-dispatch) echo "n/a: decided for the run this tick dispatched"; exit 77 ;;
    esac
+   grep -Eq 'content-board-transition-produced-draft run_id=[0-9a-f]{64} .*page=.+ from=Picked to=Draft' "$AGENT_ATTEMPT_LOG" \
+     && { echo "n/a: valid Draft transition"; exit 77; }
    [ -n "$(grep -F 'augustus declined (event' "$AGENT_ATTEMPT_LOG")" ] \
-     || { echo "n/a: this run did not decline"; exit 77; }
+     || { echo "no valid decline — timeout/silence cannot pass this check"; exit 1; }
    snap="$HOME/agent-workforce/var/content_board.snapshot"
    [ -n "$(find "$(dirname "$snap")" -maxdepth 1 -name "$(basename "$snap")" \
              -newermt "@$AGENT_RUN_STARTED_AT" 2>/dev/null)" ] \
@@ -248,7 +268,7 @@ and says which.
    grep -E '^decline_event=.+' "$snap" >/dev/null
    ```
 
-7. **The nightly unit was not silently skipped by its own condition.** `sweep`.
+9. **The nightly unit was not silently skipped by its own condition.** `sweep`.
    `augustus-content.service` carries `ConditionPathExists=/home/dave/agent-worktrees/inbox`.
    A failed condition makes systemd mark the unit *skipped*: exit 0, no failure state, and
    `OnFailure` never fires — so `agent-alert@` stays quiet and the nightly run simply stops
@@ -267,7 +287,7 @@ and says which.
    [ "$r" != no ]
    ```
 
-8. **Each timer fired inside its own cadence.** `sweep`, and per unit — a single window would
+10. **Each timer fired inside its own cadence.** `sweep`, and per unit — a single window would
    have to be the nightly one, and a 15-minute timer that stopped firing would then be
    invisible for a day. 26 h covers 01:30 plus the 5-minute jitter and a late `Persistent=true`
    catch-up; 1 h covers four ticks of the quarter-hourly one. The lock-skip half applies only
@@ -292,7 +312,7 @@ and says which.
              | grep -F 'SKIP: previous run still active')" ]
    ```
 
-9. **The dispatcher is not stuck fail-soft.** `sweep`, and the check the fail-soft contract
+11. **The dispatcher is not stuck fail-soft.** `sweep`, and the check the fail-soft contract
    makes necessary: every Notion read error exits 0 with `STATE` untouched and no alert, so a
    dead credential or a revoked integration is indistinguishable from a quiet board and stays
    that way indefinitely. One non-`FAIL-SOFT` tick in the last forty is the whole assertion.
@@ -314,7 +334,7 @@ and says which.
    [ -n "$live" ]
    ```
 
-10. **State advanced only over rows a recorded run actually drafted.** `sweep`. The 2026-08-12
+12. **State advanced only over rows a recorded run actually drafted or declined.** `sweep`. The 2026-08-12
     outage was rc=0 taken as evidence, and the dispatcher's own `outcome=CRASHED` guard closes
     that path — but not the one underneath it: the global flock `SKIP` exits 0 **and writes no
     `cost.log` record at all** (`bin/agent_propose.sh:144`, and the comment at `:147-151`
@@ -329,13 +349,12 @@ and says which.
     d="$HOME/agent-workforce/logs/content_change_dispatch.log"
     c="$HOME/agent-workforce/logs/cost.log"
     [ -f "$d" ] && [ -f "$c" ] || { echo "the dispatcher log or the cost log is missing"; exit 1; }
-    at="$(grep -F 'dispatching Augustus draft run' "$d" | tail -1 | cut -d' ' -f1)"
-    [ -n "$at" ] || { echo "n/a: no tick has ever dispatched"; exit 77; }
-    backing="$(awk -v since="$at" '{ split($1, f, "="); if (f[1] == "ts" && f[2] >= since) print }' "$c" \
-                 | grep -F 'task=augustus-content')"
-    [ -n "$backing" ] \
-      || echo "the dispatch at $at is backed by no cost.log record — a flock SKIP exits 0 and writes none, and the tick then advanced state over rows nobody drafted"
-    [ -n "$backing" ]
+    completed="$(grep -F 'dispatch complete — entry_point=picked-change run_id=' "$d" | tail -1)"
+    [ -n "$completed" ] || { echo "n/a: no evidenced change dispatch has completed"; exit 77; }
+    run_id="$(printf '%s\n' "$completed" | sed -n 's/.*run_id=\([0-9a-f]\{64\}\).*/\1/p')"
+    [ -n "$run_id" ] || { echo "state advanced without a valid receipt run id"; exit 1; }
+    [ -n "$(grep -F "task=augustus-content outcome=OPS" "$c")" ] \
+      || { echo "run_id=$run_id advanced state without the successful OPS record that excludes a flock SKIP"; exit 1; }
     ```
 
 Both logs stamp with `date -Is`, so the string comparison in the last check is a comparison of
@@ -367,6 +386,17 @@ ambiguous inside a DST repeat hour.
   every hermes attempt had crashed, and 20 nights of `Picked` rows were marked seen without
   being drafted. Guarded by the `outcome=CRASHED` re-read; the flock `SKIP` underneath it is
   not, which is what `state-advanced-only-on-a-recorded-run` exists for.
+- **T7.2 historic delivery ambiguity — DECIDED 2026-09-11.** The retained delivery receipts
+  prove that the trigger was accepted on the failing 2026-09-06, 09-07, and 09-09 runs, while
+  the same route produced successful drafts on 09-08 and 09-10. The old runner nevertheless
+  treated any later board mutation as proof that augustus drafted, and the dispatcher treated
+  an rc=0 with no successful cost record as proof that a `Picked` row had been handled. The
+  retained material cannot identify a single earlier failure seam for every silent run, so the
+  decision is to repair that false-success boundary rather than invent a common cause. Next
+  action: after deployment, retain three consecutive eligible run records (including one
+  nightly and one `picked-change` dispatch) with the receipt run id and either an exact
+  `Picked -> Draft` transition or an owned decline; any timeout, sentinel, unknown reply, or
+  missing OPS record resets the streak.
 - **Permanent fail-soft.** By contract every Notion error in the dispatcher exits 0 with state
   untouched. Correct for a blip, indistinguishable from a dead credential over a week, and
   `OnFailure` never fires either way. Signal: `dispatcher-is-not-stuck-fail-soft`.
