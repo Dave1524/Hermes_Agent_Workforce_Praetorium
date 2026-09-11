@@ -237,6 +237,17 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   `skills_mechanism = "heading-extraction"` (`bin/skill_sections.sh`). `agent-model.md`
   records the allocation as a bet: 1 of 13 grounded in a live workflow. Gate: join green,
   33 of 33 carry the field.
+  **DONE 2026-09-11, `701b766`.** 33 of 33 entries carry `skills = [...]` (16 trajan platform
+  entries and the five `buzz-agent@*` entries as `[]`), joined by four asserts-anchored ids
+  (`skills-declared`, `skills-mechanism`, `skills-join`, `skills-join-counted`) with four
+  negative fixtures on copied checkouts. Live tree: 2 heading-extraction, 12 with a non-empty
+  offer. The bet, recorded in `agent-model.md` §2 and §8.4: 13 pointers; 7 offered on at least
+  one live entry (6 by `--plugin-dir` across 10 claudius/marcus entries, 1 by heading-extraction
+  across augustus's 2 content triggers); 1 of 13 named by a live profile
+  (`linkedin-content-engine`); 6 reach nobody (trajan's 4, `linkedin-review`, `blog-engine`).
+  Offered is not used — invocation is unmeasured until T3.3. Gate ran against a scratch copy of
+  the runtime tree (`AGENT_WORKFORCE_RUNTIME`), because the live tree carried T5.1's
+  un-merged deploy; the live deploy follows the merge.
 - **T3.3** [Claude, S, T3.2] Invocation telemetry: per run, which pointer skills were read,
   from run-log or transcript evidence, summarised by the scorecard. Gate: one week of runs
   yields a per-skill count.
