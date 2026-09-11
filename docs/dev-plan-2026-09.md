@@ -251,6 +251,25 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
 - **T3.3** [Claude, S, T3.2] Invocation telemetry: per run, which pointer skills were read,
   from run-log or transcript evidence, summarised by the scorecard. Gate: one week of runs
   yields a per-skill count.
+  **DONE (repo half) 2026-09-11, `db0012e`; NOT yet live-deployed.** Evidence is the run's
+  Claude Code transcript located by session id: `agent_propose.sh` mints `AGENT_SESSION_ID` per
+  attempt, the nine Claude runners pass `--session-id`, `bin/skill_telemetry.py` parses the
+  transcript (a parser, not a grep — the Skill tool's own schema sits in every transcript as
+  `"name":"Skill"`), and `cost.log` gains `skills=`, `skills_offered=`, `skills_src=`
+  (`unknown` ⇔ `src=none` ⇔ no transcript: BLOCKED, DEDUP, hermes, codex-acp). The digest
+  carries a `## Pointer skills (T3.3)` table and a `Pointer skills read (last 7d)` headline row
+  forwarded to #ops. Six anchored ids in `tests/test_skill_telemetry.sh`; smoke, scorecard and
+  buzz-adapter suites extended. The extractor reproduces the brief's proof transcripts and
+  reads zero invocations across the last 30 scheduled runs — the same zero measured by hand.
+  Gate ran green against a scratch copy of the runtime (`AGENT_WORKFORCE_RUNTIME`, the T3.2
+  precedent) because the live runtime carried T7.2's unmerged deploy of four `bin/` scripts,
+  which a full deploy from this branch would have reverted; T7.2 merged as PR #35 the same
+  afternoon, so the live deploy now waits only on this branch's merge. **The gate's calendar
+  half is open:** it needs `bin/deploy` after the merge (the fleet is paused since 2026-09-11 12:05
+  CEST, so nothing runs before Dave resumes it either way), then seven days of scheduled runs,
+  then the first Monday digest showing a row per offered skill with a count. Record the live
+  deploy date here when it happens; the Notion card stays In Progress until that digest excerpt
+  is pasted under it.
 
 ### Phase 4 — Write the contracts
 
@@ -632,13 +651,14 @@ because nothing violated it. T4.1 and T4.2 closed; T4.3 keeps one assertion, nam
    nights and every failed night is 20 minutes burnt. It is not blocked on anything; it is here
    rather than at the top only because T4.3's contract now gives it named checks to diagnose
    against.
-8. **T3.3**, unblocked since T3.2 landed 2026-09-11.
+8. ~~**T3.3**~~ — repo half done `db0012e`; its calendar half (seven days of runs on deployed
+   code, then a Monday digest) starts at the post-merge deploy and fleet resume.
 9. **T6.1**, alongside any of the above; nothing depends on it.
 10. **T0.3** — S, and it closes W20 either way.
 11. **T6.3** when Dave says.
 
-Startable today with no blocker: T4.4, T7.2, T3.3, T6.1, T0.3. Everything else
-waits on one of those or on a Dave item.
+Startable today with no blocker: T7.2, T6.1, T0.3. Everything else waits on one of those,
+on a merge-and-deploy (T3.3's calendar half), or on a Dave item.
 
 Dave's queue, unchanged by this sweep: D2, D3, D4, D5, D6, L1, T6.3. D1 closed with T2.4; D7 and
 L2 are closed.

@@ -49,4 +49,5 @@ exec "$CLAUDE_BIN" -p "$(cat "$TASK_FILE")" \
   --strict-mcp-config \
   --mcp-config '{"mcpServers":{}}' \
   --plugin-dir "$SKILLS_DIR" \
+  --session-id "${AGENT_SESSION_ID:-$(uuidgen)}" \
   --allowedTools "Bash,Read,Write,Glob,Grep"

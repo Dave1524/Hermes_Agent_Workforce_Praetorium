@@ -68,6 +68,53 @@ except Exception:
   echo "$usage"
 }
 
+new_session_id() {
+  # T3.3: one Claude Code session id per ATTEMPT, so the transcript log_cost reads is the
+  # one this attempt wrote and a retry never inherits its predecessor's evidence.
+  uuidgen 2>/dev/null || python3 -c 'import uuid; print(uuid.uuid4())'
+}
+
+skill_telemetry() {
+  # T3.3: which pointer skills this attempt was offered / invoked / read, from its Claude
+  # Code transcript located BY SESSION ID (never mtime): the Claude runners pass
+  # AGENT_SESSION_ID as --session-id and the CLI persists <id>.jsonl under
+  # ~/.claude/projects/<cwd-slug>/ — the glob across projects/*/ is what makes the lookup
+  # owner-agnostic. Sets tel_skills / tel_offered / tel_src. Fail-soft by contract: no
+  # session (BLOCKED), no transcript (hermes, codex-acp, a claude that never started) or
+  # an extractor error all record unknown/unknown/none and say why.
+  # The extractor is resolved as a SIBLING of this script, not the deployed copy
+  # refresh_scorecard() uses, so the smoke test's sandboxed $HOME still reaches it.
+  tel_skills=unknown tel_offered=unknown tel_src=none
+  [ -n "${AGENT_SESSION_ID:-}" ] || return 0
+  local extractor transcripts out rc=0 err
+  extractor="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/skill_telemetry.py"
+  transcripts=("$HOME"/.claude/projects/*/"$AGENT_SESSION_ID".jsonl)
+  [ -f "${transcripts[0]}" ] || { log "skills: no transcript for session $AGENT_SESSION_ID — recording unknown"; return 0; }
+  err="$LOG_DIR/skill_telemetry.err"
+  out=$(python3 "$extractor" "${transcripts[0]}" 2>"$err") || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    log "skills: telemetry failed (extractor exit $rc: $(head -c 200 "$err" 2>/dev/null | tr -d '\n')) — recording unknown"
+    return 0
+  fi
+  local offered=unknown invoked=unknown read=unknown t
+  for t in $out; do
+    case "$t" in
+      offered=*) offered=${t#*=} ;;
+      invoked=*) invoked=${t#*=} ;;
+      read=*)    read=${t#*=} ;;
+    esac
+  done
+  if [ "$offered" = unknown ] || [ "$invoked" = unknown ] || [ "$read" = unknown ]; then
+    log "skills: telemetry failed (unparseable extractor output: $out) — recording unknown"
+    return 0
+  fi
+  tel_offered=$offered
+  tel_skills=$(printf '%s,%s\n' "$invoked" "$read" | tr ',' '\n' | awk 'NF && $0 != "none"' | sort -u | paste -sd, -)
+  [ -n "$tel_skills" ] || tel_skills=none
+  tel_src=transcript
+  log "skills: offered=$offered invoked=$invoked read=$read src=$tel_src"
+}
+
 log_cost() {
   # Structured, append-only, key=value (NUC-23). model is the PROFILE's real
   # config.yaml model.name — NOT LLM_MODEL_BUSINESS (which was stale, echoing
@@ -96,8 +143,14 @@ try:
 except Exception:
     print("unknown")' "$usage_after" "${usage_before:-unknown}" 2>/dev/null) || delta="unknown"
   [ -n "$delta" ] || delta="unknown"
-  printf 'ts=%s schema=3 profile=%s model=%s task=%s outcome=%s proposal=%s run_seconds=%s attempts=%s tokens=unknown usage_before=%s usage_after=%s cost_usd_delta=%s cost_src=openrouter-key-api memory=%s\n' \
-    "$(date -Is)" "$run_profile" "$run_model" "$run_task" "$outcome" "$run_proposal" "$elapsed" "$attempt" "${usage_before:-unknown}" "$usage_after" "$delta" "${mem_status:-na}" \
+  # T3.3: three more keys, schema unchanged — every reader is key-based (scorecard.sh,
+  # deliver_proposal.sh `field`) and nothing branches on the schema value.
+  #   skills=<csv|none|unknown>          invoked ∪ read, sorted
+  #   skills_offered=<csv|none|unknown>  the skill_listing, namespace-filtered
+  #   skills_src=transcript|none         none <=> unknown <=> no transcript for the session
+  skill_telemetry
+  printf 'ts=%s schema=3 profile=%s model=%s task=%s outcome=%s proposal=%s run_seconds=%s attempts=%s tokens=unknown usage_before=%s usage_after=%s cost_usd_delta=%s cost_src=openrouter-key-api memory=%s skills=%s skills_offered=%s skills_src=%s\n' \
+    "$(date -Is)" "$run_profile" "$run_model" "$run_task" "$outcome" "$run_proposal" "$elapsed" "$attempt" "${usage_before:-unknown}" "$usage_after" "$delta" "${mem_status:-na}" "$tel_skills" "$tel_offered" "$tel_src" \
     >> "$LOG_DIR/cost.log"
 }
 
@@ -325,7 +378,11 @@ log "cost: usage_before=$usage_before (shared OpenRouter key, USD)"
 while [ "$attempt" -lt "$max_attempts" ]; do
   attempt=$((attempt + 1))
   rc=0
-  log "run attempt $attempt/$max_attempts: $run_cmd"
+  # T3.3: exported so the runner's `--session-id` and log_cost's transcript lookup agree on
+  # ONE id, minted per attempt so a retry's record carries the attempt whose outcome it is.
+  AGENT_SESSION_ID="$(new_session_id)"
+  export AGENT_SESSION_ID
+  log "run attempt $attempt/$max_attempts session=$AGENT_SESSION_ID: $run_cmd"
   # Captured per-attempt (then appended to the shared log as before) so the
   # silent-failure scan sees THIS attempt's tail, not the whole history. Kept after the
   # run rather than removed: AGENT_VERIFY_CMD reads it in-process and deliver_proposal.sh

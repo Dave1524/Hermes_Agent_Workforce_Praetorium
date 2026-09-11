@@ -492,19 +492,38 @@ Consolidation runs nightly for every profile (`memory-consolidation.timer`, 03:3
 Each run appends a structured, append-only record to `~/agent-workforce/logs/cost.log`:
 
 ```
-ts=<ISO8601> schema=2 profile=<name> model=<PROFILE config.yaml model.name> task=<slug>
-outcome=PROPOSAL|NOPROPOSAL|FAIL|VIOLATION proposal=<slug|none> run_seconds=<n> attempts=<n>
-tokens=unknown cost_usd=unknown cost_src=openrouter-dashboard memory=recorded|fallback|no-store|na
+ts=<ISO8601> schema=3 profile=<name> model=<PROFILE config.yaml model.name> task=<slug>
+outcome=PROPOSAL|NOPROPOSAL|FAIL|VIOLATION|CRASHED|BLOCKED|DEDUP|OPS proposal=<slug|none>
+run_seconds=<n> attempts=<n> tokens=unknown usage_before=<usd|unknown> usage_after=<usd|unknown>
+cost_usd_delta=<usd|unknown> cost_src=openrouter-key-api memory=recorded|fallback|no-store|na
+skills=<csv|none|unknown> skills_offered=<csv|none|unknown> skills_src=transcript|none
 ```
 
 - `model` is the **profile's** real model (`~/.hermes/profiles/<profile>/config.yaml` `model.name`),
   not `LLM_MODEL_BUSINESS` (which was stale, echoing sonnet-5 while the profile runs haiku-4.5).
-- `tokens`/`cost_usd` are best-effort `unknown` — hermes accounting is broken on OpenAI-compatible
-  endpoints (#4404/#20741). **The OpenRouter dashboard is the spend source of truth.**
+- `tokens` is best-effort `unknown` — hermes accounting is broken on OpenAI-compatible endpoints
+  (#4404/#20741). `usage_before`/`usage_after` are the shared OpenRouter key's cumulative spend
+  read before and after the run (NUC-27), so `cost_usd_delta` is this run's real cost; either
+  probe failing makes all three `unknown`. **The OpenRouter dashboard is the spend source of truth.**
+- `skills`, `skills_offered`, `skills_src` (T3.3, 2026-09-11) are the pointer skills this run
+  was offered and opened, read from its Claude Code transcript by `bin/skill_telemetry.py`.
+  `agent_propose.sh` mints one `AGENT_SESSION_ID` per attempt, the nine Claude runners pass it as
+  `--session-id`, and `log_cost()` looks the transcript up as
+  `~/.claude/projects/*/<id>.jsonl` — by id, never by mtime. `skills` is the union of `Skill`
+  tool calls naming a `praetorium-<owner>:<name>` pointer and `Read`s of its `SKILL.md`
+  (canonical `08_skills/<name>/SKILL.md` or the pointer file); `skills_offered` is the
+  session's `skill_listing`, namespace-filtered. Names are unqualified, sorted, comma-joined.
+  `skills_src=none` ⇔ both values `unknown` ⇔ no transcript for the session: BLOCKED and DEDUP
+  records, hermes and codex-acp runs (augustus), a `claude` that never started. `none` with
+  `skills_src=transcript` means the transcript was read and the set is empty — a real zero.
+  The schema number did not change: every reader is key-based, nothing branches on it.
 
 `bin/scorecard.sh` rolls the log into a de-identified aggregate digest published to the box-safe
 repo at `_inbox/agents/_metrics/scorecard.md` (same channel/branch as proposals, pushed via the
-`github-boxsafe` deploy key). It runs fail-soft at the end of every `agent_propose.sh` run and on a
+`github-boxsafe` deploy key). Since T3.3 the digest also carries a `## Pointer skills (T3.3)`
+table — per pointer name, runs that read it and runs offered it, 7d and all-time — and a Signal
+row `Pointer skills read (last 7d)` that `bin/deliver_scorecard.sh` forwards to #ops; BLOCKED
+and DEDUP records never count, OPS runs do. It runs fail-soft at the end of every `agent_propose.sh` run and on a
 weekly `scorecard.timer`; it is idempotent (identical input → byte-identical digest). Approval
 outcomes (promoted/rejected/edited) come from `_inbox/agents/_metrics/approvals.tsv`, written
 Mac-side by `agent_inbox.py` — the box holds no canonical vault, so this producer is the one
