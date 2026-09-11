@@ -110,8 +110,12 @@ assert "a LinkedIn connection note is budgeted at 300 characters" "grep -q '300 
 assert "the pack is capped at 5 drafts" "grep -qi 'at most 5 drafts\|maximum of 5 drafts' '$TASK'"
 assert "and nothing dropped by the cap is silently truncated" \
   "grep -qi 'never silently truncate\|no silent truncation' '$TASK'"
-assert "ranked by revenue proximity before the cap applies" \
-  "grep -qi 'Proposal/Active' '$TASK' && grep -qi 'rank' '$TASK'"
+assert "every input source is restricted to Stage Prospect (the work not being done)" \
+  "grep -q 'restricted to' '$TASK' && grep -q 'Stage. is' '$TASK' && grep -qc 'Prospect' '$TASK'"
+assert "ranked most-overdue first, with no stage tier before the cap" \
+  "grep -qi 'most overdue first' '$TASK' && ! grep -q 'Proposal/Active > Qualified' '$TASK'"
+assert "a never-contacted row is a cold first touch, never an implied prior exchange" \
+  "grep -q 'never contacted — radar' '$TASK' && grep -qi 'cold first touch' '$TASK'"
 assert "carry-forward de-dup against the previous pack (no daily nag file)" \
   "grep -q 'carried (unchanged from' '$TASK'"
 assert "never writes Notion pipeline state" "grep -qi 'never write.*Notion\|NEVER update any Notion' '$TASK'"

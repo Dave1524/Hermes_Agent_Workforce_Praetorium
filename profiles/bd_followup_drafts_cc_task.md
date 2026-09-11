@@ -66,11 +66,13 @@ Run `date +%F` for today's date, then `ls -1 _inbox/agents/ | grep bd-followup-d
      looks like: DP World "none owed — keep warm". A deliberately parked deal is not an
      overdue one.
 
-3. Rank what survives, then cap at five. Rank by how overdue the next action is, oldest
-   first — every row is Stage `Prospect` now, so there is no revenue-proximity tier to rank
-   within first. Draft at most 5 drafts — the cap applies AFTER ranking, so the five you
-   write are the five most overdue. Anything the cap drops is named in a one-line tail at
-   the end of the pack: never silently truncate the list.
+3. Rank what survives, then cap at five. Rank by how overdue the next action is —
+   most overdue first. Every row is Stage `Prospect` now, so there is no revenue-proximity
+   tier to rank within first. Rows with no `Next action date` follow, longest-silent first
+   by `Last contact`; never-contacted rows come last, in the order the radar listed them.
+   Draft at most 5 drafts — the cap applies AFTER ranking, so the five you write are the
+   five most overdue. Anything the cap drops is named in a one-line tail at the end of the
+   pack: never silently truncate the list.
 
 4. Ground every draft — the make-or-break rule.
 
@@ -89,6 +91,13 @@ Run `date +%F` for today's date, then `ls -1 _inbox/agents/ | grep bd-followup-d
    `qmd get 04_operations/current_priorities.md`, `qmd get 04_operations/open_loops.md`,
    and the row's own `Notes` / `Trigger event`. Cite where the fact came from in the
    "Why now" line of the output block.
+
+   A never-contacted row (the radar tags these `never contacted`) has no prior exchange to
+   ground in, and the draft must not invent one: no "further to our conversation", no
+   implied referral. It is a cold first touch, grounded in the row's `Trigger event` /
+   `Notes` and any company profile the vault holds (`qmd get 05_knowledge/<company>_org_profile.md`
+   or `11_entities/`, by path). Its "Why now" line reads `never contacted — radar <date>`
+   plus the trigger it leans on.
 
    Where the record is ambiguous — you cannot confirm what was last exchanged, or whether
    Dave already sent something — emit an `⚠ Unverified:` line directly above THE DRAFT,

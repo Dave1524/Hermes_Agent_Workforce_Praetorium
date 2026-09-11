@@ -192,6 +192,12 @@ Rules that are easy to get wrong:
   leave no trace on this box (ProActive read 82d when the real touch was 6d). Every draft
   grounds in the last *substantive, evidenced* exchange from the vault, and anything that
   cannot be confirmed surfaces as an `⚠ Unverified:` line rather than a confident opener.
+- **Both BD jobs are Stage `Prospect` only (Dave, 2026-09-11).** Qualified / Proposal /
+  Active are the accounts he is working; the radar and the drafts pack exist to surface the
+  BD work that is *not* being done. The radar also flags never-contacted Prospect rows, and
+  the pack ranks most-overdue first with no stage tier — the old revenue-proximity ranking
+  filled the 5-cap with active accounts every run (`bd_stall_radar_kernel.py`
+  `IN_SCOPE_STAGES`, `profiles/bd_followup_drafts_cc_task.md` steps 1 and 3).
 - **Drafts are send material, not vault changes.** The pack carries
   `target: none`, so it is never promoted into the vault by the inbox tooling, and the job
   never writes Notion pipeline state — `Stage` / `Last contact` / `Next action date` stay

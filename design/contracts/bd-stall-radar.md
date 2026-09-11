@@ -9,7 +9,7 @@ T4.2, 2026-09-10. Read for this contract: `systemctl cat bd-stall-radar.{service
 (`~/CLAUDE.md` § Out of scope), so no run's output was read.
 
 **The rules are deterministic and they live in Python.** `bin/bd_stall_radar_kernel.py` owns
-`ACTIVE_STAGES`, `STALL_DAYS = 7`, `AGING_FLOOR = 60` and `DEDUP_WINDOW_DAYS = 3`; the profile
+`IN_SCOPE_STAGES`, `STALL_DAYS = 7`, `AGING_FLOOR = 60` and `DEDUP_WINDOW_DAYS = 3`; the profile
 forbids reimplementing any of them in prose. The agent's job is to run the kernel, read its
 output, and write it up. That split is why most checks below read the kernel's own lines out
 of the attempt log rather than judging the artifact's reasoning.
@@ -56,7 +56,7 @@ Everything this job reasons over is in-bubble by construction.
 - **Artifact:** at most one file, `_inbox/agents/<YYYY-MM-DD>_bd-stall-radar.md`, written by
   the kernel, which announces it as `=> wrote _inbox/agents/<date>_bd-stall-radar.md (N flagged)`.
 - **Kernel summary line**, always, on stdout:
-  `bd-stall-radar (deterministic) <today> — N deals, M active&silent, K flagged (W warm, A aging)`.
+  `bd-stall-radar (deterministic) <today> — N deals, M Prospect&unworked, K flagged (W warm, A aging, U never contacted)`.
   This line is the run's own audit trail and several checks below read it.
 - **Delivery:** `ExecStartPost=bin/deliver_proposal.sh`, `DELIVERY_ROUTE=bd` → channel
   `97b5cf17-…`, **event kind 45001** (forum), notify `claudius`.
@@ -153,7 +153,7 @@ Ids are the stable names; `## Known failure modes` references them, never the nu
    ```
 
 4. **The deal count was not zero.** A Notion query that returns an empty set produces
-   `0 deals, 0 active&silent, 0 flagged` and then a perfectly ordinary `DECLINE:` — the same
+   `0 deals, 0 Prospect&unworked, 0 flagged` and then a perfectly ordinary `DECLINE:` — the same
    output as a healthy pipeline with nothing newly stalled. This is the check that tells the
    two apart, and without it the job can be silently dead for weeks.
 
@@ -176,15 +176,17 @@ Ids are the stable names; `## Known failure modes` references them, never the nu
    [ -z "$(grep -F 'suppression degraded' "$AGENT_ATTEMPT_LOG")" ]
    ```
 
-6. **No terminal-stage deal was flagged.** `ACTIVE_STAGES` excludes `Closed` and `On Hold`;
-   a pack naming one is a rule that stopped being applied, and it costs Dave a follow-up on a
-   deal he already closed.
+6. **No out-of-scope-stage deal was flagged.** `IN_SCOPE_STAGES` is `{"Prospect"}` since
+   2026-09-11: `Closed` and `On Hold` were never in scope, and `Qualified` / `Proposal` /
+   `Active` are the accounts Dave is working. A pack naming any of them is a rule that stopped
+   being applied — a follow-up on a closed deal, or a report of the work being done instead of
+   the work that is not.
 
    ```check id=no-terminal-stage-was-flagged
    f="$AGENT_INBOX_DIR/${RUN_DATE}_bd-stall-radar.md"
    [ -f "$f" ] || { echo "n/a: no artifact this run"; exit 77; }
-   hits="$(grep -nE 'Stage[^A-Za-z]*(Closed|On Hold)' "$f")"
-   [ -z "$hits" ] || echo "a terminal-stage deal was flagged: $hits"
+   hits="$(grep -nE 'Stage[^A-Za-z]*(Closed|On Hold|Qualified|Proposal|Active)' "$f")"
+   [ -z "$hits" ] || echo "an out-of-scope-stage deal was flagged: $hits"
    [ -z "$hits" ]
    ```
 

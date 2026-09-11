@@ -22,12 +22,12 @@ nothing has changed, do not re-flag it identically — note "unchanged" or skip 
    disk (the inbox worktree does not contain 04_operations/).
 2. Guard clauses the kernel already applies and that you must not override. Flag a deal
    ONLY if ALL of these hold:
-   (a) Stage is an active-pipeline stage — one of Prospect / Qualified / Proposal / Active.
-       NEVER flag a deal whose Stage is Closed (the deal is done/lost) or On Hold (deliberately
-       parked). These are terminal or parked in the pipeline, so a stall flag on them is a false
-       positive — skip them regardless of how long they have been silent. This is the structured-
-       field guard and does not depend on current_priorities.md remembering to mention them.
-   (b) no contact in >7 days, AND
+   (a) Stage is Prospect. Qualified / Proposal / Active are out of scope by design (Dave,
+       2026-09-11): those are the accounts being worked, and this radar exists to surface the
+       BD work that is NOT being done. NEVER flag a deal whose Stage is Closed (the deal is
+       done/lost) or On Hold (deliberately parked). This is the structured-field guard and
+       does not depend on current_priorities.md remembering to mention them.
+   (b) never contacted at all, OR no contact in >7 days, AND
    (c) current_priorities.md does not already show it as parked/counterparty-owned/within-window.
 3. For each genuine stall: note it in your run output (this becomes the Discord run
    notification — no separate posting action needed). Do NOT update any Notion page
