@@ -38,10 +38,117 @@ fail=0
 # deterministic: it fails if and only if a condition is evaluated under pipefail.
 assert 'a found pattern is never reported as a failure' "yes | grep -q y"
 
+# FIXTURES FIRST, LIVE TREE SECOND (T4.5). The contract-field rules turned mandatory over a
+# tree that already complied, so the live run below cannot show they detect anything. Two
+# mktemp roots do: a healthy one that must yield none of the four ids, and an offending one
+# where each rule has a known number of offenders, asserted by exact count so a rule that
+# stops firing is red rather than quiet. Fixture output goes to a file and is grepped, never
+# printed, so no PROBLEM line reaches the gate output on a pass.
+fx=$(mktemp -d)
 report=$(mktemp)
-trap 'rm -f "$report"' EXIT
+trap 'rm -rf "$fx" "$report"' EXIT
+
+fixture_root() {              # $1 name — a root whose one manifest is read from stdin
+  local root=$fx/$1
+  mkdir -p "$root/design/agents" "$root/design/contracts"
+  : >"$root/design/contracts/alpha.md"
+  : >"$root/design/contracts/beta.md"
+  cat >"$root/design/agents/fx.toml"
+  echo "$root"
+}
+
+ok=$(fixture_root ok <<'EOF'
+[[workflows]]
+unit = "alpha"
+logical_workflow = "alpha"
+status = "standing"
+contract = "design/contracts/alpha.md"
+
+[[workflows]]
+unit = "alpha-change"
+logical_workflow = "alpha"
+status = "standing"
+contract = "design/contracts/alpha.md"
+
+[[workflows]]
+unit = "old"
+status = "spent"
+contract_exempt = "spent: fired once and is disabled"
+EOF
+)
+
+bad=$(fixture_root bad <<'EOF'
+[[workflows]]
+unit = "none"
+status = "standing"
+
+[[workflows]]
+unit = "both"
+status = "spent"
+contract = "design/contracts/alpha.md"
+contract_exempt = "spent: yet names a contract too"
+
+[[workflows]]
+unit = "live-exempt"
+status = "standing"
+contract_exempt = "still running, exempted anyway"
+
+[[workflows]]
+unit = "old-blank"
+status = "spent"
+contract_exempt = ""
+
+[[workflows]]
+unit = "dup"
+status = "standing"
+contract = "design/contracts/alpha.md"
+
+[[workflows]]
+unit = "dup"
+status = "standing"
+contract = "design/contracts/alpha.md"
+
+[[workflows]]
+unit = "orphan-trigger"
+logical_workflow = "nothing-declares-this"
+status = "standing"
+contract = "design/contracts/alpha.md"
+
+[[workflows]]
+unit = "beta"
+status = "standing"
+contract = "design/contracts/alpha.md"
+
+[[workflows]]
+unit = "beta-change"
+logical_workflow = "beta"
+status = "standing"
+contract = "design/contracts/beta.md"
+EOF
+)
+
+count_id() {                  # $1 root  $2 id — how many PROBLEM lines carry that id
+  python3 tests/test_workflow_coverage.py "$1" 2>&1 | grep -c "^PROBLEM	$2	"
+}
+
+echo "--- fixtures: the contract-field rules name their offenders ---"
+for id in contract-declared contract-exempt-spent logical-workflow-reconciled; do
+  assert "a healthy root yields no $id" "[ \"\$(count_id '$ok' $id)\" = 0 ]"
+done
+assert 'the healthy root prints its one exemption by name' \
+  "python3 tests/test_workflow_coverage.py '$ok' | grep -q '^CONTRACT_EXEMPT	old	'"
+assert 'the healthy root reconciles three standing entries to two logical workflows' \
+  "python3 tests/test_workflow_coverage.py '$ok' | grep -q '^SECOND_TRIGGER	alpha-change	alpha$'"
+assert 'contract-declared names the entry with neither field and the entry with both' \
+  "[ \"\$(count_id '$bad' contract-declared)\" = 2 ]"
+assert 'contract-exempt-spent names the standing exemption and the blank reason' \
+  "[ \"\$(count_id '$bad' contract-exempt-spent)\" = 2 ]"
+assert 'logical-workflow-reconciled names the duplicate unit, the dangling key and the split contract' \
+  "[ \"\$(count_id '$bad' logical-workflow-reconciled)\" = 3 ]"
+
+echo "--- live tree ---"
 python3 tests/test_workflow_coverage.py >"$report" 2>&1 || { cat "$report"; exit 1; }
-grep -v '^\(PROBLEM\|EXEMPT\|SUMMARY\)	' "$report"
+grep -v '^\(PROBLEM\|EXEMPT\|CONTRACT_EXEMPT\|SECOND_TRIGGER\|SUMMARY\)	' "$report"
 # T1.1 ships red as PROBLEM lines, not a collapsed FAIL: — the land set-diff matches
 # one line per missing path. Other PROBLEM ids stay filtered above.
 # (::contract-exists)
@@ -67,6 +174,32 @@ exempt_counted=$(sed -n 's/.*\bexempt=\([0-9]*\).*/\1/p' "$report")
 
 named_matches_counted() {
   [ -n "$exempt_counted" ] && [ "$exempt_named" = "$exempt_counted" ]
+}
+
+# Same shape for the contract exemptions (T4.5): the accepted ones are printed by name from
+# the rule that accepted them, and the count comes from the summary.
+sed -n 's/^CONTRACT_EXEMPT\t\([^\t]*\)\t/      contract exempt: \1 — /p' "$report"
+contract_exempt_named=$(grep -c '^CONTRACT_EXEMPT	' "$report")
+contract_exempt_counted=$(sed -n 's/.*\bcontract_exempt=\([0-9]*\).*/\1/p' "$report")
+
+contract_exempt_named_matches_counted() {
+  [ -n "$contract_exempt_counted" ] \
+    && [ "$contract_exempt_named" = "$contract_exempt_counted" ]
+}
+
+# The standing reconciliation's own size, derived here (T4.5). Every second trigger is printed
+# by name, so the number of standing entries that fold into another entry's logical workflow
+# is counted from those lines and compared with what the summary says was folded. A deleted
+# reconciliation prints neither and is red, not quiet.
+sed -n 's/^SECOND_TRIGGER\t\([^\t]*\)\t\(.*\)/      second trigger: \1 -> \2/p' "$report"
+second_named=$(grep -c '^SECOND_TRIGGER	' "$report")
+standing_counted=$(sed -n 's/.*\bstanding=\([0-9]*\).*/\1/p' "$report")
+logical_counted=$(sed -n 's/.*\bstanding_logical=\([0-9]*\).*/\1/p' "$report")
+
+reconciliation_folds_only_named_triggers() {
+  [ -n "$standing_counted" ] && [ -n "$logical_counted" ] \
+    && [ "$logical_counted" -gt 0 ] \
+    && [ $((standing_counted - logical_counted)) = "$second_named" ]
 }
 
 # The join's own size, asserted rather than merely printed. `check asserts-anchored` below is
@@ -149,5 +282,15 @@ check runner-mcp \
   'every joined empty mcp is --strict-mcp-config and empty mcpServers'  # (::runner-mcp)
 assert 'the runner join checked every parsed entry, so skipping the ones without a runner cannot pass as a clean run' \
   runner_join_checked_every_entry  # (::runner-join-counted)
+check contract-declared \
+  'every entry names a contract or carries contract_exempt — never neither, never both'  # (::contract-declared)
+check contract-exempt-spent \
+  'every contract_exempt sits on a status = "spent" entry and names its reason'  # (::contract-exempt-spent)
+assert 'every accepted contract exemption is printed by name, and named equals counted' \
+  contract_exempt_named_matches_counted  # (::contract-exempt-named)
+check logical-workflow-reconciled \
+  'standing entries reconcile by logical_workflow: no duplicate unit, no dangling key, one contract per workflow'  # (::logical-workflow-reconciled)
+assert 'and the reconciliation folds exactly the second triggers it names, so a deleted rule cannot pass as a clean one' \
+  reconciliation_folds_only_named_triggers
 
 exit $fail
