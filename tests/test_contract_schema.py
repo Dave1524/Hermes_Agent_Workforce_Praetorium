@@ -41,10 +41,20 @@ import subprocess
 import sys
 import tomllib
 
+# The check-block parser and the schema vocabularies moved to bin/contract_checks.py on
+# 2026-09-11 (T5.1) so the executor — which runs from the deployed tree, where tests/ does
+# not exist — reads the same parser this grades with. Resolved from this file, never from
+# ROOT: the fixture roots the .sh builds carry contracts, not a bin/.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "bin"))
+from contract_checks import (  # noqa: E402
+    CHECK_ATTRS, CHECK_ID, CHECKS_SECTION, ENV_BLOCK, ENV_BULLET, OUTPUTS_BLOCK,
+    OUTPUTS_BULLET, SCHEMA_DOC, VANTAGE_BLOCK, VANTAGE_BULLET, acceptance_checks, attrs_of,
+    block_reads, schema_bullets as _schema_bullets,
+)
+
 ROOT = pathlib.Path(sys.argv[1]).resolve() if len(sys.argv) > 1 \
     else pathlib.Path(__file__).resolve().parents[1]
 
-SCHEMA_DOC = "design/contract-schema.md"
 SCHEMA_HEADING = re.compile(r"^### `## (.+)`\s*$")
 BOLD = re.compile(r"\*\*([A-Za-z0-9_-]+)\*\*")
 # `%` is in both classes so `agent-alert@%n.service` stays ONE token and can be recognised as
@@ -55,28 +65,15 @@ TOKEN = re.compile(r"[A-Za-z0-9@._%-]+")
 UNIT_SUFFIX = re.compile(r"\.(service|timer)$")
 SUBHEADING = re.compile(r"^#{3,6} ")
 
-# T4.0. The check syntax, and the two vocabularies it grades against — both READ from the
-# schema doc's `#### ` blocks, never retyped here, for the same reason the section list is.
-ENV_BLOCK = "#### Executor environment"
-VANTAGE_BLOCK = "#### Vantage"
-ENV_BULLET = re.compile(r"^- `([A-Z][A-Z0-9_]*)`")
-VANTAGE_BULLET = re.compile(r"^- `([a-z][a-z0-9-]*)`")
-CHECKS_SECTION = "Acceptance checks"
-ITEM = re.compile(r"^(\d+)\.\s")
-CHECK_ID = re.compile(r"^[a-z][a-z0-9-]*$")
-CHECK_ATTRS = ("id", "when")
+# T4.0. The check syntax and the two vocabularies it grades against are READ from the schema
+# doc's `#### ` blocks, never retyped — the parser and the block names live in
+# bin/contract_checks.py, the rules stay here.
 # A block whose every command is one of these decides nothing. The schema's own rule: a check
 # that cannot fail is not a check.
 TRIVIAL = re.compile(r"^(true|:|exit\s+0|echo(\s.*)?)$")
-# A sed or awk script is single-quoted, and its $p is not a shell read.
-SINGLE_QUOTED = re.compile(r"'[^']*'")
-VAR_READ = re.compile(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)")
-VAR_SET = re.compile(r"(?:^\s*|[;&|(]\s*|\bfor\s+)([A-Za-z_][A-Za-z0-9_]*)(?:=|\s+in\b)")
 
 # T4.1-T4.3. The actionability labels every `## Outputs` must carry, READ from the schema
 # doc's `#### Outputs fields` block for the same reason the section list is.
-OUTPUTS_BLOCK = "#### Outputs fields"
-OUTPUTS_BULLET = re.compile(r"^- \*\*([A-Z][A-Za-z ]+)\*\*")
 OUTPUTS_SECTION = "Outputs"
 BULLET_LABEL = re.compile(r"^\s*[-*]\s+\*\*([^*]+?)\*\*")
 
@@ -113,16 +110,7 @@ def schema_bullets(heading, bullet):
     doc = ROOT / SCHEMA_DOC
     if not doc.is_file():
         return []
-    found, inside = [], False
-    for line in doc.read_text().splitlines():
-        if line.startswith("#"):
-            inside = line.strip() == heading
-            continue
-        if inside:
-            m = bullet.match(line)
-            if m:
-                found.append(m.group(1))
-    return found
+    return _schema_bullets(doc.read_text(), heading, bullet)
 
 
 def check_vocabulary():
@@ -256,64 +244,6 @@ def units_in(cell):
     return found
 
 
-def acceptance_checks(text):
-    """([item numbers], [check blocks]) under `## Acceptance checks`, with real line numbers.
-
-    A block belongs to the item it is indented under; one at column 0 has closed the list and
-    belongs to nobody, which is a finding rather than something to adopt into the item above.
-    """
-    items, blocks = [], []
-    inside, item, fence = False, None, None
-    for n, line in enumerate(text.splitlines(), 1):
-        stripped = line.strip()
-        if fence is not None:
-            if stripped.startswith("```"):
-                if fence["info"].split(" ")[0] == "check" and fence["inside"]:
-                    blocks.append(fence)
-                fence = None
-            else:
-                fence["body"].append(line)
-            continue
-        if stripped.startswith("```"):
-            fence = {"line": n, "indent": len(line) - len(line.lstrip()), "item": item,
-                     "info": stripped[3:].strip(), "body": [], "inside": inside}
-            continue
-        if line.startswith("## "):
-            inside = line[3:].strip() == CHECKS_SECTION
-            item = None
-            continue
-        if inside:
-            m = ITEM.match(line)
-            if m:
-                item = int(m.group(1))
-                items.append(item)
-    return items, blocks
-
-
-def attrs_of(info):
-    """The info line's attributes after the leading `check`, and the tokens that are not."""
-    good, bad = {}, []
-    for token in info.split()[1:]:
-        key, sep, value = token.partition("=")
-        if sep and key in CHECK_ATTRS and key not in good:
-            good[key] = value
-        else:
-            bad.append(token)
-    return good, bad
-
-
-def block_reads(body):
-    """Variables the block reads without setting them earlier in the same block."""
-    known, unknown = set(), []
-    for line in body:
-        line = SINGLE_QUOTED.sub("''", line)
-        for var in VAR_READ.findall(line):
-            if var not in known and var not in ENV_VARS and var not in unknown:
-                unknown.append(var)
-        known.update(VAR_SET.findall(line))
-    return unknown
-
-
 def grade_checks(rel, text):
     """The T4.0 rules over one contract. Returns the number of blocks graded."""
     items, blocks = acceptance_checks(text)
@@ -385,7 +315,7 @@ def grade_checks(rel, text):
                             f"{rel}: {label}: bash -n rejects the block: {detail}")
 
             if ENV_VARS:
-                for var in block_reads(block["body"]):
+                for var in block_reads(block["body"], ENV_VARS):
                     problem("checks-env",
                             f"{rel}: {label}: reads ${var}, which the executor does not export "
                             "and the block does not set")

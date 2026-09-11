@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Fake systemctl for tests/test_contract_exec.py. The suite copies this file into a temp
+# directory and writes its state beside it, in state/: one file per property a check asks
+# for (LastTriggerUSec, InvocationID, ActiveState). Every call is appended to state/calls.log
+# with the scope it arrived under, so the suite can assert that `systemctl --user` reached
+# the shim as `--user` and the system-scope row as bare `systemctl`.
+set -u
+state="$(dirname "$0")/state"
+scope=system
+if [ "${1:-}" = "--user" ]; then scope=user; shift; fi
+printf '%s %s\n' "$scope" "$*" >>"$state/calls.log"
+case "${1:-}" in
+  show)
+    shift 2                                   # show <unit>
+    prop=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        -p|--property) prop=$2; shift ;;
+        --property=*)  prop=${1#--property=} ;;
+      esac
+      shift
+    done
+    if [ -f "$state/$prop" ]; then cat "$state/$prop"; else echo ""; fi
+    ;;
+  is-active)
+    s="$(cat "$state/ActiveState" 2>/dev/null || echo inactive)"
+    echo "$s"
+    [ "$s" = active ]
+    ;;
+  *)
+    echo "fake systemctl: unsupported call: $*" >&2
+    exit 1
+    ;;
+esac

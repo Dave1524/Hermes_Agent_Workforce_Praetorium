@@ -1,0 +1,47 @@
+# Manifest fixture for tests/test_contract_exec.py. Never read by the validator or the
+# coverage checker — both glob design/agents/ only. Contract paths are repo-relative, as in
+# the live manifests; the suite passes --repo-root so the knowledge-digest row resolves to the
+# LIVE contract and the fixture rows to the two files under ../contracts/.
+name = "fixture"
+
+[[workflows]]
+unit     = "knowledge-digest"
+surface  = "scheduled"
+trigger  = "Sun 09:00 (+5min jitter)"
+model    = "claude-opus-5"
+contract = "design/contracts/knowledge-digest.md"
+status   = "standing"
+
+[[workflows]]
+unit     = "env-probe"
+surface  = "scheduled"
+trigger  = "fixture"
+scope    = "user"
+model    = "fixture-model"
+contract = "tests/fixtures/contract-exec/contracts/env-probe.md"
+status   = "standing"
+
+[[workflows]]
+unit     = "logical-child"
+logical_workflow = "logical-parent"
+surface  = "scheduled"
+trigger  = "fixture"
+contract = "tests/fixtures/contract-exec/contracts/none-next.md"
+status   = "standing"
+
+[[workflows]]
+unit     = "always-on"
+surface  = "interactive"
+trigger  = "event-driven"
+scope    = "user"
+kind     = "service"
+contract = "tests/fixtures/contract-exec/contracts/none-next.md"
+status   = "standing"
+
+[[workflows]]
+unit     = "spent-job"
+surface  = "scheduled"
+trigger  = "once"
+contract = "tests/fixtures/contract-exec/contracts/none-next.md"
+contract_exempt = "spent: fixture — its one fire is behind it"
+status   = "standing"

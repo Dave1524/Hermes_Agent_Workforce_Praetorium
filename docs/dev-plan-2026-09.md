@@ -349,6 +349,14 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   Gate: green on knowledge-digest fixtures including checks 7-9; a run producing neither a current
   artifact nor a valid decline fails; the receipt validates against the declared workflow, carries
   truthful tokens and cost, and **never renders unavailable usage as zero**.
+  **DONE 2026-09-11** — `bin/contract_exec.py`, driven by `tests/test_contract_exec.sh` against
+  the live knowledge-digest contract: all nine checks run from fixtures, one outcome derived,
+  receipts land at `~/agent-workforce/var/workflow-receipts/<workflow_id>/<run_id>.json` and
+  read back `valid` through `control_room_api.py`. Two extractions so T5.2 reads the right
+  owner: the check-block parser moved from the validator to `bin/contract_checks.py`, and the
+  receipt schema (version, vocabularies, validation) moved from the API to
+  `bin/workflow_receipt.py`. Usage is measured only from a `claude -p --output-format json`
+  envelope, which nothing produces yet — every live receipt says `unavailable` until T5.2.
 - **T5.2** [Claude, L, T5.1, T4.5] Wiring: S2 and S4 runs call it from `agent_propose.sh`
   after `AGENT_VERIFY_CMD`; platform jobs through a post-run hook or a sweep timer, the brief
   decides which. Results land in one receipt directory keyed by workflow and run.
