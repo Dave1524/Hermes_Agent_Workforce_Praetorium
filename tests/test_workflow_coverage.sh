@@ -243,6 +243,53 @@ runner_join_checked_every_entry() {
     && [ "$runner_checked" -gt 0 ]
 }
 
+# Same shape again for T3.2, plus one more figure: the heading-extraction count is compared
+# against the manifests' own `skills_mechanism` lines and must be > 0, so the branch that
+# reads a profile instead of a runner is proven to have run, not merely to exist.
+skills_checked=$(sed -n 's/^  skills join: checked \([0-9]\{1,\}\) of .*/\1/p' "$report")
+skills_of=$(sed -n 's/^  skills join: checked [0-9]\{1,\} of \([0-9]\{1,\}\) entries.*/\1/p' "$report")
+skills_he=$(sed -n 's/^  skills join: checked [0-9]\{1,\} of [0-9]\{1,\} entries, \([0-9]\{1,\}\) heading-extraction.*/\1/p' "$report")
+live_he=$(cat design/agents/*.toml | grep -c '^skills_mechanism *= *"heading-extraction"' || true)
+
+skills_join_checked_every_entry() {
+  [ -n "$skills_checked" ] && [ "$skills_checked" = "$skills_of" ] \
+    && [ "$skills_checked" = "$entries_summary" ] \
+    && [ "$skills_checked" = "$live_entries" ] \
+    && [ "$skills_checked" -gt 0 ] \
+    && [ -n "$skills_he" ] && [ "$skills_he" = "$live_he" ] \
+    && [ "$skills_he" -gt 0 ]
+}
+
+# --- T3.2 negative controls ---------------------------------------------------------------
+# `check skills-*` below are negative assertions and pass identically whether the join found
+# nothing wrong or never looked. So the join is also shown to BITE: the trees the .py reads
+# are copied, one entry of one manifest is mutated, and the skills-* ids the copy reports
+# must be exactly the one the mutation earns. The .py derives its root from its own
+# location, so the fixture is a checkout-shaped directory rather than an env override, and
+# an unmutated copy is run first so the four mutations are the only difference measured.
+#
+# Each result is `<entries checked>:<skills-* ids, comma-joined>`. The count is the positive
+# half: a fixture whose python never ran, or ran against an empty copy, yields no ids and
+# would otherwise read as clean — the first version of this function did exactly that.
+skills_fixture() {  # skills_fixture <name> <manifest> <unit> <sed-expr>
+  local name=$1 manifest=$2 unit=$3 expr=$4
+  local dir="$fx/skills-$name"
+  mkdir -p "$dir"
+  cp -r design tests bin systemd skills profiles "$dir"/
+  if [ -n "$expr" ]; then
+    sed -i "/^unit *= *\"$unit\"/,/^\[\[workflows\]\]/{$expr}" "$dir/design/agents/$manifest.toml"
+  fi
+  python3 "$dir/tests/test_workflow_coverage.py" >"$dir/report" 2>/dev/null
+  printf '%s:%s\n' \
+    "$(sed -n 's/^  skills join: checked \([0-9]\{1,\}\) of .*/\1/p' "$dir/report")" \
+    "$(sed -n 's/^PROBLEM\t\(skills-[a-z-]*\)\t.*/\1/p' "$dir/report" | sort -u | paste -sd,)"
+}
+fx_clean=$(skills_fixture clean claudius knowledge-digest '')
+fx_declared=$(skills_fixture declared claudius knowledge-digest '/^skills *= \[/d')
+fx_join=$(skills_fixture join claudius knowledge-digest 's/^skills *= \[.*\]/skills = ["meeting-prep"]/')
+fx_mechanism=$(skills_fixture mechanism trajan fleet-turn-check 's/^skills *= \[\]/skills = []\nskills_mechanism = "heading-extraction"/')
+fx_unreachable=$(skills_fixture unreachable trajan fleet-turn-check 's/^skills *= \[\]/skills = ["systematic-debugging"]/')
+
 # One assertion per rule, each named as design/fleet-suites.toml declares it.
 #
 # THE TRAILING TOKEN IS THE JOIN ANCHOR, not decoration (W9). `check <id>` names the id to
@@ -292,5 +339,23 @@ check logical-workflow-reconciled \
   'standing entries reconcile by logical_workflow: no duplicate unit, no dangling key, one contract per workflow'  # (::logical-workflow-reconciled)
 assert 'and the reconciliation folds exactly the second triggers it names, so a deleted rule cannot pass as a clean one' \
   reconciliation_folds_only_named_triggers
+check skills-declared \
+  'every entry carries skills = [...] as a list of distinct strings; an empty offer is written []'  # (::skills-declared)
+check skills-mechanism \
+  'skills_mechanism, when present, is heading-extraction over an in-repo profile that extracts pointers in the owner tree'  # (::skills-mechanism)
+check skills-join \
+  'every declared skills list equals the offer its mechanism delivers to the run'  # (::skills-join)
+assert 'the skills join checked every parsed entry and exercised the heading-extraction branch, so a skipped entry or a dead branch cannot pass as a clean run' \
+  skills_join_checked_every_entry  # (::skills-join-counted)
+assert 'fixture control: an unmutated copy of the checkout checks every entry and reports no skills-* problem' \
+  "[ \"\$fx_clean\" = \"\$live_entries:\" ]"
+assert 'fixture (a): an entry with skills removed is skills-declared, and only that' \
+  "[ \"\$fx_declared\" = \"\$live_entries:skills-declared\" ]"
+assert 'fixture (b): a claudius entry declaring only meeting-prep is skills-join, and only that' \
+  "[ \"\$fx_join\" = \"\$live_entries:skills-join\" ]"
+assert 'fixture (c): heading-extraction on an entry with no profile is skills-mechanism, and only that' \
+  "[ \"\$fx_mechanism\" = \"\$live_entries:skills-mechanism\" ]"
+assert 'fixture (d): a trajan entry declaring systematic-debugging is skills-join — an unreachable tree cannot be declared as delivered' \
+  "[ \"\$fx_unreachable\" = \"\$live_entries:skills-join\" ]"
 
 exit $fail

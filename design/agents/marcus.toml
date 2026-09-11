@@ -65,6 +65,7 @@ run_mode = "ops"
 contract = "design/contracts/praetorium-daily-plan.md"
 status   = "standing"
 suite    = ["tests/test_daily_plan_smoke.sh"]
+skills   = ["agent-inbox-sync", "post-call-capture", "weekly-review"]
 
 [[workflows]]
 unit     = "overnight-morning-report"
@@ -78,6 +79,7 @@ run_mode = "ops"
 contract = "design/contracts/overnight-morning-report.md"
 status   = "standing"
 suite    = ["tests/test_overnight_morning_report_smoke.sh"]
+skills   = ["agent-inbox-sync", "post-call-capture", "weekly-review"]
 notes    = """
 Carries the recurring reporting-defect class (coverage globs, whitelist health checks).
 Registry §2 footnote 1 keeps it separate from daily-plan for now. Its acceptance checks
@@ -96,6 +98,7 @@ run_mode = "ops"
 contract = "design/contracts/praetorium-eod-summary.md"
 status   = "standing"
 suite    = ["tests/test_eod_summary_smoke.sh"]
+skills   = ["agent-inbox-sync", "post-call-capture", "weekly-review"]
 
 [[workflows]]
 unit     = "weekly-pre-assembly"
@@ -108,6 +111,7 @@ route    = "research"
 contract = "design/contracts/weekly-pre-assembly.md"
 status   = "standing"
 suite    = ["tests/test_weekly_pre_assembly_smoke.sh"]
+skills   = ["agent-inbox-sync", "post-call-capture", "weekly-review"]
 notes    = "Hermes-era claudius task; ownership moved to marcus 2026-09-01 (registry §7.2)."
 
 
@@ -130,6 +134,7 @@ contract = "design/contracts/buzz-interactive.md"   # ONE contract, five owners 
 rule1_exempt = "five units running byte-identical code share one set of obligations; five files would be five copies of one fact"
 status   = "standing"
 suite    = ["tests/test_buzz_interactive_harness.sh"]
+skills   = []
 in_repo  = true
 notes    = """
 `model` and `profile` are stated as unreadable rather than guessed, using the same

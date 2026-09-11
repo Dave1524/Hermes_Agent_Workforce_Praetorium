@@ -110,7 +110,7 @@ def assignment_default(raw):
     return m.group(1) if m else raw
 
 
-def resolve_model(token, assigns):
+def resolve_token(token, assigns):
     token = peel(token)
     m = re.fullmatch(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)", token)
     if m:
@@ -118,6 +118,28 @@ def resolve_model(token, assigns):
         return assigns[name] if name in assigns else token
     m = re.fullmatch(r"\$\{[A-Za-z_][A-Za-z0-9_]*:-([^}]+)\}", token)
     return m.group(1) if m else token
+
+
+def uncommented_lines(path):
+    """Left-stripped lines with blanks and comments dropped."""
+    lines = []
+    for line in path.read_text().splitlines():
+        stripped = line.lstrip()
+        if stripped and not stripped.startswith("#"):
+            lines.append(stripped)
+    return lines
+
+
+def shell_assigns(lines):
+    """NAME=value assignments, ${VAR:-default} reduced to the default. One collector for
+    the runner join and the skills join, so a runner's variables resolve identically in
+    both — two loops would be one rule in two places."""
+    assigns = {}
+    for stripped in lines:
+        am = re.match(r"([A-Za-z_][A-Za-z0-9_]*)=(\S+)", stripped)
+        if am:
+            assigns[am.group(1)] = assignment_default(am.group(2))
+    return assigns
 
 
 def mcp_servers_empty(raw):
@@ -143,14 +165,10 @@ def runner_file(runner):
 
 def parse_claude_flags(path):
     """Flags from uncommented lines. A comment naming --model is not the flag."""
-    assigns, model_tok, tools, strict, mcp_cfg = {}, None, None, False, None
-    for line in path.read_text().splitlines():
-        stripped = line.lstrip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        am = re.match(r"([A-Za-z_][A-Za-z0-9_]*)=(\S+)", stripped)
-        if am:
-            assigns[am.group(1)] = assignment_default(am.group(2))
+    lines = uncommented_lines(path)
+    assigns = shell_assigns(lines)
+    model_tok, tools, strict, mcp_cfg = None, None, False, None
+    for stripped in lines:
         if "--strict-mcp-config" in stripped:
             strict = True
         mm = re.search(r"--model\s+(\S+)", stripped)
@@ -165,11 +183,63 @@ def parse_claude_flags(path):
     if model_tok is None and tools is None and not strict:
         return None
     return {
-        "model": resolve_model(model_tok, assigns) if model_tok is not None else None,
+        "model": resolve_token(model_tok, assigns) if model_tok is not None else None,
         "tools": tools,
         "strict": strict,
         "mcp_empty": mcp_servers_empty(mcp_cfg),
     }
+
+
+PLUGIN_DIR = re.compile(r"--plugin-dir\s+(\S+)")
+# The runner names its tree in the DEPLOYED copy; the join reads the source it is deployed
+# from, which bin/check_deploy_drift.sh holds equal.
+DEPLOYED_PREFIXES = ("$HOME/agent-workforce/", "~/agent-workforce/")
+VAULT_SKILL = re.compile(r"08_skills/([A-Za-z0-9_-]+)/SKILL\.md")
+SKILLS_MECHANISMS = ("heading-extraction",)
+
+
+def repo_path(raw):
+    for prefix in DEPLOYED_PREFIXES:
+        if raw.startswith(prefix):
+            return ROOT / raw[len(prefix):]
+    return pathlib.Path(raw)
+
+
+def plugin_dir_tree(path):
+    """The tree the runner's --plugin-dir DEFAULT resolves to; None when it passes none.
+
+    Reads the declared default (${PRAETORIUM_SKILLS_DIR:-...}) exactly as the runner join
+    reads --model — a runtime override is outside the manifest's jurisdiction.
+    """
+    if path is None:
+        return None
+    lines = uncommented_lines(path)
+    assigns = shell_assigns(lines)
+    tree = None
+    for stripped in lines:
+        pm = PLUGIN_DIR.search(stripped)
+        if pm:
+            tree = repo_path(resolve_token(pm.group(1), assigns))
+    return tree
+
+
+def pointer_names(tree):
+    """Sorted skill dirs under <tree>/skills/ that carry a SKILL.md; [] for no tree. A
+    directory without the manifest is not discovered by the runtime either."""
+    if tree is None:
+        return []
+    return sorted(p.parent.name for p in tree.glob("skills/*/SKILL.md"))
+
+
+def extracted_skills(profile_path):
+    """Vault skills named as the target of each skill_sections.sh invocation. The path sits
+    on a continuation line after the extractor token, so backslash-newlines are joined
+    before each invocation is cut at its line end."""
+    text = profile_path.read_text().replace("\\\n", " ")
+    names = set()
+    for invocation in text.split("skill_sections.sh")[1:]:
+        names.update(VAULT_SKILL.findall(invocation.split("\n", 1)[0]))
+    return sorted(names)
 
 
 # --- parse ---------------------------------------------------------------------------
@@ -366,6 +436,75 @@ for owner, w in entries:
 if entries and runner_checked < len(entries):
     problem("runner-join-counted",
             f"checked {runner_checked} of {len(entries)} entries — the join skipped some")
+
+# --- skills join (T3.2) ----------------------------------------------------------------
+# `skills` on every entry is what the entry's mechanism DELIVERS to the run — not what the
+# job might read, not what the profile mentions — joined by equality to an offer derived
+# here. Default mechanism: the pointer names under the tree the runner's --plugin-dir
+# resolves to; no runner or no flag is an offer of [], and [] must then be declared.
+# `skills_mechanism = "heading-extraction"`: the vault skills the profile's
+# skill_sections.sh invocations extract, each of which must be a pointer in the owner's
+# tree. A missing field is a PROBLEM, never a default, and the join counts what it checked
+# in three figures so the heading-extraction branch is proven exercised, not merely present.
+
+
+def heading_extraction_offer(owner, w):
+    unit, profile = w.get("unit"), w.get("profile")
+    path = ROOT / profile if isinstance(profile, str) and profile.strip() else None
+    if path is None or not path.is_file():
+        problem("skills-mechanism",
+                f"{unit} ({owner}): heading-extraction names no profile in this repo "
+                f"({profile!r})")
+        return []
+    names = extracted_skills(path)
+    if not names:
+        problem("skills-mechanism",
+                f"{unit} ({owner}): {profile} invokes skill_sections.sh on no vault skill")
+        return []
+    for name in names:
+        if not (ROOT / "skills" / owner / "skills" / name / "SKILL.md").is_file():
+            problem("skills-mechanism",
+                    f"{unit} ({owner}): extracts {name}, which is not "
+                    f"skills/{owner}/skills/{name}/SKILL.md")
+    return names
+
+
+def skills_offer(owner, w):
+    mechanism = w.get("skills_mechanism")
+    if mechanism is None:
+        return pointer_names(plugin_dir_tree(runner_file(w.get("runner"))))
+    if mechanism == "heading-extraction":
+        return heading_extraction_offer(owner, w)
+    problem("skills-mechanism",
+            f"{w.get('unit')} ({owner}): skills_mechanism {mechanism!r} is not one of "
+            f"{list(SKILLS_MECHANISMS)}")
+    return []
+
+
+skills_checked, skills_he, skills_offered = 0, 0, 0
+for owner, w in entries:
+    skills_checked += 1
+    unit = w.get("unit")
+    if w.get("skills_mechanism") == "heading-extraction":
+        skills_he += 1
+    offered = skills_offer(owner, w)
+    if offered:
+        skills_offered += 1
+    declared = w.get("skills")
+    if not isinstance(declared, list) or not all(isinstance(n, str) for n in declared):
+        problem("skills-declared",
+                f"{unit} ({owner}): skills is {declared!r}, not a list of strings — a "
+                "missing field is not an empty offer")
+        continue
+    if len(set(declared)) != len(declared):
+        problem("skills-declared", f"{unit} ({owner}): skills repeats a name: {declared}")
+    if sorted(declared) != offered:
+        problem("skills-join",
+                f"{unit} ({owner}): declared {sorted(declared)} != offered {offered}")
+
+if entries and skills_checked < len(entries):
+    problem("skills-join-counted",
+            f"checked {skills_checked} of {len(entries)} entries — the join skipped some")
 
 # design/fleet-suites.toml's own SCHEMA is asserted by tests/test_fleet_guards.sh (path)
 # exists, owner is in the enum, asserts non-empty). Consumed here, not re-validated. The
@@ -569,6 +708,8 @@ print(f"  standing reconciliation: {len(standing)} entries -> {len(logical_group
       f"logical workflow(s); {len(second_triggers)} second trigger(s)")
 print(f"  runner join: checked {runner_checked} of {len(entries)} entries, "
       f"{len(model_alias)} model-alias(es)")
+print(f"  skills join: checked {skills_checked} of {len(entries)} entries, "
+      f"{skills_he} heading-extraction, {skills_offered} with a non-empty offer")
 
 print("  exempt from needing a suite — named, never merely skipped:")
 for unit, reason in exempt:
@@ -586,6 +727,7 @@ print(f"SUMMARY\tentries={len(entries)} standing={len(standing)} covered={len(co
       f"contract_declared={contract_declared} contract_exempt={len(contract_exempted)} "
       f"contract_missing={len(missing_contract_paths)} "
       f"standing_logical={len(logical_groups)} runner_checked={runner_checked} "
-      f"model_alias={len(model_alias)}")
+      f"model_alias={len(model_alias)} skills_checked={skills_checked} "
+      f"skills_he={skills_he} skills_offered={skills_offered}")
 for assertion, detail in problems:
     print(f"PROBLEM\t{assertion}\t{detail}")

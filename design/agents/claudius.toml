@@ -53,6 +53,7 @@ web      = false
 contract = "design/contracts/knowledge-digest.md"         # worked example — written
 status   = "standing"
 suite    = ["tests/test_knowledge_digest_smoke.sh"]
+skills   = ["investment-research", "meeting-prep", "prospect-research"]
 
 [[workflows]]
 unit     = "agent-proposal"
@@ -66,6 +67,7 @@ web      = true
 contract = "design/contracts/standing-research.md"
 status   = "standing"
 suite    = ["tests/test_standing_research_smoke.sh"]
+skills   = ["investment-research", "meeting-prep", "prospect-research"]
 rule1_exempt = "the unit is the generic agent-proposal; the workflow, the artifact and AGENT_VERIFY_CMD are all standing-research, and naming the file after the unit would hide it from every reader who knows the job by its slug"
 notes    = "Unit name is the generic one; the workflow is standing research."
 
@@ -81,6 +83,7 @@ web      = false
 contract = "design/contracts/raw-ingest.md"
 status   = "standing"
 suite    = ["tests/test_raw_ingest_smoke.sh"]
+skills   = ["investment-research", "meeting-prep", "prospect-research"]
 notes    = "Runs ahead of standing research so same-day ingest is visible to it."
 
 [[workflows]]
@@ -95,6 +98,7 @@ web      = true
 contract = "design/contracts/m1-signal-scan.md"
 status   = "standing"
 suite    = ["tests/test_m1_signal_scan_smoke.sh"]
+skills   = ["investment-research", "meeting-prep", "prospect-research"]
 notes    = """
 Swapped off hermes/OpenRouter 2026-07-24 while the OpenRouter budget is paused. The task
 profile keeps a same-day idempotency check and no weekly-skip guard — the timer owns
@@ -115,6 +119,7 @@ route    = "bd"
 web      = false
 status   = "standing"
 suite    = ["tests/test_bd_stall_radar_smoke.sh"]
+skills   = ["investment-research", "meeting-prep", "prospect-research"]
 contract = "design/contracts/bd-stall-radar.md"
 notes    = "Enabled T2.4 (2026-09-09). Stall rules live in bin/bd_stall_radar_kernel.py; the runner is the m1-shaped harness around it."
 
@@ -128,6 +133,7 @@ runner   = "bin/run_bd_followup_drafts_cc.sh"
 route    = "bd"
 status   = "standing"
 suite    = ["tests/test_bd_followup_drafts_smoke.sh"]
+skills   = ["investment-research", "meeting-prep", "prospect-research"]
 contract = "design/contracts/bd-followup-drafts.md"
 notes    = "Enabled T2.4 (2026-09-09). 23:30 clears the 04:30/05:30/06:00 jobs sharing agent_propose.sh's global flock — a collision there is a silent SKIP, not a failure (agent-model.md §6.6)."
 
@@ -147,6 +153,7 @@ contract = "design/contracts/buzz-interactive.md"   # ONE contract, five owners 
 rule1_exempt = "five units running byte-identical code share one set of obligations; five files would be five copies of one fact"
 status   = "standing"
 suite    = ["tests/test_buzz_interactive_harness.sh"]
+skills   = []
 in_repo  = true
 
 # Capability prohibitions. enforced = true means a mechanism blocks it today;

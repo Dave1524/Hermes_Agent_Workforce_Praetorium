@@ -81,6 +81,10 @@ asserts = [
   "contract-exempt-spent",  # T4.5: contract_exempt is accepted only on status = "spent", with a non-empty reason
   "contract-exempt-named",  # T4.5: every accepted exemption is printed by name, and named equals counted
   "logical-workflow-reconciled",  # T4.5: standing entries reconcile by logical_workflow — no duplicate unit, no dangling key, one contract per workflow
+  "skills-declared",        # T3.2: every entry carries skills = [...], a list of distinct strings; [] is explicit
+  "skills-mechanism",       # T3.2: skills_mechanism is only "heading-extraction", over a profile that extracts owner-tree pointers
+  "skills-join",            # T3.2: sorted(skills) equals the offer the entry's mechanism delivers to the run
+  "skills-join-counted",    # T3.2: the join reports entries checked = manifest count, and heading-extraction count > 0
 ]
 why_no_workflow = """
 It grades the registry, not a job. Nothing execs it and nothing ever should — its subject is
