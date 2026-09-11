@@ -46,6 +46,11 @@ cannot rot into prose.
 | marcus | `weekly-review`, `agent-inbox-sync`, `post-call-capture` |
 | aurelian | none |
 
+Which of these a run actually opens is measured since T3.3 (2026-09-11): the weekly digest at
+`_inbox/agents/_metrics/scorecard.md` carries a `## Pointer skills (T3.3)` table of runs that read
+each pointer versus runs offered it, rolled up from the `skills=` / `skills_offered=` keys
+`agent_propose.sh` records per run (`docs/runbook.md` § Agent-run metrics & scorecard).
+
 Thirteen pointers. The frozen decision's prose says "1 of these 14 is named by a live
 workflow"; its own table sums to 13, and 13 is what exists here — the 14 is an arithmetic slip
 carried into `docs/dev-plan-2026-09.md`, corrected there and left standing in the archive,

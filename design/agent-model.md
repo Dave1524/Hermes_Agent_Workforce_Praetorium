@@ -210,6 +210,17 @@ is the honest state, not a gap to close by inventing a runner. What the join pro
 *offer*, not *use*: whether a run ever opens a skill it is handed is unmeasured until
 T3.3's invocation telemetry.
 
+**Measured per run since 2026-09-11 (T3.3).** Each `agent_propose.sh` record in `cost.log`
+now carries `skills=` (the pointers the run invoked through the `Skill` tool or read as a
+`SKILL.md`), `skills_offered=` (its session's `skill_listing`) and `skills_src=` —
+extracted by `bin/skill_telemetry.py` from the run's Claude Code transcript, located by the
+`AGENT_SESSION_ID` the runner passed as `--session-id`. `bin/scorecard.sh` rolls them up
+weekly into the `## Pointer skills (T3.3)` table of `_inbox/agents/_metrics/scorecard.md`
+(runs that read each pointer vs runs offered it, 7d and all-time) and one #ops headline
+row. The offer column comes from the transcript, not from the manifest `skills` field
+above, so the two can be cross-checked rather than one assumed from the other. Augustus's
+heading-extraction runs leave no Claude transcript and record `skills_src=none`, honestly.
+
 ## 3. What a manifest is
 
 One file per persona: `design/agents/<name>.toml`. It is the single normative statement

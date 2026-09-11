@@ -36,6 +36,19 @@ sandbox() {
   cat > "$mock_hermes" <<EOF
 #!/usr/bin/env bash
 echo "\$@" >> "$home/hermes_argv.log"
+# T3.3: the runner exports one AGENT_SESSION_ID per attempt; a Claude runner passes it as
+# --session-id and the transcript lands at ~/.claude/projects/<slug>/<id>.jsonl. Record what
+# this attempt saw, and on request write a transcript there in the real record shapes.
+echo "\${AGENT_SESSION_ID:-unset}" >> "$home/session_ids.log"
+if [ "\${MOCK_WRITE_TRANSCRIPT:-}" = "1" ]; then
+  mkdir -p "$home/.claude/projects/fixture"
+  cat > "$home/.claude/projects/fixture/\${AGENT_SESSION_ID}.jsonl" <<'JSONL'
+{"type":"attachment","attachment":{"type":"skill_listing","isInitial":true,"skillCount":6,"names":["finish","shared:codex","praetorium-claudius:investment-research","praetorium-claudius:meeting-prep","praetorium-claudius:prospect-research"]},"sessionId":"x","cwd":"/x","timestamp":"2026-09-11T11:40:00.000Z"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01","name":"Skill","input":{"skill":"praetorium-claudius:meeting-prep"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01","content":"Launching skill: praetorium-claudius:meeting-prep"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_02","name":"Read","input":{"file_path":"/home/dave/vault/08_skills/meeting-prep/SKILL.md"}}]}}
+JSONL
+fi
 [ "\${MOCK_WRITE_FILE:-}" = "1" ] && touch "$home/agent-worktrees/inbox/out_of_bounds.txt"
 [ "\${MOCK_WRITE_PROPOSAL:-}" = "1" ] && { mkdir -p "$home/agent-worktrees/inbox/_inbox/agents"; touch "$home/agent-worktrees/inbox/_inbox/agents/2026-08-08_test-slug.md"; }
 [ "\${MOCK_WRITE_METRICS:-}" = "1" ] && { mkdir -p "$home/agent-worktrees/inbox/_inbox/agents/_metrics"; echo digest > "$home/agent-worktrees/inbox/_inbox/agents/_metrics/scorecard.md"; }
@@ -130,6 +143,10 @@ assert "cost.log proposal=none" "grep -q 'proposal=none' '$h1/agent-workforce/lo
 assert "cost.log memory=no-store (NUC-21 glue ran)" "grep -q 'memory=no-store' '$h1/agent-workforce/logs/cost.log'"
 assert "logs no-store when profile memory dir absent" "grep -q 'MEMORY: no per-profile store' '$h1/agent-workforce/logs/agent_propose.log'"
 assert "no phantom --max-turns flag passed to runtime (NUC-16: hermes -z has none)" "! grep -q -- '--max-turns' '$h1/hermes_argv.log'"
+assert "cost.log skills=unknown (T3.3: sandbox has no transcript)" "grep -q 'skills=unknown' '$h1/agent-workforce/logs/cost.log'"
+assert "cost.log skills_offered=unknown" "grep -q 'skills_offered=unknown' '$h1/agent-workforce/logs/cost.log'"
+assert "cost.log skills_src=none" "grep -q 'skills_src=none' '$h1/agent-workforce/logs/cost.log'"
+assert "the runtime received a session id (uuid)" "grep -qE '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' '$h1/session_ids.log'"
 
 echo "--- scenario 2: all retries fail ---"
 h2=$(sandbox)
@@ -137,6 +154,9 @@ rc=$(run_scenario "$h2" 1 0)
 assert "exits 1" "[ '$rc' = 1 ]"
 assert "logs FAIL after exhausting retries" "grep -q 'FAIL: runtime failed after 3 attempts' '$h2/agent-workforce/logs/agent_propose.log'"
 assert "cost.log written even on failure (outcome=FAIL)" "grep -q 'outcome=FAIL' '$h2/agent-workforce/logs/cost.log'"
+assert "three attempts saw three session ids" "[ \"\$(wc -l < '$h2/session_ids.log')\" = 3 ]"
+assert "and every id is distinct (a retry gets a fresh session)" "[ \"\$(sort -u '$h2/session_ids.log' | wc -l)\" = 3 ]"
+assert "attempt log names the session next to the attempt" "grep -qE 'run attempt 1/3 session=[0-9a-f-]{36}' '$h2/agent-workforce/logs/agent_propose.log'"
 
 echo "--- scenario 3: write-boundary violation ---"
 h3=$(sandbox)
@@ -181,6 +201,7 @@ assert "cost.log outcome=BLOCKED (NUC-37)" "grep -q 'outcome=BLOCKED' '$h7/agent
 assert "cost.log profile=unknown (secrets never sourced)" "grep -q 'profile=unknown' '$h7/agent-workforce/logs/cost.log'"
 assert "cost.log usage_before=unknown (no network probe on early block)" "grep -q 'usage_before=unknown' '$h7/agent-workforce/logs/cost.log'"
 assert "agent never launched (no hermes argv)" "[ ! -s '$h7/hermes_argv.log' ]"
+assert "cost.log skills=unknown on BLOCKED (no attempt, no session)" "grep -q 'skills=unknown skills_offered=unknown skills_src=none' '$h7/agent-workforce/logs/cost.log'"
 
 echo "--- scenario 8: qmd down + policy=block -> BLOCKED, agent not launched (NUC-31/37) ---"
 h8=$(sandbox)
@@ -430,4 +451,38 @@ rc=$(run_mcp_deps "$h27")
 assert "exits 0" "[ '$rc' = 0 ]"
 assert "brave reported UP (no false 'down' from SIGPIPE)" "! grep -q 'brave MCP endpoint down' '$h27/agent-workforce/logs/agent_propose.log'"
 
+echo "--- scenario 28: transcript found by session id -> pointer-skill telemetry in cost.log (T3.3) ---"
+# The mock writes a transcript at ~/.claude/projects/<slug>/<AGENT_SESSION_ID>.jsonl in the real
+# record shapes; log_cost must find it by id (never mtime), run the sibling extractor, and record
+# skills = invoked ∪ read, skills_offered from the listing, skills_src=transcript.
+h28=$(sandbox)
+rc=$(MOCK_WRITE_TRANSCRIPT=1 run_scenario "$h28" 0 0)
+assert "exits 0" "[ '$rc' = 0 ]"
+assert "one session id, a valid uuid" "[ \"\$(grep -cE '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' '$h28/session_ids.log')\" = 1 ]"
+assert "the transcript was written under that id" "[ -f \"$h28/.claude/projects/fixture/\$(cat '$h28/session_ids.log').jsonl\" ]"
+assert "cost.log skills=meeting-prep (invoked ∪ read)" "grep -q ' skills=meeting-prep ' '$h28/agent-workforce/logs/cost.log'"
+assert "cost.log skills_offered=the three pointers, sorted" "grep -q 'skills_offered=investment-research,meeting-prep,prospect-research' '$h28/agent-workforce/logs/cost.log'"
+assert "cost.log skills_src=transcript" "grep -q 'skills_src=transcript' '$h28/agent-workforce/logs/cost.log'"
+assert "the runner logged what it found" "grep -q 'skills: offered=investment-research,meeting-prep,prospect-research invoked=meeting-prep read=meeting-prep src=transcript' '$h28/agent-workforce/logs/agent_propose.log'"
+assert "schema stays 3 (parser is key-based)" "grep -q 'schema=3' '$h28/agent-workforce/logs/cost.log'"
+assert "the three keys are on the same record as the outcome" "grep 'outcome=NOPROPOSAL' '$h28/agent-workforce/logs/cost.log' | grep -q 'skills_src=transcript'"
+
+echo "--- scenario 29: an extractor failure is fail-soft — unknown recorded, run outcome untouched (T3.3) ---"
+h29=$(sandbox)
+# A transcript that exists but is not UTF-8 makes the extractor exit 1 (it skips unparseable
+# JSON lines, not undecodable bytes); the run must still record its real outcome with the
+# telemetry keys reading unknown/unknown/none.
+cat > "$h29/mock_hermes.sh" <<EOF
+#!/usr/bin/env bash
+echo "\${AGENT_SESSION_ID:-unset}" >> "$h29/session_ids.log"
+mkdir -p "$h29/.claude/projects/fixture"
+printf '\xff\xfe not utf-8\n' > "$h29/.claude/projects/fixture/\${AGENT_SESSION_ID}.jsonl"
+exit 0
+EOF
+chmod +x "$h29/mock_hermes.sh"
+rc=$(run_scenario "$h29" 0 0)
+assert "exits 0 (telemetry never fails a run)" "[ '$rc' = 0 ]"
+assert "cost.log outcome=NOPROPOSAL still recorded" "grep -q 'outcome=NOPROPOSAL' '$h29/agent-workforce/logs/cost.log'"
+assert "cost.log telemetry keys read unknown/unknown/none" "grep -q 'skills=unknown skills_offered=unknown skills_src=none' '$h29/agent-workforce/logs/cost.log'"
+assert "the failure is logged with a reason" "grep -q 'skills: telemetry failed' '$h29/agent-workforce/logs/agent_propose.log'"
 exit $fail

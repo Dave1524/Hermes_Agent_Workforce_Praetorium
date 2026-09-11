@@ -158,4 +158,46 @@ assert "exits 0" "[ '$rc' = 0 ]"
 assert "error runs = 1 (CRASHED bucketed with fails)" "grep -q 'Error runs (fail/violation) | 1 (1 fail / 0 violation)' '$d9'"
 assert "no legacy note (CRASHED is a known outcome)" "! grep -q 'pre-NUC-23 record' '$d9'"
 
+echo "--- scenario 10: pointer-skill telemetry rolls up per skill (T3.3) ---"
+# Five records: two with transcript evidence (one inside 7d, one in July), one run whose
+# transcript showed an offer and no read (skills=none), one run with no transcript at all
+# (skills_src=none), and a BLOCKED record carrying the keys — which must not count, because
+# no run happened. Counts are RUNS, not events, so a name read twice in one run is one.
+c10="$TD/cost10.log"; d10="$TD/digest10.md"
+recent=$(date -Is -d '1 day ago')
+{
+  echo "ts=$recent schema=3 profile=claudius model=x task=standing outcome=PROPOSAL proposal=a run_seconds=100 attempts=1 memory=na skills=meeting-prep skills_offered=investment-research,meeting-prep,prospect-research skills_src=transcript"
+  echo "ts=2026-07-13T10:00:00+00:00 schema=3 profile=claudius model=x task=standing outcome=NOPROPOSAL proposal=none run_seconds=80 attempts=1 memory=na skills=meeting-prep skills_offered=investment-research,meeting-prep,prospect-research skills_src=transcript"
+  echo "ts=$recent schema=3 profile=marcus model=x task=daily-plan outcome=OPS proposal=none run_seconds=50 attempts=1 memory=na skills=none skills_offered=investment-research,meeting-prep,prospect-research skills_src=transcript"
+  echo "ts=$recent schema=3 profile=augustus model=x task=augustus-content outcome=NOPROPOSAL proposal=none run_seconds=40 attempts=1 memory=na skills=unknown skills_offered=unknown skills_src=none"
+  echo "ts=$recent schema=3 profile=claudius model=x task=standing outcome=BLOCKED proposal=none run_seconds=0 attempts=0 memory=na skills=meeting-prep skills_offered=meeting-prep skills_src=transcript"
+} > "$c10"
+rc=$(sc "$c10" "$TD/none.tsv" "$d10")
+assert "exits 0" "[ '$rc' = 0 ]"
+assert "runs7d = 3 (OPS in, BLOCKED out)" "grep -q '| Agent runs (last 7d) | 3 |' '$d10'"
+assert "table header present" "grep -q '^## Pointer skills (T3.3)' '$d10'"
+assert "meeting-prep: read 1 (7d) / 2 (all) — offered 2 (7d) / 3 (all)" "grep -qF '| meeting-prep | 1 | 2 | 2 | 3 |' '$d10'"
+assert "investment-research: offered but never read, shown not filtered" "grep -qF '| investment-research | 0 | 0 | 2 | 3 |' '$d10'"
+assert "prospect-research: same shape" "grep -qF '| prospect-research | 0 | 0 | 2 | 3 |' '$d10'"
+assert "the BLOCKED record's names did not count (no 4 anywhere in the table)" "! grep -E '^\| [a-z-]+ \|.*\| 4 \|' '$d10' | grep -q ."
+assert "Signal row: 1 run-read across 1 skill; 1 of 3 runs left no transcript evidence" "grep -qF '| Pointer skills read (last 7d) | 1 run-read(s) across 1 skill(s); 1 of 3 runs left no transcript evidence |' '$d10'"
+assert "Signal row sits after Error runs (last 7d)" "[ \"\$(grep -n 'Error runs (last 7d)' '$d10' | cut -d: -f1)\" -lt \"\$(grep -n 'Pointer skills read (last 7d)' '$d10' | cut -d: -f1)\" ]"
+assert "the table follows the Signal table" "[ \"\$(grep -n '| Record window |' '$d10' | cut -d: -f1)\" -lt \"\$(grep -n '^## Pointer skills' '$d10' | cut -d: -f1)\" ]"
+assert "rows are sorted by name" "[ \"\$(grep -E '^\| [a-z-]+ \| [0-9]' '$d10' | cut -d'|' -f2 | tr -d ' ' | tr '\n' ' ')\" = 'investment-research meeting-prep prospect-research ' ]"
+assert "no 'not recorded yet' line when telemetry exists" "! grep -q 'No skill telemetry recorded yet' '$d10'"
+
+echo "--- scenario 11: a legacy-only cost.log says telemetry is not recorded yet (T3.3) ---"
+d11="$TD/digest11.md"
+rc=$(sc "$c1" "$TD/none.tsv" "$d11")
+assert "exits 0" "[ '$rc' = 0 ]"
+assert "the placeholder line replaces the table" "grep -qF '_No skill telemetry recorded yet (records predate T3.3)._' '$d11'"
+assert "no per-skill table header row" "! grep -q '| Skill | Runs that read it' '$d11'"
+assert "Signal row still present, all zero" "grep -qF '| Pointer skills read (last 7d) | 0 run-read(s) across 0 skill(s); 0 of' '$d11'"
+
+echo "--- scenario 12: telemetry digest is idempotent (T3.3) ---"
+d12a="$TD/digest12a.md"; d12b="$TD/digest12b.md"
+sc "$c10" "$TD/none.tsv" "$d12a" >/dev/null
+sc "$c10" "$TD/none.tsv" "$d12b" >/dev/null
+assert "two runs byte-identical" "cmp -s '$d12a' '$d12b'"
+
 exit $fail

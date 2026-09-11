@@ -7,6 +7,8 @@
 # proposal slugs, no client-identifiable strings, no _confidential content).
 # Cost truth is the OpenRouter dashboard; hermes token/$ accounting is unreliable
 # (#4404/#20741) so tokens/cost are best-effort 'unknown' here — never fabricated.
+# T3.3: skills= / skills_offered= / skills_src= roll up into a per-pointer-skill table
+# (runs that read it, runs offered it; 7d and all-time) — names only, counts only.
 set -uo pipefail   # NOT -e: every failure is swallowed so a run is never blocked
 
 LOG_DIR="${SCORECARD_LOG_DIR:-$HOME/agent-workforce/logs}"
@@ -30,6 +32,31 @@ cutoff=$(date -d '7 days ago' +%s 2>/dev/null || echo 0)
 runs=0 runs7d=0 sum_seconds=0 fails7d=0 violations7d=0
 proposals=0 noproposals=0 fails=0 violations=0 legacy=0 blocked=0 dedup=0 ops=0
 first_ts="" last_ts=""
+# T3.3: per pointer skill, RUNS that read it / were offered it (7d and all-time); plus the
+# runs whose record carries telemetry keys and those that carry no transcript evidence.
+declare -A read7d=() readall=() off7d=() offall=()
+telemetry_records=0 unknown=0 unknown7d=0
+
+count_names() {  # $1 = csv, $2 = all-time array name, $3 = 7d array name, $4 = in7d
+  local -n all_by_name=$2 window_by_name=$3
+  local n
+  for n in ${1//,/ }; do
+    case "$n" in none|unknown|'') continue ;; esac
+    all_by_name[$n]=$(( ${all_by_name[$n]:-0} + 1 ))
+    [ "$4" = 1 ] && window_by_name[$n]=$(( ${window_by_name[$n]:-0} + 1 ))
+  done
+}
+
+tally_skills() {  # $1 = in7d; reads the current record's kv
+  [ -n "${kv[skills]:-}" ] || return 0
+  telemetry_records=$(( telemetry_records + 1 ))
+  if [ "${kv[skills_src]:-none}" = none ]; then
+    unknown=$(( unknown + 1 )); [ "$1" = 1 ] && unknown7d=$(( unknown7d + 1 ))
+    return 0
+  fi
+  count_names "${kv[skills]}" readall read7d "$1"
+  count_names "${kv[skills_offered]:-}" offall off7d "$1"
+}
 
 if [ -r "$COST_LOG" ]; then
   while IFS= read -r line || [ -n "$line" ]; do
@@ -55,22 +82,6 @@ if [ -r "$COST_LOG" ]; then
       BLOCKED) blocked=$(( blocked + 1 )); unset kv; continue ;;
       DEDUP)   dedup=$(( dedup + 1 ));     unset kv; continue ;;
     esac
-    # NUC-36: OPS (non-proposal guarded runs) are real inference but not proposal
-    # jobs — count duration/window, keep a separate bucket, exclude from proposal rate.
-    if [ "${kv[outcome]:-}" = OPS ]; then
-      ops=$(( ops + 1 ))
-      runs=$(( runs + 1 ))
-      sum_seconds=$(( sum_seconds + rs ))
-      ts="${kv[ts]:-$bare_ts}"
-      [ -z "$first_ts" ] && first_ts="$ts"
-      last_ts="$ts"
-      if [ -n "$ts" ]; then
-        ep=$(date -d "$ts" +%s 2>/dev/null || echo 0)
-        [ "$ep" -ge "$cutoff" ] && runs7d=$(( runs7d + 1 ))
-      fi
-      unset kv
-      continue
-    fi
     runs=$(( runs + 1 ))
     sum_seconds=$(( sum_seconds + rs ))
     ts="${kv[ts]:-$bare_ts}"
@@ -80,6 +91,16 @@ if [ -r "$COST_LOG" ]; then
     if [ -n "$ts" ]; then
       ep=$(date -d "$ts" +%s 2>/dev/null || echo 0)
       if [ "$ep" -ge "$cutoff" ]; then runs7d=$(( runs7d + 1 )); in7d=1; fi
+    fi
+    # T3.3: every real run — OPS included — is a run that was or was not offered a skill.
+    tally_skills "$in7d"
+    # NUC-36: OPS (non-proposal guarded runs) are real inference but not proposal
+    # jobs — counted in duration/window above, kept in a separate bucket, excluded
+    # from the proposal rate.
+    if [ "${kv[outcome]:-}" = OPS ]; then
+      ops=$(( ops + 1 ))
+      unset kv
+      continue
     fi
     case "${kv[outcome]:-}" in
       PROPOSAL)   proposals=$(( proposals + 1 )) ;;
@@ -139,6 +160,12 @@ avg_dur="n/a"
 # don't duplicate (per the NUC-23 brief's out-of-scope note).
 [ -n "$first_ts" ] || first_ts="(none)"
 [ -n "$last_ts" ] || last_ts="(none)"
+# T3.3: the headline is run-reads in the window and how many distinct skills they touched.
+reads7d=0 skills_read7d=0
+for n in "${!read7d[@]}"; do
+  reads7d=$(( reads7d + read7d[$n] )); skills_read7d=$(( skills_read7d + 1 ))
+done
+skill_names=$(printf '%s\n' "${!readall[@]}" "${!offall[@]}" | awk 'NF' | sort -u)
 
 # ── Write the digest (data-derived header => idempotent) ──
 mkdir -p "$METRICS_DIR" 2>/dev/null || { echo "scorecard: cannot create $METRICS_DIR — skip"; exit 0; }
@@ -164,6 +191,7 @@ tmp="$(mktemp "${TMPDIR:-/tmp}/scorecard.XXXXXX")" || { echo "scorecard: mktemp 
   echo "| Deduplicated dispatches (idempotent) | ${dedup} |"
   echo "| Error runs (fail/violation) | ${errors} (${fails} fail / ${violations} violation) |"
   echo "| Error runs (last 7d) | ${errors7d} (${fails7d} fail / ${violations7d} violation) |"
+  echo "| Pointer skills read (last 7d) | ${reads7d} run-read(s) across ${skills_read7d} skill(s); ${unknown7d} of ${runs7d} runs left no transcript evidence |"
   echo "| Approvals promoted / rejected / edited | ${approvals_cell} |"
   echo "| Acceptance rate (promoted+edited / decisions) | ${acceptance_rate} |"
   echo "| Clean-promote rate (promoted / decisions) | ${clean_promote_rate} |"
@@ -172,6 +200,18 @@ tmp="$(mktemp "${TMPDIR:-/tmp}/scorecard.XXXXXX")" || { echo "scorecard: mktemp 
   echo "| Avg run duration | ${avg_dur} |"
   echo "| Box uptime | see praetorium-status.sh (NUC-18) |"
   echo "| Record window | ${first_ts} → ${last_ts} |"
+  echo
+  echo "## Pointer skills (T3.3)"
+  echo
+  if [ "$telemetry_records" -eq 0 ]; then
+    echo "_No skill telemetry recorded yet (records predate T3.3)._"
+  else
+    echo "| Skill | Runs that read it (7d) | Runs that read it (all-time) | Runs offered it (7d) | Runs offered it (all-time) |"
+    echo "|---|---|---|---|---|"
+    for n in $skill_names; do
+      echo "| $n | ${read7d[$n]:-0} | ${readall[$n]:-0} | ${off7d[$n]:-0} | ${offall[$n]:-0} |"
+    done
+  fi
   if [ "$legacy" -gt 0 ]; then
     echo
     echo "_Note: ${legacy} pre-NUC-23 record(s) counted as runs with unknown proposal status (legacy \`outcome=OK\`)._"

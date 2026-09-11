@@ -174,6 +174,7 @@ cat > "$h/scorecard.md" <<'MD'
 | Agent runs (all-time) | 129 |
 | Proposal rate | 46% |
 | Error runs (last 7d) | 0 (0 fail / 0 violation) |
+| Pointer skills read (last 7d) | 2 run-read(s) across 1 skill(s); 0 of 9 runs left no transcript evidence |
 | Acceptance rate (promoted+edited / decisions) | 71% |
 | Record window | 2026-06-01 → 2026-08-07 |
 MD
@@ -185,6 +186,7 @@ assert 'a month-old digest still delivers' "[ \"\$(calls '$h')\" -eq 1 ]"
 assert 'routed to ops' "argv '$h' | grep -q -- '--route ops'"
 assert 'headline rows summarised' "argv '$h' | grep -q 'Proposal rate: 46%'"
 assert 'the record window is carried' "argv '$h' | grep -q 'Record window: 2026-06-01'"
+assert 'the pointer-skills row is carried (T3.3)' "argv '$h' | grep -q 'Pointer skills read (last 7d): 2 run-read(s) across 1 skill(s)'"
 assert 'the digest itself is never attached' "! argv '$h' | grep -q -- '--file'"
 
 echo '--- deliver_scorecard.sh: a missing digest is reported, not swallowed ---'

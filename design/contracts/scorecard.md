@@ -43,6 +43,14 @@ Monday with nothing new still posts the rollup. The run's artifact is the delive
 - **Delivery** — `bin/deliver_scorecard.sh` forwards the digest's headline rows to #ops every
   run (`summarising N headline row(s)` → `handed to deliver.sh (route=ops)` in
   `~/logs/deliver_scorecard.log`); receipt `job = scorecard.service`, route `ops`.
+- **2026-09-11 (T3.3):** the dated artifact now also carries a `## Pointer skills (T3.3)` table —
+  one row per pointer name seen in `cost.log`'s `skills=` / `skills_offered=` keys: runs that read
+  it and runs offered it, 7d and all-time — and the headline rows gain
+  `Pointer skills read (last 7d)` (`<n> run-read(s) across <k> skill(s); <u> of <runs7d> runs left
+  no transcript evidence`). Until a run on the deployed code has recorded the keys the table is
+  the single line `_No skill telemetry recorded yet (records predate T3.3)._`. Names are the
+  public `skills/` tree, values are counts; still box-safe, still idempotent. The checks are
+  unchanged, so the contract version is unchanged.
 - **Beneficiary:** Dave — the one weekly view of how many runs, how many proposals, how many
   failures.
 - **Next actor:** Dave.

@@ -268,6 +268,22 @@ asserts = [
   "drift-covers-skills",        # skills is in bin/deploy PATHS and in CONTENT_TREES, read from both
   "pointer-target-exists",      # box-gated: every named vault path resolves (existence only, never read)
 ]
+
+# T3.3: the transcript extractor behind the three cost.log keys (skills, skills_offered,
+# skills_src). Fixtures only — each record shape was recorded verbatim off claude 2.1.268, and the
+# one negative that matters is the Skill tool's own schema, which every transcript carries as the
+# string "name":"Skill" and which a grep-shaped extractor counts as an invocation.
+[[suite]]
+path    = "tests/test_skill_telemetry.sh"
+owner   = "fleet"
+asserts = [
+  "telemetry-offer-from-listing",           # offered = the skill_listing attachment's names, namespace-filtered, unqualified
+  "telemetry-invoked-from-skill-tool",      # invoked = a Skill tool_use block naming the pointer
+  "telemetry-read-from-skill-md",           # read = a Read tool_use of the canonical or pointer SKILL.md
+  "telemetry-ignores-foreign-namespace",    # shared:codex and a references/ read are neither invoked nor read
+  "telemetry-schema-not-an-invocation",     # the tool schema line alone yields invoked=none
+  "telemetry-missing-transcript-fails-loud",# a missing path exits 2 with the path on stderr
+]
 why_no_workflow = """
 Nothing schedules it and nothing should. Its inputs change only when a human edits them, which
 is exactly when bin/verify.sh already runs it. The one thing a timer could add — proving a live
