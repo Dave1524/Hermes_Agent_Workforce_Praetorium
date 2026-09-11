@@ -67,6 +67,8 @@ LEGAL_SUFFIXES = {"bv", "nv", "cv", "vof", "bvba", "gmbh", "ag", "ltd", "plc",
                   "inc", "llc", "sa", "srl", "sarl", "ab", "oy", "aps"}
 MIN_SHORT_FORM = 6   # chars; the old single-token floor, kept for the short form
 PHRASE_WINDOW = 6    # max words a folded company name may span in the prose
+# Lowercase words allowed inside a capitalised name phrase ("Jan de Rijk").
+NAME_PARTICLES = {"de", "den", "der", "van", "von", "du", "le", "la", "en", "of", "and", "the"}
 
 
 # ── Notion ────────────────────────────────────────────────────────────────
@@ -175,12 +177,29 @@ def name_forms(client):
     return forms
 
 
-def priority_phrases(priorities_lc):
-    """Every run of 1..PHRASE_WINDOW consecutive words in the prose, folded the same
-    way as name_forms, so a match is always on whole words."""
-    words = re.findall(r"[a-z0-9]+", priorities_lc)
-    return {"".join(words[i:i + k])
-            for i in range(len(words)) for k in range(1, PHRASE_WINDOW + 1)}
+def _is_name_word(word):
+    return word[0].isupper() or word[0].isdigit()
+
+
+def _is_name_phrase(words):
+    """A company mention is capitalised; prose is not. Folding whitespace away made
+    "RealCold" equal "the real cold-storage risk" (measured 2026-09-11), so a window
+    only counts when every word is capitalised, a digit, or a name particle."""
+    return any(_is_name_word(w) for w in words) and \
+        all(_is_name_word(w) or w in NAME_PARTICLES for w in words)
+
+
+def priority_phrases(priorities):
+    """Every capitalised run of 1..PHRASE_WINDOW consecutive words in the prose,
+    folded the same way as name_forms, so a match is always on whole words."""
+    words = re.findall(r"[A-Za-z0-9]+", priorities)
+    phrases = set()
+    for i in range(len(words)):
+        for k in range(1, PHRASE_WINDOW + 1):
+            window = words[i:i + k]
+            if _is_name_phrase(window):
+                phrases.add("".join(window).lower())
+    return phrases
 
 
 def named_in_priorities(client, phrases):
@@ -338,8 +357,8 @@ def classify(today):
     if not token:
         raise RuntimeError("NOTION_API_TOKEN not in environment")
     deals = fetch_deals(token)
-    priorities_lc = get_priorities().lower()
-    phrases = priority_phrases(priorities_lc)
+    priorities = get_priorities()
+    phrases = priority_phrases(priorities)
     already = recently_flagged(today)
     candidates = []
     for d in deals:
@@ -354,7 +373,7 @@ def classify(today):
     stalls = [c for c in candidates if not c["suppress"] and not c["dedup"]]
     # warm (actionable) first, then aging by age, then never-contacted by name
     stalls.sort(key=lambda c: (c["never"], c["aging"], -(c["days"] or 0), c["client"].lower()))
-    return deals, candidates, stalls, priorities_lc
+    return deals, candidates, stalls, priorities
 
 
 def main():
@@ -363,13 +382,13 @@ def main():
     args = ap.parse_args()
     today = dt.date.today()
 
-    deals, candidates, stalls, priorities_lc = classify(today)
+    deals, candidates, stalls, priorities = classify(today)
     warm, aging, never = _counts(stalls)
 
     print(f"bd-stall-radar (deterministic) {today} — {len(deals)} deals, "
           f"{len(candidates)} Prospect&unworked, {len(stalls)} flagged "
           f"({warm} warm, {aging} aging, {never} never contacted)")
-    if not priorities_lc:
+    if not priorities:
         print("[warn] current_priorities.md empty via qmd — suppression degraded")
     for c in candidates:
         if c["suppress"]:
