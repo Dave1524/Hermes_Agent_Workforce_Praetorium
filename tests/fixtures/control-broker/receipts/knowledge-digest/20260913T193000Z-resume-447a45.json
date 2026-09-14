@@ -1,0 +1,113 @@
+{
+  "action": "resume",
+  "actor": {
+    "kind": "screen",
+    "label": "dave via control-room from 100.64.0.9",
+    "local": "100.86.82.16",
+    "peer": {
+      "gid": 1000,
+      "pid": 438287,
+      "uid": 1000
+    },
+    "remote": "100.64.0.9",
+    "user": null
+  },
+  "after": null,
+  "before": {
+    "fingerprint": "9c8abf4a9e53901891adaa7d8c3926120c2d8166ea1792c1a22bef09150b020a",
+    "state": "paused",
+    "units": [
+      {
+        "scope": "system",
+        "service": {
+          "activeState": "inactive",
+          "endedAt": null,
+          "invocationId": null,
+          "loadState": "loaded",
+          "name": "knowledge-digest.service",
+          "raw": {
+            "endedAt": null,
+            "startedAt": null
+          },
+          "result": "success",
+          "startedAt": null,
+          "subState": "dead"
+        },
+        "timer": {
+          "activeState": "inactive",
+          "calendars": [
+            "Sun 09:00"
+          ],
+          "lastTriggerAt": null,
+          "loadState": "loaded",
+          "name": "knowledge-digest.timer",
+          "nextElapseAt": null,
+          "persistent": true,
+          "raw": {
+            "lastTriggerAt": null,
+            "nextElapseAt": null
+          },
+          "subState": "dead",
+          "unitFileState": "disabled"
+        },
+        "unit": "knowledge-digest"
+      }
+    ]
+  },
+  "catch_up_fired": null,
+  "commands": [
+    {
+      "argv": [
+        "systemctl",
+        "show",
+        "knowledge-digest.timer",
+        "--property=ActiveState,SubState,UnitFileState,LoadState,LastTriggerUSec,NextElapseUSecRealtime,Persistent,TimersCalendar",
+        "--timestamp=utc",
+        "--no-pager"
+      ],
+      "exit": 0,
+      "seconds": 0.028,
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "systemctl",
+        "show",
+        "knowledge-digest.service",
+        "--property=ActiveState,SubState,LoadState,Result,InvocationID,ExecMainStartTimestamp,ExecMainExitTimestamp",
+        "--timestamp=utc",
+        "--no-pager"
+      ],
+      "exit": 0,
+      "seconds": 0.015,
+      "stderr": ""
+    }
+  ],
+  "completed_at": "2026-09-13T19:30:00Z",
+  "confirm": false,
+  "implication": null,
+  "links": {
+    "preview_receipt": null,
+    "retry_of": null,
+    "run": null,
+    "workflow": "/workflows/knowledge-digest"
+  },
+  "next_scheduled_run": null,
+  "note": null,
+  "reason": "try without preview",
+  "receipt_id": "20260913T193000Z-resume-447a45",
+  "refusal": {
+    "choices": null,
+    "code": "preview_required",
+    "message": "resume needs stage: preview first, then apply with its preview_token"
+  },
+  "requested_action": "resume",
+  "requested_at": "2026-09-13T19:30:00Z",
+  "requested_workflow_id": "knowledge-digest",
+  "result": "refused",
+  "run_id": null,
+  "schema": 1,
+  "stage": "apply",
+  "trigger": null,
+  "workflow_id": "knowledge-digest"
+}

@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""Fake `systemd-analyze calendar --iterations=2 <spec>` for the control-broker suites.
+
+The calendar table is a JSON file mapping a spec to its next two elapses (ISO 8601, UTC):
+../calendar.json beside this file by default (the broker passes its children no environment
+but PATH, LC_ALL and TZ), FAKE_CALENDAR for a hand run. The layout printed is the real one,
+line for line, so the broker's parser is exercised on the shape it will meet on the box. An
+unmapped spec fails the way systemd-analyze fails.
+"""
+import datetime as dt
+import json
+import os
+import sys
+
+
+def stamp(iso):
+    value = dt.datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone(dt.timezone.utc)
+    return value.strftime("%a %Y-%m-%d %H:%M:%S UTC")
+
+
+def main(argv):
+    if len(argv) < 3 or argv[0] != "calendar" or argv[1] != "--iterations=2":
+        sys.stderr.write("fake systemd-analyze: unsupported call: " + " ".join(argv) + "\n")
+        return 2
+    spec = argv[2]
+    home = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    path = os.environ.get("FAKE_CALENDAR") or os.path.join(home, "calendar.json")
+    with open(path, encoding="utf-8") as handle:
+        table = json.load(handle)
+    if spec not in table:
+        sys.stderr.write("Failed to parse calendar specification '" + spec + "': Invalid argument\n")
+        return 1
+    first, second = table[spec]
+    sys.stdout.write(f"  Original form: {spec}\n")
+    sys.stdout.write(f"Normalized form: {spec}\n")
+    sys.stdout.write(f"    Next elapse: {stamp(first)}\n")
+    sys.stdout.write("       From now: some time left\n")
+    sys.stdout.write(f"   Iteration #2: {stamp(second)}\n")
+    sys.stdout.write("       From now: some time left\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

@@ -1,0 +1,72 @@
+{
+  "excluded": [
+    {
+      "owner": "marcus",
+      "reason": "kind = service (always-on, not a timer workflow)",
+      "unit": "buzz-agent@marcus"
+    },
+    {
+      "owner": "trajan",
+      "reason": "status = spent",
+      "unit": "nekovri-subsidy-kickoff"
+    }
+  ],
+  "schema": 1,
+  "workflows": {
+    "augustus-content": {
+      "contract": "design/contracts/augustus-content.md",
+      "owner": "augustus",
+      "retry": false,
+      "retry_reason": "contract declares no idempotent operation",
+      "triggers": [
+        {"scope": "system", "unit": "augustus-content"},
+        {"scope": "system", "unit": "content-change-dispatch"}
+      ]
+    },
+    "buzz-pr-watch": {
+      "contract": "design/contracts/buzz-pr-watch.md",
+      "owner": "trajan",
+      "retry": false,
+      "retry_reason": "contract declares no idempotent operation",
+      "triggers": [
+        {"scope": "user", "unit": "buzz-pr-watch"}
+      ]
+    },
+    "knowledge-digest": {
+      "contract": "design/contracts/knowledge-digest.md",
+      "owner": "claudius",
+      "retry": false,
+      "retry_reason": "contract declares no idempotent operation",
+      "triggers": [
+        {"scope": "system", "unit": "knowledge-digest"}
+      ]
+    },
+    "local-tier-eval": {
+      "contract": "design/contracts/local-tier-eval.md",
+      "owner": "trajan",
+      "retry": false,
+      "retry_reason": "contract declares no idempotent operation",
+      "triggers": [
+        {"scope": "system", "unit": "local-tier-eval"}
+      ]
+    },
+    "masked-job": {
+      "contract": null,
+      "owner": "trajan",
+      "retry": false,
+      "retry_reason": "contract not declared",
+      "triggers": [
+        {"scope": "system", "unit": "masked-job"}
+      ]
+    },
+    "scorecard": {
+      "contract": "design/contracts/scorecard.md",
+      "owner": "trajan",
+      "retry": true,
+      "retry_reason": "idempotent: deterministic over cost.log, unchanged week is not rewritten",
+      "triggers": [
+        {"scope": "system", "unit": "scorecard"}
+      ]
+    }
+  }
+}

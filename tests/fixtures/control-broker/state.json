@@ -1,0 +1,139 @@
+{
+ "knowledge-digest.timer": {
+  "LoadState": "loaded",
+  "ActiveState": "inactive",
+  "SubState": "dead",
+  "UnitFileState": "disabled",
+  "LastTriggerUSec": "",
+  "NextElapseUSecRealtime": "",
+  "Persistent": "yes",
+  "TimersCalendar": "{ OnCalendar=Sun 09:00 ; next_elapse=n/a }",
+  "_catch_up": true
+ },
+ "knowledge-digest.service": {
+  "LoadState": "loaded",
+  "ActiveState": "inactive",
+  "SubState": "dead",
+  "Result": "success",
+  "InvocationID": "",
+  "ExecMainStartTimestamp": "",
+  "ExecMainExitTimestamp": ""
+ },
+ "scorecard.timer": {
+  "LoadState": "loaded",
+  "ActiveState": "inactive",
+  "SubState": "dead",
+  "UnitFileState": "disabled",
+  "LastTriggerUSec": "",
+  "NextElapseUSecRealtime": "",
+  "Persistent": "yes",
+  "TimersCalendar": "{ OnCalendar=Mon 07:00 ; next_elapse=n/a }",
+  "_next_on_enable": "Mon 2026-09-21 07:00:00 UTC"
+ },
+ "scorecard.service": {
+  "LoadState": "loaded",
+  "ActiveState": "inactive",
+  "SubState": "dead",
+  "Result": "success",
+  "InvocationID": "",
+  "ExecMainStartTimestamp": "",
+  "ExecMainExitTimestamp": ""
+ },
+ "augustus-content.timer": {
+  "LoadState": "loaded",
+  "ActiveState": "active",
+  "SubState": "waiting",
+  "UnitFileState": "enabled",
+  "LastTriggerUSec": "Sun 2026-09-13 01:30:00 UTC",
+  "NextElapseUSecRealtime": "Tue 2026-09-15 01:30:00 UTC",
+  "Persistent": "no",
+  "TimersCalendar": "{ OnCalendar=daily 01:30 ; next_elapse=Tue 2026-09-15 01:30:00 UTC }"
+ },
+ "augustus-content.service": {
+  "LoadState": "loaded",
+  "ActiveState": "inactive",
+  "SubState": "dead",
+  "Result": "success",
+  "InvocationID": "",
+  "ExecMainStartTimestamp": "Sun 2026-09-13 01:30:02 UTC",
+  "ExecMainExitTimestamp": "Sun 2026-09-13 01:31:40 UTC"
+ },
+ "content-change-dispatch.timer": {
+  "LoadState": "loaded",
+  "ActiveState": "active",
+  "SubState": "waiting",
+  "UnitFileState": "enabled",
+  "LastTriggerUSec": "Mon 2026-09-14 07:45:00 UTC",
+  "NextElapseUSecRealtime": "Mon 2026-09-14 08:00:00 UTC",
+  "Persistent": "no",
+  "TimersCalendar": "{ OnCalendar=*:0/15 ; next_elapse=Mon 2026-09-14 08:00:00 UTC }"
+ },
+ "content-change-dispatch.service": {
+  "LoadState": "loaded",
+  "ActiveState": "inactive",
+  "SubState": "dead",
+  "Result": "success",
+  "InvocationID": "",
+  "ExecMainStartTimestamp": "Mon 2026-09-14 07:45:01 UTC",
+  "ExecMainExitTimestamp": "Mon 2026-09-14 07:45:03 UTC"
+ },
+ "buzz-pr-watch.timer": {
+  "LoadState": "loaded",
+  "ActiveState": "inactive",
+  "SubState": "dead",
+  "UnitFileState": "disabled",
+  "LastTriggerUSec": "",
+  "NextElapseUSecRealtime": "",
+  "Persistent": "no",
+  "TimersCalendar": "{ OnCalendar=daily 09:23 ; next_elapse=n/a }",
+  "_next_on_enable": "Tue 2026-09-15 09:23:00 UTC"
+ },
+ "buzz-pr-watch.service": {
+  "LoadState": "loaded",
+  "ActiveState": "inactive",
+  "SubState": "dead",
+  "Result": "success",
+  "InvocationID": "",
+  "ExecMainStartTimestamp": "",
+  "ExecMainExitTimestamp": ""
+ },
+ "local-tier-eval.timer": {
+  "LoadState": "loaded",
+  "ActiveState": "active",
+  "SubState": "waiting",
+  "UnitFileState": "enabled",
+  "LastTriggerUSec": "Mon 2026-09-14 07:00:00 UTC",
+  "NextElapseUSecRealtime": "Tue 2026-09-15 07:00:00 UTC",
+  "Persistent": "yes",
+  "TimersCalendar": "{ OnCalendar=daily 07:00 ; next_elapse=Tue 2026-09-15 07:00:00 UTC }"
+ },
+ "local-tier-eval.service": {
+  "LoadState": "loaded",
+  "ActiveState": "active",
+  "SubState": "running",
+  "Result": "success",
+  "InvocationID": "5f1c2a7e9b3d4c6f8a1b2c3d4e5f6a7b",
+  "ExecMainStartTimestamp": "Mon 2026-09-14 07:00:01 UTC",
+  "ExecMainExitTimestamp": ""
+ },
+ "masked-job.timer": {
+  "LoadState": "masked",
+  "ActiveState": "inactive",
+  "SubState": "dead",
+  "UnitFileState": "masked",
+  "LastTriggerUSec": "",
+  "NextElapseUSecRealtime": "",
+  "Persistent": "no",
+  "TimersCalendar": ""
+ },
+ "masked-job.service": {
+  "LoadState": "masked",
+  "ActiveState": "inactive",
+  "SubState": "dead",
+  "Result": "success",
+  "InvocationID": "",
+  "ExecMainStartTimestamp": "",
+  "ExecMainExitTimestamp": ""
+ },
+ "_invocation_counter": 0
+}

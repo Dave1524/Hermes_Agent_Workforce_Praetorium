@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""Fake systemctl for tests/test_control_broker.py and tests/test_control_room_control.py.
+
+State is one JSON file: unit name -> `systemctl show` properties. The suite copies bin/ into
+a temp directory and writes the state beside it, as tests/fixtures/contract-exec/bin/systemctl
+does, because the broker hands its children PATH, LC_ALL and TZ and nothing else — so the
+defaults are ../state.json, ../calls.log and ../fail next to this file, and the FAKE_SYSTEMCTL_*
+variables override them only for a hand run. Every call appends its full argv, space-joined and
+including any --user/--machine prefix, to the log. The fail file (or FAKE_SYSTEMCTL_FAIL) names
+one unit whose mutating verbs exit 1.
+Mutations mirror what real systemd does to the properties the broker re-reads: enable
+--now makes a timer active/waiting/enabled and, when the unit carries `_catch_up`, starts
+its service the way Persistent=true does; disable --now makes it inactive/dead/disabled;
+start makes a service active/running with a fresh InvocationID; stop makes it inactive.
+"""
+import datetime as dt
+import fcntl
+import json
+import os
+import sys
+
+STRIP = ("--user", "--no-pager", "--timestamp=utc", "--no-block", "--now")
+HOME = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+STATE = os.environ.get("FAKE_SYSTEMCTL_STATE") or os.path.join(HOME, "state.json")
+LOG = os.environ.get("FAKE_SYSTEMCTL_LOG") or os.path.join(HOME, "calls.log")
+FAIL_FILE = os.path.join(HOME, "fail")
+FAIL = os.environ.get("FAKE_SYSTEMCTL_FAIL") or (
+    open(FAIL_FILE, encoding="utf-8").read().strip() if os.path.exists(FAIL_FILE) else "")
+NOW = dt.datetime.now(dt.timezone.utc).strftime("%a %Y-%m-%d %H:%M:%S UTC")
+
+
+def log(argv):
+    if LOG:
+        with open(LOG, "a", encoding="utf-8") as handle:
+            handle.write("systemctl " + " ".join(argv) + "\n")
+
+
+def load(handle):
+    handle.seek(0)
+    raw = handle.read()
+    return json.loads(raw) if raw.strip() else {}
+
+
+def save(handle, state):
+    handle.seek(0)
+    handle.truncate()
+    handle.write(json.dumps(state, indent=1, sort_keys=True))
+    handle.flush()
+
+
+def show(state, args):
+    unit = args[0]
+    wanted = []
+    rest = args[1:]
+    while rest:
+        item = rest.pop(0)
+        if item in ("-p", "--property"):
+            wanted.extend(rest.pop(0).split(","))
+        elif item.startswith("--property="):
+            wanted.extend(item.split("=", 1)[1].split(","))
+    props = state.get(unit)
+    if props is None:
+        props = {"LoadState": "not-found", "ActiveState": "inactive"}
+    for key in wanted:
+        if key.startswith("_"):
+            continue
+        sys.stdout.write(f"{key}={props.get(key, '')}\n")
+
+
+def mutate(state, verb, unit):
+    if unit == FAIL:
+        sys.stderr.write(f"Failed to {verb} {unit}: fake failure\n")
+        return 1
+    props = state.setdefault(unit, {"LoadState": "loaded"})
+    if verb == "enable" and unit.endswith(".timer"):
+        props.update(ActiveState="active", SubState="waiting", UnitFileState="enabled",
+                     NextElapseUSecRealtime=props.get("_next_on_enable", "Sun 2026-09-20 09:00:00 UTC"))
+        if props.get("_catch_up"):
+            start_service(state, unit[:-len(".timer")] + ".service")
+        return 0
+    if verb == "disable" and unit.endswith(".timer"):
+        props.update(ActiveState="inactive", SubState="dead", UnitFileState="disabled", NextElapseUSecRealtime="")
+        return 0
+    if verb == "start" and unit.endswith(".service"):
+        start_service(state, unit)
+        return 0
+    if verb == "stop" and unit.endswith(".service"):
+        props.update(ActiveState="inactive", SubState="dead", Result="success", ExecMainExitTimestamp=NOW)
+        return 0
+    sys.stderr.write(f"fake systemctl: unsupported call: {verb} {unit}\n")
+    return 2
+
+
+def start_service(state, unit):
+    counter = int(state.get("_invocation_counter", 0)) + 1
+    state["_invocation_counter"] = counter
+    props = state.setdefault(unit, {"LoadState": "loaded"})
+    props.update(ActiveState="active", SubState="running", Result="success", InvocationID=f"{counter:032x}",
+                 ExecMainStartTimestamp=NOW, ExecMainExitTimestamp="")
+
+
+def main(argv):
+    log(argv)
+    args = [item for item in argv if item not in STRIP and not item.startswith("--machine=")]
+    if not args or not os.path.exists(STATE):
+        sys.stderr.write(f"fake systemctl: no verb or no state file at {STATE}\n")
+        return 2
+    verb, rest = args[0], args[1:]
+    with open(STATE, "r+", encoding="utf-8") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        state = load(handle)
+        if verb == "show" and rest:
+            show(state, rest)
+            return 0
+        if verb in ("enable", "disable", "start", "stop") and len(rest) == 1:
+            code = mutate(state, verb, rest[0])
+            save(handle, state)
+            return code
+    sys.stderr.write("fake systemctl: unsupported call: " + " ".join(argv) + "\n")
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

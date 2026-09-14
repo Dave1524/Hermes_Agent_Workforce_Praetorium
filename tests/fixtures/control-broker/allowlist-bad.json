@@ -1,0 +1,15 @@
+{
+  "excluded": [],
+  "schema": 1,
+  "workflows": {
+    "evil": {
+      "contract": null,
+      "owner": "nobody",
+      "retry": false,
+      "retry_reason": null,
+      "triggers": [
+        {"scope": "system", "unit": "x; rm -rf /"}
+      ]
+    }
+  }
+}
