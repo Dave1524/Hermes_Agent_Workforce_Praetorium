@@ -1,0 +1,20 @@
+# Benefit ledger — the Keep / Improve / Retire decision per logical workflow (T5.3 file, T5.4 entries).
+#
+# The Control Room's Benefit view reads this file; the repo writes it. One [[workflow]] per
+# logical id (the `logical_workflow`, or the unit when none — augustus-content, not
+# content-change-dispatch). A workflow with no entry renders every ledger field as Unknown,
+# which is the correct state until a decision has been taken: nothing here is estimated, and
+# the measured columns (eligible runs, valid-artifact rate, latency, consumption) come from
+# receipts, never from this file.
+#
+# Fields and vocabulary:
+#   id                     = "<logical id>"                          required
+#   decision               = "Keep" | "Improve" | "Retire" | "Unknown" required; anything else is a
+#                                                                     named error and the row renders Unknown
+#   baseline               = "<what the workflow replaces, in one line>"
+#   manual_minutes_avoided = <integer minutes per run>
+#   decided_at             = "YYYY-MM-DD"
+#   decided_by             = "Dave"
+#   evidence               = "<the observation the decision rests on>"
+#
+# Zero entries at creation (2026-09-14). T5.4 owns every entry added below this line.

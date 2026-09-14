@@ -70,7 +70,8 @@ class FakeCalendar:
 
 def build_model(**overrides) -> api.ControlRoomReadModel:
     kwargs = dict(
-        paths=api.SourcePaths(repo=ROOT, runtime=FIXTURE, receipts=FIXTURE / "receipts"),
+        paths=api.SourcePaths(repo=ROOT, runtime=FIXTURE, receipts=FIXTURE / "receipts",
+                              ledger=FIXTURE / "benefit-ledger.toml"),
         systemd=FakeSystemd(),
         clock=lambda: NOW,
         calendar_runner=FakeCalendar(),

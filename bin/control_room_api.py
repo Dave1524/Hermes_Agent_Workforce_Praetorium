@@ -39,6 +39,7 @@ from workflow_receipt import (  # noqa: E402
     validate as validate_receipt,
 )
 from control_room_cadence import cadence_for, freshness, parse_systemd_timestamp  # noqa: E402
+from control_room_benefit import benefit_row, load_ledger  # noqa: E402
 from control_room_state import (  # noqa: E402
     control_for,
     fold_cadence,
@@ -132,6 +133,7 @@ class SourcePaths:
     repo: pathlib.Path
     runtime: pathlib.Path
     receipts: pathlib.Path
+    ledger: pathlib.Path | None = None
 
     @classmethod
     def defaults(cls) -> "SourcePaths":
@@ -368,6 +370,7 @@ class ControlRoomReadModel:
     def workflows(self, include_nonstanding: bool = False) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         entries, manifest_errors = self._manifests()
         receipts, malformed, receipt_errors = self.receipts()
+        ledger, ledger_errors = load_ledger(self.paths.repo, self.paths.ledger)
         if not include_nonstanding:
             entries = [entry for entry in entries if entry.get("status") == "standing"]
         receipt_by_workflow: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -423,6 +426,8 @@ class ControlRoomReadModel:
                 )
             cadence = fold_cadence(triggers)
             last_valid = last_valid_artifact(workflow_receipts, self.clock())
+            benefit = benefit_row({"id": logical_id, "contract": contract}, workflow_receipts,
+                                  (ledger or {}).get(logical_id))
             item = {
                 "id": logical_id,
                 "name": logical_id.replace("-", " ").title(),
@@ -446,22 +451,35 @@ class ControlRoomReadModel:
                 "artifactFreshness": freshness(last_valid["ageSeconds"] if last_valid else None, cadence),
                 "control": control_for(logical_id, triggers, cadence, self.control_reader),
                 "links": links_for(logical_id, contract),
+                "benefit": benefit,
+                "eligibleRuns": benefit["eligibleRuns"],
+                "validArtifactRate": benefit["validArtifactRate"],
+                "incompleteRuns": [self._run_summary(r) for r in workflow_receipts
+                                   if r["terminal"]["outcome"] in {"skipped", "failed"}],
             }
             items.append(item)
         status = {
             "manifests": "available" if not manifest_errors else "degraded",
             "contracts": "available" if not contract_errors else "degraded",
-            "receipts": "available" if not receipt_errors and not malformed else "degraded",
+            "receipts": self._receipt_status(receipt_errors, malformed),
             "systemd": "available" if not systemd_errors else "degraded",
+            "benefitLedger": "unavailable" if ledger is None else ("degraded" if ledger_errors else "available"),
             "errors": {
                 "manifests": manifest_errors,
                 "contracts": contract_errors,
                 "receipts": receipt_errors,
                 "malformedReceipts": malformed,
                 "systemd": systemd_errors,
+                "benefitLedger": ledger_errors,
             },
         }
         return items, status
+
+    @staticmethod
+    def _receipt_status(source_errors: list[str], malformed: list[dict[str, Any]]) -> str:
+        if source_errors:
+            return "unavailable"
+        return "degraded" if malformed else "available"
 
     @staticmethod
     def _run_summary(receipt: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -522,7 +540,7 @@ class ControlRoomReadModel:
             receipts = [receipt for receipt in receipts if receipt.get("workflow_id") == workflow_id]
         items = [self._run_summary(receipt) for receipt in receipts]
         status = {
-            "receipts": "available" if not source_errors and not malformed else "degraded",
+            "receipts": self._receipt_status(source_errors, malformed),
             "errors": {"receipts": source_errors, "malformedReceipts": malformed},
         }
         return [item for item in items if item], status
@@ -611,6 +629,10 @@ class ControlRoomReadModel:
             "errors": {"receipts": source_errors, "malformedReceipts": malformed, "manifests": entries_errors},
         }
         return self._envelope(items, status)
+
+    def benefit(self) -> dict[str, Any]:
+        workflows, status = self.workflows()
+        return self._envelope([workflow["benefit"] for workflow in workflows], status)
 
     def overview(self) -> dict[str, Any]:
         workflows, status = self.workflows()
@@ -741,6 +763,9 @@ class ControlRoomHandler(BaseHTTPRequestHandler):
             return
         if segments == ["api", API_VERSION, "activity"]:
             self._json(HTTPStatus.OK, self.model.activity(), head_only)
+            return
+        if segments == ["api", API_VERSION, "benefit"]:
+            self._json(HTTPStatus.OK, self.model.benefit(), head_only)
             return
         self._json(HTTPStatus.NOT_FOUND, {"error": "route not found"}, head_only)
 
