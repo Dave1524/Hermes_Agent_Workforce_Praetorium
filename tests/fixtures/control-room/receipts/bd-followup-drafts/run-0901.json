@@ -1,0 +1,59 @@
+{
+  "agent": "claudius",
+  "artifact": {
+    "kind": "notion-page",
+    "title": "2026-09-01 \u2014 BD follow-up drafts",
+    "uri": "https://www.notion.so/vantagepoint/2026-09-01-bd-followup-drafts-8b7a6c5d"
+  },
+  "assertions": [
+    {
+      "id": "artifact-is-this-run",
+      "message": "ok",
+      "status": "passed"
+    },
+    {
+      "id": "no-elapsed-time-claims",
+      "message": "ok",
+      "status": "passed"
+    }
+  ],
+  "consumption": {
+    "approved": false,
+    "marked_useful": false,
+    "opened": false,
+    "sent": false
+  },
+  "cost": {
+    "amount": 0.3412,
+    "confidence": "exact",
+    "currency": "USD",
+    "source": "claude-code",
+    "status": "measured"
+  },
+  "ended_at": "2026-09-01T09:49:03Z",
+  "handoff": null,
+  "model": "claude-opus-5",
+  "next_action": {
+    "action": "Send or discard each draft",
+    "actor": "Dave",
+    "due_at": null
+  },
+  "parent_run_id": null,
+  "run_id": "run-0901",
+  "schema_version": 1,
+  "started_at": "2026-09-01T09:37:28Z",
+  "state_change": null,
+  "terminal": {
+    "outcome": "artifact",
+    "reason": null
+  },
+  "unit": "bd-followup-drafts.service",
+  "usage": {
+    "cache_tokens": 150300,
+    "input_tokens": 61200,
+    "output_tokens": 4880,
+    "status": "measured",
+    "total_tokens": 216380
+  },
+  "workflow_id": "bd-followup-drafts"
+}

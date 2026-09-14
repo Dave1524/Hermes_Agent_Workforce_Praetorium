@@ -1,0 +1,53 @@
+{
+  "agent": "marcus",
+  "artifact": {
+    "kind": "notion-page",
+    "title": "2026-09-11 \u2014 Overnight report",
+    "uri": "https://www.notion.so/vantagepoint/2026-09-11-Overnight-report-5e4d3c2b"
+  },
+  "assertions": [
+    {
+      "id": "artifact-is-this-run",
+      "message": "ok",
+      "status": "passed"
+    },
+    {
+      "id": "coverage-globs-resolved",
+      "message": "ok",
+      "status": "passed"
+    }
+  ],
+  "cost": {
+    "amount": 0.1388,
+    "confidence": "exact",
+    "currency": "USD",
+    "source": "claude-code",
+    "status": "measured"
+  },
+  "ended_at": "2026-09-11T06:18:02Z",
+  "handoff": null,
+  "model": "claude-sonnet-5",
+  "next_action": {
+    "action": "Acknowledge the two flagged unit failures",
+    "actor": "Dave",
+    "due_at": "2026-09-12T08:00:00Z"
+  },
+  "parent_run_id": null,
+  "run_id": "run-0911",
+  "schema_version": 1,
+  "started_at": "2026-09-11T06:15:44Z",
+  "state_change": null,
+  "terminal": {
+    "outcome": "artifact",
+    "reason": null
+  },
+  "unit": "overnight-morning-report.service",
+  "usage": {
+    "cache_tokens": 80200,
+    "input_tokens": 27400,
+    "output_tokens": 1830,
+    "status": "measured",
+    "total_tokens": 109430
+  },
+  "workflow_id": "overnight-morning-report"
+}

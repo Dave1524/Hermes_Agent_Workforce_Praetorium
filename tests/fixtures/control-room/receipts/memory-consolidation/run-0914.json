@@ -1,0 +1,40 @@
+{
+  "agent": "trajan",
+  "artifact": null,
+  "assertions": [
+    {
+      "id": "not-lock-skipped",
+      "message": "SKIP: previous run still active",
+      "status": "failed"
+    }
+  ],
+  "cost": {
+    "amount": null,
+    "confidence": null,
+    "currency": null,
+    "source": null,
+    "status": "unavailable"
+  },
+  "ended_at": "2026-09-14T03:31:06Z",
+  "handoff": null,
+  "model": "claude-sonnet-5",
+  "next_action": null,
+  "parent_run_id": null,
+  "run_id": "run-0914",
+  "schema_version": 1,
+  "started_at": "2026-09-14T03:31:05Z",
+  "state_change": null,
+  "terminal": {
+    "outcome": "skipped",
+    "reason": "SKIP: previous run still active"
+  },
+  "unit": "memory-consolidation.service",
+  "usage": {
+    "cache_tokens": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "status": "unavailable",
+    "total_tokens": null
+  },
+  "workflow_id": "memory-consolidation"
+}

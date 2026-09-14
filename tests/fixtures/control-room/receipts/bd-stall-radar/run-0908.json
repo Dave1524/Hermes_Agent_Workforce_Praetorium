@@ -1,0 +1,49 @@
+{
+  "agent": "claudius",
+  "artifact": null,
+  "assertions": [
+    {
+      "id": "vault-guard-passed",
+      "message": "mirror is 2 commits behind origin/main",
+      "status": "failed"
+    },
+    {
+      "id": "decline-is-this-runs-own",
+      "message": "ok",
+      "status": "passed"
+    }
+  ],
+  "cost": {
+    "amount": null,
+    "confidence": null,
+    "currency": null,
+    "source": null,
+    "status": "unavailable"
+  },
+  "ended_at": "2026-09-08T09:07:31Z",
+  "handoff": null,
+  "model": "claude-opus-5",
+  "next_action": {
+    "action": "Sync the mirror from the Mac, then re-run",
+    "actor": "Dave",
+    "due_at": null
+  },
+  "parent_run_id": null,
+  "run_id": "run-0908",
+  "schema_version": 1,
+  "started_at": "2026-09-08T09:07:15Z",
+  "state_change": null,
+  "terminal": {
+    "outcome": "decline",
+    "reason": "DECLINE: mirror stale \u2014 vault_sync_guard refused"
+  },
+  "unit": "bd-stall-radar.service",
+  "usage": {
+    "cache_tokens": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "status": "unavailable",
+    "total_tokens": null
+  },
+  "workflow_id": "bd-stall-radar"
+}

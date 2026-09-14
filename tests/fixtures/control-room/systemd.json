@@ -1,0 +1,251 @@
+{
+  "_comment": [
+    "Fake `systemctl show` answers for tests/control_room_fixture.py, NOW = 2026-09-14T08:00:00Z.",
+    "show(name, scope): the scope's override when the unit is named there (null = the user bus",
+    "answered nothing), else `default` by unit kind, else 'could not be found'. Every timestamp",
+    "is what `--timestamp=utc` prints. The twelve system timers below are the paused set; the",
+    "four hosted buzz-agent@ services run (the interactive fleet is up while the scheduled one",
+    "is off), aurelian's bus is unreachable, buzz-pr-watch is started but not enabled."
+  ],
+  "default": {
+    "timer": {
+      "ActiveState": "active",
+      "SubState": "waiting",
+      "Result": "success",
+      "UnitFileState": "enabled",
+      "LastTriggerUSec": "",
+      "NextElapseUSecRealtime": "",
+      "NextElapseUSecMonotonic": "",
+      "Persistent": "yes"
+    },
+    "service": {
+      "ActiveState": "inactive",
+      "SubState": "dead",
+      "Result": "success",
+      "ExecMainStartTimestamp": "",
+      "ExecMainExitTimestamp": "",
+      "ExecMainStatus": "0",
+      "UnitFileState": "static"
+    }
+  },
+  "system": {
+    "augustus-content.timer": {
+      "ActiveState": "inactive",
+      "SubState": "dead",
+      "Result": "success",
+      "UnitFileState": "disabled",
+      "LastTriggerUSec": "",
+      "NextElapseUSecRealtime": "",
+      "NextElapseUSecMonotonic": "",
+      "Persistent": "yes"
+    },
+    "content-change-dispatch.timer": {
+      "ActiveState": "inactive",
+      "SubState": "dead",
+      "Result": "success",
+      "UnitFileState": "disabled",
+      "LastTriggerUSec": "",
+      "NextElapseUSecRealtime": "",
+      "NextElapseUSecMonotonic": "",
+      "Persistent": "yes"
+    },
+    "knowledge-digest.timer": {
+      "ActiveState": "inactive",
+      "SubState": "dead",
+      "Result": "success",
+      "UnitFileState": "disabled",
+      "LastTriggerUSec": "",
+      "NextElapseUSecRealtime": "",
+      "NextElapseUSecMonotonic": "",
+      "Persistent": "yes"
+    },
+    "agent-proposal.timer": {
+      "ActiveState": "inactive",
+      "SubState": "dead",
+      "Result": "success",
+      "UnitFileState": "disabled",
+      "LastTriggerUSec": "",
+      "NextElapseUSecRealtime": "",
+      "NextElapseUSecMonotonic": "",
+      "Persistent": "yes"
+    },
+    "m1-signal-scan.timer": {
+      "ActiveState": "inactive",
+      "SubState": "dead",
+      "Result": "success",
+      "UnitFileState": "disabled",
+      "LastTriggerUSec": "",
+      "NextElapseUSecRealtime": "",
+      "NextElapseUSecMonotonic": "",
+      "Persistent": "yes"
+    },
+    "bd-stall-radar.timer": {
+      "ActiveState": "inactive",
+      "SubState": "dead",
+      "Result": "success",
+      "UnitFileState": "disabled",
+      "LastTriggerUSec": "",
+      "NextElapseUSecRealtime": "",
+      "NextElapseUSecMonotonic": "",
+      "Persistent": "yes"
+    },
+    "bd-followup-drafts.timer": {
+      "ActiveState": "inactive",
+      "SubState": "dead",
+      "Result": "success",
+      "UnitFileState": "disabled",
+      "LastTriggerUSec": "",
+      "NextElapseUSecRealtime": "",
+      "NextElapseUSecMonotonic": "",
+      "Persistent": "yes"
+    },
+    "praetorium-daily-plan.timer": {
+      "ActiveState": "inactive",
+      "SubState": "dead",
+      "Result": "success",
+      "UnitFileState": "disabled",
+      "LastTriggerUSec": "",
+      "NextElapseUSecRealtime": "",
+      "NextElapseUSecMonotonic": "",
+      "Persistent": "yes"
+    },
+    "overnight-morning-report.timer": {
+      "ActiveState": "inactive",
+      "SubState": "dead",
+      "Result": "success",
+      "UnitFileState": "disabled",
+      "LastTriggerUSec": "",
+      "NextElapseUSecRealtime": "",
+      "NextElapseUSecMonotonic": "",
+      "Persistent": "yes"
+    },
+    "praetorium-eod-summary.timer": {
+      "ActiveState": "inactive",
+      "SubState": "dead",
+      "Result": "success",
+      "UnitFileState": "disabled",
+      "LastTriggerUSec": "",
+      "NextElapseUSecRealtime": "",
+      "NextElapseUSecMonotonic": "",
+      "Persistent": "yes"
+    },
+    "weekly-pre-assembly.timer": {
+      "ActiveState": "inactive",
+      "SubState": "dead",
+      "Result": "success",
+      "UnitFileState": "disabled",
+      "LastTriggerUSec": "",
+      "NextElapseUSecRealtime": "",
+      "NextElapseUSecMonotonic": "",
+      "Persistent": "yes"
+    },
+    "inbox-backlog-alert.timer": {
+      "ActiveState": "inactive",
+      "SubState": "dead",
+      "Result": "success",
+      "UnitFileState": "disabled",
+      "LastTriggerUSec": "",
+      "NextElapseUSecRealtime": "",
+      "NextElapseUSecMonotonic": "",
+      "Persistent": "yes"
+    },
+    "raw-ingest.timer": {
+      "ActiveState": "active",
+      "SubState": "waiting",
+      "Result": "success",
+      "UnitFileState": "enabled",
+      "LastTriggerUSec": "Sun 2026-09-13 03:02:11 UTC",
+      "NextElapseUSecRealtime": "Tue 2026-09-15 03:00:00 UTC",
+      "NextElapseUSecMonotonic": "",
+      "Persistent": "yes"
+    },
+    "memory-consolidation.timer": {
+      "ActiveState": "active",
+      "SubState": "waiting",
+      "Result": "success",
+      "UnitFileState": "enabled",
+      "LastTriggerUSec": "Mon 2026-09-14 03:31:00 UTC",
+      "NextElapseUSecRealtime": "Tue 2026-09-15 03:30:00 UTC",
+      "NextElapseUSecMonotonic": "",
+      "Persistent": "yes"
+    },
+    "fleet-turn-check.timer": {
+      "ActiveState": "active",
+      "SubState": "waiting",
+      "Result": "success",
+      "UnitFileState": "enabled",
+      "LastTriggerUSec": "Mon 2026-09-14 07:00:00 UTC",
+      "NextElapseUSecRealtime": "",
+      "NextElapseUSecMonotonic": "",
+      "Persistent": "yes"
+    },
+    "agent-inbox-sync.timer": {
+      "ActiveState": "active",
+      "SubState": "waiting",
+      "Result": "success",
+      "UnitFileState": "enabled",
+      "LastTriggerUSec": "Mon 2026-09-14 07:30:00 UTC",
+      "NextElapseUSecRealtime": "Mon 2026-09-14 08:00:00 UTC",
+      "NextElapseUSecMonotonic": "",
+      "Persistent": "yes"
+    },
+    "local-tier-eval.service": {
+      "ActiveState": "active",
+      "SubState": "running",
+      "Result": "success",
+      "ExecMainStartTimestamp": "Mon 2026-09-14 07:59:10 UTC",
+      "ExecMainExitTimestamp": "",
+      "ExecMainStatus": "0",
+      "UnitFileState": "static"
+    }
+  },
+  "user": {
+    "buzz-agent@marcus.service": {
+      "ActiveState": "active",
+      "SubState": "running",
+      "Result": "success",
+      "ExecMainStartTimestamp": "Sun 2026-09-13 21:04:33 UTC",
+      "ExecMainExitTimestamp": "",
+      "ExecMainStatus": "0",
+      "UnitFileState": "static"
+    },
+    "buzz-agent@claudius.service": {
+      "ActiveState": "active",
+      "SubState": "running",
+      "Result": "success",
+      "ExecMainStartTimestamp": "Sun 2026-09-13 21:04:35 UTC",
+      "ExecMainExitTimestamp": "",
+      "ExecMainStatus": "0",
+      "UnitFileState": "static"
+    },
+    "buzz-agent@augustus.service": {
+      "ActiveState": "active",
+      "SubState": "running",
+      "Result": "success",
+      "ExecMainStartTimestamp": "Sun 2026-09-13 21:04:37 UTC",
+      "ExecMainExitTimestamp": "",
+      "ExecMainStatus": "0",
+      "UnitFileState": "static"
+    },
+    "buzz-agent@trajan.service": {
+      "ActiveState": "active",
+      "SubState": "running",
+      "Result": "success",
+      "ExecMainStartTimestamp": "Sun 2026-09-13 21:04:39 UTC",
+      "ExecMainExitTimestamp": "",
+      "ExecMainStatus": "0",
+      "UnitFileState": "static"
+    },
+    "buzz-agent@aurelian.service": null,
+    "buzz-pr-watch.timer": {
+      "ActiveState": "active",
+      "SubState": "waiting",
+      "Result": "success",
+      "UnitFileState": "disabled",
+      "LastTriggerUSec": "",
+      "NextElapseUSecRealtime": "Mon 2026-09-14 09:23:00 UTC",
+      "NextElapseUSecMonotonic": "",
+      "Persistent": "yes"
+    }
+  }
+}

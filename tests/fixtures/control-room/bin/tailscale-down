@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Fake `tailscale` for the down case: prints nothing and fails, as the real CLI does with no tailnet.
+exit 1

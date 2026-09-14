@@ -1,0 +1,58 @@
+{
+  "agent": "claudius",
+  "artifact": {
+    "kind": "notion-page",
+    "title": "2026-09-12 \u2014 Raw ingest",
+    "uri": "https://www.notion.so/vantagepoint/2026-09-12-raw-ingest-1a2b3c4d"
+  },
+  "assertions": [
+    {
+      "id": "artifact-is-this-run",
+      "message": "artifact is dated 2026-09-12",
+      "status": "failed"
+    },
+    {
+      "id": "write-boundary-held",
+      "message": "ok",
+      "status": "passed"
+    },
+    {
+      "id": "not-lock-skipped",
+      "message": "n/a: sweep vantage",
+      "status": "not_applicable"
+    }
+  ],
+  "cost": {
+    "amount": 0.1902,
+    "confidence": "exact",
+    "currency": "USD",
+    "source": "claude-code",
+    "status": "measured"
+  },
+  "ended_at": "2026-09-13T03:14:48Z",
+  "handoff": null,
+  "model": "claude-opus-5",
+  "next_action": {
+    "action": "Inspect the attempt log and decide whether to retry",
+    "actor": "Dave",
+    "due_at": null
+  },
+  "parent_run_id": null,
+  "run_id": "run-0913",
+  "schema_version": 1,
+  "started_at": "2026-09-13T03:02:20Z",
+  "state_change": null,
+  "terminal": {
+    "outcome": "failed",
+    "reason": "checks failed: artifact-is-this-run"
+  },
+  "unit": "raw-ingest.service",
+  "usage": {
+    "cache_tokens": 96100,
+    "input_tokens": 38800,
+    "output_tokens": 1970,
+    "status": "measured",
+    "total_tokens": 136870
+  },
+  "workflow_id": "raw-ingest"
+}

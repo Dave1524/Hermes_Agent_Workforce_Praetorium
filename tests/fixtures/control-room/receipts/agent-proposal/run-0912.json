@@ -1,0 +1,45 @@
+{
+  "agent": "claudius",
+  "artifact": null,
+  "assertions": [
+    {
+      "id": "decline-is-this-runs-own",
+      "message": "ok",
+      "status": "passed"
+    },
+    {
+      "id": "mirror-was-not-dirty",
+      "message": "ok",
+      "status": "passed"
+    }
+  ],
+  "cost": {
+    "amount": 0.0611,
+    "confidence": "exact",
+    "currency": "USD",
+    "source": "claude-code",
+    "status": "measured"
+  },
+  "ended_at": "2026-09-12T04:33:10Z",
+  "handoff": null,
+  "model": "claude-opus-5",
+  "next_action": null,
+  "parent_run_id": null,
+  "run_id": "run-0912",
+  "schema_version": 1,
+  "started_at": "2026-09-12T04:30:33Z",
+  "state_change": null,
+  "terminal": {
+    "outcome": "decline",
+    "reason": "DECLINE: no open queue item"
+  },
+  "unit": "agent-proposal.service",
+  "usage": {
+    "cache_tokens": 44200,
+    "input_tokens": 12100,
+    "output_tokens": 410,
+    "status": "measured",
+    "total_tokens": 56710
+  },
+  "workflow_id": "agent-proposal"
+}

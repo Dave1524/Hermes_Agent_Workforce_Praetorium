@@ -1,0 +1,48 @@
+{
+  "agent": "trajan",
+  "artifact": null,
+  "assertions": [
+    {
+      "id": "rows-match-branches",
+      "message": "ok",
+      "status": "passed"
+    },
+    {
+      "id": "no-duplicate-rows",
+      "message": "ok",
+      "status": "passed"
+    }
+  ],
+  "cost": {
+    "amount": null,
+    "confidence": null,
+    "currency": null,
+    "source": null,
+    "status": "unavailable"
+  },
+  "ended_at": "2026-09-14T07:31:09Z",
+  "handoff": null,
+  "model": null,
+  "next_action": null,
+  "parent_run_id": null,
+  "run_id": "run-0914",
+  "schema_version": 1,
+  "started_at": "2026-09-14T07:31:00Z",
+  "state_change": {
+    "evidence": "3 Agent Inbox rows updated; body hashes match branch heads",
+    "kind": "notion-rows-synced"
+  },
+  "terminal": {
+    "outcome": "artifact",
+    "reason": null
+  },
+  "unit": "agent-inbox-sync.service",
+  "usage": {
+    "cache_tokens": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "status": "unavailable",
+    "total_tokens": null
+  },
+  "workflow_id": "agent-inbox-sync"
+}

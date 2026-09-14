@@ -1,0 +1,26 @@
+# Fixture ledger for tests/test_control_room_benefit.py — same shape as design/benefit-ledger.toml.
+# Two valid decisions, one entry outside the vocabulary (the row must render Unknown and the
+# error must be named), and every other workflow absent (every field null -> Unknown).
+
+[[workflow]]
+id                     = "knowledge-digest"
+decision               = "Improve"
+baseline               = "weekly digest read Monday"
+manual_minutes_avoided = 30
+decided_at             = "2026-09-14"
+decided_by             = "Dave"
+evidence               = "three of four August digests opened within a day; none promoted anything"
+
+[[workflow]]
+id                     = "agent-proposal"
+decision               = "Keep"
+baseline               = "one standing-research proposal per weekday, read before the daily plan"
+manual_minutes_avoided = 45
+decided_at             = "2026-09-14"
+decided_by             = "Dave"
+evidence               = "approvals.tsv: 11 of 14 proposals approved in the four weeks to 2026-09-12"
+
+[[workflow]]
+id       = "scorecard"
+decision = "Maybe"
+baseline = "not a decision the vocabulary knows"

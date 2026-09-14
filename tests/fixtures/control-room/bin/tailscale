@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Fake `tailscale` for tests/test_control_room_views.py: answers `ip -4` with the box's address.
+echo 100.86.82.16

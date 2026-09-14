@@ -1,0 +1,58 @@
+{
+  "agent": "marcus",
+  "artifact": {
+    "kind": "notion-page",
+    "title": "2026-09-12 \u2014 Daily Plan",
+    "uri": "https://www.notion.so/vantagepoint/2026-09-12-Daily-Plan-2f1a0b3c4d5e"
+  },
+  "assertions": [
+    {
+      "id": "artifact-is-this-run",
+      "message": "ok",
+      "status": "passed"
+    },
+    {
+      "id": "vault-guard-passed",
+      "message": "ok",
+      "status": "passed"
+    },
+    {
+      "id": "row-dated-today",
+      "message": "ok",
+      "status": "passed"
+    }
+  ],
+  "cost": {
+    "amount": 0.2143,
+    "confidence": "exact",
+    "currency": "USD",
+    "source": "claude-code",
+    "status": "measured"
+  },
+  "ended_at": "2026-09-12T06:03:12Z",
+  "handoff": null,
+  "model": "claude-sonnet-5",
+  "next_action": {
+    "action": "Read the plan at the start of the day",
+    "actor": "Dave",
+    "due_at": null
+  },
+  "parent_run_id": null,
+  "run_id": "run-0912",
+  "schema_version": 1,
+  "started_at": "2026-09-12T06:00:41Z",
+  "state_change": null,
+  "terminal": {
+    "outcome": "artifact",
+    "reason": null
+  },
+  "unit": "praetorium-daily-plan.service",
+  "usage": {
+    "cache_tokens": 118400,
+    "input_tokens": 41200,
+    "output_tokens": 2380,
+    "status": "measured",
+    "total_tokens": 161980
+  },
+  "workflow_id": "praetorium-daily-plan"
+}
