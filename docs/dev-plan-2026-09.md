@@ -88,8 +88,12 @@ Development needs no timer: every suite in this repo runs from fixtures (T5.1's
 3. One synthetic incident reaches the Buzz incidents stream, repeats are deduplicated, recovery is
    visible, healthy runs stay silent (T5.3c).
 4. A grep for hermes across `bin/ systemd/ profiles/` returns only historical notes (T6.1, behind D4).
-5. `bash bin/verify.sh` green on `main`, drift clean, the new units — screen, broker, incident
-   digest — installed and enabled; the twelve workflow timers untouched.
+5. `bash bin/verify.sh` green on `main`, drift clean; `control-room.service` and
+   `control-room-broker.socket` installed and enabled; the two new *timers* — `workflow-incidents`
+   (T5.3c) and `workflow-receipt-sweep` (T5.2) — installed **disabled**, resumed from the screen
+   like any workflow; the twelve workflow timers untouched.
+   Briefs: one per task under `.claude/briefs/t5-*.md` and `t6-1-hermes-residue.md` (2026-09-14),
+   path on each tracker card's `Brief` property; land order T5.3, T5.3a, T5.3b, T5.2, T5.3c, T6.1.
 6. Every Claude row on the tracker is Done, or carries a `DECIDED` line with a reason and an owner.
    T5.3d is `DECIDED — deferred`: no Marcus → Trajan scheduled path exists to trace.
 
