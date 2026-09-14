@@ -142,6 +142,17 @@ ls ~/.hermes/profiles/                              # the Hermes profiles below
   binds the Tailscale address only (`bin/control_room_serve.sh` refuses to start without one);
   reads `design/` from the **source checkout** because `bin/deploy` never ships it. Not a
   manifest workflow — no timer, no contract, no manifest row. Runbook § Control Room.
+- `control-room-broker.socket` + `control-room-broker@.service` — the **control broker**
+  (T5.3a, 2026-09-14) behind the screen's pause / resume / run now / retry / stop: a root-owned
+  unix socket (`/run/control-room-broker.sock`, `root:control-room 0660`) that only
+  `control-room.service` can reach, executing the **root-owned copy**
+  `/usr/local/lib/control-room/control_broker.py` of `bin/control_broker.py` against the
+  root-owned allowlist `/etc/control-room/allowlist.json` (rendered by
+  `bin/control_broker_allowlist.py` from the manifests, unit files and contracts), receipting
+  every outcome under `/var/lib/control-room/receipts/`. Both root files are compared by the
+  drift check and installed by hand. Never widen the socket group, add dave to it, exec the
+  source copy or add a sudoers line — each is this design's `--no-verify`. Runbook § Control
+  Room controls. The fleet stays off until Dave's first live resume.
 
 ## Daily rhythm jobs (NUC-45)
 Two jobs own Dave's day and run unattended on this box, both under `agent_propose.sh`

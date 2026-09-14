@@ -288,6 +288,89 @@ the unit is compared against `/etc/systemd/system/` like every other. `design/` 
 no deploy — the service reads the checkout — but a `bin/` change is inert until `bin/deploy`
 **and** a restart.
 
+## Control Room controls (T5.3a)
+
+**The fleet stays off.** T5.3a lands the *mechanism* for pause / resume / run now / retry / stop;
+the first live resume is Dave's moment (DoD item 7) and starts that workflow's evidence clock.
+Nothing in the land sequence below enables, starts, stops or disables a workflow timer — the one
+unit it enables is the broker socket, a control surface.
+
+**Trust boundary — three layers, each with one job:**
+
+```
+Mac browser ──tailnet──▶ control-room.service (dave + group control-room)
+                           │  bin/control_room_control.py: shape check, actor, HTTP mapping
+                           ▼  unix socket /run/control-room-broker.sock  root:control-room 0660
+                         control-room-broker.socket (Accept=yes) ─▶ control-room-broker@N.service (root)
+                           │  /usr/local/lib/control-room/control_broker.py  (root-owned copy of bin/control_broker.py)
+                           │  reads /etc/control-room/allowlist.json         (root-owned, rendered from the repo)
+                           │  writes /var/lib/control-room/receipts/…        (StateDirectory, root-owned, world-readable)
+                           ▼
+                         systemctl [--user --machine=dave@.host] {show,disable --now,enable --now,start --no-block,stop --no-block}
+```
+
+Policy lives in the broker, not the screen — the same rule `~/CLAUDE.md` records for the Notion
+broker. The screen validates shape, adds the actor (`remote`/`local` of the HTTP connection),
+maps refusal codes to HTTP status and **re-reads** state; the chip after a click shows what
+systemd says, never what was clicked. Who may connect is the kernel's decision: the socket is
+`root:control-room 0660`, `control-room.service` carries the group through a drop-in, and no
+dave shell, runner or `buzz-agent@*` is in it. Belt and braces: the broker checks `SO_PEERCRED`
+uid and refuses a screen request whose `remote` is the screen's own host or loopback (a
+loopback-*bound* screen is a development instance and is allowed).
+
+**Actions** (system scope shown; user-scope units prefix `--user --machine=dave@.host`):
+
+| action | precondition (refusal) | systemctl | extras |
+|---|---|---|---|
+| `pause` | some timer still enabled/active, else `state_conflict` | `disable --now <unit>.timer` | the running service is **not** stopped |
+| `resume` preview | paused, else `state_conflict` | read-only `show`, stamp mtime, `systemd-analyze calendar` | `preview.implication` states the `Persistent=` catch-up; `preview_token` = the preview receipt id |
+| `resume` apply | a `previewed` receipt ≤ 10 min old whose fingerprint still matches, else `preview_required` / `preview_stale` | `enable --now <unit>.timer` | `next_scheduled_run`, `catch_up_fired` |
+| `run_now` | no run in progress; two triggers need `trigger` (`trigger_required` lists `choices`) | `start --no-block <unit>.service` | `run_id` = InvocationID, `links.run` |
+| `retry` | allowlist `retry: true` (the contract's `Retry` row), else `not_idempotent`; then as run_now | as run_now | `links.retry_of` |
+| `stop` | `confirm: true`, non-empty reason, a run in progress | `stop --no-block <unit>.service` + poll ≤ 15 s | receipt notes a still-deactivating service |
+
+**Receipts:** every outcome — applied, previewed, refused, failed — is one file at
+`/var/lib/control-room/receipts/<workflow_id>/<receipt_id>.json` (`_refused/` for ids the
+allowlist does not know), written atomically, 0644, carrying the actor, every `systemctl` argv
+with exit and stderr, and the state before and after. The page's *last action* is the newest
+non-preview receipt for that workflow. The CLI form, through the root copy:
+
+```bash
+sudo /usr/bin/python3 /usr/local/lib/control-room/control_broker.py act resume knowledge-digest --stage preview
+sudo /usr/bin/python3 /usr/local/lib/control-room/control_broker.py act pause no-such-workflow   # -> unknown_workflow
+```
+
+**Land sequence** (sudo; the branch cannot be green before this, and the drift check says so):
+
+```bash
+sudo groupadd --system control-room
+sudo install -D -o root -g root -m 0755 bin/control_broker.py /usr/local/lib/control-room/control_broker.py
+python3 bin/control_broker_allowlist.py render > /tmp/allowlist.json \
+  && sudo install -D -o root -g root -m 0644 /tmp/allowlist.json /etc/control-room/allowlist.json \
+  && python3 bin/control_broker_allowlist.py check
+sudo cp systemd/control-room-broker.socket systemd/control-room-broker@.service /etc/systemd/system/
+sudo mkdir -p /etc/systemd/system/control-room.service.d \
+  && sudo cp systemd/control-room.service.d/broker.conf /etc/systemd/system/control-room.service.d/
+sudo systemctl daemon-reload
+sudo systemctl enable --now control-room-broker.socket   # the socket, not a workflow timer
+sudo systemctl restart control-room.service              # the screen picks up its drop-in
+ls -l /run/control-room-broker.sock                       # srw-rw---- root control-room
+bash tests/acceptance/control_room_controls.sh            # previews and refusals only; all PASS
+```
+
+If `systemctl --user --machine=dave@.host` does not answer from root on this systemd, the
+fallback is `runuser -u dave -- env XDG_RUNTIME_DIR=/run/user/1000
+DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus systemctl --user …` — documented, not
+implemented; the broker's `--user-manager` option is where it would go.
+
+**Re-render rule:** a manifest, timer or contract change changes the allowlist. `python3
+bin/control_broker_allowlist.py check` (and the drift check's `[broker]` section) goes red until
+the render is re-installed with the `install` line above. The root copy of the broker is
+compared the same way: a `bin/control_broker.py` change is inert — and red — until re-installed.
+
+**Never:** widen the socket group, add dave to it, point `ExecStart` at `/home`, or add a sudoers
+line — each is the `--no-verify` of this design, the same escalation with the record removed.
+
 ## S1 — the Buzz interactive surface (brief 7, 2026-09-03)
 
 The five `buzz-agent@*` `--user` units. Their **mechanism** files have a source here

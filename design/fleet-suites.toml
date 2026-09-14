@@ -338,6 +338,47 @@ private. The screen is an operator surface, not a manifest workflow: it runs alw
 control-room.service, produces no artifact of its own and owes no cadence.
 """
 
+# T5.3a — the live controls behind that screen. The broker is root-side and allowlisted; the
+# screen side forwards and re-reads. Both suites run against fixture shims and never touch a
+# real unit, which is the standing constraint they exist to keep.
+[[suite]]
+path    = "tests/test_control_broker.sh"
+owner   = "fleet"
+asserts = [
+  "broker-allowlist-refuses",           # unknown/excluded/absent ids, grammar violations, a bad allowlist and masked or missing units are refused, receipted, and run nothing
+  "broker-every-outcome-receipted",     # applied, previewed, refused and failed each write exactly one validating 0644 receipt, atomically
+  "broker-pause-keeps-current-run",     # pause is `disable --now <unit>.timer` only: the running service is never stopped
+  "broker-scope-addressing",            # user-scope units go through `systemctl --user --machine=dave@.host`, system ones never do
+  "broker-run-now-returns-run-id",      # run_now starts the service with --no-block and returns its InvocationID; a second trigger must be chosen
+  "broker-retry-idempotent-only",       # retry is refused unless the allowlist carries the contract's idempotent declaration
+  "broker-stop-needs-confirm-and-reason", # stop needs confirm:true and a non-empty reason, then `stop --no-block` and a poll
+  "broker-resume-preview-before-apply", # resume applies only with a fresh preview token bound to the state fingerprint; the preview states the Persistent catch-up
+  "broker-peer-gate",                   # SO_PEERCRED uid and the remote-not-local rule in screen mode; a pipe is a cli actor
+  "broker-concurrency-lock",            # two concurrent pauses serialise to one applied and one state_conflict, never two disables
+  "broker-allowlist-render",            # the rendered allowlist over the real checkout: every standing timer once, exclusions reasoned, retry for the five declared contracts, deterministic bytes, check exits 1 on a diff
+]
+why_no_workflow = """
+It tests the root-side broker every allowlisted workflow is controlled through. Crediting one
+workflow with it would credit that workflow with a suite that primarily tests every other one.
+"""
+
+[[suite]]
+path    = "tests/test_control_room_control.sh"
+owner   = "fleet"
+asserts = [
+  "control-peer-rule",                  # the screen's peer_allowed table, identical answers from the broker's copy
+  "control-last-action-from-receipts",  # lastAction is the newest non-preview receipt in the seam shape; a malformed file is skipped and named once
+  "control-retry-policy",               # retry enabled only for a declared contract with a failed last run and no run in progress; the other four actions untouched
+  "control-refusal-status-map",         # refusal codes map to 404/403/400 with the receipt; failed 500; unreachable 502; timeout 504; T5.3's checks and the 501 stub kept
+  "control-post-forwards-and-reconciles", # POST preview then apply over the real broker on a unix socket; control.state comes from the re-read, not the click
+  "control-actions-js-flow",            # actions.js carries preview, preview_token, confirm on resume and stop, trigger_required, retry_of, and the re-fetch
+  "control-acceptance-script-lints",    # the hand-run acceptance script parses, is shellcheck-clean, and never applies a resume or enables anything
+]
+why_no_workflow = """
+It tests the screen's write path and its trust boundary. The screen is an operator surface,
+not a manifest workflow; the POST it handles is forwarded for whichever workflow was clicked.
+"""
+
 [[suite]]
 path    = "tests/test_control_room_exceptions.sh"
 owner   = "fleet"
