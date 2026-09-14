@@ -39,16 +39,19 @@ from workflow_receipt import (  # noqa: E402
     validate as validate_receipt,
 )
 from control_room_cadence import cadence_for, freshness, parse_systemd_timestamp  # noqa: E402
+from control_room_state import (  # noqa: E402
+    control_for,
+    fold_cadence,
+    health as health_of,
+    last_valid_artifact,
+    links_for,
+    no_cadence,
+    trigger_state,
+)
 
 
 API_VERSION = "v1"
-REPO_GITHUB = "https://github.com/Dave1524/Hermes_Agent_Workforce_Praetorium/blob/main"
-DEV_PLAN_TRACKER = "https://app.notion.com/p/071af559943649fb86494b88a67106a6"
-DEV_PLAN_DOC = f"{REPO_GITHUB}/docs/dev-plan-2026-09.md"
 TASK_ID = re.compile(r"\bT\d+\.\d+[a-d]?\b")
-RETRY_REASON = "contract declares no idempotent operation (T5.3a defines the declaration)"
-ACTIVE_STATES = {"active", "activating", "reloading"}
-PAUSED_STATES = {"inactive", "deactivating"}
 OUTPUT_LABELS = (
     "Beneficiary",
     "Next actor",
@@ -357,134 +360,6 @@ class ControlRoomReadModel:
         }
 
     @staticmethod
-    def _service_running(systemd: dict[str, Any]) -> bool:
-        service = systemd["service"]
-        return service["activeState"] in {"activating", "active"} and service["subState"] in {"running", "start"}
-
-    @classmethod
-    def _trigger_state(cls, systemd: dict[str, Any]) -> str:
-        if systemd["kind"] == "timer":
-            if cls._service_running(systemd):
-                return "running"
-            active = (systemd["timer"] or {}).get("activeState", "unknown")
-        else:
-            active = systemd["service"]["activeState"]
-        if active in ACTIVE_STATES:
-            return "active"
-        if active in PAUSED_STATES:
-            return "paused"
-        return "unknown"
-
-    @staticmethod
-    def _health(receipt: dict[str, Any] | None, triggers: list[dict[str, Any]]) -> str:
-        timer_states = [trigger["state"] for trigger in triggers if trigger["kind"] == "timer"]
-        if "running" in timer_states:
-            return "running"
-        if timer_states and all(state == "paused" for state in timer_states):
-            return "paused"
-        if receipt is None:
-            return "unknown"
-        outcome = receipt["terminal"]["outcome"]
-        if outcome == "failed" or any(item.get("status") == "failed" for item in receipt["assertions"]):
-            return "failed"
-        if outcome == "skipped":
-            return "incomplete"
-        return "healthy"
-
-    @staticmethod
-    def _control_state(triggers: list[dict[str, Any]]) -> str:
-        considered = [trigger for trigger in triggers if trigger["kind"] == "timer"] or triggers
-        states = [trigger["state"] for trigger in considered]
-        if "running" in states:
-            return "running"
-        if states and all(state == "paused" for state in states):
-            return "paused"
-        if "active" in states:
-            return "active"
-        return "unknown"
-
-    @staticmethod
-    def _control_actions(state: str, source: str) -> list[dict[str, Any]]:
-        def action(action_id: str, enabled: bool, reason: str) -> dict[str, Any]:
-            return {"id": action_id, "enabled": enabled, "reason": None if enabled else reason}
-        return [
-            action("pause", state in {"active", "running"}, f"workflow is {state}, not active"),
-            action("resume", state == "paused", f"workflow is {state}, not paused"),
-            action("run_now", state != "running" and source == "systemd",
-                   "a run is in progress" if state == "running" else "systemd state unavailable"),
-            action("retry", False, RETRY_REASON),
-            action("stop", state == "running", f"workflow is {state}, no run to stop"),
-        ]
-
-    def _control_for(self, logical_id: str, triggers: list[dict[str, Any]], cadence: dict[str, Any]) -> dict[str, Any]:
-        timers = [trigger["systemd"]["timer"] for trigger in triggers if trigger["systemd"]["timer"]]
-        source = "systemd" if any(trigger["systemd"]["status"] == "available" for trigger in triggers) else "unavailable"
-        state = self._control_state(triggers) if source == "systemd" else "unknown"
-        last_triggers = sorted(timer["lastTriggerAt"] for timer in timers if timer["lastTriggerAt"])
-        next_runs = sorted(timer["nextRunAt"] for timer in timers if timer["nextRunAt"])
-        last_trigger = last_triggers[-1] if last_triggers else None
-        next_run, estimated = (next_runs[0] if next_runs else None), False
-        if next_run is None and state == "active" and last_trigger and cadence["status"] == "measured":
-            parsed = parse_time(last_trigger)
-            next_run = iso_utc(parsed + dt.timedelta(seconds=cadence["seconds"])) if parsed else None
-            estimated = next_run is not None
-        if state == "paused":
-            next_run, estimated = None, False
-        persistent = cadence.get("persistent")
-        if persistent is None:
-            persistent = next((timer["persistent"] for timer in timers if timer["persistent"] is not None), None)
-        last_action = self.control_reader(logical_id) if self.control_reader else None
-        return {
-            "state": state,
-            "source": source,
-            "nextRunAt": next_run,
-            "nextRunEstimated": estimated,
-            "lastTriggerAt": last_trigger,
-            "persistent": persistent,
-            "lastAction": last_action,
-            "actions": self._control_actions(state, source),
-        }
-
-    @staticmethod
-    def _no_cadence(error: str) -> dict[str, Any]:
-        return {"status": "unavailable", "seconds": None, "source": None, "spec": None,
-                "persistent": None, "randomizedDelaySec": None, "error": error}
-
-    def _cadence_for(self, triggers: list[dict[str, Any]]) -> dict[str, Any]:
-        measured = [trigger["cadence"] for trigger in triggers if trigger["cadence"]["status"] == "measured"]
-        if measured:
-            return min(measured, key=lambda value: value["seconds"])
-        unavailable = [trigger["cadence"] for trigger in triggers if trigger["kind"] == "timer"]
-        return unavailable[0] if unavailable else self._no_cadence("no timer trigger")
-
-    def _last_valid_artifact(self, receipts: list[dict[str, Any]]) -> dict[str, Any] | None:
-        for receipt in receipts:
-            if (receipt.get("terminal") or {}).get("outcome") != "artifact":
-                continue
-            artifact = receipt.get("artifact") if isinstance(receipt.get("artifact"), dict) else None
-            state_change = receipt.get("state_change") if isinstance(receipt.get("state_change"), dict) else None
-            ended = parse_time(receipt.get("ended_at"))
-            age = int((self.clock() - ended).total_seconds()) if ended else None
-            if artifact and artifact.get("uri"):
-                return {"runId": receipt.get("run_id"), "endedAt": receipt.get("ended_at"), "uri": artifact["uri"],
-                        "title": artifact.get("title"), "kind": "artifact", "ageSeconds": age}
-            if state_change and state_change.get("evidence"):
-                return {"runId": receipt.get("run_id"), "endedAt": receipt.get("ended_at"), "uri": None,
-                        "title": state_change.get("kind") or state_change.get("evidence"),
-                        "kind": "state_change", "ageSeconds": age}
-        return None
-
-    @staticmethod
-    def _links_for(logical_id: str, contract: dict[str, Any] | None) -> dict[str, Any]:
-        return {
-            "contractLocal": f"/api/{API_VERSION}/workflows/{logical_id}/contract" if contract else None,
-            "contractGithub": f"{REPO_GITHUB}/{contract['path']}" if contract else None,
-            "devPlanTracker": DEV_PLAN_TRACKER,
-            "devPlanDoc": DEV_PLAN_DOC,
-            "taskIds": list(contract.get("task_ids") or []) if contract else [],
-        }
-
-    @staticmethod
     def _measurement(measurement: Any, fields: Iterable[str]) -> dict[str, Any]:
         if not isinstance(measurement, dict) or measurement.get("status") != "measured":
             return {"status": "unavailable", **{field: None for field in fields}}
@@ -519,7 +394,7 @@ class ControlRoomReadModel:
                 kind = str(entry.get("kind") or "timer")
                 scope = str(entry.get("scope") or "system")
                 cadence = (cadence_for(self.paths.repo, str(entry["unit"]), scope, self.calendar_runner)
-                           if kind == "timer" else self._no_cadence("not a timer"))
+                           if kind == "timer" else no_cadence("not a timer"))
                 triggers.append({
                     "unit": entry["unit"],
                     "scope": scope,
@@ -529,7 +404,7 @@ class ControlRoomReadModel:
                     "runner": entry.get("runner"),
                     "route": entry.get("route"),
                     "systemd": systemd,
-                    "state": self._trigger_state(systemd),
+                    "state": trigger_state(systemd),
                     "cadence": cadence,
                 })
             workflow_receipts = receipt_by_workflow.get(logical_id, [])
@@ -546,8 +421,8 @@ class ControlRoomReadModel:
                     f"Produces {contract.get('artifact') or 'a declared outcome'} for "
                     f"{contract.get('beneficiary') or 'its beneficiary'}"
                 )
-            cadence = self._cadence_for(triggers)
-            last_valid = self._last_valid_artifact(workflow_receipts)
+            cadence = fold_cadence(triggers)
+            last_valid = last_valid_artifact(workflow_receipts, self.clock())
             item = {
                 "id": logical_id,
                 "name": logical_id.replace("-", " ").title(),
@@ -555,7 +430,7 @@ class ControlRoomReadModel:
                 "owner": owner_set[0] if len(owner_set) == 1 else None,
                 "purpose": purpose,
                 "lifecycle": group[0].get("status", "unknown"),
-                "health": self._health(latest, triggers),
+                "health": health_of(latest, triggers),
                 "manifestPaths": sorted({str(entry["manifest"]) for entry in group}),
                 "contract": contract,
                 "contractStatus": "available" if contract else "unavailable",
@@ -569,8 +444,8 @@ class ControlRoomReadModel:
                 "cadence": cadence,
                 "lastValidArtifact": last_valid,
                 "artifactFreshness": freshness(last_valid["ageSeconds"] if last_valid else None, cadence),
-                "control": self._control_for(logical_id, triggers, cadence),
-                "links": self._links_for(logical_id, contract),
+                "control": control_for(logical_id, triggers, cadence, self.control_reader),
+                "links": links_for(logical_id, contract),
             }
             items.append(item)
         status = {
