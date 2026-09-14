@@ -1,0 +1,23 @@
+# Praetorium Control Room broker socket — T5.3a (2026-09-14). Root-owned and group-restricted:
+# only a process carrying the control-room supplementary group can connect — that is
+# control-room.service, granted through systemd/control-room.service.d/broker.conf — and every
+# other uid-1000 process on this box (every agent) is refused at connect() by the kernel.
+# Accept=yes: one request per connection, one broker process per request, no daemon state.
+# Land: sudo groupadd --system control-room
+#       sudo cp systemd/control-room-broker.socket systemd/control-room-broker@.service /etc/systemd/system/
+#       sudo systemctl daemon-reload && sudo systemctl enable --now control-room-broker.socket
+#       (a socket, not a workflow timer — the twelve stay untouched)
+[Unit]
+Description=Praetorium Control Room broker socket (allowlisted workflow controls) — T5.3a
+
+[Socket]
+ListenStream=/run/control-room-broker.sock
+SocketUser=root
+SocketGroup=control-room
+SocketMode=0660
+Accept=yes
+MaxConnections=4
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

@@ -1,0 +1,34 @@
+# Praetorium Control Room broker — T5.3a (2026-09-14). One instance per connection, as root,
+# executing the ROOT-OWNED installed copy — never the dave-writable source under /home: a root
+# unit that execs a file its clients can edit is a privilege escalation, not a broker.
+# bin/check_deploy_drift.sh compares the copy against bin/control_broker.py and the rendered
+# allowlist against /etc/control-room/allowlist.json, so neither can rot silently.
+# Land: sudo install -D -o root -g root -m 0755 bin/control_broker.py /usr/local/lib/control-room/control_broker.py
+#       python3 bin/control_broker_allowlist.py render > /tmp/allowlist.json
+#       sudo install -D -o root -g root -m 0644 /tmp/allowlist.json /etc/control-room/allowlist.json
+# Re-render after any manifest, timer or contract change (the drift check goes red until you do).
+[Unit]
+Description=Praetorium Control Room broker (per-connection, root, allowlisted) — T5.3a
+CollectMode=inactive-or-failed
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/lib/control-room/control_broker.py --serve
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+Environment=CONTROL_BROKER_ALLOWLIST=/etc/control-room/allowlist.json
+Environment=CONTROL_BROKER_RECEIPTS=/var/lib/control-room/receipts
+Environment=CONTROL_BROKER_PEER_UIDS=1000
+Environment=CONTROL_BROKER_USER_MANAGER=dave@.host
+Environment=CONTROL_BROKER_USER_STAMP_DIR=/home/dave/.local/share/systemd/timers
+Environment=CONTROL_BROKER_LOCK=/run/control-room/lock
+Environment=PYTHONDONTWRITEBYTECODE=1
+StateDirectory=control-room
+RuntimeDirectory=control-room
+RuntimeDirectoryPreserve=yes
+TimeoutStartSec=90
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+NoNewPrivileges=yes
