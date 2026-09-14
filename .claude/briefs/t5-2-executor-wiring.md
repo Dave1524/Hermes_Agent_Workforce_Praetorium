@@ -26,7 +26,7 @@ after the land-time steps in § Land-time. Never assume green before them.
 | S4 buzz_dispatch: `augustus-content` | 1 (+1 trigger) | same path (`AGENT_TASK_SLUG=augustus-content`) | `run` | nightly: `$INVOCATION_ID`; via dispatch: `${parent}-draft` | `page=… from=Picked to=Draft` state change or `decline_event=` from the attempt log; handoff = relay event id |
 | S4 trigger: `content-change-dispatch` | the second trigger | `content_change_dispatch.sh` calls the executor itself after the child returns | `run` | `$INVOCATION_ID` | `var/content_picked.state` advanced; `handoff` → child run id |
 | Platform (Trajan) | 14 | `bin/receipt_sweep.py` under NEW `workflow-receipt-sweep.timer` — **ships DISABLED** | `sweep` | the unit's last `InvocationID` (executor default) | systemd's own record of the last run (`--state-change`) or `--failed Result=…`; contract sweep checks decide |
-| Interactive (`buzz-agent@*`, `kind=service`) | 5 | Claude Code `Stop` hook → `bin/interaction_receipt.py` → `workflow_receipt.write()` | `interaction` | `<session_id>-<last assistant uuid>` | a `buzz messages send` Bash call with an ok result = `artifact`; none = `decline` with an explicit reason |
+| Interactive (`buzz-agent@*`, `kind=service`) | 5 | claude-agent-acp (4): Claude Code `Stop` hook → `bin/interaction_receipt.py` → `workflow_receipt.write()`. codex-acp (augustus): Codex `notify` → `bin/interaction_receipt.py --codex-notify <json>` → the same writer | `interaction` | Claude: `<session_id>-<last assistant uuid>`; Codex: `<thread-id>-<turn-id>` from the payload | a `buzz messages send` tool call with an ok result = `artifact`; none = `decline` with an explicit reason |
 
 Counts after land: 32 manifest entries → 31 logical (the sweep unit is a new standing row; the
 reconciliation rule is structural, the "31 → 30" in the gate is the 2026-09-11 snapshot — record the
@@ -35,9 +35,10 @@ in `tests/test_control_room_views.py` by one each — its `::control-room-30-of-
 the real manifests.
 
 Usage: from the runtime's own output only — the Claude Code JSON envelope captured by `bin/cc_run.sh`.
-`cost.log`'s `cost_usd_delta` / `tokens=unknown` is never mapped. Hermes-runtime and codex-acp runs
-carry `usage.status = "unavailable"`. Interactive turns: tokens measured from the transcript, cost
-`unavailable` (the transcript carries no price).
+`cost.log`'s `cost_usd_delta` / `tokens=unknown` is never mapped. Hermes-runtime runs carry
+`usage.status = "unavailable"`. Interactive turns: tokens measured from the transcript (Claude) or the
+Codex rollout's `token_count.info.last_token_usage` (augustus), cost `unavailable` (neither carries a
+price).
 
 ## Acceptance criteria
 
@@ -83,6 +84,24 @@ carry `usage.status = "unavailable"`. Interactive turns: tokens measured from th
    hook always exits 0 — never 2 — and never reads, prints or logs any env value.
    (`interaction-send-is-artifact`, `interaction-silence-is-decline`,
    `interaction-heartbeat-no-receipt`, `interaction-usage-summed`, `interaction-never-blocks-stop`)
+8b. The same script with `--codex-notify '<json>'` is augustus's path — Codex's documented `notify`
+   setting (`docs/config.md`; `codex-rs/hooks/src/legacy_notify.rs`), which appends one JSON argument
+   `{"type":"agent-turn-complete","thread-id","turn-id","cwd","client","input-messages",
+   "last-assistant-message"}` and spawns fire-and-forget with all stdio null — so the script never
+   reads stdin or prints in this mode, only logs. Unit from `/proc/self/cgroup` as in 8 (the wrapper's
+   bwrap does not unshare cgroups). Rollout at
+   `$CODEX_HOME/sessions/YYYY/MM/DD/rollout-<ts>-<thread-id>.jsonl` (`CODEX_HOME` is inherited from
+   the unit; glob on the thread id, never on the date). The turn is the span between the
+   `event_msg/task_started` and `event_msg/task_complete` whose `turn_id` matches; a
+   `response_item/function_call` inside it whose arguments run `buzz messages send` with a matching
+   `function_call_output` = `artifact`, none = `decline`. Usage = the last `event_msg/token_count`
+   `info.last_token_usage` inside the span (`input_tokens`, `cached_input_tokens`, `output_tokens`,
+   `reasoning_output_tokens`, `total_tokens`); the notify may race the final write, so re-read up to
+   three times over two seconds and fall back to `usage.status = "unavailable"`, never 0. Heartbeat
+   rule as in 8 using `input-messages[0]`. Run id `<thread-id>-<turn-id>`.
+   (`codex-notify-send-is-artifact`, `codex-notify-silence-is-decline`,
+   `codex-notify-usage-from-rollout`, `codex-notify-missing-rollout-unavailable`,
+   `codex-notify-never-fails`)
 9. `bin/contract_exec.py` gains `--failed REASON`, `--decline REASON`, `--run-id ID`; every
    existing `exec-*` test still passes. (`exec-failed-flag`, `exec-decline-flag`, `exec-run-id-flag`)
 10. Coverage: a fixture test walks the 31 standing rows (32 after land) and proves each maps to
@@ -114,6 +133,15 @@ carry `usage.status = "unavailable"`. Interactive turns: tokens measured from th
   its own tick receipt (criterion 4). Belt-and-braces failure branches pass `--failed "<reason>"`.
 - `buzz-team/agent-settings.json` — add `hooks.Stop` → `python3 "$HOME/agent-workforce/bin/interaction_receipt.py"`
   (`timeout` 20). The file is already adopted in `buzz-team/MANIFEST.toml`; no manifest edit.
+- `~/.config/codex-agents/augustus/config.toml` (augustus's `CODEX_HOME`, outside the repo and not
+  deploy-managed — a land-time step, listed under § Land-time) — add
+  `notify = ["python3", "/home/dave/agent-workforce/bin/interaction_receipt.py", "--codex-notify"]`.
+  Read at app-server start, so it takes effect when augustus is next started. Not `hooks.json`: Codex's
+  lifecycle hooks (`Stop`) need persisted trust that only the TUI grants or a root-owned
+  `/etc/codex/config.toml` managed layer supplies, and an untrusted hook is skipped silently —
+  MEASURED 2026-09-14 (`-c hooks.stop=…` never fired under `codex exec`, with or without
+  `--dangerously-bypass-hook-trust`). `notify` needs no trust and fired on the exact augustus harness
+  (codex-acp 1.1.9 → bundled codex 0.145.0 app-server, `client:"@agentclientprotocol/codex-acp"`).
 - `design/agents/trajan.toml` — new `[[workflows]]` row `workflow-receipt-sweep`, `surface="platform"`,
   `status="standing"`, `trigger="daily 05:50"`, `contract="design/contracts/workflow-receipt-sweep.md"`,
   `suite=["tests/test_receipt_sweep.sh"]`, `route="ops"`, `in_repo=true`, `alerted=true`.
@@ -149,8 +177,15 @@ carry `usage.status = "unavailable"`. Interactive turns: tokens measured from th
 - `bin/receipt_sweep.py` — criterion 6. Imports `contract_exec` (manifest row, repo-root fallback)
   and `workflow_receipt.receipt_path`. `--tsv`, `--receipt-root`, `--now`, `SYSTEMCTL` env for
   fixtures. Logs to `~/agent-workforce/logs/receipt_sweep.log`.
-- `bin/interaction_receipt.py` — criterion 8. Reuses `skill_telemetry.records()` / `tool_uses()`.
+- `bin/interaction_receipt.py` — criteria 8 and 8b (one CLI, two readers: `transcript_reader` for the
+  Claude JSONL, `rollout_reader` for the Codex rollout; both feed one `interaction_outcome()` so the
+  artifact/decline rule is written once). Reuses `skill_telemetry.records()` / `tool_uses()`.
   Logs to `~/agent-workforce/logs/interaction_receipt.log`.
+- `tests/fixtures/interaction/codex-notify.json` (the argv payload) and
+  `tests/fixtures/interaction/sessions/2026/09/14/rollout-…-<thread-id>.jsonl` — one real one-turn
+  rollout (`session_meta`, `turn_context`, `task_started`, a `function_call`/`function_call_output`
+  pair for `buzz messages send`, `token_count`, `task_complete`), plus a silent variant with no
+  function call. Point `CODEX_HOME` at `tests/fixtures/interaction` in the tests.
 - `systemd/workflow-receipt-sweep.service` — `Type=oneshot`, `User=dave`,
   `Environment=XDG_RUNTIME_DIR=/run/user/1000` (precedent `fleet-turn-check.service`; needed for the
   user-scope `buzz-pr-watch` row), `ExecStart=/home/dave/agent-workforce/bin/receipt_sweep.py`,
@@ -214,7 +249,8 @@ failure).
    Then `tests/test_fleet_ownership.sh`, `tests/test_workflow_coverage.py`, `tests/test_contract_schema.sh`
    green.
 9. `interaction_receipt.py` + settings hook — `tests/test_interaction_receipt.py` over the three
-   transcripts with `hook-stdin.json` on stdin and the unit override.
+   transcripts with `hook-stdin.json` on stdin and the unit override; then the `--codex-notify` cases
+   over the fixture rollouts with `CODEX_HOME` pointed at the fixture tree.
 10. `tests/test_receipt_coverage.py`, fleet-suites entries, runbook and CLAUDE.md lines.
 11. Land (§ Land-time), then evidence (§ Evidence) when Dave says.
 
@@ -236,7 +272,12 @@ failure).
   `bin/ tests/ systemd/` is empty).
 - `tests/test_interaction_receipt.py`: `interaction-send-is-artifact`, `interaction-silence-is-decline`,
   `interaction-heartbeat-no-receipt`, `interaction-usage-summed`, `interaction-never-blocks-stop`
-  (malformed stdin, missing transcript, unwritable root → exit 0, one log line).
+  (malformed stdin, missing transcript, unwritable root → exit 0, one log line);
+  `codex-notify-send-is-artifact`, `codex-notify-silence-is-decline`, `codex-notify-usage-from-rollout`
+  (the five token fields equal the fixture's `last_token_usage`, status `measured`),
+  `codex-notify-missing-rollout-unavailable` (receipt still written, `usage.status == "unavailable"`,
+  outcome `decline` with reason `rollout not found`), `codex-notify-never-fails` (malformed JSON
+  argument, unset `CODEX_HOME` → exit 0, one log line).
 - `tests/test_receipt_coverage.py`: `receipt-coverage-every-standing-row`.
 - Existing suites that must stay green untouched: the nine `test_*_smoke.sh`, `test_contract_exec.sh`,
   `test_fleet_ownership.sh`, `test_manifest_surfaces.sh`, `test_workflow_coverage.py`,
@@ -252,6 +293,10 @@ failure).
    (`~/.config/buzz-team/verify-fleet.sh`, `check-loaded.sh`). The five agents are stopped today
    (MEASURED 2026-09-14: `systemctl --user list-units 'buzz-agent@*'` lists nothing), so the hook
    loads when they are next started — not a step here.
+3b. Append to `~/.config/codex-agents/augustus/config.toml` (outside the repo; no sudo):
+   `notify = ["python3", "/home/dave/agent-workforce/bin/interaction_receipt.py", "--codex-notify"]`
+   — then `grep -c '^notify' ~/.config/codex-agents/augustus/config.toml` reads 1. Loads when
+   augustus is next started, like step 3.
 4. `bash bin/verify.sh` — green.
 5. Commit; push. Record MEASURED: manifest count 32 → 31 logical, timer `disabled`.
 
@@ -263,7 +308,11 @@ shows `usage.status == "measured"`, nine assertions, one terminal outcome;
 `python3 bin/control_room_api.py` lists the run. Optional cheap check of the hook path, no agent
 needed: `CONTROL_ROOM_RECEIPT_ROOT=$(mktemp -d) claude -p 'say ok' --model claude-haiku-4-5-20251001 --settings buzz-team/agent-settings.json`
 then `ls` that root — proves the Stop hook fires under `claude -p`; firing under claude-agent-acp is
-verified when the agents are next started.
+verified when the agents are next started. The Codex half has the same cheap check, no agent needed:
+`CONTROL_ROOM_RECEIPT_ROOT=$(mktemp -d) INTERACTION_RECEIPT_UNIT=buzz-agent@augustus.service codex exec --skip-git-repo-check -C /tmp -m gpt-5.5 -c 'model_reasoning_effort="low"' -c 'notify=["python3","bin/interaction_receipt.py","--codex-notify"]' 'Reply with exactly the word ok' </dev/null`
+then `ls` that root (uses Dave's own `~/.codex` auth and rollout dir; ~14k tokens on gpt-5.5).
+Firing under codex-acp was proven 2026-09-14 by driving one ACP turn with `CODEX_CONFIG` carrying the
+same `notify`; it is re-verified for free the first time augustus answers after his config change.
 
 ## Seam for T6.1
 
@@ -327,8 +376,17 @@ Decisions (each with its reason, once):
 - **Interactive = per-turn Stop hook, vantage `interaction`.** A faked cadence would be a lie;
   `validate()` does not restrict `vantage`. Silence is `decline` with the reason spelled out: the
   transcript cannot tell deliberate sibling silence from the no-auto-publish failure.
-- **augustus (codex-acp) has no hook — named gap.** Codex settings do not reach an ACP session;
-  his receipts stay `unavailable` and `receipt-coverage` records the row as `interaction:unhooked`.
+- **augustus (codex-acp) = Codex `notify`, the same script, the same writer.** Codex has two official
+  turn-end mechanisms: lifecycle hooks (`hooks.json`, `Stop`, stdin payload with `transcript_path`)
+  and the older `notify` config value (argv payload with `thread-id`). Hooks are the go-forward API
+  but are gated on persisted trust — granted in the TUI or by a root-owned managed layer — and a
+  headless agent can do neither without sudo and a box-wide config; untrusted hooks are skipped
+  silently. `notify` is documented, trust-free, per-`CODEX_HOME`, and MEASURED 2026-09-14 to fire
+  under both `codex exec` and codex-acp 1.1.9's bundled 0.145 app-server. The payload lacks usage, but
+  `thread-id` names the rollout, and the rollout carries per-turn `last_token_usage` and every tool
+  call — strictly more than the Claude transcript gives. Revisit if a Codex release drops
+  `legacy_notify.rs`; the reader seam (`rollout_reader`) is the only thing that would change.
+  `receipt-coverage` therefore has no `interaction:unhooked` class: all five interactive rows are hooked.
 - **Hook writes via `workflow_receipt.write()` directly.** The executor refuses `kind=service` rows
   by schema rule; the hook is the second writer of the one shape.
 - **If the Stop hook does not fire under claude-agent-acp** (unverifiable with the fleet stopped),
