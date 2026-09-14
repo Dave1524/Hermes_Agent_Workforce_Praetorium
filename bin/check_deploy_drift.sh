@@ -38,6 +38,9 @@
 # for, and it is compared above with the other content trees. Both halves stay. The claim
 # that made the gap invisible was "staging is byte-identical to source for all 55 units" —
 # stated with no check behind it and false by three files when one was finally run (W17).
+# 2026-09-14 (T5.3a): *.socket joins the unit globs, and a seventh comparison is added below
+# for the root-installed control broker — a socket unit deployed but never compared is the
+# same gap W17 closed for staging, one unit type over.
 #
 # MEMBERSHIP IS COMPARED IN BOTH DIRECTIONS. A unit present in one tree and absent from the
 # other is invisible to a byte-comparison of the units that exist in both, which is all the
@@ -95,6 +98,11 @@ CONTENT_TREES="${DRIFT_CONTENT_TREES:-profiles docs config CLAUDE.md AGENTS.md R
 MANIFESTS="${DRIFT_MANIFESTS:-$REPO/design/agents}"
 SRC_BUZZ="${DRIFT_SRC_BUZZ:-$REPO/buzz-team}"
 BUZZ_TREE="${DRIFT_BUZZ:-$HOME/.config/buzz-team}"
+# The root-installed control broker (T5.3a): the per-connection root unit execs a root-owned
+# copy of bin/control_broker.py and reads a rendered allowlist, neither of which bin/deploy
+# writes — sudo does, at land time — so both are compared here against source.
+BROKER_LIB="${DRIFT_BROKER_LIB:-/usr/local/lib/control-room}"
+BROKER_ETC="${DRIFT_BROKER_ETC:-/etc/control-room}"
 # THIS SCRIPT CANNOT RUN FROM THE DEPLOYED COPY OF ITSELF, and the failure is silent, so it
 # is a guard rather than a note. REPO is resolved from $0, so a copy exec'd out of the
 # runtime tree sets SRC_BIN to that same tree and compares it with itself — the bin half
@@ -452,8 +460,8 @@ fi
 # demand that a --user unit appear in /etc, and sweeping systemd/archive/ in would report six
 # deliberately-retired units as source-only.
 echo "system units: $SRC_SYSTEM <-> $ETC"
-sys_src=$(names "$SRC_SYSTEM" \( -name '*.service' -o -name '*.timer' \))
-sys_etc=$(names "$ETC" \( -name '*.service' -o -name '*.timer' \))
+sys_src=$(names "$SRC_SYSTEM" \( -name '*.service' -o -name '*.timer' -o -name '*.socket' \))
+sys_etc=$(names "$ETC" \( -name '*.service' -o -name '*.timer' -o -name '*.socket' \))
 if [ -z "$sys_src" ]; then
   report system "source tree $SRC_SYSTEM matched no units — a clean result here would mean nothing"
 fi
@@ -640,6 +648,42 @@ while IFS= read -r f; do
   fi
   cmp -s "$SRC_BUZZ/$f" "$BUZZ_TREE/$f" || report buzz "content differs: $f"
 done < <(comm -12 <(echo "$buzz_src") <(echo "$buzz_live"))
+
+# --- root-installed control broker <-> bin/control_broker.py + rendered allowlist ------------
+# The seventh comparison (T5.3a). control-room-broker@.service execs $BROKER_LIB/control_broker.py
+# as root — never the dave-writable source — and reads $BROKER_ETC/allowlist.json, which is a
+# pure render of the manifests, unit files and contracts. Neither is written by bin/deploy;
+# both are installed by hand with sudo, so a stale copy is exactly the drift that would
+# otherwise rot silently. The predicate is on the SOURCE: a tree with no control_broker.py
+# has nothing to compare and says so in one line.
+if [ ! -f "$SRC_BIN/control_broker.py" ]; then
+  info "no $SRC_BIN/control_broker.py — the root-installed control broker is not compared"
+else
+  echo "control broker: $SRC_BIN/control_broker.py <-> $BROKER_LIB; allowlist render <-> $BROKER_ETC/allowlist.json"
+  if [ ! -f "$BROKER_LIB/control_broker.py" ]; then
+    report broker "source-only: control_broker.py is not installed at $BROKER_LIB (sudo install -D -o root -g root -m 0755 bin/control_broker.py $BROKER_LIB/control_broker.py)"
+  elif ! cmp -s "$SRC_BIN/control_broker.py" "$BROKER_LIB/control_broker.py"; then
+    report broker "content differs: control_broker.py (root copy is stale — re-run the install line)"
+  fi
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    [ "$f" = control_broker.py ] && continue
+    report broker "installed-only: $f has no source"
+  done < <(names "$BROKER_LIB")
+  if [ -f "$SRC_BIN/control_broker_allowlist.py" ]; then
+    render_err=$(mktemp)
+    if rendered=$(python3 "$SRC_BIN/control_broker_allowlist.py" render --repo "$SRC_ROOT" 2>"$render_err"); then
+      if [ ! -f "$BROKER_ETC/allowlist.json" ]; then
+        report broker "source-only: allowlist.json is not installed at $BROKER_ETC (render and install)"
+      elif [ "$rendered" != "$(cat "$BROKER_ETC/allowlist.json")" ]; then
+        report broker "content differs: allowlist.json (re-render and install)"
+      fi
+    else
+      report broker "allowlist render failed: $(tr '\n' ' ' <"$render_err")"
+    fi
+    rm -f "$render_err"
+  fi
+fi
 
 # The staging copy, named so the next reader does not mistake the comparison above for this
 # one. It IS compared — against source, with the other content trees, because bin/deploy

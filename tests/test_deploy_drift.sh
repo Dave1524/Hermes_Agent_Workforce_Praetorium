@@ -79,6 +79,11 @@ fixture() {
   echo '[Unit]' > "$root/src_content/systemd/staged.service"
   echo '[Unit]' > "$root/run_content/systemd/staged.service"
   : > "$root/exclusions.toml"
+  # The root-installed control broker's two destinations (T5.3a), empty. Every scenario before
+  # group 17 has no src_bin/control_broker.py, so the section stays inert — one info line — and
+  # every clean() above still holds. Pointed at the real /usr/local/lib and /etc, it would not.
+  mkdir -p "$root/broker_lib" "$root/broker_etc"
+  export DRIFT_BROKER_LIB="$root/broker_lib" DRIFT_BROKER_ETC="$root/broker_etc"
   # ONE owner for the content-tree half of the fixture env. Four call sites need it — drift()
   # and the three inline invocations that each override a single other var — and it was four
   # copies of the same literal until W17, which is the shape this suite exists to catch one
@@ -859,4 +864,55 @@ assert 'both lists actually parsed (an empty comm difference is not evidence)' \
 # printf would match the grep's own pattern and fail on the fixed tree.
 assert 'systemd is credited by the real CONTENT_TREES, not by a literal in this test' \
   "grep -qx systemd <<<\"\$content_trees\""
+
+echo "--- 17. root-installed control broker + socket units ---"
+# A socket unit is a unit: source-only in /etc is drift like any .service or .timer, and a
+# .socket present on both sides and equal is clean. Before T5.3a the globs stopped at
+# .service/.timer, so a deployed-but-never-compared socket was W17's gap one unit type over.
+fixture
+echo '[Socket]' > "$root/src_sys/x.socket"
+capture
+assert 'a source-only .socket unit is named' "saw 'DRIFT \[system\] source-only: x.socket'"
+echo '[Socket]' > "$root/etc/x.socket"
+capture
+assert 'a .socket present on both sides and equal is clean' clean
+assert 'with no control_broker.py in source the broker section is inert, in one info line' \
+  "saw 'info: no .*control_broker.py' && ! saw 'DRIFT \[broker\]'"
+# The broker copy is root-installed by hand, never by bin/deploy; a stale or missing copy is
+# what would rot silently. The predicate is on the SOURCE side.
+echo 'broker v1' > "$root/src_bin/control_broker.py"
+echo 'broker v1' > "$root/run_bin/control_broker.py"
+capture
+assert 'source with no root copy is source-only' \
+  "saw 'DRIFT \[broker\] source-only: control_broker.py'"
+echo 'broker v1' > "$root/broker_lib/control_broker.py"
+capture
+assert 'root copy present and equal is clean' clean
+echo 'broker v2' > "$root/broker_lib/control_broker.py"
+capture
+assert 'root copy that differs is named' "saw 'DRIFT \[broker\] content differs: control_broker.py'"
+echo 'broker v1' > "$root/broker_lib/control_broker.py"
+echo 'stray' > "$root/broker_lib/other.py"
+capture
+assert 'an extra file under the root lib is installed-only' "saw 'DRIFT \[broker\] installed-only: other.py'"
+rm -f "$root/broker_lib/other.py"
+# The allowlist is a pure render of the checkout; the installed file must equal that render.
+# A 3-line stub stands in for the renderer so this group never depends on the real manifests.
+printf '#!/usr/bin/env python3\nimport sys\nsys.stdout.write(%s)\n' "'{\"schema\": 1}\\n'" > "$root/src_bin/control_broker_allowlist.py"
+cp "$root/src_bin/control_broker_allowlist.py" "$root/run_bin/control_broker_allowlist.py"
+capture
+assert 'renderer present, no installed allowlist -> source-only' \
+  "saw 'DRIFT \[broker\] source-only: allowlist.json'"
+printf '{"schema": 1}\n' > "$root/broker_etc/allowlist.json"
+capture
+assert 'installed allowlist equal to the render is clean' clean
+printf '{"schema": 2}\n' > "$root/broker_etc/allowlist.json"
+capture
+assert 'installed allowlist that differs from the render is named' \
+  "saw 'DRIFT \[broker\] content differs: allowlist.json'"
+printf '#!/usr/bin/env python3\nimport sys\nsys.exit("boom")\n' > "$root/src_bin/control_broker_allowlist.py"
+cp "$root/src_bin/control_broker_allowlist.py" "$root/run_bin/control_broker_allowlist.py"
+capture
+assert 'a render failure is a finding carrying the stderr' "saw 'DRIFT \[broker\] allowlist render failed: boom'"
+rm -rf "$root"
 exit $fail
