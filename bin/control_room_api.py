@@ -41,6 +41,7 @@ from workflow_receipt import (  # noqa: E402
 from control_room_cadence import cadence_for, freshness, parse_systemd_timestamp  # noqa: E402
 from control_room_benefit import benefit_row, load_ledger  # noqa: E402
 from control_room_exceptions import KINDS, classify  # noqa: E402
+from control_room_lineage import lineage  # noqa: E402
 from control_room_state import (  # noqa: E402
     control_for,
     fold_cadence,
@@ -458,6 +459,7 @@ class ControlRoomReadModel:
                 "incompleteRuns": [self._run_summary(r) for r in workflow_receipts
                                    if r["terminal"]["outcome"] in {"skipped", "failed"}],
             }
+            item["lineage"] = lineage(item, latest)
             items.append(item)
         status = {
             "manifests": "available" if not manifest_errors else "degraded",
