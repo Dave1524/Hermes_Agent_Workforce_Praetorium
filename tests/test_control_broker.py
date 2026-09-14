@@ -30,6 +30,7 @@ UTC = dt.timezone.utc
 
 sys.path.insert(0, str(ROOT / "bin"))
 import control_broker as broker  # noqa: E402
+import control_broker_allowlist as allowlist  # noqa: E402
 
 
 class Sandbox:
@@ -477,6 +478,122 @@ class PeerRuleTable(unittest.TestCase):
         self.assertEqual(broker.peer_allowed("127.0.0.1", "100.86.82.16")[0], False)
         self.assertEqual(broker.peer_allowed(None, "100.86.82.16")[0], False)
         self.assertEqual(broker.peer_allowed("127.0.0.1", "127.0.0.1"), (True, "loopback-bound development instance"))
+
+
+RETRY_DECLARED = {"knowledge-digest", "agent-proposal", "weekly-pre-assembly", "m1-signal-scan", "scorecard"}
+
+
+def manifest_entries() -> list[dict]:
+    import tomllib
+    rows = []
+    for path in sorted((ROOT / "design" / "agents").glob("*.toml")):
+        data = tomllib.loads(path.read_text())
+        for entry in data.get("workflows", []):
+            rows.append({**entry, "owner": data.get("name") or path.stem})
+    return rows
+
+
+class AllowlistRender(unittest.TestCase):  # (::broker-allowlist-render)
+    def test_render_over_the_real_checkout(self):
+        rendered = allowlist.render(ROOT)
+        entries = manifest_entries()
+        timers = [e for e in entries if e.get("status") == "standing" and e.get("kind", "timer") == "timer"]
+        logical = {str(e.get("logical_workflow") or e["unit"]) for e in timers}
+        self.assertEqual(rendered["schema"], 1)
+        self.assertEqual(set(rendered["workflows"]), logical)
+        rendered_units = sorted(t["unit"] for w in rendered["workflows"].values() for t in w["triggers"])
+        self.assertEqual(rendered_units, sorted(e["unit"] for e in timers))
+        self.assertEqual([t["unit"] for t in rendered["workflows"]["augustus-content"]["triggers"]],
+                         ["augustus-content", "content-change-dispatch"])
+        self.assertEqual(rendered["workflows"]["buzz-pr-watch"]["triggers"][0]["scope"], "user")
+        excluded = {row["unit"]: row for row in rendered["excluded"]}
+        services = [e for e in entries if e.get("kind") == "service"]
+        self.assertTrue(services)
+        for entry in services:
+            self.assertEqual(excluded[entry["unit"]]["reason"], "kind = service (always-on, not a timer workflow)")
+            self.assertEqual(excluded[entry["unit"]]["owner"], entry["owner"])
+        spent = [e for e in entries if e.get("status") == "spent"]
+        self.assertEqual(len(spent), 2)
+        for entry in spent:
+            self.assertEqual(excluded[entry["unit"]]["reason"], "status = spent")
+        self.assertEqual(len(rendered["excluded"]), len(entries) - len(timers))
+        for name, workflow in rendered["workflows"].items():
+            self.assertEqual(workflow["retry"], name in RETRY_DECLARED, name)
+            self.assertIsInstance(workflow["retry_reason"], str, name)
+            self.assertEqual(workflow["contract"], f"design/contracts/{name if name != 'agent-proposal' else 'standing-research'}.md")
+            self.assertRegex(name, broker.UNIT_RE)
+        self.assertEqual(allowlist.dumps(rendered), allowlist.dumps(allowlist.render(ROOT)))
+        self.assertTrue(allowlist.dumps(rendered).endswith("}\n"))
+        self.assertEqual(broker.Allowlist.load_data(rendered).lookup("scorecard")["retry"], True)
+
+    def test_retry_declaration_parser(self):
+        text = "## Identity\n\n| | |\n|---|---|\n| Unit | `x.service` |\n| **Retry** | `idempotent`: same-day skip |\n\n## Trigger\n"
+        self.assertEqual(allowlist.contract_retry_declaration(text), (True, "idempotent: same-day skip"))
+        self.assertEqual(allowlist.contract_retry_declaration(text.replace("idempotent", "not idempotent")),
+                         (False, "not idempotent: same-day skip"))
+        self.assertEqual(allowlist.contract_retry_declaration(text.replace("| **Retry** | `idempotent`: same-day skip |\n", "")),
+                         (False, None))
+        self.assertEqual(allowlist.contract_retry_declaration("no identity section"), (False, None))
+
+    def test_synthetic_repo_exclusions(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repo = pathlib.Path(temp)
+            (repo / "design" / "agents").mkdir(parents=True)
+            (repo / "design" / "contracts").mkdir()
+            (repo / "systemd" / "user").mkdir(parents=True)
+            (repo / "design" / "agents" / "trajan.toml").write_text(
+                'name = "trajan"\n'
+                '[[workflows]]\nunit = "ghost-job"\nstatus = "standing"\ncontract = "design/contracts/ghost.md"\n'
+                '[[workflows]]\nunit = "Bad_Name"\nstatus = "standing"\n'
+                '[[workflows]]\nunit = "twin-a"\nstatus = "standing"\nlogical_workflow = "twin"\ncontract = "design/contracts/a.md"\n'
+                '[[workflows]]\nunit = "twin-b"\nstatus = "standing"\nlogical_workflow = "twin"\ncontract = "design/contracts/b.md"\n'
+                '[[workflows]]\nunit = "lonely"\nstatus = "standing"\n'
+                '[[workflows]]\nunit = "user-job"\nstatus = "standing"\nscope = "user"\ncontract = "design/contracts/user-job.md"\n')
+            for unit in ("Bad_Name", "twin-a", "twin-b", "lonely"):
+                (repo / "systemd" / f"{unit}.timer").write_text("")
+                (repo / "systemd" / f"{unit}.service").write_text("")
+            (repo / "systemd" / "user" / "user-job.timer").write_text("")
+            (repo / "systemd" / "user" / "user-job.service").write_text("")
+            (repo / "design" / "contracts" / "a.md").write_text("## Identity\n| Retry | idempotent: yes |\n")
+            (repo / "design" / "contracts" / "user-job.md").write_text("## Identity\n| Retry | idempotent: same-day skip |\n")
+            rendered = allowlist.render(repo)
+            excluded = {row["unit"]: row["reason"] for row in rendered["excluded"]}
+            self.assertEqual(excluded["ghost-job"], "no timer/service file in systemd/")
+            self.assertEqual(excluded["Bad_Name"], "unit name outside the broker's grammar")
+            self.assertEqual(set(rendered["workflows"]), {"twin", "lonely", "user-job"})
+            twin = rendered["workflows"]["twin"]
+            self.assertIs(twin["retry"], False)
+            self.assertIn("two contracts", twin["retry_reason"])
+            self.assertIsNone(twin["contract"])
+            lonely = rendered["workflows"]["lonely"]
+            self.assertIs(lonely["retry"], False)
+            self.assertEqual(lonely["contract"], None)
+            self.assertIn("no contract", lonely["retry_reason"])
+            self.assertEqual(rendered["workflows"]["user-job"], {
+                "owner": "trajan", "contract": "design/contracts/user-job.md", "retry": True,
+                "retry_reason": "idempotent: same-day skip", "triggers": [{"unit": "user-job", "scope": "user"}]})
+
+    def test_check_cli(self):
+        with tempfile.TemporaryDirectory() as temp:
+            installed = pathlib.Path(temp) / "allowlist.json"
+            base = [sys.executable, str(ROOT / "bin" / "control_broker_allowlist.py")]
+            render = subprocess.run(base + ["render", "--repo", str(ROOT)], capture_output=True, text=True, check=False)
+            self.assertEqual(render.returncode, 0, render.stderr)
+            self.assertEqual(render.stdout, allowlist.dumps(allowlist.render(ROOT)))
+            missing = subprocess.run(base + ["check", "--repo", str(ROOT), "--installed", str(installed)],
+                                     capture_output=True, text=True, check=False)
+            self.assertEqual(missing.returncode, 1)
+            self.assertIn("missing", missing.stdout + missing.stderr)
+            installed.write_text(render.stdout.replace('"schema": 1', '"schema": 2'))
+            differs = subprocess.run(base + ["check", "--repo", str(ROOT), "--installed", str(installed)],
+                                     capture_output=True, text=True, check=False)
+            self.assertEqual(differs.returncode, 1)
+            self.assertIn("-  \"schema\": 2", differs.stdout)
+            self.assertIn("+  \"schema\": 1", differs.stdout)
+            installed.write_text(render.stdout)
+            equal = subprocess.run(base + ["check", "--repo", str(ROOT), "--installed", str(installed)],
+                                   capture_output=True, text=True, check=False)
+            self.assertEqual(equal.returncode, 0, equal.stdout + equal.stderr)
 
 
 if __name__ == "__main__":

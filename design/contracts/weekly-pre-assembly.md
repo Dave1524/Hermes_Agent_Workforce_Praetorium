@@ -28,6 +28,7 @@ against this job's own output. The restriction is on authorship, not on the exec
 | Executor | `claude -p --model claude-sonnet-5`, box subscription, marcus's pointer-skill tree (T3.1) |
 | Contract version | 1 (2026-09-10) |
 | Alerted | yes — `OnFailure=agent-alert@%n.service`, but see `## Known failure modes` for the one path that bypasses it |
+| Retry | idempotent: STEP 0 stops when today's file exists (":52") |
 
 ## Trigger
 

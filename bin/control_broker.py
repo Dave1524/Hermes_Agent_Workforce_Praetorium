@@ -158,6 +158,10 @@ class Allowlist:
             data = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
             raise Refusal("allowlist_invalid", f"allowlist unreadable at {path}: {exc}") from exc
+        return cls.load_data(data, path)
+
+    @classmethod
+    def load_data(cls, data: Any, path: Any = "<memory>") -> "Allowlist":
         if not isinstance(data, dict) or data.get("schema") != 1:
             raise Refusal("allowlist_invalid", f"allowlist at {path} is not schema 1")
         workflows = data.get("workflows")

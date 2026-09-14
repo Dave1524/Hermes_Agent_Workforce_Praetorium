@@ -35,6 +35,14 @@ Unit name, owner persona, surface, contract version, and the manifest it is clai
 The owner here must match `design/agents/<owner>.toml` — that is the one duplication in
 this design, and D3's validator exists to keep the two ends equal.
 
+Optional row `Retry` (T5.3a). Value `idempotent: <reason>` declares that a second start on the
+same day either skips or produces the same artifact, so the Control Room's **Retry** may re-run
+a failed run; any other value, or no row, means not idempotent and Retry stays refused. The
+reason should cite the contract's own line that asserts the skip. Read by
+`bin/control_broker_allowlist.py` (the broker's allowlist) and `bin/control_room_control.py`
+(the screen's retry policy): first cell `Retry`, case-insensitive; the value's first word,
+lowercased and stripped of `*`/backticks, must be exactly `idempotent`.
+
 ### `## Trigger`
 The **declared** `OnCalendar` plus `RandomizedDelaySec`, never the next-elapse time.
 Registry §2 recorded next-elapse values and consequently reported three twice-weekly and

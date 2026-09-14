@@ -24,6 +24,7 @@ Monday with nothing new still posts the rollup. The run's artifact is the delive
 | Remediation owner | trajan (rollup or adapter); Dave for what the numbers say |
 | Retirement condition | none — standing |
 | Contract version | 1 (2026-09-11) |
+| Retry | idempotent: deterministic over cost.log, unchanged week is not rewritten (":9") |
 
 ## Trigger
 

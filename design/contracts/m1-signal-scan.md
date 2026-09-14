@@ -18,6 +18,7 @@ no run's output was read.
 | Executor | `claude -p --model claude-sonnet-5`, box subscription (`bin/run_m1_signal_scan_cc.sh:33`) |
 | Contract version | 1 (2026-09-10) |
 | Alerted | yes — `OnFailure=agent-alert@%n.service` on the live unit |
+| Retry | idempotent: same-day skip when today's scan exists (":37") |
 
 ## Trigger
 

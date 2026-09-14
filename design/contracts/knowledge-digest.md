@@ -14,6 +14,7 @@ from `systemctl cat knowledge-digest.service`, `bin/run_knowledge_digest_cc.sh`,
 | Executor | `claude -p --model claude-opus-5`, box subscription |
 | Contract version | 1 (2026-09-01) |
 | Alerted | yes — `OnFailure=agent-alert@%n.service` on the live unit |
+| Retry | idempotent: STEP 0 skips when today's file exists (":30"), so a second start writes nothing or the same artifact |
 
 ## Trigger
 

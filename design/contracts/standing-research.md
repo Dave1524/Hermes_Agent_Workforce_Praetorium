@@ -25,6 +25,7 @@ only for systemd and the journal, which know it by the other name.
 | Task slug | `standing-research` — the artifact name, the attempt log and `AGENT_VERIFY_CMD` all key on this, not on `agent-proposal` |
 | Contract version | 1 (2026-09-10) |
 | Alerted | yes — `OnFailure=agent-alert@%n.service` on the live unit |
+| Retry | idempotent: STEP 0 skips when today's file exists (":44") |
 
 ## Trigger
 
