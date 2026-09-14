@@ -32,7 +32,7 @@ def render_run(run: dict[str, Any], *, status: dict[str, Any] | None = None, gen
         f'<h1>Run {esc(run["id"])}</h1><p>{link(f"/workflows/{run["workflowId"]}", run["workflowId"])} · '
         f'{chip(run.get("outcome"))} · started {fmt_time(run.get("startedAt"))} · ended {fmt_time(run.get("endedAt"))}</p>'
         f'<section id="outcome"><h2>Outcome</h2><dl><dt>outcome</dt><dd>{chip(run.get("outcome"))}</dd>'
-        f'<dt>reason</dt><dd>{cell(run.get("reason"))}</dd></dl></section>'
+        f'<dt>reason</dt><dd>{reason_cell(run)}</dd></dl></section>'
         f'<section id="assertions"><h2>Assertions</h2>{_assertions(run.get("assertions") or [])}</section>'
         f'<section id="artifact"><h2>Artifact / state change</h2><dl>'
         f'<dt>artifact</dt><dd>{link(artifact.get("uri"), artifact.get("title") or artifact.get("uri"), external=True) if artifact else UNKNOWN}</dd>'
@@ -122,17 +122,23 @@ def _runs(item: dict[str, Any], runs: list[dict[str, Any]]) -> str:
     )
 
 
+def reason_cell(run: dict[str, Any]) -> str:
+    if run.get("outcome") == "artifact" and run.get("reason") is None:
+        return "none"
+    return cell(run.get("reason"))
+
+
 def _run_line(run: dict[str, Any] | None) -> str:
     if not run:
         return UNKNOWN
-    return f'{link(f"/runs/{run["id"]}", run["id"])} {fmt_time(run.get("endedAt"))} {chip(run.get("outcome"))} {cell(run.get("reason"))}'
+    return f'{link(f"/runs/{run["id"]}", run["id"])} {fmt_time(run.get("endedAt"))} {chip(run.get("outcome"))} {reason_cell(run)}'
 
 
 def _run_row(run: dict[str, Any]) -> str:
     failed = [a.get("id") for a in run.get("assertions") or [] if a.get("status") == "failed"]
     return (
         f'<tr data-run="{esc(run["id"])}"><td>{link(f"/runs/{run["id"]}", run["id"])}</td><td>{fmt_time(run.get("endedAt"))}</td>'
-        f'<td>{chip(run.get("outcome"))}</td><td>{cell(run.get("reason"))}</td><td>{cell(failed) if failed else "none"}</td></tr>'
+        f'<td>{chip(run.get("outcome"))}</td><td>{reason_cell(run)}</td><td>{cell(failed) if failed else "none"}</td></tr>'
     )
 
 

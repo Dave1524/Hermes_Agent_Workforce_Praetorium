@@ -24,6 +24,7 @@ from control_room_fixture import FIXTURE, ROOT, build_model, serving  # noqa: E4
 
 import control_room_static as static  # noqa: E402
 import control_room_views as views  # noqa: E402
+import control_room_view_workflow as view_workflow  # noqa: E402
 
 STANDING_ENTRIES = 31
 LOGICAL_WORKFLOWS = 30
@@ -120,6 +121,20 @@ class FailedCheckNamed(ServedCase):  # (::control-room-failed-check-named)
         page = self.html("/workflows/raw-ingest")
         runs = re.search(r'<section[^>]*id="runs"[^>]*>(.*?)</section>', page, re.DOTALL).group(1)
         self.assertIn("artifact-is-this-run", runs)
+
+
+class ArtifactRunHasNoReason(ServedCase):  # (::control-room-failed-check-named)
+    def test_artifact_run_reason_is_none_not_unknown(self):
+        page = self.html("/workflows/praetorium-daily-plan")
+        row = re.search(r'<tr data-run="run-0913">(.*?)</tr>', page, re.DOTALL).group(1)
+        self.assertIn("<td>none</td><td>none</td>", row)
+        self.assertNotIn("Unknown", row)
+        outcome = re.search(r'<section id="outcome">(.*?)</section>', self.html("/runs/run-0913"), re.DOTALL).group(1)
+        self.assertIn("<dt>reason</dt><dd>none</dd>", outcome)
+
+    def test_failed_run_without_reason_is_still_unknown(self):
+        self.assertEqual(view_workflow.reason_cell({"outcome": "failed", "reason": None}), views.UNKNOWN)
+        self.assertEqual(view_workflow.reason_cell({"outcome": "artifact", "reason": None}), "none")
 
 
 class PausedOwned(ServedCase):  # (::control-room-paused-owned)
