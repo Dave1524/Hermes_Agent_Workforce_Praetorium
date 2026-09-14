@@ -64,6 +64,45 @@ the delta and two corrections to the review itself.
 
 Sizes: **S** one session. **M** two or three. **L** several, or one that waits on a real run.
 
+## Definition of done for the plan (2026-09-14)
+
+The four items above are per task. Nothing said when the *plan* is finished, and "finished this
+week" was unjudgeable without it. Two halves, because three gates need calendar time and the
+scheduled fleet is **off by decision** — all twelve system timers disabled since 2026-09-11, and they
+stay disabled until Dave resumes workflows one at a time, from the management screen, for testing.
+Development needs no timer: every suite in this repo runs from fixtures (T5.1's
+`tests/test_contract_exec.sh` is the precedent), and the per-task item 3 above reads, for this half,
+"installed, stays disabled, one hand-started run at test time". **No task below enables a timer.**
+
+**Code-complete — target Fri 2026-09-18, fleet off.**
+
+1. **The workflow management screen is live on this box** (T5.3, T5.3a, T5.3b). Private, Dave only.
+   Portfolio, exception and benefit views plus a page per logical workflow; pause, resume, run now,
+   retry and stop through the root-owned allowlisted broker, every action with an audit receipt;
+   schedule change and retirement produce a previewed source-repo PR. Each of the twelve paused
+   timers renders as *paused* — an owned state, distinct from failed and not an exception — and
+   *resume* on one of them is how the fleet comes back: one workflow at a time, never a global
+   switch. A stale artifact still shows as stale while its workflow is paused.
+2. Every standing run path calls the executor and writes a receipt; proven on fixtures, and on one
+   hand-started `knowledge-digest.service` run when Dave picks the moment (T5.2).
+3. One synthetic incident reaches the Buzz incidents stream, repeats are deduplicated, recovery is
+   visible, healthy runs stay silent (T5.3c).
+4. A grep for hermes across `bin/ systemd/ profiles/` returns only historical notes (T6.1, behind D4).
+5. `bash bin/verify.sh` green on `main`, drift clean, the new units — screen, broker, incident
+   digest — installed and enabled; the twelve workflow timers untouched.
+6. Every Claude row on the tracker is Done, or carries a `DECIDED` line with a reason and an owner.
+   T5.3d is `DECIDED — deferred`: no Marcus → Trajan scheduled path exists to trace.
+
+**Evidence-complete — per workflow, from the screen; a dated clock, not this week.**
+
+7. Dave resumes a workflow from the management screen; the resume receipt is the clock start for
+   that workflow. Resume only what is worth its tokens: a workflow with no valid artifact in its
+   history is a Retire candidate before it is a resume candidate.
+8. T3.3: first Monday digest with a per-skill count, seven days after the first resumed runner.
+9. T7.2: three consecutive eligible `augustus-content` terminal outcomes after its resume.
+10. T5.4: one week of receipts per resumed workflow, then Keep / Improve / Retire for all 30 —
+    `Unknown` allowed, and a workflow never resumed may be retired on the evidence it already has.
+
 ## Baseline
 
 Two columns. 2026-09-07 is what the plan was written against and what T1.1's gate was sized from;
