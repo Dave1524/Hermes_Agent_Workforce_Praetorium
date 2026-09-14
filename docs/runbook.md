@@ -245,6 +245,49 @@ rsync -a ~/dev/agent-workforce/profiles/ ~/agent-workforce/profiles/
 rsync -a ~/dev/agent-workforce/docs/ ~/agent-workforce/docs/
 ```
 
+## Control Room (T5.3)
+
+**URL:** `http://praetorium:8787/` (MagicDNS) or `http://100.86.82.16:8787/` — from the tailnet
+only. `/` redirects to `/exceptions`; the other views are `/portfolio`, `/benefit`,
+`/workflows/<id>` and `/runs/<run_id>`; the JSON behind them is `/api/v1/*`.
+
+**Unit:** `systemd/control-room.service` (system scope, `User=dave`, `Restart=on-failure`), the
+one hand-started unit on this box that is not a workflow timer. It is **not** a manifest
+workflow: no row in `design/agents/*.toml`, no contract, no timer, no `config/fleet-units.tsv`
+entry. Land, restart and stop are Dave's, with sudo:
+
+```bash
+sudo cp systemd/control-room.service /etc/systemd/system/ && sudo systemctl daemon-reload
+sudo systemctl enable --now control-room.service      # touches no workflow timer
+sudo systemctl restart control-room.service           # after bin/deploy ships a change
+journalctl -u control-room.service -n 50
+```
+
+**Bind rule:** `ExecStart` is `bin/control_room_serve.sh`, which resolves `tailscale ip -4` and
+binds that address only. It refuses to start (exit 1, naming the command) when Tailscale is down
+— never `0.0.0.0`, never the LAN, never loopback in production. Dave-only is the tailnet having
+one user; there is no `tailscale serve`, no TLS, no auth header, on purpose (a `tailscale serve`
+config lives in tailscaled, outside this repo and invisible to the drift check).
+
+**What it reads:** `design/agents/*.toml` and `design/contracts/*.md` from the **source checkout**
+(`CONTROL_ROOM_REPO_ROOT=/home/dave/dev/agent-workforce` — `design/` is source-only, `bin/deploy`
+does not ship it), timer files under `systemd/`, `systemctl show` in both scopes,
+`~/agent-workforce/var/workflow-receipts/` and `design/benefit-ledger.toml`. Missing data renders
+`Unknown` or `unavailable`, never 0. **Receipts are `unavailable` until T5.2's first run** writes
+one; until then every workflow's health comes from systemd alone and the Exceptions queue says
+so in its empty state.
+
+**What it never writes:** anything. Every HTTP write method is 405 except the two control
+stubs (`POST /api/v1/control/{actions,proposals}`), which validate the request and answer 501
+until T5.3a/T5.3b wire them. It runs no `systemctl` verb but `show`, touches no timer, no
+receipt, no vault, no Notion.
+
+**Drift:** the screen's code ships with `bin/` (including the nested `bin/control_room_ui/`,
+which is why the bin half of `check_deploy_drift.sh` compares recursively since 2026-09-14);
+the unit is compared against `/etc/systemd/system/` like every other. `design/` changes need
+no deploy — the service reads the checkout — but a `bin/` change is inert until `bin/deploy`
+**and** a restart.
+
 ## S1 — the Buzz interactive surface (brief 7, 2026-09-03)
 
 The five `buzz-agent@*` `--user` units. Their **mechanism** files have a source here

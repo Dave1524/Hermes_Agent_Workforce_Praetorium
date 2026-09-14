@@ -137,6 +137,11 @@ ls ~/.hermes/profiles/                              # the Hermes profiles below
   absence — its token and amount fields are null, never 0. Not to be confused with the two
   other "receipt" files: `bin/delivery_receipt.py` (Buzz delivery, JSONL) and
   `bin/run_record.sh` (`cost.log` records).
+- `control-room.service` — the **Control Room** (T5.3, 2026-09-14), serving
+  `http://praetorium:8787/` from `bin/control_room_api.py` + `bin/control_room_ui/`. Reads only;
+  binds the Tailscale address only (`bin/control_room_serve.sh` refuses to start without one);
+  reads `design/` from the **source checkout** because `bin/deploy` never ships it. Not a
+  manifest workflow — no timer, no contract, no manifest row. Runbook § Control Room.
 
 ## Daily rhythm jobs (NUC-45)
 Two jobs own Dave's day and run unattended on this box, both under `agent_propose.sh`

@@ -295,20 +295,102 @@ headless session sees the tree — is the thing no deterministic call can do, so
 would re-assert the static chain against an unchanged input and prove nothing new.
 """
 
-# The Control Room read model/API is an operator surface over the portfolio, not a workflow
-# systemd schedules. Its fixture suite owns the join across manifests, contracts, systemd
-# state and receipts and therefore belongs to the fleet rather than to any one row it renders.
-# When durable hosting lands, the service gets its own workflow entry and contract; these
-# read-model rules remain fleet-wide.
+# The Control Room is an operator surface over the portfolio, NOT a manifest workflow — and
+# that stays true now that it is hosted (T5.3, 2026-09-14: systemd/control-room.service, a
+# hand-started always-on unit, no timer, no manifest row, no contract). A workflow is a thing
+# the fleet runs on a cadence to produce an artifact; the screen is the thing that reads
+# every one of those and owes none of its own. Its suites own the join across manifests,
+# contracts, systemd state, receipts and the benefit ledger, and therefore belong to the
+# fleet rather than to any one row they render.
 [[suite]]
 path    = "tests/test_control_room_api.sh"
 owner   = "fleet"
 asserts = [
-  "control-room-api", # logical reconciliation, truthful unavailable states and read-only HTTP boundary
+  "control-room-api",           # logical reconciliation, truthful unavailable states and read-only HTTP boundary
+  "control-room-control-state", # per-trigger paused/active/running/unknown from systemd, ISO-UTC stamps, control block, links
 ]
 why_no_workflow = """
 It tests the portfolio projection and HTTP trust boundary. Assigning it to one rendered
 workflow would credit that workflow with a suite that primarily tests every other one.
+"""
+
+[[suite]]
+path    = "tests/test_control_room_views.sh"
+owner   = "fleet"
+asserts = [
+  "control-room-30-of-31",            # 31 standing entries render as exactly 30 Portfolio rows, augustus-content once with two trigger chips
+  "control-room-exceptions-default",  # / is 302 to /exceptions; the queue lists raw-ingest first as failed
+  "control-room-failed-check-named",  # the failed assertion id is in the queue row and on the workflow page's Runs
+  "control-room-paused-owned",        # 12 paused trigger chips, 11 paused rows, none in missed-cadence/missing-artifact; paused is not failed
+  "control-room-stale-while-paused",  # knowledge-digest is paused AND its artifact cell is stale with the Notion link
+  "control-room-unknown-never-zero",  # no receipt renders Unknown/unavailable, never 0, a dash or an empty cell; measured integers render
+  "control-room-notion-link",         # artifact links open in Notion with target=_blank rel=noopener
+  "control-room-lineage",             # six data-stage items on the workflow page; a stage without a source renders Unknown
+  "control-room-usage-truthful",      # the usage strip sums only measured receipts; claudius reads unavailable
+  "control-room-static-fails-closed", # /static/ serves css/js/svg from one directory and 404s everything else, including escapes
+  "control-room-html-headers",        # CSP default-src 'self', X-Frame-Options DENY, Cache-Control no-store on every HTML response; HEAD has no body
+  "control-room-control-stub-501",    # the two POST stubs validate then answer 501; every other write is 405; GET on control paths is 405
+  "control-room-serve-tailscale-only",# the launcher binds the tailscale ip -4 address and refuses to start without one
+]
+why_no_workflow = """
+It tests the screen every workflow is rendered on and the hosting boundary that keeps it
+private. The screen is an operator surface, not a manifest workflow: it runs always-on from
+control-room.service, produces no artifact of its own and owes no cadence.
+"""
+
+[[suite]]
+path    = "tests/test_control_room_exceptions.sh"
+owner   = "fleet"
+asserts = [
+  "exceptions-kind-table",            # one synthetic workflow per kind yields exactly its kind, in KINDS order
+  "exceptions-stale-input-precedence",# a failed run whose reason says mirror stale is one stale-input row with alsoFailed, not two rows
+  "exceptions-paused-suppression",    # paused suppresses missed-cadence and missing-artifact(b); paused + failed is still failed, flagged paused
+  "exceptions-unknown-is-not-exception", # no receipt, absent consumption and a null due_at each yield no row
+  "exceptions-missed-cadence",        # an active timer that fired with no receipt after it is missed; a receipt after the trigger is not
+]
+why_no_workflow = """
+The classifier is a pure rule table over every workflow's receipts and control state. A row
+of the manifest owning it would credit that row with the rules that judge all thirty.
+"""
+
+[[suite]]
+path    = "tests/test_control_room_benefit.sh"
+owner   = "fleet"
+asserts = [
+  "benefit-unknown-preferred",        # no receipts and no ledger entry render Unknown everywhere; a missing ledger file is dataStatus unavailable
+  "benefit-four-signals-separate",    # opened/approved/sent/marked_useful are four counts, never a combined score
+  "benefit-ledger-join",              # design/benefit-ledger.toml joins by logical id; a decision outside the vocabulary is named and renders Unknown
+  "benefit-rate-and-latency",         # valid-artifact rate over eligible runs (skipped excluded) and median latency
+]
+why_no_workflow = """
+The benefit row is computed the same way for every workflow from its receipts and the shared
+ledger; the ledger's entries are T5.4's decisions, not any one workflow's output.
+"""
+
+[[suite]]
+path    = "tests/test_control_room_cadence.sh"
+owner   = "fleet"
+asserts = [
+  "cadence-from-timer-file",          # cadence comes from the committed timer file: OnCalendar via the runner, OnUnitActiveSec without it
+  "cadence-unavailable-named",        # a missing timer file or an unmappable spec is unavailable with the error named, never 0
+  "freshness-two-cadences",           # stale is age > 2 x cadence + 3600; an unavailable cadence or age is unknown
+  "systemd-timestamp-utc",            # systemctl --timestamp=utc strings parse to aware datetimes; local-zone strings do not
+]
+why_no_workflow = """
+Cadence and freshness are read the same way for every timer in systemd/; the rules belong to
+the reader, not to any timer they are read from.
+"""
+
+[[suite]]
+path    = "tests/test_control_room_lineage.sh"
+owner   = "fleet"
+asserts = [
+  "lineage-six-stages",               # source, selection, trigger, agent, output, human_action from contract, manifest, receipt and systemd
+  "lineage-unknown-stage",            # no contract and no receipt yields six stages whose value is null, never a guess
+]
+why_no_workflow = """
+Lineage is assembled identically for every workflow from its contract and latest receipt; a
+stage with nothing behind it is Unknown by rule, which no single workflow's run could prove.
 """
 
 # T5.1 — the contract executor. It runs the check blocks every contracted workflow declares
