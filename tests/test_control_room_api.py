@@ -71,16 +71,24 @@ Missing output.
 
 
 class FakeSystemd:
+    """Answers as `systemctl show --timestamp=utc` prints them; `paused` flips every timer off."""
+
+    def __init__(self, paused: bool = False) -> None:
+        self.paused = paused
+
     def show(self, name: str, scope: str):
         if scope == "user":
             return {}, "user bus unavailable in fixture"
         if name.endswith(".timer"):
+            if self.paused:
+                return {"ActiveState": "inactive", "SubState": "dead", "UnitFileState": "disabled",
+                        "LastTriggerUSec": "", "NextElapseUSecRealtime": "", "Persistent": "yes"}, None
             return {
                 "ActiveState": "active",
                 "SubState": "waiting",
                 "UnitFileState": "enabled",
-                "LastTriggerUSec": "Thu 2026-09-10 08:00:00 CEST",
-                "NextElapseUSecRealtime": "Thu 2026-09-10 09:00:00 CEST",
+                "LastTriggerUSec": "Thu 2026-09-10 08:00:00 UTC",
+                "NextElapseUSecRealtime": "Thu 2026-09-10 09:00:00 UTC",
                 "Persistent": "yes",
             }, None
         return {"ActiveState": "inactive", "SubState": "dead", "Result": "success", "ExecMainStatus": "0"}, None
@@ -212,6 +220,66 @@ class ControlRoomApiTest(unittest.TestCase):
         self.assertEqual([item["id"] for item in items], ["daily-plan"])
         detail, _ = self.model.workflow_detail("does-not-exist")
         self.assertIsNone(detail)
+
+    def test_control_state_and_next_run(self):  # (::control-room-control-state)
+        daily = next(item for item in self.model.list_workflows({})["items"] if item["id"] == "daily-plan")
+        self.assertEqual(daily["control"]["state"], "active")
+        self.assertEqual(daily["control"]["source"], "systemd")
+        self.assertEqual(daily["control"]["nextRunAt"], "2026-09-10T09:00:00Z")
+        self.assertIs(daily["control"]["nextRunEstimated"], False)
+        self.assertEqual(daily["control"]["lastTriggerAt"], "2026-09-10T08:00:00Z")
+        self.assertIsNone(daily["control"]["lastAction"])
+        actions = {action["id"]: action for action in daily["control"]["actions"]}
+        self.assertEqual(sorted(actions), ["pause", "resume", "retry", "run_now", "stop"])
+        self.assertTrue(actions["run_now"]["enabled"])
+        self.assertTrue(actions["pause"]["enabled"])
+        self.assertFalse(actions["resume"]["enabled"])
+        self.assertFalse(actions["retry"]["enabled"])
+        self.assertIn("idempotent", actions["retry"]["reason"])
+        self.assertEqual(daily["triggers"][0]["systemd"]["timer"]["lastTriggerAt"], "2026-09-10T08:00:00Z")
+        self.assertEqual(daily["triggers"][0]["systemd"]["timer"]["raw"]["lastTriggerAt"], "Thu 2026-09-10 08:00:00 UTC")
+
+        paused_model = api.ControlRoomReadModel(
+            api.SourcePaths(self.repo, self.runtime, self.receipts),
+            systemd=FakeSystemd(paused=True),
+            clock=lambda: self.now,
+        )
+        daily = next(item for item in paused_model.list_workflows({})["items"] if item["id"] == "daily-plan")
+        self.assertEqual(daily["health"], "paused")
+        self.assertEqual(daily["control"]["state"], "paused")
+        self.assertIsNone(daily["control"]["nextRunAt"])
+        actions = {action["id"]: action for action in daily["control"]["actions"]}
+        self.assertTrue(actions["resume"]["enabled"])
+        self.assertFalse(actions["pause"]["enabled"])
+        self.assertFalse(actions["stop"]["enabled"])
+
+    def test_control_reader_hook_fills_last_action_verbatim(self):
+        last = {"action": "pause", "actor": "Dave", "result": "applied"}
+        model = api.ControlRoomReadModel(
+            api.SourcePaths(self.repo, self.runtime, self.receipts),
+            systemd=FakeSystemd(),
+            clock=lambda: self.now,
+            control_reader=lambda workflow_id: last if workflow_id == "daily-plan" else None,
+        )
+        items = {item["id"]: item for item in model.list_workflows({})["items"]}
+        self.assertEqual(items["daily-plan"]["control"]["lastAction"], last)
+        self.assertIsNone(items["augustus-content"]["control"]["lastAction"])
+
+    def test_contract_gains_inputs_decline_and_task_ids(self):
+        daily = next(item for item in self.model.list_workflows({})["items"] if item["id"] == "daily-plan")
+        contract = daily["contract"]
+        self.assertEqual(contract["inputs"], [])
+        self.assertEqual(contract["decline_conditions"], "None.")
+        self.assertEqual(contract["task_ids"], [])
+        self.assertEqual(daily["links"]["contractLocal"], "/api/v1/workflows/daily-plan/contract")
+        self.assertTrue(daily["links"]["contractGithub"].endswith("design/contracts/daily-plan.md"))
+        self.assertIsNone(daily["lastValidArtifact"])
+        self.assertEqual(daily["artifactFreshness"], "unknown")
+        self.write_receipt(measured=True)
+        daily = next(item for item in self.model.list_workflows({})["items"] if item["id"] == "daily-plan")
+        self.assertEqual(daily["lastValidArtifact"]["uri"], "https://notion.so/demo")
+        self.assertEqual(daily["lastValidArtifact"]["kind"], "artifact")
+        self.assertEqual(daily["lastValidArtifact"]["ageSeconds"], 3540)
 
     def test_http_routes_are_read_only_and_fail_closed(self):
         server = api.make_server("127.0.0.1", 0, self.model)

@@ -38,9 +38,17 @@ from workflow_receipt import (  # noqa: E402
     utc_now,
     validate as validate_receipt,
 )
+from control_room_cadence import cadence_for, freshness, parse_systemd_timestamp  # noqa: E402
 
 
 API_VERSION = "v1"
+REPO_GITHUB = "https://github.com/Dave1524/Hermes_Agent_Workforce_Praetorium/blob/main"
+DEV_PLAN_TRACKER = "https://app.notion.com/p/071af559943649fb86494b88a67106a6"
+DEV_PLAN_DOC = f"{REPO_GITHUB}/docs/dev-plan-2026-09.md"
+TASK_ID = re.compile(r"\bT\d+\.\d+[a-d]?\b")
+RETRY_REASON = "contract declares no idempotent operation (T5.3a defines the declaration)"
+ACTIVE_STATES = {"active", "activating", "reloading"}
+PAUSED_STATES = {"inactive", "deactivating"}
 OUTPUT_LABELS = (
     "Beneficiary",
     "Next actor",
@@ -86,6 +94,23 @@ def output_fields(text: str) -> dict[str, str | None]:
     )
     result["Artifact"] = clean_markdown(artifact_match.group(1)) if artifact_match else None
     return result
+
+
+def contract_inputs(text: str) -> list[dict[str, str | None]]:
+    rows: list[dict[str, str | None]] = []
+    for line in section(text, "Inputs").splitlines():
+        if not line.startswith("|") or line.startswith("|---") or line.startswith("| Source"):
+            continue
+        cells = [clean_markdown(cell) for cell in line.strip().strip("|").split("|")]
+        if len(cells) < 3 or not cells[0]:
+            continue
+        rows.append({"source": cells[0], "freshness": cells[1], "if_stale": cells[2]})
+    return rows
+
+
+def contract_task_ids(text: str) -> list[str]:
+    head = "\n".join(text.splitlines()[:10])
+    return sorted(set(TASK_ID.findall(head)))
 
 
 def contract_identity(text: str) -> dict[str, str]:
@@ -137,6 +162,7 @@ class SystemdReader:
         "UnitFileState",
         "LastTriggerUSec",
         "NextElapseUSecRealtime",
+        "NextElapseUSecMonotonic",
         "Persistent",
     )
 
@@ -144,7 +170,7 @@ class SystemdReader:
         command = ["systemctl"]
         if scope == "user":
             command.append("--user")
-        command.extend(["show", name, "--no-pager"])
+        command.extend(["show", name, "--no-pager", "--timestamp=utc"])
         command.extend(f"--property={prop}" for prop in self.PROPERTIES)
         try:
             completed = subprocess.run(
@@ -173,10 +199,16 @@ class ControlRoomReadModel:
         paths: SourcePaths | None = None,
         systemd: SystemdReader | None = None,
         clock: Callable[[], dt.datetime] = utc_now,
+        calendar_runner: Callable[[str], list[dt.datetime]] | None = None,
+        control_reader: Callable[[str], dict[str, Any] | None] | None = None,
+        static_dir: pathlib.Path | None = None,
     ) -> None:
         self.paths = paths or SourcePaths.defaults()
         self.systemd = systemd or SystemdReader()
         self.clock = clock
+        self.calendar_runner = calendar_runner
+        self.control_reader = control_reader
+        self.static_dir = static_dir
 
     def _manifests(self) -> tuple[list[dict[str, Any]], list[str]]:
         rows: list[dict[str, Any]] = []
@@ -229,6 +261,9 @@ class ControlRoomReadModel:
             "next_action": fields.get("Next action"),
             "benefit_hypothesis": fields.get("Benefit hypothesis"),
             "benefit_signal": fields.get("Benefit signal"),
+            "inputs": contract_inputs(text),
+            "decline_conditions": clean_markdown(section(text, "Decline conditions").replace("```", "")),
+            "task_ids": contract_task_ids(text),
         }, None
 
     def _receipt_files(self) -> tuple[list[pathlib.Path], list[str]]:
@@ -271,6 +306,12 @@ class ControlRoomReadModel:
         valid.sort(key=lambda item: parse_time(item.get("ended_at")) or dt.datetime.min.replace(tzinfo=dt.timezone.utc), reverse=True)
         return valid, malformed, source_errors
 
+    @staticmethod
+    def _stamp(values: dict[str, str], key: str) -> tuple[str | None, str | None]:
+        raw = values.get(key) or None
+        parsed = parse_systemd_timestamp(raw)
+        return (iso_utc(parsed) if parsed else None), raw
+
     def _systemd_for(self, workflow: dict[str, Any]) -> dict[str, Any]:
         scope = str(workflow.get("scope") or "system")
         kind = str(workflow.get("kind") or "timer")
@@ -283,6 +324,10 @@ class ControlRoomReadModel:
             timer_name = unit if unit.endswith(".timer") else f"{unit}.timer"
             timer, timer_error = self.systemd.show(timer_name, scope)
         errors = [error for error in (service_error, timer_error) if error]
+        started, started_raw = self._stamp(service, "ExecMainStartTimestamp")
+        ended, ended_raw = self._stamp(service, "ExecMainExitTimestamp")
+        last_trigger, last_trigger_raw = self._stamp(timer, "LastTriggerUSec")
+        next_run, next_run_raw = self._stamp(timer, "NextElapseUSecRealtime")
         return {
             "scope": scope,
             "kind": kind,
@@ -291,31 +336,51 @@ class ControlRoomReadModel:
                 "activeState": service.get("ActiveState") or "unknown",
                 "subState": service.get("SubState") or "unknown",
                 "result": service.get("Result") or "unknown",
-                "startedAt": service.get("ExecMainStartTimestamp") or None,
-                "endedAt": service.get("ExecMainExitTimestamp") or None,
+                "startedAt": started,
+                "endedAt": ended,
                 "exitStatus": int(service["ExecMainStatus"]) if service.get("ExecMainStatus", "").isdigit() else None,
+                "raw": {"startedAt": started_raw, "endedAt": ended_raw},
             },
             "timer": None if kind != "timer" else {
                 "name": unit if unit.endswith(".timer") else f"{unit}.timer",
                 "activeState": timer.get("ActiveState") or "unknown",
                 "subState": timer.get("SubState") or "unknown",
                 "enabledState": timer.get("UnitFileState") or "unknown",
-                "lastTriggerAt": timer.get("LastTriggerUSec") or None,
-                "nextRunAt": timer.get("NextElapseUSecRealtime") or None,
+                "lastTriggerAt": last_trigger,
+                "nextRunAt": next_run,
+                "nextElapseMonotonic": timer.get("NextElapseUSecMonotonic") or None,
                 "persistent": ({"yes": True, "no": False}.get(timer.get("Persistent", "")) if timer else None),
+                "raw": {"lastTriggerAt": last_trigger_raw, "nextRunAt": next_run_raw},
             },
             "status": "available" if not errors else "unavailable",
             "errors": errors,
         }
 
     @staticmethod
+    def _service_running(systemd: dict[str, Any]) -> bool:
+        service = systemd["service"]
+        return service["activeState"] in {"activating", "active"} and service["subState"] in {"running", "start"}
+
+    @classmethod
+    def _trigger_state(cls, systemd: dict[str, Any]) -> str:
+        if systemd["kind"] == "timer":
+            if cls._service_running(systemd):
+                return "running"
+            active = (systemd["timer"] or {}).get("activeState", "unknown")
+        else:
+            active = systemd["service"]["activeState"]
+        if active in ACTIVE_STATES:
+            return "active"
+        if active in PAUSED_STATES:
+            return "paused"
+        return "unknown"
+
+    @staticmethod
     def _health(receipt: dict[str, Any] | None, triggers: list[dict[str, Any]]) -> str:
-        if any(trigger["systemd"]["service"]["activeState"] in {"activating", "active"}
-               and trigger["systemd"]["service"]["subState"] in {"running", "start"}
-               for trigger in triggers):
+        timer_states = [trigger["state"] for trigger in triggers if trigger["kind"] == "timer"]
+        if "running" in timer_states:
             return "running"
-        timers = [trigger["systemd"]["timer"] for trigger in triggers if trigger["systemd"]["timer"]]
-        if timers and all(timer["activeState"] == "inactive" for timer in timers):
+        if timer_states and all(state == "paused" for state in timer_states):
             return "paused"
         if receipt is None:
             return "unknown"
@@ -325,6 +390,99 @@ class ControlRoomReadModel:
         if outcome == "skipped":
             return "incomplete"
         return "healthy"
+
+    @staticmethod
+    def _control_state(triggers: list[dict[str, Any]]) -> str:
+        considered = [trigger for trigger in triggers if trigger["kind"] == "timer"] or triggers
+        states = [trigger["state"] for trigger in considered]
+        if "running" in states:
+            return "running"
+        if states and all(state == "paused" for state in states):
+            return "paused"
+        if "active" in states:
+            return "active"
+        return "unknown"
+
+    @staticmethod
+    def _control_actions(state: str, source: str) -> list[dict[str, Any]]:
+        def action(action_id: str, enabled: bool, reason: str) -> dict[str, Any]:
+            return {"id": action_id, "enabled": enabled, "reason": None if enabled else reason}
+        return [
+            action("pause", state in {"active", "running"}, f"workflow is {state}, not active"),
+            action("resume", state == "paused", f"workflow is {state}, not paused"),
+            action("run_now", state != "running" and source == "systemd",
+                   "a run is in progress" if state == "running" else "systemd state unavailable"),
+            action("retry", False, RETRY_REASON),
+            action("stop", state == "running", f"workflow is {state}, no run to stop"),
+        ]
+
+    def _control_for(self, logical_id: str, triggers: list[dict[str, Any]], cadence: dict[str, Any]) -> dict[str, Any]:
+        timers = [trigger["systemd"]["timer"] for trigger in triggers if trigger["systemd"]["timer"]]
+        source = "systemd" if any(trigger["systemd"]["status"] == "available" for trigger in triggers) else "unavailable"
+        state = self._control_state(triggers) if source == "systemd" else "unknown"
+        last_triggers = sorted(timer["lastTriggerAt"] for timer in timers if timer["lastTriggerAt"])
+        next_runs = sorted(timer["nextRunAt"] for timer in timers if timer["nextRunAt"])
+        last_trigger = last_triggers[-1] if last_triggers else None
+        next_run, estimated = (next_runs[0] if next_runs else None), False
+        if next_run is None and state == "active" and last_trigger and cadence["status"] == "measured":
+            parsed = parse_time(last_trigger)
+            next_run = iso_utc(parsed + dt.timedelta(seconds=cadence["seconds"])) if parsed else None
+            estimated = next_run is not None
+        if state == "paused":
+            next_run, estimated = None, False
+        persistent = cadence.get("persistent")
+        if persistent is None:
+            persistent = next((timer["persistent"] for timer in timers if timer["persistent"] is not None), None)
+        last_action = self.control_reader(logical_id) if self.control_reader else None
+        return {
+            "state": state,
+            "source": source,
+            "nextRunAt": next_run,
+            "nextRunEstimated": estimated,
+            "lastTriggerAt": last_trigger,
+            "persistent": persistent,
+            "lastAction": last_action,
+            "actions": self._control_actions(state, source),
+        }
+
+    @staticmethod
+    def _no_cadence(error: str) -> dict[str, Any]:
+        return {"status": "unavailable", "seconds": None, "source": None, "spec": None,
+                "persistent": None, "randomizedDelaySec": None, "error": error}
+
+    def _cadence_for(self, triggers: list[dict[str, Any]]) -> dict[str, Any]:
+        measured = [trigger["cadence"] for trigger in triggers if trigger["cadence"]["status"] == "measured"]
+        if measured:
+            return min(measured, key=lambda value: value["seconds"])
+        unavailable = [trigger["cadence"] for trigger in triggers if trigger["kind"] == "timer"]
+        return unavailable[0] if unavailable else self._no_cadence("no timer trigger")
+
+    def _last_valid_artifact(self, receipts: list[dict[str, Any]]) -> dict[str, Any] | None:
+        for receipt in receipts:
+            if (receipt.get("terminal") or {}).get("outcome") != "artifact":
+                continue
+            artifact = receipt.get("artifact") if isinstance(receipt.get("artifact"), dict) else None
+            state_change = receipt.get("state_change") if isinstance(receipt.get("state_change"), dict) else None
+            ended = parse_time(receipt.get("ended_at"))
+            age = int((self.clock() - ended).total_seconds()) if ended else None
+            if artifact and artifact.get("uri"):
+                return {"runId": receipt.get("run_id"), "endedAt": receipt.get("ended_at"), "uri": artifact["uri"],
+                        "title": artifact.get("title"), "kind": "artifact", "ageSeconds": age}
+            if state_change and state_change.get("evidence"):
+                return {"runId": receipt.get("run_id"), "endedAt": receipt.get("ended_at"), "uri": None,
+                        "title": state_change.get("kind") or state_change.get("evidence"),
+                        "kind": "state_change", "ageSeconds": age}
+        return None
+
+    @staticmethod
+    def _links_for(logical_id: str, contract: dict[str, Any] | None) -> dict[str, Any]:
+        return {
+            "contractLocal": f"/api/{API_VERSION}/workflows/{logical_id}/contract" if contract else None,
+            "contractGithub": f"{REPO_GITHUB}/{contract['path']}" if contract else None,
+            "devPlanTracker": DEV_PLAN_TRACKER,
+            "devPlanDoc": DEV_PLAN_DOC,
+            "taskIds": list(contract.get("task_ids") or []) if contract else [],
+        }
 
     @staticmethod
     def _measurement(measurement: Any, fields: Iterable[str]) -> dict[str, Any]:
@@ -358,15 +516,21 @@ class ControlRoomReadModel:
             for entry in sorted(group, key=lambda value: str(value["unit"])):
                 systemd = self._systemd_for(entry)
                 systemd_errors.extend(f"{entry['unit']}: {error}" for error in systemd["errors"])
+                kind = str(entry.get("kind") or "timer")
+                scope = str(entry.get("scope") or "system")
+                cadence = (cadence_for(self.paths.repo, str(entry["unit"]), scope, self.calendar_runner)
+                           if kind == "timer" else self._no_cadence("not a timer"))
                 triggers.append({
                     "unit": entry["unit"],
-                    "scope": entry.get("scope", "system"),
-                    "kind": entry.get("kind", "timer"),
+                    "scope": scope,
+                    "kind": kind,
                     "surface": entry.get("surface"),
                     "trigger": entry.get("trigger"),
                     "runner": entry.get("runner"),
                     "route": entry.get("route"),
                     "systemd": systemd,
+                    "state": self._trigger_state(systemd),
+                    "cadence": cadence,
                 })
             workflow_receipts = receipt_by_workflow.get(logical_id, [])
             latest = workflow_receipts[0] if workflow_receipts else None
@@ -382,6 +546,8 @@ class ControlRoomReadModel:
                     f"Produces {contract.get('artifact') or 'a declared outcome'} for "
                     f"{contract.get('beneficiary') or 'its beneficiary'}"
                 )
+            cadence = self._cadence_for(triggers)
+            last_valid = self._last_valid_artifact(workflow_receipts)
             item = {
                 "id": logical_id,
                 "name": logical_id.replace("-", " ").title(),
@@ -400,6 +566,11 @@ class ControlRoomReadModel:
                 "usage": usage,
                 "cost": cost,
                 "receiptCount": len(workflow_receipts),
+                "cadence": cadence,
+                "lastValidArtifact": last_valid,
+                "artifactFreshness": freshness(last_valid["ageSeconds"] if last_valid else None, cadence),
+                "control": self._control_for(logical_id, triggers, cadence),
+                "links": self._links_for(logical_id, contract),
             }
             items.append(item)
         status = {

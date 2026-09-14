@@ -4,8 +4,8 @@
   "assertions": [
     {
       "id": "not-lock-skipped",
-      "message": "SKIP: previous run still active",
-      "status": "failed"
+      "message": "n/a: the run was the lock skip itself",
+      "status": "not_applicable"
     }
   ],
   "cost": {
