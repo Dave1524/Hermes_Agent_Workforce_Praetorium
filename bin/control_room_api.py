@@ -31,6 +31,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from workflow_receipt import iso_utc, parse_time, utc_now, validate as validate_receipt  # noqa: E402
 from control_room_cadence import cadence_for, freshness, parse_systemd_timestamp  # noqa: E402
 from control_room_benefit import benefit_row, load_ledger  # noqa: E402
+import control_room_control  # noqa: E402
 from control_room_exceptions import KINDS, classify  # noqa: E402
 from control_room_lineage import lineage  # noqa: E402
 from control_room_static import serve as serve_static  # noqa: E402
@@ -207,12 +208,14 @@ class ControlRoomReadModel:
         calendar_runner: Callable[[str], list[dt.datetime]] | None = None,
         control_reader: Callable[[str], dict[str, Any] | None] | None = None,
         static_dir: pathlib.Path | None = None,
+        retry_policy: Callable[[dict[str, Any]], tuple[bool, str | None]] | None = None,
     ) -> None:
         self.paths = paths or SourcePaths.defaults()
         self.systemd = systemd or SystemdReader()
         self.clock = clock
         self.calendar_runner = calendar_runner
         self.control_reader = control_reader
+        self.retry_policy = retry_policy
         self.static_dir = static_dir or pathlib.Path(__file__).resolve().parent / "control_room_ui"
 
     def _manifests(self) -> tuple[list[dict[str, Any]], list[str]]:
@@ -457,6 +460,8 @@ class ControlRoomReadModel:
                 "incompleteRuns": [self._run_summary(r) for r in workflow_receipts
                                    if r["terminal"]["outcome"] in {"skipped", "failed"}],
             }
+            if self.retry_policy is not None:
+                self._apply_retry_policy(item)
             item["lineage"] = lineage(item, latest)
             items.append(item)
         status = {
@@ -481,6 +486,12 @@ class ControlRoomReadModel:
         if source_errors:
             return "unavailable"
         return "degraded" if malformed else "available"
+
+    def _apply_retry_policy(self, item: dict[str, Any]) -> None:
+        enabled, reason = self.retry_policy(item)
+        for action in item["control"]["actions"]:
+            if action["id"] == "retry":
+                action["enabled"], action["reason"] = bool(enabled), reason
 
     @staticmethod
     def _run_summary(receipt: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -909,7 +920,9 @@ class ControlRoomHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
         segments = [s for s in urllib.parse.urlsplit(self.path).path.split("/") if s]
-        if len(segments) == 4 and segments[:3] == ["api", API_VERSION, "control"] and segments[3] in self.STUBS:
+        if segments == ["api", API_VERSION, "control", "actions"]:
+            control_room_control.handle_post(self, getattr(type(self), "control", None), self.model)
+        elif len(segments) == 4 and segments[:3] == ["api", API_VERSION, "control"] and segments[3] in self.STUBS:
             self._control_stub(*self.STUBS[segments[3]])
         else:
             self._read_only()
@@ -962,8 +975,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    model = ControlRoomReadModel(static_dir=pathlib.Path(args.static_dir))
+    paths = SourcePaths.defaults()
+    control = control_room_control.ControlRoomControl.from_env(paths.repo)
+    model = ControlRoomReadModel(paths=paths, static_dir=pathlib.Path(args.static_dir),
+                                 control_reader=control.receipts.last_action, retry_policy=control.retry_policy)
     server = make_server(args.host, args.port, model)
+    server.RequestHandlerClass.control = control
     print(f"control-room-api: listening on http://{args.host}:{server.server_port}/api/{API_VERSION}", flush=True)
     try:
         server.serve_forever()
