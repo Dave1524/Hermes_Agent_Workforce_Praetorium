@@ -40,6 +40,7 @@ from workflow_receipt import (  # noqa: E402
 )
 from control_room_cadence import cadence_for, freshness, parse_systemd_timestamp  # noqa: E402
 from control_room_benefit import benefit_row, load_ledger  # noqa: E402
+from control_room_exceptions import KINDS, classify  # noqa: E402
 from control_room_state import (  # noqa: E402
     control_for,
     fold_cadence,
@@ -597,6 +598,32 @@ class ControlRoomReadModel:
             })
         return self._envelope(incidents, status)
 
+    DATA_QUALITY_ASSERTIONS = {"contract-available", "receipt-schema-valid"}
+
+    def exceptions(self) -> dict[str, Any]:
+        workflows, status = self.workflows()
+        receipts, _, _ = self.receipts()
+        by_workflow: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for receipt in receipts:
+            by_workflow[str(receipt["workflow_id"])].append(receipt)
+        now = self.clock()
+        rows = [row for workflow in workflows for row in classify(workflow, by_workflow.get(workflow["id"], []), now)]
+        rows.sort(key=lambda row: (KINDS.index(row["kind"]), row["since"] or ""))
+        envelope = self._envelope(rows, status)
+        envelope["dataQuality"] = self._data_quality(status)
+        return envelope
+
+    def _data_quality(self, status: dict[str, Any]) -> list[dict[str, Any]]:
+        quality = [item for item in self.incidents()["items"]
+                   if item["failedAssertion"] in self.DATA_QUALITY_ASSERTIONS]
+        for source in ("systemd", "manifests"):
+            for error in status["errors"].get(source, []):
+                quality.append({"id": f"{source}-{len(quality) + 1}", "severity": "medium", "status": "open",
+                                "workflowId": None, "agent": None, "issue": error,
+                                "failedAssertion": f"{source}-available", "requiredAction": None,
+                                "runId": None, "evidence": []})
+        return quality
+
     def usage(self) -> dict[str, Any]:
         receipts, malformed, source_errors = self.receipts()
         _, entries_errors = self._manifests()
@@ -766,6 +793,9 @@ class ControlRoomHandler(BaseHTTPRequestHandler):
             return
         if segments == ["api", API_VERSION, "benefit"]:
             self._json(HTTPStatus.OK, self.model.benefit(), head_only)
+            return
+        if segments == ["api", API_VERSION, "exceptions"]:
+            self._json(HTTPStatus.OK, self.model.exceptions(), head_only)
             return
         self._json(HTTPStatus.NOT_FOUND, {"error": "route not found"}, head_only)
 
