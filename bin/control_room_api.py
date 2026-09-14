@@ -28,21 +28,19 @@ from typing import Any, Callable, Iterable
 # bin/workflow_receipt.py since 2026-09-11 (T5.1), so the executor that writes receipts and
 # this reader validate one shape. Sibling import, as the other bin/*.py do.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from workflow_receipt import (  # noqa: E402
-    ASSERTION_STATUSES,
-    MEASUREMENT_STATUSES,
-    SCHEMA_VERSION as RECEIPT_SCHEMA_VERSION,
-    TERMINAL_OUTCOMES,
-    iso_utc,
-    parse_time,
-    utc_now,
-    validate as validate_receipt,
-)
+from workflow_receipt import iso_utc, parse_time, utc_now, validate as validate_receipt  # noqa: E402
 from control_room_cadence import cadence_for, freshness, parse_systemd_timestamp  # noqa: E402
 from control_room_benefit import benefit_row, load_ledger  # noqa: E402
 from control_room_exceptions import KINDS, classify  # noqa: E402
 from control_room_lineage import lineage  # noqa: E402
+from control_room_static import serve as serve_static  # noqa: E402
+from control_room_view_benefit import render_benefit  # noqa: E402
+from control_room_view_exceptions import render_exceptions  # noqa: E402
+from control_room_view_portfolio import render_portfolio  # noqa: E402
+from control_room_view_workflow import render_run, render_workflow  # noqa: E402
+from control_room_views import not_found  # noqa: E402
 from control_room_state import (  # noqa: E402
+    ACTION_IDS,
     control_for,
     fold_cadence,
     health as health_of,
@@ -215,7 +213,7 @@ class ControlRoomReadModel:
         self.clock = clock
         self.calendar_runner = calendar_runner
         self.control_reader = control_reader
-        self.static_dir = static_dir
+        self.static_dir = static_dir or pathlib.Path(__file__).resolve().parent / "control_room_ui"
 
     def _manifests(self) -> tuple[list[dict[str, Any]], list[str]]:
         rows: list[dict[str, Any]] = []
@@ -506,6 +504,7 @@ class ControlRoomReadModel:
             "nextAction": receipt.get("next_action"),
             "parentRunId": receipt.get("parent_run_id"),
             "handoff": receipt.get("handoff"),
+            "receiptPath": receipt.get("receipt_path"),
         }
 
     def _envelope(self, items: Any, status: dict[str, Any]) -> dict[str, Any]:
@@ -551,6 +550,16 @@ class ControlRoomReadModel:
     def run_detail(self, run_id: str) -> tuple[dict[str, Any] | None, dict[str, Any]]:
         runs, status = self.list_runs()
         return next((run for run in runs if run["id"] == run_id), None), status
+
+    def contract_text(self, workflow_id: str) -> str | None:
+        item, _ = self.workflow_detail(workflow_id)
+        contract = (item or {}).get("contract")
+        if not contract:
+            return None
+        path = (self.paths.repo / contract["path"]).resolve()
+        if not path.is_relative_to(self.paths.repo) or not path.is_file():
+            return None
+        return path.read_text()
 
     def incidents(self) -> dict[str, Any]:
         workflows, status = self.workflows()
@@ -679,9 +688,12 @@ class ControlRoomReadModel:
                 "workflows": len(workflows),
                 "healthy": counts["healthy"],
                 "running": counts["running"],
+                "failed": counts["failed"],
+                "incomplete": counts["incomplete"],
                 "needAttention": counts["failed"] + counts["incomplete"],
                 "paused": counts["paused"],
                 "unknown": counts["unknown"],
+                "incompleteRuns": sum(len(w["incompleteRuns"]) for w in workflows) + counts["running"],
             },
             "needsAttention": incidents,
             "recentOutputs": outputs,
@@ -728,17 +740,97 @@ class ControlRoomHandler(BaseHTTPRequestHandler):
     def log_message(self, fmt: str, *args: Any) -> None:
         sys.stderr.write("control-room-api: " + fmt % args + "\n")
 
-    def _json(self, status: int, body: Any, head_only: bool = False) -> None:
-        payload = json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    CSP = "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'"
+    COMMON_HEADERS = (("Cache-Control", "no-store"), ("X-Content-Type-Options", "nosniff"), ("Referrer-Policy", "no-referrer"))
+    HTML_HEADERS = (("Content-Security-Policy", CSP), ("X-Frame-Options", "DENY"), *COMMON_HEADERS)
+    STUBS = {
+        "actions": ("action", ACTION_IDS, "control broker not wired (T5.3a)"),
+        "proposals": ("kind", ("schedule", "retire"), "PR generator not wired (T5.3b)"),
+    }
+
+    def _send(self, status: int, content_type: str, payload: bytes, head_only: bool,
+              headers: tuple[tuple[str, str], ...] = COMMON_HEADERS) -> None:
         self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(payload)))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Referrer-Policy", "no-referrer")
+        for name, value in headers:
+            self.send_header(name, value)
         self.end_headers()
         if not head_only:
             self.wfile.write(payload)
+
+    def _json(self, status: int, body: Any, head_only: bool = False) -> None:
+        payload = json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        self._send(status, "application/json; charset=utf-8", payload, head_only)
+
+    def _html(self, status: int, html: str, head_only: bool) -> None:
+        self._send(status, "text/html; charset=utf-8", html.encode("utf-8"), head_only, self.HTML_HEADERS)
+
+    def _text(self, status: int, text: str, head_only: bool) -> None:
+        self._send(status, "text/plain; charset=utf-8", text.encode("utf-8"), head_only)
+
+    def _route_page(self, segments: list[str], head_only: bool) -> bool:
+        model = self.model
+        if not segments:
+            self.send_response(HTTPStatus.FOUND)
+            self.send_header("Location", "/exceptions")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+        elif segments == ["favicon.ico"]:
+            self.send_response(HTTPStatus.NO_CONTENT)
+            self.end_headers()
+        elif segments == ["exceptions"]:
+            self._html(HTTPStatus.OK, render_exceptions(model.exceptions(), model.overview(), model.incidents()), head_only)
+        elif segments == ["portfolio"]:
+            self._html(HTTPStatus.OK, render_portfolio(model.list_workflows({})), head_only)
+        elif segments == ["benefit"]:
+            self._html(HTTPStatus.OK, render_benefit(model.benefit()), head_only)
+        elif len(segments) == 2 and segments[0] == "workflows":
+            self._workflow_page(segments[1], head_only)
+        elif len(segments) == 2 and segments[0] == "runs":
+            self._run_page(segments[1], head_only)
+        elif len(segments) == 2 and segments[0] == "static":
+            self._static(segments[1], head_only)
+        else:
+            return False
+        return True
+
+    def _workflow_page(self, workflow_id: str, head_only: bool) -> None:
+        item, status = self.model.workflow_detail(workflow_id)
+        generated = iso_utc(self.model.clock())
+        if item is None:
+            self._html(HTTPStatus.NOT_FOUND, not_found(f"no workflow {workflow_id}", status, generated), head_only)
+            return
+        runs, _ = self.model.list_runs(workflow_id)
+        self._html(HTTPStatus.OK, render_workflow(item, runs, status=status, generated_at=generated), head_only)
+
+    def _run_page(self, run_id: str, head_only: bool) -> None:
+        run, status = self.model.run_detail(run_id)
+        generated = iso_utc(self.model.clock())
+        if run is None:
+            self._html(HTTPStatus.NOT_FOUND, not_found(f"no run {run_id}", status, generated), head_only)
+            return
+        self._html(HTTPStatus.OK, render_run(run, status=status, generated_at=generated), head_only)
+
+    def _static(self, name: str, head_only: bool) -> None:
+        status, content_type, payload = serve_static(self.model.static_dir, name)
+        if status != HTTPStatus.OK or content_type is None:
+            self._json(HTTPStatus.NOT_FOUND, {"error": "static file not found"}, head_only)
+            return
+        self._send(HTTPStatus.OK, content_type, payload, head_only)
+
+    def _route_api_extra(self, segments: list[str], head_only: bool) -> bool:
+        if len(segments) == 5 and segments[:3] == ["api", API_VERSION, "workflows"] and segments[4] == "contract":
+            text = self.model.contract_text(segments[3])
+            if text is None:
+                self._json(HTTPStatus.NOT_FOUND, {"error": "contract not found"}, head_only)
+            else:
+                self._text(HTTPStatus.OK, text, head_only)
+            return True
+        if len(segments) >= 3 and segments[:3] == ["api", API_VERSION, "control"]:
+            self._json(HTTPStatus.METHOD_NOT_ALLOWED, {"error": "control endpoints accept POST only"}, head_only)
+            return True
+        return False
 
     def _route(self, head_only: bool = False) -> None:
         parsed = urllib.parse.urlsplit(self.path)
@@ -752,6 +844,8 @@ class ControlRoomHandler(BaseHTTPRequestHandler):
             return
         segments = [segment for segment in decoded.split("/") if segment]
         query = urllib.parse.parse_qs(parsed.query, keep_blank_values=False)
+        if self._route_page(segments, head_only) or self._route_api_extra(segments, head_only):
+            return
         if segments == ["api", API_VERSION, "health"]:
             body, status = self.model.health()
             self._json(status, body, head_only)
@@ -813,7 +907,40 @@ class ControlRoomHandler(BaseHTTPRequestHandler):
             {"error": "read-only API; workflow controls use the separate allowlisted broker"},
         )
 
-    do_POST = _read_only  # type: ignore[assignment]
+    def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
+        segments = [s for s in urllib.parse.urlsplit(self.path).path.split("/") if s]
+        if len(segments) == 4 and segments[:3] == ["api", API_VERSION, "control"] and segments[3] in self.STUBS:
+            self._control_stub(*self.STUBS[segments[3]])
+        else:
+            self._read_only()
+
+    def _control_stub(self, field: str, vocabulary: tuple[str, ...], error: str) -> None:
+        if self.headers.get("X-Control-Room") != "1":
+            self._json(HTTPStatus.BAD_REQUEST, {"error": "X-Control-Room: 1 header required"})
+            return
+        body = self._json_body()
+        if body is None:
+            self._json(HTTPStatus.BAD_REQUEST, {"error": "body must be a JSON object"})
+            return
+        value = body.get(field)
+        if value not in vocabulary:
+            self._json(HTTPStatus.BAD_REQUEST, {"error": f"{field} must be one of {', '.join(vocabulary)}"})
+            return
+        workflow_id = str(body.get("workflow_id") or "")
+        if self.model.workflow_detail(workflow_id)[0] is None:
+            self._json(HTTPStatus.NOT_FOUND, {"error": "workflow not found"})
+            return
+        self._json(HTTPStatus.NOT_IMPLEMENTED, {"status": "not_implemented", "error": error,
+                                               "workflow_id": workflow_id, field: value})
+
+    def _json_body(self) -> dict[str, Any] | None:
+        try:
+            length = min(int(self.headers.get("Content-Length") or 0), 65536)
+            body = json.loads(self.rfile.read(length) or b"")
+        except (ValueError, OSError):
+            return None
+        return body if isinstance(body, dict) else None
+
     do_PUT = _read_only  # type: ignore[assignment]
     do_PATCH = _read_only  # type: ignore[assignment]
     do_DELETE = _read_only  # type: ignore[assignment]
@@ -828,12 +955,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default="127.0.0.1", help="listen address; defaults to loopback")
     parser.add_argument("--port", type=int, default=8787, help="listen port; defaults to 8787")
+    parser.add_argument("--static-dir", default=str(pathlib.Path(__file__).resolve().parent / "control_room_ui"),
+                        help="directory served under /static/; defaults to bin/control_room_ui next to this script")
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    model = ControlRoomReadModel()
+    model = ControlRoomReadModel(static_dir=pathlib.Path(args.static_dir))
     server = make_server(args.host, args.port, model)
     print(f"control-room-api: listening on http://{args.host}:{server.server_port}/api/{API_VERSION}", flush=True)
     try:

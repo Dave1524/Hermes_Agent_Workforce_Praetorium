@@ -14,11 +14,11 @@
     }
   ],
   "cost": {
-    "amount": 0.0611,
-    "confidence": "exact",
-    "currency": "USD",
-    "source": "claude-code",
-    "status": "measured"
+    "amount": null,
+    "confidence": null,
+    "currency": null,
+    "source": null,
+    "status": "unavailable"
   },
   "ended_at": "2026-09-12T04:33:10Z",
   "handoff": null,
@@ -35,11 +35,11 @@
   },
   "unit": "agent-proposal.service",
   "usage": {
-    "cache_tokens": 44200,
-    "input_tokens": 12100,
-    "output_tokens": 410,
-    "status": "measured",
-    "total_tokens": 56710
+    "cache_tokens": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "status": "unavailable",
+    "total_tokens": null
   },
   "workflow_id": "agent-proposal"
 }

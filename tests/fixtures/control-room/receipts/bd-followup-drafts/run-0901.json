@@ -24,11 +24,11 @@
     "sent": false
   },
   "cost": {
-    "amount": 0.3412,
-    "confidence": "exact",
-    "currency": "USD",
-    "source": "claude-code",
-    "status": "measured"
+    "amount": null,
+    "confidence": null,
+    "currency": null,
+    "source": null,
+    "status": "unavailable"
   },
   "ended_at": "2026-09-01T09:49:03Z",
   "handoff": null,
@@ -49,11 +49,11 @@
   },
   "unit": "bd-followup-drafts.service",
   "usage": {
-    "cache_tokens": 150300,
-    "input_tokens": 61200,
-    "output_tokens": 4880,
-    "status": "measured",
-    "total_tokens": 216380
+    "cache_tokens": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "status": "unavailable",
+    "total_tokens": null
   },
   "workflow_id": "bd-followup-drafts"
 }

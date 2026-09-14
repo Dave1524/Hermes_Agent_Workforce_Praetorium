@@ -23,11 +23,11 @@
     }
   ],
   "cost": {
-    "amount": 0.2874,
-    "confidence": "exact",
-    "currency": "USD",
-    "source": "claude-code",
-    "status": "measured"
+    "amount": null,
+    "confidence": null,
+    "currency": null,
+    "source": null,
+    "status": "unavailable"
   },
   "ended_at": "2026-08-23T07:09:55Z",
   "handoff": null,
@@ -48,11 +48,11 @@
   },
   "unit": "knowledge-digest.service",
   "usage": {
-    "cache_tokens": 140900,
-    "input_tokens": 52300,
-    "output_tokens": 3120,
-    "status": "measured",
-    "total_tokens": 196320
+    "cache_tokens": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "status": "unavailable",
+    "total_tokens": null
   },
   "workflow_id": "knowledge-digest"
 }

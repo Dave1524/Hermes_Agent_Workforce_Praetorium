@@ -23,11 +23,11 @@
     }
   ],
   "cost": {
-    "amount": 0.1902,
-    "confidence": "exact",
-    "currency": "USD",
-    "source": "claude-code",
-    "status": "measured"
+    "amount": null,
+    "confidence": null,
+    "currency": null,
+    "source": null,
+    "status": "unavailable"
   },
   "ended_at": "2026-09-13T03:14:48Z",
   "handoff": null,
@@ -48,11 +48,11 @@
   },
   "unit": "raw-ingest.service",
   "usage": {
-    "cache_tokens": 96100,
-    "input_tokens": 38800,
-    "output_tokens": 1970,
-    "status": "measured",
-    "total_tokens": 136870
+    "cache_tokens": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "status": "unavailable",
+    "total_tokens": null
   },
   "workflow_id": "raw-ingest"
 }

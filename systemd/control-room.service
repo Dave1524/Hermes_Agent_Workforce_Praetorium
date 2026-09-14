@@ -1,0 +1,30 @@
+# Praetorium Control Room — T5.3 (2026-09-14). Read-only operator screen over manifests,
+# contracts, systemd state and workflow receipts. Private: binds the Tailscale address only
+# (bin/control_room_serve.sh resolves it and refuses to start without one). Dave-only =
+# the tailnet has one user. design/ is source-only, hence CONTROL_ROOM_REPO_ROOT.
+# Land: sudo cp systemd/control-room.service /etc/systemd/system/ && sudo systemctl daemon-reload
+#       && sudo systemctl enable --now control-room.service   (touches no workflow timer)
+[Unit]
+Description=Praetorium Control Room (read-only operator screen) — T5.3
+After=network-online.target tailscaled.service
+Wants=network-online.target tailscaled.service
+
+[Service]
+Type=simple
+User=dave
+Environment=CONTROL_ROOM_REPO_ROOT=/home/dave/dev/agent-workforce
+Environment=CONTROL_ROOM_RUNTIME_ROOT=/home/dave/agent-workforce
+Environment=CONTROL_ROOM_PORT=8787
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/home/dave/agent-workforce/bin/control_room_serve.sh
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=read-only
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

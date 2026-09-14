@@ -1,0 +1,70 @@
+/* Praetorium Control Room (T5.3). Dense operator tables; Unknown is dashed and muted, never blank. */
+:root {
+  --bg: #fafafa; --fg: #1a1a1a; --muted: #6b6b6b; --line: #d9d9d9; --card: #ffffff;
+  --paused: #64748b; --healthy: #15803d; --failed: #b91c1c; --incomplete: #b45309;
+  --running: #1d4ed8; --unknown: #6b6b6b; --active: #0f766e; --current: #15803d; --stale: #b45309;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111418; --fg: #e6e6e6; --muted: #9aa0a6; --line: #2b3138; --card: #181c21;
+    --paused: #94a3b8; --healthy: #4ade80; --failed: #f87171; --incomplete: #fbbf24;
+    --running: #60a5fa; --unknown: #9aa0a6; --active: #2dd4bf; --current: #4ade80; --stale: #fbbf24;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 0 12px 24px; background: var(--bg); color: var(--fg); font: 13px/1.4 system-ui, sans-serif; }
+header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+nav a { margin-right: 12px; font-weight: 600; text-decoration: none; color: var(--fg); }
+nav a.current { text-decoration: underline; }
+.meta { display: flex; gap: 12px; align-items: center; color: var(--muted); }
+main { max-width: 100%; }
+h1, h2 { margin: 12px 0 6px; }
+h1 { font-size: 18px; }
+h2 { font-size: 14px; }
+a { color: inherit; }
+code { font-size: 12px; }
+.unknown { color: var(--muted); border: 1px dashed var(--muted); border-radius: 3px; padding: 0 4px; }
+.chip { display: inline-block; padding: 0 6px; border-radius: 9px; font-size: 11px; line-height: 16px; color: #fff; white-space: nowrap; }
+.chip-paused { background: var(--paused); }
+.chip-healthy, .chip-artifact, .chip-passed, .chip-current { background: var(--healthy); }
+.chip-failed { background: var(--failed); }
+.chip-incomplete, .chip-skipped, .chip-stale { background: var(--incomplete); }
+.chip-running { background: var(--running); }
+.chip-active { background: var(--active); }
+.chip-decline, .chip-not_applicable { background: var(--muted); }
+.chip-unknown, .chip-Unknown { background: transparent; color: var(--unknown); border: 1px dashed var(--unknown); }
+.chip-kind { background: var(--failed); }
+.data-status { display: flex; flex-wrap: wrap; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
+.data-status details { display: inline-block; }
+.data-status summary { cursor: pointer; }
+.data-status ul { margin: 4px 0 0 16px; padding: 0; max-width: 60ch; }
+.source-available summary { color: var(--healthy); }
+.source-degraded summary { color: var(--incomplete); }
+.source-unavailable summary, .source-unknown summary { color: var(--failed); }
+table.dense { border-collapse: collapse; width: 100%; margin: 6px 0; }
+table.dense th, table.dense td { text-align: left; vertical-align: top; padding: 3px 6px; border-bottom: 1px solid var(--line); }
+table.dense th { font-size: 11px; text-transform: uppercase; color: var(--muted); }
+tr[data-health="healthy"] { opacity: 0.8; }
+.tiles, .cards { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
+.tile, .card { background: var(--card); border: 1px solid var(--line); border-radius: 4px; padding: 6px 10px; }
+.tile strong { font-size: 16px; margin-right: 4px; }
+.card span { margin-right: 8px; }
+.filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
+.filters input, .filters select { font: inherit; padding: 2px 6px; }
+.trigger { white-space: nowrap; }
+.buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+button { font: inherit; padding: 3px 10px; cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: 0.5; }
+#control-result { min-height: 1.4em; background: var(--card); border: 1px solid var(--line); padding: 6px; white-space: pre-wrap; }
+dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 4px 0; }
+dt { color: var(--muted); }
+dd { margin: 0; }
+ol.lineage { padding-left: 20px; }
+ol.lineage li { margin: 4px 0; }
+ol.lineage small { color: var(--muted); }
+.strip a { margin-right: 4px; }
+.empty { color: var(--muted); }
+@media (max-width: 640px) {
+  table.dense { display: block; overflow-x: auto; }
+  dl { grid-template-columns: 1fr; }
+}
