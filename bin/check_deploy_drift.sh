@@ -347,9 +347,13 @@ campaign_expiry() { # unit file -> expires, or empty
 # --- bin/ <-> runtime ------------------------------------------------------------------
 # Ignores __pycache__/ and *.bak*, both live in the runtime tree today (seven *.bak-* scripts
 # and one __pycache__), and both are runtime debris rather than deployed content.
+# RECURSIVE since 2026-09-14 (T5.3): bin/control_room_ui/ is a nested directory bin/deploy
+# ships, and the flat compare that stood here would have stayed green with it missing,
+# stale or extra. The runtime's bin/.bak/ (dated copies bin/deploy never wrote) joins the
+# debris list because the recursion now sees it.
 echo "bin: $SRC_BIN <-> $RUNTIME_BIN"
-bin_src=$(names "$SRC_BIN" ! -name '*.bak*')
-bin_run=$(names "$RUNTIME_BIN" ! -name '*.bak*')
+bin_src=$(relnames "$SRC_BIN" ! -name '*.bak*' ! -path '*/__pycache__/*' ! -name '*.pyc' ! -path '*/.bak/*')
+bin_run=$(relnames "$RUNTIME_BIN" ! -name '*.bak*' ! -path '*/__pycache__/*' ! -name '*.pyc' ! -path '*/.bak/*')
 if [ -z "$bin_src" ]; then
   report bin "source tree $SRC_BIN matched no files — a clean result here would mean nothing"
 fi

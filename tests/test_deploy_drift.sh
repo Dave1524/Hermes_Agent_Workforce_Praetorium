@@ -135,6 +135,28 @@ capture
 assert 'a source-only unit is red' "saw 'DRIFT \[system\] source-only: only-in-repo.timer'"
 rm -rf "$root"
 
+echo "--- 2b. bin/ is compared recursively ---"
+# bin/deploy ships bin/ as a tree (bin/control_room_ui/ since T5.3), and until 2026-09-14 the
+# bin half compared only the top level: a nested file could be missing, stale or extra and
+# the check stayed green. Runtime debris nested one level down stays silent by class.
+fixture
+mkdir -p "$root/src_bin/ui" "$root/run_bin/__pycache__" "$root/run_bin/.bak"
+echo 'css' > "$root/src_bin/ui/app.css"
+echo 'junk' > "$root/run_bin/__pycache__/x.pyc"
+echo 'junk' > "$root/run_bin/.bak/agent_propose.sh.20260721_113847"
+capture
+assert 'a nested source-only file is named by its tree-relative path' "saw 'DRIFT \[bin\] source-only: ui/app.css'"
+assert 'a nested __pycache__ file in the runtime tree is not drift' "! saw '__pycache__'"
+assert 'the runtime .bak/ directory is not drift' "! saw '\.bak/'"
+mkdir -p "$root/run_bin/ui"
+echo 'css-old' > "$root/run_bin/ui/app.css"
+capture
+assert 'a nested file whose bytes differ is named by its tree-relative path' "saw 'DRIFT \[bin\] content differs: ui/app.css'"
+echo 'css' > "$root/run_bin/ui/app.css"
+capture
+assert 'identical nested files are clean' "clean"
+rm -rf "$root"
+
 echo "--- 3. etc-only and OURS: the class that loses fleet-turn-check ---"
 fixture
 echo '[Unit]' > "$root/etc/hand-installed.timer"
