@@ -156,10 +156,10 @@ class ControlRoomApiTest(unittest.TestCase):
             "model": "claude-sonnet-5",
             "started_at": "2026-09-11T07:00:00Z",
             "ended_at": "2026-09-11T07:01:00Z",
-            "terminal": {"outcome": outcome, "reason": None},
+            "terminal": {"outcome": outcome, "reason": "failed checks: artifact-exists" if outcome == "failed" else None},
             "artifact": {"uri": "https://notion.so/demo", "title": "Daily plan"} if outcome == "artifact" else None,
             "state_change": None,
-            "assertions": [{"id": "artifact-exists", "status": "passed", "message": "ok"}],
+            "assertions": [{"id": "artifact-exists", "status": "failed" if outcome == "failed" else "passed", "message": "ok"}],
             "usage": usage,
             "cost": cost,
             "next_action": {"actor": "Dave", "action": "Review", "due_at": None},
@@ -182,7 +182,7 @@ class ControlRoomApiTest(unittest.TestCase):
         self.assertEqual(aurelian["health"], "unknown")
         self.assertEqual(aurelian["triggers"][0]["systemd"]["status"], "unavailable")
         incidents = self.model.incidents()["items"]
-        self.assertTrue(any(item["id"] == "contract-buzz-agent@aurelian" for item in incidents))
+        self.assertTrue(any(item["id"] == "contract-unavailable:buzz-agent@aurelian" for item in incidents))
 
     def test_unavailable_usage_is_null_never_zero(self):
         self.write_receipt(measured=False)
@@ -205,6 +205,69 @@ class ControlRoomApiTest(unittest.TestCase):
         incidents = self.model.incidents()["items"]
         malformed = next(item for item in incidents if item["failedAssertion"] == "receipt-schema-valid")
         self.assertIn("missing schema_version", malformed["issue"])
+
+    def test_malformed_receipt_ids_are_path_keyed_and_stable(self):  # (::incidents-api-dedup-key)
+        target = self.receipts / "daily-plan"
+        target.mkdir()
+        (target / "a.json").write_text('{"not":"a receipt"}')
+        (target / "b.json").write_text('[]')
+        first = sorted(item["id"] for item in self.model.incidents()["items"] if item["class"] == "malformed-receipt")
+        self.assertEqual(first, ["malformed-receipt:daily-plan/a.json", "malformed-receipt:daily-plan/b.json"])
+        (target / "c.json").write_text('{')
+        second = sorted(item["id"] for item in self.model.incidents()["items"] if item["class"] == "malformed-receipt")
+        self.assertEqual(second[:2], first)
+        self.assertEqual(len(second), 3)
+
+    def test_failed_receipt_is_an_incident_even_when_the_timer_is_paused(self):  # (::incidents-api-failed)
+        self.write_receipt(outcome="failed")
+        paused = api.ControlRoomReadModel(
+            api.SourcePaths(self.repo, self.runtime, self.receipts), systemd=FakeSystemd(paused=True),
+            clock=lambda: self.now,
+        )
+        response = paused.incidents()
+        found = [item for item in response["items"] if item["workflowId"] == "daily-plan"]
+        self.assertEqual([item["id"] for item in found], ["failed-assertion:daily-plan"])
+        item = found[0]
+        self.assertEqual((item["class"], item["key"], item["status"]), ("failed-assertion", "failed-assertion:daily-plan", "open"))
+        self.assertEqual(item["runId"], "run-1")
+        self.assertEqual(item["failedAssertion"], "artifact-exists")
+        self.assertIn("daily-plan/run-1.json", item["evidence"])
+        for field in ("firstSeen", "lastSeen", "resolvedAt", "notifiedAt", "observations"):
+            self.assertIn(field, item)
+        self.assertEqual(response["dataStatus"]["incidentState"], "unavailable")
+
+    def test_artifact_and_decline_receipts_yield_no_run_incident(self):  # (::incidents-api-silence)
+        self.write_receipt(run="run-1", outcome="artifact")
+        self.write_receipt(run="run-2", outcome="decline")
+        found = [item for item in self.model.incidents()["items"] if item["workflowId"] == "daily-plan"]
+        self.assertEqual(found, [])
+
+    def test_state_file_merges_notified_and_resolved_entries(self):  # (::incidents-api-state-merge)
+        self.write_receipt(outcome="failed")
+        state_dir = self.runtime / "var" / "incidents"
+        state_dir.mkdir(parents=True)
+        entry = {"key": "failed-assertion:daily-plan", "class": "failed-assertion", "severity": "high",
+                 "workflow_id": "daily-plan", "agent": "marcus", "unit": "daily-plan", "issue": "x",
+                 "failed_assertion": "artifact-exists", "required_action": "Review", "run_id": "run-1",
+                 "run_ids": ["run-1"], "observations": 3, "evidence": [], "first_seen": "2026-09-09T07:01:00Z",
+                 "last_seen": "2026-09-11T07:55:00Z", "resolved_at": None, "notified_at": "2026-09-09T07:05:00Z",
+                 "notify_event_id": "e1", "notify_channel": "c1", "send_attempts": 1, "last_send_error": None,
+                 "recovery_notified_at": None, "digested_at": None}
+        resolved = dict(entry, key="incomplete-run:daily-plan", **{"class": "incomplete-run"},
+                        resolved_at="2026-09-10T09:00:00Z", first_seen="2026-09-10T07:00:00Z")
+        (state_dir / "state.json").write_text(json.dumps({"schema": 1, "last_digest_at": None, "incidents": {
+            entry["key"]: entry, resolved["key"]: resolved}}))
+        response = self.model.incidents()
+        self.assertEqual(response["dataStatus"]["incidentState"], "available")
+        by_id = {item["id"]: item for item in response["items"]}
+        live = by_id["failed-assertion:daily-plan"]
+        self.assertEqual((live["status"], live["firstSeen"], live["notifiedAt"], live["observations"]),
+                         ("open", "2026-09-09T07:01:00Z", "2026-09-09T07:05:00Z", 3))
+        self.assertEqual(live["runId"], "run-1")
+        gone = by_id["incomplete-run:daily-plan"]
+        self.assertEqual((gone["status"], gone["resolvedAt"]), ("resolved", "2026-09-10T09:00:00Z"))
+        self.assertEqual([item["status"] for item in response["items"]].count("resolved"), 1)
+        self.assertNotIn("incomplete-run:daily-plan", [item["id"] for item in self.model.overview()["needsAttention"]])
 
     def test_artifact_outcome_requires_evidence(self):
         self.write_receipt()

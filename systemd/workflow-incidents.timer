@@ -1,0 +1,14 @@
+# Every 5 minutes with 30 s of jitter, so a failure reaches Buzz within one cadence and the
+# sweep never lands on the same second as the timers it watches. Persistent, so a missed
+# tick fires at boot. The [Install] section makes the timer enable-able; nothing in bin/,
+# tests/ or systemd/ enables it — not enabled by any task, T5.3c included.
+[Unit]
+Description=Schedule the workflow incident sweep every 5 minutes
+
+[Timer]
+OnCalendar=*:0/5
+RandomizedDelaySec=30
+Persistent=true
+
+[Install]
+WantedBy=timers.target

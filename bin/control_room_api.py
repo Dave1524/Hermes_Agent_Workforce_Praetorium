@@ -35,6 +35,8 @@ import control_room_control  # noqa: E402
 import control_room_proposals  # noqa: E402
 from control_room_exceptions import KINDS, classify  # noqa: E402
 from control_room_lineage import lineage  # noqa: E402
+import incident_state  # noqa: E402
+import workflow_incidents  # noqa: E402
 from control_room_static import serve as serve_static  # noqa: E402
 from control_room_view_benefit import render_benefit  # noqa: E402
 from control_room_view_exceptions import render_exceptions  # noqa: E402
@@ -136,6 +138,11 @@ class SourcePaths:
     runtime: pathlib.Path
     receipts: pathlib.Path
     ledger: pathlib.Path | None = None
+    incidents: pathlib.Path | None = None
+
+    @property
+    def incident_root(self) -> pathlib.Path:
+        return self.incidents or self.runtime / "var" / "incidents"
 
     @classmethod
     def defaults(cls) -> "SourcePaths":
@@ -153,7 +160,10 @@ class SourcePaths:
         receipts = pathlib.Path(
             os.environ.get("CONTROL_ROOM_RECEIPT_ROOT", runtime / "var" / "workflow-receipts")
         ).resolve()
-        return cls(repo=repo, runtime=runtime, receipts=receipts)
+        incidents = pathlib.Path(
+            os.environ.get("CONTROL_ROOM_INCIDENT_ROOT", runtime / "var" / "incidents")
+        ).resolve()
+        return cls(repo=repo, runtime=runtime, receipts=receipts, incidents=incidents)
 
 
 class SystemdReader:
@@ -573,53 +583,58 @@ class ControlRoomReadModel:
             return None
         return path.read_text()
 
+    INCIDENT_FIELDS = (
+        ("class", "class"), ("key", "key"), ("severity", "severity"), ("workflowId", "workflow_id"),
+        ("agent", "agent"), ("issue", "issue"), ("failedAssertion", "failed_assertion"),
+        ("requiredAction", "required_action"), ("runId", "run_id"), ("evidence", "evidence"),
+        ("firstSeen", "first_seen"), ("lastSeen", "last_seen"), ("resolvedAt", "resolved_at"),
+        ("notifiedAt", "notified_at"), ("observations", "observations"),
+    )
+
+    def _incident_state(self) -> tuple[dict[str, Any], str]:
+        """Read-only view of the notifier's state file; never moves a corrupt file aside."""
+        path = self.paths.incident_root / "state.json"
+        if not path.is_file():
+            return incident_state.empty(), "unavailable"
+        try:
+            data = json.loads(path.read_text())
+        except (OSError, ValueError):
+            return incident_state.empty(), "unavailable"
+        if not isinstance(data, dict) or data.get("schema") != incident_state.SCHEMA or not isinstance(data.get("incidents"), dict):
+            return incident_state.empty(), "unavailable"
+        return data, "available"
+
+    def _incident_item(self, entry: dict[str, Any], status: str) -> dict[str, Any]:
+        item = {"id": entry["key"], "status": status}
+        item.update({public: entry.get(field) for public, field in self.INCIDENT_FIELDS})
+        item["observations"] = entry.get("observations") or 1
+        return item
+
     def incidents(self) -> dict[str, Any]:
         workflows, status = self.workflows()
-        _, malformed, _ = self.receipts()
-        incidents: list[dict[str, Any]] = []
-        for workflow in workflows:
-            latest = workflow.get("lastRun")
-            if workflow["contractStatus"] == "unavailable":
-                incidents.append({
-                    "id": f"contract-{workflow['id']}",
-                    "severity": "medium",
-                    "status": "open",
-                    "workflowId": workflow["id"],
-                    "agent": workflow["owner"],
-                    "issue": workflow["contractError"],
-                    "failedAssertion": "contract-available",
-                    "requiredAction": "Declare and validate the workflow contract before receipt wiring.",
-                    "runId": None,
-                    "evidence": workflow["manifestPaths"],
-                })
-            if latest and workflow["health"] in {"failed", "incomplete"}:
-                failed = [item.get("id") for item in latest.get("assertions", []) if item.get("status") == "failed"]
-                incidents.append({
-                    "id": f"run-{latest['id']}",
-                    "severity": "high" if workflow["health"] == "failed" else "medium",
-                    "status": "open",
-                    "workflowId": workflow["id"],
-                    "agent": workflow["owner"],
-                    "issue": latest.get("reason") or f"run ended {workflow['health']}",
-                    "failedAssertion": failed[0] if failed else None,
-                    "requiredAction": (latest.get("nextAction") or {}).get("action") if isinstance(latest.get("nextAction"), dict) else None,
-                    "runId": latest["id"],
-                    "evidence": [latest.get("artifact", {}).get("uri")] if isinstance(latest.get("artifact"), dict) else [],
-                })
-        for index, invalid in enumerate(malformed):
-            incidents.append({
-                "id": f"malformed-receipt-{index + 1}",
-                "severity": "high",
-                "status": "open",
-                "workflowId": None,
-                "agent": None,
-                "issue": "; ".join(invalid["errors"]),
-                "failedAssertion": "receipt-schema-valid",
-                "requiredAction": "Repair or quarantine the malformed receipt; do not infer its run outcome.",
-                "runId": None,
-                "evidence": [invalid["path"]],
-            })
-        return self._envelope(incidents, status)
+        _, malformed, source_errors = self.receipts()
+        declared, _ = workflow_incidents.load_declared(self.paths.incident_root)
+        observed = workflow_incidents.derive(
+            workflows, malformed, source_errors, declared, self.clock(),
+            manifest_errors=status["errors"]["manifests"],
+        )
+        state, state_status = self._incident_state()
+        known = state["incidents"]
+        items: list[dict[str, Any]] = []
+        for observation in observed:
+            entry = known.get(observation["key"])
+            if entry and entry.get("resolved_at") is None:
+                items.append(self._incident_item(entry, "open"))
+                continue
+            fresh = dict(observation, first_seen=observation.get("observed_at"), last_seen=iso_utc(self.clock()),
+                         resolved_at=None, notified_at=None, observations=1)
+            items.append(self._incident_item(fresh, "open"))
+        seen = {item["id"] for item in items}
+        for key, entry in sorted(known.items()):
+            if key not in seen and entry.get("resolved_at"):
+                items.append(self._incident_item(entry, "resolved"))
+        status = dict(status, incidentState=state_status)
+        return self._envelope(items, status)
 
     DATA_QUALITY_ASSERTIONS = {"contract-available", "receipt-schema-valid"}
 
@@ -686,7 +701,7 @@ class ControlRoomReadModel:
 
     def overview(self) -> dict[str, Any]:
         workflows, status = self.workflows()
-        incidents = self.incidents()["items"]
+        incidents = [item for item in self.incidents()["items"] if item["status"] == "open"]
         counts = defaultdict(int)
         for workflow in workflows:
             counts[workflow["health"]] += 1

@@ -308,6 +308,10 @@ owner   = "fleet"
 asserts = [
   "control-room-api",           # logical reconciliation, truthful unavailable states and read-only HTTP boundary
   "control-room-control-state", # per-trigger paused/active/running/unknown from systemd, ISO-UTC stamps, control block, links
+  "incidents-api-failed",       # a failed check is one failed-assertion incident keyed by workflow, timer paused or not (T5.3c)
+  "incidents-api-silence",      # artifact and decline receipts derive no run incident
+  "incidents-api-dedup-key",    # malformed receipts are keyed by path, stable when a third arrives
+  "incidents-api-state-merge",  # the notifier's state file merges read-only: notified/first-seen carried, resolved entries listed as such
 ]
 why_no_workflow = """
 It tests the portfolio projection and HTTP trust boundary. Assigning it to one rendered

@@ -195,6 +195,26 @@ nothing. The timer is installed with daemon-reload only and enabled at Dave's re
 """
 
 [[workflows]]
+unit = "workflow-incidents"
+contract = "design/contracts/workflow-incidents.md"
+surface = "platform"
+status = "standing"
+suite    = ["tests/test_workflow_incidents.sh", "tests/test_incident_state.sh", "tests/test_incident_notify.sh"]
+skills   = []
+trigger = "every 5 min (+30s jitter); daily digest gate 07:00"
+runner = "bin/deliver_incidents.sh"
+what = "actionable workflow incidents → Buzz `incidents` stream, one alert per incident, recovery, daily digest — ships disabled (T5.3c)"
+route = "incidents"
+alerted = true
+in_repo = true
+notes = """
+T5.3c. Derives incidents from the Control Room read model (bin/workflow_incidents.py), keeps
+one entry per key in var/incidents/state.json (bin/incident_state.py) and sends through
+bin/deliver.sh only. Ships disabled: the timer is installed with daemon-reload only, and the
+route's channel UUID is empty until Dave creates the channel — enabling either is his call.
+"""
+
+[[workflows]]
 unit = "qmd-refresh"
 contract = "design/contracts/qmd-refresh.md"
 surface = "platform"
