@@ -431,6 +431,49 @@ class ContractExecTest(unittest.TestCase):
         done, written = self.box.run("logical-child", "run", "--artifact", "file:///child")
         self.assertEqual(written["next_action"], {"actor": None, "action": None})
 
+    def test_failed_flag(self):  # (::exec-failed-flag)
+        done, written = self.healthy_run()
+        self.assertEqual(written["terminal"]["outcome"], "artifact")
+        self.box.write_attempt_log(GUARD_OK + "digest written\n")
+        self.box.write_artifact()
+        done, written = self.box.run("knowledge-digest", "run", "--failed", "BLOCKED: guard refused",
+                                     "--artifact", "file:///x")
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assertEqual(written["terminal"]["outcome"], "failed")
+        self.assertTrue(written["terminal"]["reason"].startswith("BLOCKED: guard refused"),
+                        written["terminal"])
+        self.assertEqual([a["id"] for a in written["assertions"]], KD_IDS)
+        self.assertEqual(receipt.validate(written), [])
+
+    def test_decline_flag(self):  # (::exec-decline-flag)
+        self.box.write_attempt_log("no sentinel here\n", unit="logical-child")
+        done, written = self.box.run("logical-child", "run", "--decline", "dispatch: augustus declined")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(written["terminal"], {"outcome": "decline", "reason": "dispatch: augustus declined"})
+        self.assertEqual(by_id(written)["attempt-log-exists"]["status"], "passed")
+        self.assertEqual(receipt.validate(written), [])
+        done, written = self.box.run("logical-child", "run", "--decline", "x", "--failed", "y")
+        self.assertEqual(written["terminal"]["outcome"], "failed")
+        self.assertTrue(written["terminal"]["reason"].startswith("y"), written["terminal"])
+
+    def test_run_id_flag(self):  # (::exec-run-id-flag)
+        done, written = self.healthy_run(env={"INVOCATION_ID": "abc123"})
+        self.assertEqual(written["run_id"], "abc123")
+        self.box.write_attempt_log(GUARD_OK + "digest written\n")
+        self.box.write_artifact()
+        done, written = self.box.run("knowledge-digest", "run", "--artifact", "file:///x",
+                                     "--run-id", "abc123-draft", "--parent-run-id", "abc123",
+                                     env={"INVOCATION_ID": "abc123"})
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(written["run_id"], "abc123-draft")
+        self.assertEqual(written["parent_run_id"], "abc123")
+        self.assertTrue((self.box.receipts / "knowledge-digest" / "abc123-draft.json").is_file())
+        self.box.set_state("InvocationID", "cafe0001")
+        self.box.set_state("LastTriggerUSec", f"@{int(time.time()) - 3600}")
+        done, written = self.box.run("knowledge-digest", "sweep", "--state-change", "timer fired",
+                                     "--run-id", "explicit-sweep-id")
+        self.assertEqual(written["run_id"], "explicit-sweep-id")
+
     def test_refuses_non_contract_rows(self):  # (::exec-refuses-non-contract-rows)
         for unit, word in (("always-on", "service"), ("spent-job", "contract_exempt"), ("no-such-unit", "no")):
             done, written = self.box.run(unit, "run", "--artifact", "file:///x")

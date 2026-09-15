@@ -455,6 +455,9 @@ asserts = [
   "exec-usage-never-zero",           # unavailable is null, measured is the envelope's exact integers; a zero is only the runtime's zero
   "exec-next-action-from-contract",  # next_action copied from ## Outputs; `none` becomes null
   "exec-refuses-non-contract-rows",  # kind = "service" and contract_exempt exit 2 with a reason and no receipt
+  "exec-failed-flag",                # --failed REASON forces `failed`, reason first; the checks still run
+  "exec-decline-flag",               # --decline REASON is the decline branch without a ^DECLINE: line
+  "exec-run-id-flag",                # --run-id ID overrides INVOCATION_ID and the sweep's systemd lookup
 ]
 why_no_workflow = """
 It tests the executor every contracted workflow will call, against the live knowledge-digest
