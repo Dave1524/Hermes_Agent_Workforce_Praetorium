@@ -27,7 +27,7 @@ const PLAN = 'docs/dev-plan-2026-09.md'
 
 const MISSING_CONTRACTS = []
 const ALIAS_WORKFLOWS = ['praetorium-daily-plan', 'praetorium-eod-summary', 'overnight-morning-report', 'weekly-pre-assembly', 'm1-signal-scan']
-const WORKFLOW_ENTRIES = 34
+const WORKFLOW_ENTRIES = 35
 
 const TASKS = {
   'T6.4': { size: 'S', review: 'medium', deploy: false, shipsRed: false, expectedRed: [],
