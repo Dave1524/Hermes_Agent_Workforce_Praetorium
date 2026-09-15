@@ -33,7 +33,7 @@ fi
 # its `cd "$INBOX"` checkout with Read/Glob/Grep and needs no qmd retrieval. Declare
 # AGENT_MCP_DEPS=none in the job env so agent_propose.sh skips the daemon probes too.
 cd "$INBOX"
-exec "$CLAUDE_BIN" -p "$(cat "$TASK_FILE")" \
+exec "$BIN_DIR/cc_run.sh" "$CLAUDE_BIN" -p "$(cat "$TASK_FILE")" \
   --model claude-opus-5 \
   --permission-mode dontAsk \
   --strict-mcp-config \
