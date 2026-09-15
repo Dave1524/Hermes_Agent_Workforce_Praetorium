@@ -153,6 +153,15 @@ ls ~/.hermes/profiles/                              # the Hermes profiles below
   drift check and installed by hand. Never widen the socket group, add dave to it, exec the
   source copy or add a sudoers line — each is this design's `--no-verify`. Runbook § Control
   Room controls. The fleet stays off until Dave's first live resume.
+- **Schedule changes and retirements are `control-room/*` pull requests, never edits** (T5.3b,
+  2026-09-15). `Change schedule…` / `Retire…` on the screen — or `bin/workflow_pr.py` from a
+  shell — build the branch in a bare clone under `/var/lib/control-room-proposals/repo.git`
+  (the `control-room.service.d/proposals.conf` drop-in), preview it with a check bundle, and
+  open the PR only from a byte-identical preview token; the box's checkout, the runtime tree,
+  `/etc` and `main` are never written. The retire half is fail-closed by
+  `design/retired-workflows.toml` + `bin/workflow_retire_residue.py --live`:
+  `tests/test_workflow_retirements.sh` stays red after a merge until Dave's hand has cleared the
+  residue and `workflow_pr.py clear <id>` stamps the entry. Runbook § Control Room proposals.
 
 ## Daily rhythm jobs (NUC-45)
 Two jobs own Dave's day and run unattended on this box, both under `agent_propose.sh`

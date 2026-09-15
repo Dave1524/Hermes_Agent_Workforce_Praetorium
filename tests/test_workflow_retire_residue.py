@@ -3,7 +3,7 @@
 that never stats the deny-listed env, the W19 regression table and the CLI exit codes.
 
 Anchors: (::residue-source-classes) (::residue-w19-table) (::residue-live-fails-closed)
-(::residue-cli). (::residue-fails-closed-on-branch) lives in tests/test_workflow_pr_retire.py
+(::residue-cli). residue-fails-closed-on-branch is anchored in tests/test_workflow_pr_retire.py
 because it needs plan_retire.
 """
 from __future__ import annotations

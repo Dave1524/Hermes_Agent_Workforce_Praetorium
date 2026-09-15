@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # T5.3b — schedule changes and retirements as reviewed PRs: worker, records, HTTP seam.
-# The assertions and their (::id) anchors live in tests/test_control_room_proposals.py
+# The assertions and their anchors live in tests/test_control_room_proposals.py
 # (including the grep-level pass over bin/control_room_ui/proposals.js); this wrapper also
 # lints the hand-run acceptance script, a shell artefact the Python suite cannot shellcheck.
 set -uo pipefail

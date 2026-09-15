@@ -2,7 +2,7 @@
 # T5.3b — the retired-workflows registry consumer. Group 1 (every checkout): each [[retired]]
 # entry is well-formed and clean in source; the synthetic half-retired entry is named. Group 2
 # (box only): every entry is clean live, or FAILS naming the pending residue and the clear
-# command. Anchors (::id) live in tests/test_workflow_retirements.py.
+# command. Anchors live in tests/test_workflow_retirements.py.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 # shellcheck source=tests/box_precondition.sh
