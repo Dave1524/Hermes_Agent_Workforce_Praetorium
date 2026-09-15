@@ -162,7 +162,7 @@ why = "tails a live agent turn"
 [[excluded]]
 path = "TEAM.md"
 kind = "prose"
-sha256 = "29c5e38169e4e2d11872f36c01fdfcfde7648fd7e14563a74e4f306d2dfc395b"
+sha256 = "9a0402ba953cef94b3979d30750b6359f4e690167bd980d37e96c76c7533302e"
 why = """
 Read by every agent as team instructions (buzz-acp-launch.sh exports it as
 BUZZ_ACP_TEAM_INSTRUCTIONS). It is the largest prose surface in this tree, the one most
