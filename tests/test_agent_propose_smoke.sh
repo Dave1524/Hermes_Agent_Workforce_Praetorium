@@ -491,4 +491,162 @@ assert "exits 0 (telemetry never fails a run)" "[ '$rc' = 0 ]"
 assert "cost.log outcome=NOPROPOSAL still recorded" "grep -q 'outcome=NOPROPOSAL' '$h29/agent-workforce/logs/cost.log'"
 assert "cost.log telemetry keys read unknown/unknown/none" "grep -q 'skills=unknown skills_offered=unknown skills_src=none' '$h29/agent-workforce/logs/cost.log'"
 assert "the failure is logged with a reason" "grep -q 'skills: telemetry failed' '$h29/agent-workforce/logs/agent_propose.log'"
+
+# ── T5.2: one receipt on every exit path, and the receipt can never change the exit code ──
+# CONTRACT_EXEC points propose_receipt.py at a recording stub, so each scenario asserts the
+# executor argv the adapter built (the outcome map) without a manifest or a contract. One
+# scenario runs the real executor over T5.1's fixture manifest so the receipt on disk is
+# proven to validate — the producer's own suite owns that assertion (criterion 11).
+make_receipt_stub() {
+  local home=$1
+  cat > "$home/stub_exec.py" <<'PY'
+#!/usr/bin/env python3
+import json, os, sys
+with open(os.environ["STUB_OUT"], "a") as fh:
+    fh.write(json.dumps(sys.argv[1:]) + "\n")
+print("contract_exec: stub")
+sys.exit(int(os.environ.get("STUB_RC", "0")))
+PY
+  chmod +x "$home/stub_exec.py"
+  echo "$home/stub_exec.py"
+}
+run_receipt_scenario() {
+  local home=$1 exit_code=$2 write_proposal=${3:-0} write_violation=${4:-0} exec_bin=${5:-} rc=0
+  [ -n "$exec_bin" ] || exec_bin=$(make_receipt_stub "$home")
+  HOME="$home" PATH="$home/mockbin:$PATH" AGENT_PROPOSE_LOCK="$home/lock" AGENT_RETRY_BASE_SECONDS=0 \
+    QMD_HEALTH_POLICY=off BRAVE_HEALTH_POLICY=off \
+    DELIVERY_JOB=knowledge-digest.service INVOCATION_ID=inv-smoke \
+    CONTRACT_EXEC="$exec_bin" STUB_OUT="$home/stub.jsonl" CONTROL_ROOM_RECEIPT_ROOT="$home/receipts" \
+    MOCK_EXIT_CODE="$exit_code" MOCK_WRITE_FILE="$write_violation" MOCK_WRITE_PROPOSAL="$write_proposal" \
+    bash "$SCRIPT" >"$home/stdout.log" 2>&1 || rc=$?
+  echo "$rc"
+}
+stub_calls() { if [ -f "$1/stub.jsonl" ]; then wc -l < "$1/stub.jsonl"; else echo 0; fi; }
+# stub_has <home> <flag> <value>: the last recorded executor argv carries flag followed by value.
+stub_has() {
+  python3 - "$1/stub.jsonl" "$2" "$3" <<'PY'
+import json, sys
+call = json.loads(open(sys.argv[1]).read().splitlines()[-1])
+flag, value = sys.argv[2], sys.argv[3]
+sys.exit(0 if flag in call and call[call.index(flag) + 1] == value else 1)
+PY
+}
+receipt_validates() {
+  python3 - "$1" "$2" <<'PY'
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location("wr", sys.argv[2])
+module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+receipt = json.load(open(sys.argv[1]))
+ok = not module.validate(receipt) and receipt["terminal"]["outcome"] in ("artifact", "decline", "failed", "skipped")
+sys.exit(0 if ok and receipt["run_id"] == "inv-smoke" else 1)
+PY
+}
+
+echo "--- scenario 30: NOPROPOSAL writes one receipt with no evidence flag (::propose-writes-receipt-on-exit) ---"
+h30=$(sandbox)
+rc=$(run_receipt_scenario "$h30" 0)
+assert "exits 0" "[ '$rc' = 0 ]"
+assert "exactly one executor call" "[ \"\$(stub_calls '$h30')\" = 1 ]"
+assert "unit from DELIVERY_JOB, vantage run" "grep -q '\"knowledge-digest\", \"--vantage\", \"run\"' '$h30/stub.jsonl'"
+assert "run id is INVOCATION_ID" "stub_has '$h30' --run-id inv-smoke"
+assert "no artifact, no skipped, no failed — the executor reads ^DECLINE: itself" "! grep -qE -- '--artifact|--skipped|--failed|--state-change' '$h30/stub.jsonl'"
+assert "the executor's line reaches agent_propose.log" "grep -q 'contract_exec: stub' '$h30/agent-workforce/logs/agent_propose.log'"
+
+echo "--- scenario 31: PROPOSAL passes the proposal as the artifact (::propose-writes-receipt-on-exit) ---"
+h31=$(sandbox)
+rc=$(run_receipt_scenario "$h31" 0 1)
+assert "exits 0" "[ '$rc' = 0 ]"
+assert "one call, --artifact is the pushed proposal" "stub_has '$h31' --artifact 'file://$h31/agent-worktrees/inbox/_inbox/agents/2026-08-08_test-slug.md'"
+
+echo "--- scenario 32: FAIL passes --failed with the rc and the last attempt line (::propose-writes-receipt-on-exit) ---"
+h32=$(sandbox)
+rc=$(run_receipt_scenario "$h32" 1)
+assert "exits 1 (unchanged)" "[ '$rc' = 1 ]"
+assert "one call" "[ \"\$(stub_calls '$h32')\" = 1 ]"
+assert "--failed names FAIL and rc=1" "grep -q '\"--failed\", \"FAIL: rc=1' '$h32/stub.jsonl'"
+
+echo "--- scenario 33: CRASHED, DEDUP, VIOLATION and BLOCKED each write their mapped receipt (::propose-writes-receipt-on-exit) ---"
+h33=$(sandbox); rc=$(run_receipt_scenario "$h33" 4)
+assert "CRASHED: exits 1, --failed CRASHED: rc=4" "[ '$rc' = 1 ] && grep -q '\"--failed\", \"CRASHED: rc=4' '$h33/stub.jsonl'"
+h33b=$(sandbox); rc=$(run_receipt_scenario "$h33b" 3)
+assert "DEDUP: exits 0, --skipped dedup" "[ '$rc' = 0 ] && stub_has '$h33b' --skipped \"dedup: today's proposal already exists\""
+h33c=$(sandbox); rc=$(run_receipt_scenario "$h33c" 0 0 1)
+assert "VIOLATION: exits 1, --failed VIOLATION" "[ '$rc' = 1 ] && stub_has '$h33c' --failed 'VIOLATION: wrote outside _inbox/agents'"
+h33d=$(sandbox); rm -f "$h33d/.config/agent-workforce/secrets.env"; rc=$(run_receipt_scenario "$h33d" 0)
+assert "BLOCKED: exits 0, --failed BLOCKED: secrets.env missing" "[ '$rc' = 0 ] && stub_has '$h33d' --failed 'BLOCKED: secrets.env missing'"
+assert "BLOCKED: exactly one receipt call" "[ \"\$(stub_calls '$h33d')\" = 1 ]"
+
+echo "--- scenario 34: flock SKIP writes a skipped receipt and still exits 0 (::propose-writes-receipt-on-exit) ---"
+h34=$(sandbox)
+( exec 9>"$h34/lock"; flock 9; sleep 20 ) &
+holder=$!
+sleep 0.3
+rc=$(run_receipt_scenario "$h34" 0)
+kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null || true
+assert "exits 0" "[ '$rc' = 0 ]"
+assert "--skipped names the flock" "stub_has '$h34' --skipped 'previous run still active (flock)'"
+assert "the runtime was never launched" "[ ! -s '$h34/hermes_argv.log' ]"
+
+echo "--- scenario 35: OPS with a report passes it as the artifact; the mock's envelope becomes --usage-json (::propose-writes-receipt-on-exit) ---"
+h35=$(sandbox)
+printf '\nAGENT_RUN_MODE=ops\nAGENT_TASK_SLUG=overnight-morning-report\n' \
+  >> "$h35/.config/agent-workforce/secrets.env"
+cat > "$h35/mock_hermes.sh" <<EOF
+#!/usr/bin/env bash
+echo "\$@" >> "$h35/hermes_argv.log"
+mkdir -p "$h35/logs/overnight" "\$(dirname "\$AGENT_USAGE_JSON")"
+echo report > "$h35/logs/overnight/morning-report-test.md"
+cp "$REPO_ROOT/tests/fixtures/receipt-wiring/claude-envelope.json" "\$AGENT_USAGE_JSON"
+exit 0
+EOF
+chmod +x "$h35/mock_hermes.sh"
+# REPORT_DIR/REPORT_GLOB come from the unit file's Environment= in production, so they are
+# env here too, not lines in the sourced-but-unexported secrets.env.
+rc=$(REPORT_DIR="$h35/logs/overnight" REPORT_GLOB='morning-report-*.md' run_receipt_scenario "$h35" 0)
+assert "exits 0" "[ '$rc' = 0 ]"
+assert "--artifact is the fresh report" "stub_has '$h35' --artifact 'file://$h35/logs/overnight/morning-report-test.md'"
+assert "--usage-json is the attempt's envelope" "stub_has '$h35' --usage-json '$h35/agent-workforce/logs/last-attempt/overnight-morning-report.usage.json'"
+
+echo "--- scenario 36: a stale envelope from the previous attempt is removed before the runtime runs ---"
+h36=$(sandbox)
+mkdir -p "$h36/agent-workforce/logs/last-attempt"
+echo '{"stale":1}' > "$h36/agent-workforce/logs/last-attempt/standing.usage.json"
+rc=$(run_receipt_scenario "$h36" 0)
+assert "the stale envelope is gone (the mock wrote none)" "[ ! -e '$h36/agent-workforce/logs/last-attempt/standing.usage.json' ]"
+assert "so no --usage-json is passed" "! grep -q -- '--usage-json' '$h36/stub.jsonl'"
+
+echo "--- scenario 37: a broken receipt adapter never changes the exit code (::propose-receipt-failure-keeps-exit-code) ---"
+h37=$(sandbox); rc=$(run_receipt_scenario "$h37" 0 1 0 /bin/false)
+assert "PROPOSAL with CONTRACT_EXEC=/bin/false still exits 0" "[ '$rc' = 0 ]"
+assert "and says so in the log" "grep -q 'receipt: not written' '$h37/agent-workforce/logs/agent_propose.log'"
+h37b=$(sandbox); rc=$(run_receipt_scenario "$h37b" 1 0 0 /bin/false)
+assert "FAIL with a broken adapter still exits 1" "[ '$rc' = 1 ]"
+h37c=$(sandbox); rc=$(run_receipt_scenario "$h37c" 0 0 0 "$h37c/does-not-exist.py")
+assert "a missing adapter target still exits 0" "[ '$rc' = 0 ]"
+h37d=$(sandbox); rc=$(STUB_RC=1 run_receipt_scenario "$h37d" 0)
+assert "an executor that says failed (exit 1) does not fail a NOPROPOSAL run" "[ '$rc' = 0 ]"
+
+echo "--- scenario 38: no DELIVERY_JOB (a hand run) writes no receipt and says why ---"
+h38=$(sandbox); stub=$(make_receipt_stub "$h38")
+rc=0
+HOME="$h38" PATH="$h38/mockbin:$PATH" AGENT_PROPOSE_LOCK="$h38/lock" AGENT_RETRY_BASE_SECONDS=0 \
+  QMD_HEALTH_POLICY=off BRAVE_HEALTH_POLICY=off CONTRACT_EXEC="$stub" STUB_OUT="$h38/stub.jsonl" \
+  bash "$SCRIPT" >"$h38/stdout.log" 2>&1 || rc=$?
+assert "exits 0" "[ '$rc' = 0 ]"
+assert "no executor call" "[ \"\$(stub_calls '$h38')\" = 0 ]"
+assert "the log says no unit known" "grep -q 'no unit known — no receipt' '$h38/agent-workforce/logs/agent_propose.log'"
+
+echo "--- scenario 39: the real executor writes a receipt that validates and reads back (::receipt-reads-back-valid) ---"
+h39=$(sandbox)
+cat > "$h39/real_exec.sh" <<EOF
+#!/usr/bin/env bash
+exec python3 "$REPO_ROOT/bin/contract_exec.py" "\$@" --repo-root "$REPO_ROOT" \\
+  --manifest-dir "$REPO_ROOT/tests/fixtures/contract-exec/agents" --home "\$HOME"
+EOF
+chmod +x "$h39/real_exec.sh"
+rc=$(run_receipt_scenario "$h39" 0 1 0 "$h39/real_exec.sh")
+assert "exits 0" "[ '$rc' = 0 ]"
+assert "receipt at <root>/knowledge-digest/inv-smoke.json" "[ -s '$h39/receipts/knowledge-digest/inv-smoke.json' ]"
+assert "the receipt validates and carries one terminal outcome" "receipt_validates '$h39/receipts/knowledge-digest/inv-smoke.json' '$REPO_ROOT/bin/workflow_receipt.py'"
+assert "the log names the receipt path" "grep -q 'receipt: $h39/receipts/knowledge-digest/inv-smoke.json' '$h39/agent-workforce/logs/agent_propose.log'"
 exit $fail
