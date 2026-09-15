@@ -1,0 +1,10 @@
+[Unit]
+Description=alpha — weekly Sunday-morning digest (fixture)
+
+[Timer]
+OnCalendar=Sun 09:00
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

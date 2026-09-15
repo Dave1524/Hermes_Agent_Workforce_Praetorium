@@ -1,0 +1,9 @@
+[Unit]
+Description=gamma (fixture)
+
+[Timer]
+OnCalendar=Tue 03:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

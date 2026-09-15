@@ -1,0 +1,1 @@
+SKIP: test_campaign_a_smoke.sh — (absent: ~/agent-workforce/systemd/campaign-a.timer)

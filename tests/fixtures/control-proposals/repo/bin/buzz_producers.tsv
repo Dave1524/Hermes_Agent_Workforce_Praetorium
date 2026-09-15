@@ -1,0 +1,5 @@
+# Fixture producer matrix. Columns: unit route payload status silence canvas
+alpha.service	research	file	wired	never	none
+beta.service	ops	file	wired	never	none
+gamma.service	research	file	wired	never	none
+gamma-dispatch.service	research	file	wired	never	none

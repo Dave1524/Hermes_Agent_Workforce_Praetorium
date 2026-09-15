@@ -1,0 +1,61 @@
+#!/usr/bin/env python3
+"""Fixture shim for `systemctl`: read-only verbs answered from FAKE_SYSTEMCTL_STATE, every
+mutating verb refused with exit 2 — the live residue scan must never send one.
+
+FAKE_SYSTEMCTL_STATE — JSON file: {"alpha.timer": {"present": true, "active": "active"}, ...}
+FAKE_SYSTEMCTL_LOG   — path appended with one JSON line per call (argv)
+"""
+import json
+import os
+import sys
+
+MUTATING = {"start", "stop", "restart", "reload", "enable", "disable", "mask", "unmask", "kill",
+            "reset-failed", "daemon-reload", "edit", "set-property", "revert", "link", "isolate"}
+READ_ONLY = {"list-unit-files", "is-active", "is-enabled", "show", "status", "cat", "list-timers", "list-units"}
+
+
+def _log(argv):
+    log = os.environ.get("FAKE_SYSTEMCTL_LOG")
+    if log:
+        with open(log, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(argv) + "\n")
+
+
+def _state():
+    path = os.environ.get("FAKE_SYSTEMCTL_STATE")
+    if not path:
+        return {}
+    with open(path, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def _present(state, name):
+    return bool(state.get(name, {}).get("present"))
+
+
+def main(argv):
+    _log(argv)
+    words = [arg for arg in argv if not arg.startswith("--")]
+    verb = words[0] if words else ""
+    names = words[1:]
+    if verb in MUTATING:
+        print(f"fake systemctl: refused {verb}", file=sys.stderr)
+        return 2
+    if verb not in READ_ONLY:
+        print(f"fake systemctl: unsupported {argv!r}", file=sys.stderr)
+        return 2
+    state = _state()
+    if verb == "list-unit-files":
+        rows = [f"{name}\tenabled\tenabled" for name in names if _present(state, name)]
+        print("\n".join(rows))
+        return 0 if rows else 1
+    if verb == "is-active":
+        answers = [state[name].get("active", "inactive") if _present(state, name) else "inactive" for name in names]
+        print("\n".join(answers))
+        return 0 if all(answer == "active" for answer in answers) else 3
+    print("")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

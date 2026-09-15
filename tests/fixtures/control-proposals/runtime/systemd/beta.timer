@@ -1,0 +1,9 @@
+[Unit]
+Description=beta (fixture)
+
+[Timer]
+OnCalendar=Mon-Fri 06:00
+Persistent=false
+
+[Install]
+WantedBy=timers.target

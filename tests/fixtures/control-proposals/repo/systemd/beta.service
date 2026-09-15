@@ -1,0 +1,11 @@
+[Unit]
+Description=beta (fixture)
+
+[Service]
+Type=oneshot
+Environment=AGENT_JOB_OVERRIDES=/home/dave/.config/agent-workforce/beta.env
+Environment=DELIVERY_ROUTE=ops
+Environment=DELIVERY_JOB=%n
+Environment=DELIVERY_RUN_MARKER=/home/dave/logs/run-markers/%n
+ExecStart=/home/dave/agent-workforce/bin/agent_propose.sh
+ExecStartPost=/home/dave/agent-workforce/bin/deliver.sh %n

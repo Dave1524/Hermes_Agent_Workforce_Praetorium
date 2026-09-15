@@ -1,0 +1,2 @@
+SKIP: test_alpha_smoke.sh — the alpha timer is a box fact (absent: ~/agent-workforce/systemd/alpha.timer)
+SKIP: test_other.sh — an unrelated skip line that must survive

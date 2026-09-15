@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+"""Fixture shim for `systemd-analyze`, reproducing the real 258.x output layout.
+
+FAKE_CALENDAR — JSON file: {"<spec>": ["2026-09-20T09:00:00", ...]} local (Europe/Amsterdam) elapses.
+A spec absent from the map is a parse failure, exactly like a real `Funday 25:00`.
+"""
+import json
+import os
+import re
+import sys
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+LOCAL = ZoneInfo("Europe/Amsterdam")
+NOISE = "/usr/lib/systemd/system/x.slice:1: Support for option CPUAccounting= has been removed and it is ignored"
+
+
+def _table():
+    path = os.environ.get("FAKE_CALENDAR")
+    if not path:
+        return {}
+    with open(path, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def _stamp(iso):
+    local = datetime.fromisoformat(iso).replace(tzinfo=LOCAL)
+    utc = local.astimezone(ZoneInfo("UTC"))
+    return local.strftime("%a %Y-%m-%d %H:%M:%S %Z"), utc.strftime("%a %Y-%m-%d %H:%M:%S UTC")
+
+
+def _calendar(argv):
+    iterations = 1
+    specs = []
+    for arg in argv:
+        if arg.startswith("--iterations="):
+            iterations = int(arg.split("=", 1)[1])
+        elif arg.startswith("--"):
+            continue
+        else:
+            specs.append(arg)
+    table = _table()
+    for spec in specs:
+        elapses = table.get(spec)
+        if not elapses:
+            print(f"Failed to parse calendar specification '{spec}': Invalid argument", file=sys.stderr)
+            return 1
+        print(f"  Original form: {spec}")
+        print(f"Normalized form: {spec}")
+        for index, iso in enumerate(elapses[:iterations]):
+            local, utc = _stamp(iso)
+            label = "Next elapse" if index == 0 else f"Iteration #{index + 1}"
+            print(f"{label:>15}: {local}")
+            print(f"{'(in UTC)':>15}: {utc}")
+            if index == 0:
+                print(f"{'From now':>15}: 5 days left")
+    return 0
+
+
+def _verify(argv):
+    paths = [arg for arg in argv if not arg.startswith("--")]
+    table = _table()
+    print(NOISE)
+    status = 0
+    for path in paths:
+        stem = os.path.basename(path)
+        with open(path, encoding="utf-8") as fh:
+            lines = fh.read().splitlines()
+        for number, line in enumerate(lines, 1):
+            match = re.match(r"\s*OnCalendar=(.*)$", line)
+            if match and match.group(1).strip() not in table:
+                print(f"{path}:{number}: Failed to parse calendar specification, ignoring: {match.group(1).strip()}")
+                print(f"{stem}: Timer unit lacks value setting. Refusing.")
+                print(f"Unit {stem} has a bad unit file setting.")
+                status = 1
+    return status
+
+
+def main(argv):
+    if argv and argv[0] == "calendar":
+        return _calendar(argv[1:])
+    if argv and argv[0] == "verify":
+        return _verify(argv[1:])
+    print(f"fake systemd-analyze: unsupported {argv!r}", file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

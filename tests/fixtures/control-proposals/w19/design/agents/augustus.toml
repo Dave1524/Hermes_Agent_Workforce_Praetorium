@@ -1,0 +1,24 @@
+# augustus — W19 regression fixture: the campaign shims were removed 2026-09-04 but the
+# surface note still names them.
+
+name   = "augustus"
+role   = "fixture — editor"
+status = "live"
+
+[surfaces.scheduled]
+present     = false
+retired     = "2026-09-04"
+governed_by = ""
+notes       = "campaign-a and campaign-b retired 2026-09-04; bin/run_topic_cc.sh stayed because campaign-c still execs it (collision note)."
+
+[[workflows]]
+unit     = "campaign-c"
+surface  = "kanban"
+trigger  = "Mon 10:00"
+profile  = "profiles/campaign_c_task.md"
+runner   = "bin/run_topic_cc.sh"
+route    = "content"
+contract = "design/contracts/campaign-c.md"
+status   = "standing"
+suite    = []
+skills   = []
