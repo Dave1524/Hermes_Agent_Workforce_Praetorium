@@ -177,7 +177,7 @@ class Sender:
 class Sweep:
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
-        self.now = parse_time(args.now) or utc_now()
+        self.now = (parse_time(args.now) or utc_now()).replace(microsecond=0)
         self.log_path = HOME / "logs" / "workflow-incidents.log"
         self.sender = Sender(args)
         self.state_path = args.state_dir / "state.json"
