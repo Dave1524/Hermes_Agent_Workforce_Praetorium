@@ -509,7 +509,7 @@ class PeerRuleTable(unittest.TestCase):
 
 
 RETRY_DECLARED = {"knowledge-digest", "agent-proposal", "weekly-pre-assembly", "m1-signal-scan", "scorecard",
-                  "workflow-receipt-sweep"}
+                  "workflow-receipt-sweep", "workflow-incidents"}
 
 
 def manifest_entries() -> list[dict]:
