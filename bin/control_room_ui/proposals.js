@@ -84,9 +84,10 @@
   }
 
   function currentCalendar() {
+    // The read model carries the timer's OnCalendar as cadence.spec; `trigger` is manifest prose.
     var timers = ((page && page.triggers) || []).filter(function (t) { return t.kind === "timer"; });
-    var systemd = timers.length ? timers[0].systemd || {} : {};
-    return systemd.onCalendar || systemd.OnCalendar || (timers.length ? timers[0].trigger : "") || "";
+    var cadence = timers.length ? timers[0].cadence || {} : {};
+    return cadence.source === "OnCalendar" && cadence.spec ? String(cadence.spec) : "";
   }
 
   function renderList() {
@@ -125,8 +126,9 @@
       triggerField(),
       el("label", {}, ["OnCalendar", el("input", { name: "on_calendar", value: currentCalendar(), required: true })]),
       el("label", {}, ["RandomizedDelaySec (blank = keep)", el("input", { name: "randomized_delay_sec" })]),
-      el("label", { "class": "inline" }, [el("input", { type: "checkbox", name: "persistent" }), "Persistent=true (catch up a missed elapse at resume)"]),
-      el("label", {}, ["Reason", el("textarea", { name: "reason", required: true })])
+      el("label", {}, ["Persistent (catch up a missed elapse at resume)", el("select", { name: "persistent" }, [
+        el("option", { value: "", text: "keep as is" }), el("option", { value: "true", text: "true" }), el("option", { value: "false", text: "false" })])]),
+      el("label", {}, ["Reason (one line)", el("input", { name: "reason", required: true })])
     ];
   }
 
@@ -141,10 +143,10 @@
 
   function retireForm() {
     return [
-      el("label", {}, ["Reason (why this workflow ends)", el("textarea", { name: "reason", required: true })]),
+      el("label", {}, ["Reason (why this workflow ends; one line)", el("input", { name: "reason", required: true })]),
       el("p", { "class": "hint", text: "Artifact retention — every row needs a decision; the PR lists the Dave-only command for each." }),
       retentionSelect("receipts"), retentionSelect("notion"), retentionSelect("inbox"),
-      el("label", {}, ["Note", el("input", { name: "note" })])
+      el("label", {}, ["Note (required)", el("input", { name: "note", required: true })])
     ];
   }
 
@@ -153,7 +155,8 @@
     if (kind === "schedule") {
       var specs = String(data.get("on_calendar") || "").split("|").map(function (s) { return s.trim(); }).filter(Boolean);
       return { on_calendar: specs, randomized_delay_sec: String(data.get("randomized_delay_sec") || "").trim() || null,
-               persistent: form.elements.persistent.checked ? true : null, trigger: data.get("trigger") || null };
+               persistent: data.get("persistent") === "true" ? true : data.get("persistent") === "false" ? false : null,
+               trigger: data.get("trigger") || null };
     }
     return { artifact_retention: { receipts: data.get("receipts"), notion: data.get("notion"), inbox: data.get("inbox"), note: data.get("note") || "" },
              acknowledge_pinned_tests: false };

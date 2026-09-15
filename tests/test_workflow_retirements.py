@@ -75,6 +75,9 @@ class RegistrySource(unittest.TestCase):
         shutil.copytree(FIXTURES / "repo", tmp / "repo")
         root = tmp / "repo"
         entry = synthetic_entry()
+        (root / "design/retired-workflows.toml").write_text('[[retired]]\nid = "broken\n', encoding="utf-8")
+        with self.assertRaises(ValueError, msg="an unparsable registry must never read as `nothing retired`"):
+            residue.registry_entries(root)
         (root / "design/retired-workflows.toml").write_text(render_entry(entry), encoding="utf-8")
         self.assertEqual(entry_problems(entry), [])
         findings = source_findings(root, entry)

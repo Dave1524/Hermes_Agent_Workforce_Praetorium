@@ -16,6 +16,7 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -126,33 +127,51 @@ class Worker:
         now = self.clock()
         rec = record.new_record(request["kind"], request["workflow_id"], actor, request.get("reason"), now)
         rec["proposed"] = request.get("proposed")
-        pid = rec["proposal_id"]
         try:
             prior = self._prior(stage, request, rec)
             self._validate(request, rec)
             with self._lock():
-                self._prepare(rec)
-                worktree = self.git.worktree_add(pid)
-                try:
-                    response = self._plan_and_check(stage, rec, request, worktree, live_item, prior, now)
-                    if stage == "submit":
-                        response = self._push_and_open(rec, worktree, response)
-                finally:
-                    self.git.cleanup(pid, rec.get("branch") if stage == "submit" else None)
+                response = self._run_locked(stage, request, rec, live_item, prior, now)
         except Refused as refusal:
-            rec.update(stage="refused", refusal=refusal.as_dict())
-            if refusal.diff is not None:
-                rec["diff"] = refusal.diff
-            response = {"error": refusal.as_dict(), "record": None}
-        except prgit.GitFailed as failure:
-            rec.update(stage="failed", refusal={"code": "failed", "message": str(failure)})
-            response = {"error": str(failure), "record": None, "branch_pushed": bool(rec.get("branch_pushed"))}
-        rec["commands"] = list(self.git.commands)
+            response = self._refused(rec, refusal)
         rec["completed_at"] = record.stamp(self.clock())
-        self.git.commands.clear()
         record.write(self.state, rec)
         response["record"] = {k: v for k, v in rec.items() if k not in ("diff",)}
         return rec, response
+
+    def _run_locked(self, stage: str, request: dict[str, Any], rec: dict[str, Any], live_item: dict[str, Any] | None,
+                    prior: dict[str, Any] | None, now: dt.datetime) -> dict[str, Any]:
+        """Everything that touches the clone, including the command-log snapshot: one Worker serves
+        every request thread, so the log is read and cleared under the same lock that fills it."""
+        pid = rec["proposal_id"]
+        try:
+            self._prepare(rec)
+            worktree = self.git.worktree_add(pid)
+            try:
+                response = self._plan_and_check(stage, rec, request, worktree, live_item, prior, now)
+                if stage == "submit":
+                    response = self._push_and_open(rec, worktree, response)
+            finally:
+                self.git.cleanup(pid, rec.get("branch") if stage == "submit" else None)
+        except Refused as refusal:
+            response = self._refused(rec, refusal)
+        except prgit.GitFailed as failure:
+            rec.update(stage="failed", refusal={"code": "failed", "message": str(failure)})
+            response = {"error": str(failure), "record": None, "branch_pushed": bool(rec.get("branch_pushed"))}
+        except Exception as failure:  # noqa: BLE001 — an unrecorded traceback is the one outcome worse than a failed record
+            message = f"{type(failure).__name__}: {failure}"
+            rec.update(stage="failed", refusal={"code": "failed", "message": message})
+            response = {"error": message, "record": None, "branch_pushed": bool(rec.get("branch_pushed"))}
+        rec["commands"] = list(self.git.commands)
+        self.git.commands.clear()
+        return response
+
+    @staticmethod
+    def _refused(rec: dict[str, Any], refusal: "Refused") -> dict[str, Any]:
+        rec.update(stage="refused", refusal=refusal.as_dict())
+        if refusal.diff is not None:
+            rec["diff"] = refusal.diff
+        return {"error": refusal.as_dict(), "record": None}
 
     def _prior(self, stage: str, request: dict[str, Any], rec: dict[str, Any]) -> dict[str, Any] | None:
         if stage != "submit":
@@ -173,6 +192,8 @@ class Worker:
         reason = rec.get("reason")
         if not isinstance(reason, str) or not reason.strip():
             raise Refused("bad_request", "reason is required")
+        if not record.single_line(reason):
+            raise Refused("bad_request", "reason must be one line: it is written into a manifest comment and a TOML string")
         if request["kind"] == "retire":
             import workflow_pr_retire as retire
             retire.validate_request(reason, rec.get("proposed"))
@@ -203,14 +224,17 @@ class Worker:
 
     def _plan_and_check(self, stage: str, rec: dict[str, Any], request: dict[str, Any], worktree: pathlib.Path,
                         live_item: dict[str, Any] | None, prior: dict[str, Any] | None, now: dt.datetime) -> dict[str, Any]:
+        # Submit re-plans under the preview's id AND clock: the dates the plan stamps into the diff
+        # must match the preview byte-for-byte, or a submit past UTC midnight reads as stale.
         pid = prior["proposal_id"] if prior else rec["proposal_id"]
+        plan_now = record.parse_stamp(prior["requested_at"]) if prior else now
         item = self._item(worktree, request["workflow_id"], live_item)
         proposed = rec.get("proposed") if rec.get("proposed") is not None else {}
         if request["kind"] == "schedule":
-            plan = schedule.plan_schedule(worktree, item, proposed, now, pid, self.tz_reader(), self.calendar_runner)
+            plan = schedule.plan_schedule(worktree, item, proposed, plan_now, pid, self.tz_reader(), self.calendar_runner)
         else:
             import workflow_pr_retire as retire
-            plan = retire.plan_retire(worktree, item, {**proposed, "reason": rec.get("reason")}, now, pid, self.live)
+            plan = retire.plan_retire(worktree, item, {**proposed, "reason": rec.get("reason")}, plan_now, pid, self.live)
         text, stat, files = self.git.diff(worktree)
         sha = hashlib.sha256(text.encode("utf-8")).hexdigest()
         stamp = pid.split("-", 1)[0]
@@ -218,7 +242,7 @@ class Worker:
         rec.update(branch=branch, files=files, diff=text, diff_sha256=sha, diff_stat=stat.strip(), description=plan.description,
                    retention=plan.context().get("retention"))
         if prior and prior["diff_sha256"] != sha:
-            raise Refused("preview_stale", "origin/main moved under the preview: the diff no longer matches byte-for-byte; preview again", diff=text)
+            raise Refused("preview_stale", "the diff no longer matches the preview byte-for-byte (origin/main moved, or the request changed); preview again", diff=text)
         ctx = {**plan.context(), "base_worktree": str(self.git.work / "base"), "subject_paths": plan.context().get("subject_paths", []),
                "runtime_root": (self.live or {}).get("runtime_root")}
         results = checks.run_checks(worktree, request["kind"], ctx, self.runner)
@@ -241,11 +265,16 @@ class Worker:
     def _push_and_open(self, rec: dict[str, Any], worktree: pathlib.Path, preview: dict[str, Any]) -> dict[str, Any]:
         branch = rec["branch"]
         prefix = branch.rsplit("-", 1)[0] + "-"
-        open_prs = self._open_proposals(prefix, rec)
+        same_workflow = re.compile(re.escape(prefix) + r"\d{8}T\d{6}Z$")  # not a slug this one merely extends
+        open_prs = self._open_proposals(same_workflow, rec)
         if open_prs:
             raise Refused("open_proposal_exists", f"an open proposal already exists for {rec['workflow_id']}: {open_prs[0]}", choices=open_prs)
-        if branch in self.git.remote_heads(prefix):
-            raise Refused("open_proposal_exists", f"branch {branch} already exists on the remote", choices=[branch])
+        orphans = [head for head in self.git.remote_heads(prefix) if same_workflow.match(head)]
+        if orphans:
+            raise Refused("open_proposal_exists",
+                          f"branch {orphans[0]} is on the remote without an open pull request (a submit failed after its push): "
+                          f"open its PR by hand or delete it (gh api -X DELETE repos/{self.gh_repo}/git/refs/heads/{orphans[0]}), then submit again",
+                          choices=orphans)
         self.git.commit(worktree, branch, body.commit_message(rec))
         self.git.push_guarded(branch, cwd=worktree)
         rec["branch_pushed"] = True
@@ -263,15 +292,17 @@ class Worker:
         rec.update(stage="submitted", pr={"url": url, "number": number, "branch": branch, "draft": bool(rec.get("draft"))})
         return {"stage": "submitted", "proposal_id": rec["proposal_id"], "pr": rec["pr"], "diff_sha256": rec["diff_sha256"]}
 
-    def _open_proposals(self, prefix: str, rec: dict[str, Any]) -> list[str]:
-        code, out, _ = self._gh(["pr", "list", "--repo", self.gh_repo, "--json", "url,headRefName", "--state", "open"], rec)
+    def _open_proposals(self, same_workflow: "re.Pattern[str]", rec: dict[str, Any]) -> list[str]:
+        """Fails closed: a `gh pr list` that errors refuses the submit rather than reporting no PR."""
+        argv = ["pr", "list", "--repo", self.gh_repo, "--json", "url,headRefName", "--state", "open", "--limit", "500"]
+        code, out, err = self._gh(argv, rec)
         if code != 0:
-            return []
+            raise prgit.GitFailed(f"gh pr list failed ({code}) before the push: {err.strip()[-300:]}", ["gh", *argv], code, err)
         try:
             rows = json.loads(out or "[]")
-        except ValueError:
-            return []
-        return [row.get("url", "") for row in rows if str(row.get("headRefName", "")).startswith(prefix)]
+        except ValueError as exc:
+            raise prgit.GitFailed(f"gh pr list printed no JSON: {exc}", ["gh", *argv], code, out) from exc
+        return [row.get("url", "") for row in rows if same_workflow.match(str(row.get("headRefName", "")))]
 
     def _gh(self, args: list[str], log: dict[str, Any] | None) -> tuple[int, str, str]:
         env = {**self.git._env(), "GH_NO_UPDATE_NOTIFIER": "1", "GH_PROMPT_DISABLED": "1"}

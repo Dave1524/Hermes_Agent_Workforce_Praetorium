@@ -131,6 +131,37 @@ class Removal(TempState):
         propose = next(r for r in subjects["runners"] if r["path"] == "bin/agent_propose.sh")
         self.assertTrue(propose["owned"], subjects["runners"])
 
+    def test_composite_runner_names_every_script(self):
+        """`bin/agent_propose.sh -> bin/run_alpha_cc.sh`: the shared framework and the dedicated
+        runner are both subjects; only the dedicated one is owned."""
+        wt = checkout(self.tmp)
+        manifest = wt / "design/agents/claudius.toml"
+        manifest.write_text(manifest.read_text().replace('runner   = "bin/run_alpha_cc.sh"', 'runner   = "bin/agent_propose.sh -> bin/run_alpha_cc.sh"'))
+        _git(wt, "commit", "-qam", "alpha composite runner")
+        self.assertEqual(retire.runner_files(wt, "bin/agent_propose.sh -> bin/run_alpha_cc.sh"), ["bin/agent_propose.sh", "bin/run_alpha_cc.sh"])
+        subjects = retire.subject_set(wt, make_item(wt, "alpha"))
+        by_path = {r["path"]: r for r in subjects["runners"]}
+        self.assertIn("bin/run_alpha_cc.sh", by_path)
+        self.assertTrue(by_path["bin/run_alpha_cc.sh"]["owned"], subjects["runners"])
+        self.assertFalse(by_path["bin/agent_propose.sh"]["owned"], subjects["runners"])
+        plan = retire.plan_retire(wt, make_item(wt, "alpha"), proposed(), NOW, PID)
+        self.assertFalse((wt / "bin/run_alpha_cc.sh").exists(), plan.description["removal"])
+        self.assertTrue((wt / "bin/agent_propose.sh").exists())
+
+    def test_count_literals_match_the_views_suite(self):
+        """LOGICAL_WORKFLOWS in T5.3's suite counts logical workflows over *standing* entries; a
+        planned entry with its own logical id must not move the number the literal is matched on."""
+        wt = checkout(self.tmp)
+        before = retire.count_literals(wt)
+        manifest = wt / "design/agents/claudius.toml"
+        manifest.write_text(manifest.read_text() + '\n[[workflows]]\nunit     = "zeta"\nsurface  = "scheduled"\ntrigger  = "Mon 01:00"\n'
+                            'model    = "claude-opus-5"\nrunner   = "bin/run_alpha_cc.sh"\nroute    = "ops"\nweb      = false\nstatus   = "planned"\n')
+        after = retire.count_literals(wt)
+        self.assertEqual(after["logical_all"], before["logical_all"] + 1)
+        self.assertEqual(after["logical_standing"], before["logical_standing"])
+        text, changed = retire.decrement_count_literals(f"LOGICAL_WORKFLOWS = {after['logical_standing']}\n", after, 1, 1)
+        self.assertEqual(text, f"LOGICAL_WORKFLOWS = {after['logical_standing'] - 1}\n", changed)
+
     def test_two_trigger_retires_both(self):
         """(::retire-two-trigger-retires-both)"""
         wt = checkout(self.tmp)
@@ -191,6 +222,12 @@ class Retention(TempState):
             retire.validate_retention({"artifact_retention": {**RETENTION, "receipts": "delete"}})
         self.assertEqual(refused.exception.code, "bad_request")
         self.assertEqual(retire.validate_retention({"artifact_retention": dict(RETENTION)}), RETENTION)
+        # a note or reason with a newline would break the TOML string / manifest comment it lands in
+        with self.assertRaises(Refused) as refused:
+            retire.validate_retention({"artifact_retention": {**RETENTION, "note": "two\nlines"}})
+        self.assertEqual(refused.exception.code, "bad_request")
+        registry = retire.append_retired_record("", {"id": "x", "note": 'a "quoted"\ttab \\ backslash', "n": 1, "flag": True})
+        self.assertEqual(tomllib.loads(registry)["retired"][0]["note"], 'a "quoted"\ttab \\ backslash')
         self.assertEqual(worktree_diff(wt), "")
 
     def test_refusals(self):
@@ -297,6 +334,11 @@ class ThroughTheWorker(TempState):
         self.assertEqual(rec["residue"]["live"]["verdict"], "residue")
         self.assertTrue(any(i["class"] == "installed" for i in rec["residue"]["live"]["items"]))
         self.assertEqual(body.title(rec), f"control-room(retire): alpha — retire alpha")
+        # GitHub refuses a body over 65,536 characters: a huge diff is cut, and the body says so
+        huge = body.body({**rec, "diff": "+x\n" * 30000})
+        self.assertLess(len(huge), 65536)
+        self.assertIn(f"diff truncated at {body.DIFF_BODY_LIMIT} characters", huge)
+        self.assertNotIn("truncated", text)
 
     def test_residue_fails_closed_on_branch(self):
         original = retire.plan_retire

@@ -183,7 +183,7 @@ def drift_preview(worktree: pathlib.Path, ctx: dict[str, Any], runner: Runner) -
         return _result("drift-preview", "info", "skip", "bin/check_deploy_drift.sh or the base worktree is not available")
     _, base_out, base_err = runner(["bash", "bin/check_deploy_drift.sh"], pathlib.Path(base), check_env(), SUITE_TIMEOUT_SECONDS)
     _, out, err = runner(["bash", "bin/check_deploy_drift.sh"], pathlib.Path(worktree), check_env(), SUITE_TIMEOUT_SECONDS)
-    if "skip" in (out + err).lower() and "DRIFT" not in out:
+    if any(line.startswith("SKIP: ") for line in (out + err).splitlines()):
         return _result("drift-preview", "info", "skip", (out + err).strip()[-1000:] or "drift check skipped")
     introduced = drift_introduced(base_out + base_err, out + err)
     return _result("drift-preview", "info", "info", "\n".join(introduced) or "this branch introduces no drift finding beyond the base")

@@ -10,11 +10,10 @@
 #proposal-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
 #proposal-form label { display: flex; flex-direction: column; gap: 3px; font-weight: 600; }
 #proposal-form label.inline { flex-direction: row; align-items: center; gap: 6px; font-weight: 400; }
-#proposal-form label:has(textarea), #proposal-form .hint, #proposal-form .buttons { grid-column: 1 / -1; }
-#proposal-form input, #proposal-form select, #proposal-form textarea {
+#proposal-form label:has(input[name="reason"]), #proposal-form .hint, #proposal-form .buttons { grid-column: 1 / -1; }
+#proposal-form input, #proposal-form select {
   padding: 4px 6px; border: 1px solid var(--line); border-radius: 3px; background: var(--bg); color: var(--fg); font: inherit;
 }
-#proposal-form textarea { min-height: 56px; }
 #proposal-form .hint { margin: 0; color: var(--muted); font-size: 12px; }
 #proposal-dialog .buttons { display: flex; gap: 8px; margin-top: 8px; }
 #proposal-dialog button { padding: 5px 10px; border: 1px solid var(--line); border-radius: 3px; background: var(--bg); color: var(--fg); font: inherit; cursor: pointer; }

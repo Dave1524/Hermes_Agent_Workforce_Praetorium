@@ -397,6 +397,13 @@ PR. A red hard check refuses `checks_failed`; a red *pinned* suite (one that nam
 accepted only with `acknowledge_pinned_tests` and opens a draft with a "Red on purpose until"
 section. Every request — previewed, submitted, refused, failed — writes one record under the
 state root with every git/gh argv; `stage: "list"` and `bin/workflow_pr.py list <id>` read them.
+The reason and the retention note are **one line each** (`bad_request` otherwise): both land in
+a manifest comment and a TOML string. Submit re-plans with the preview's clock, so a preview at
+23:58Z submitted at 00:02Z still matches. A submit that fails *after* its push (a `gh pr create`
+error) leaves the branch on origin with no PR; the next submit for that workflow is refused
+`open_proposal_exists` naming it — open its PR by hand or delete it
+(`gh api -X DELETE repos/<repo>/git/refs/heads/<branch>`), then submit again. Nothing in the
+worker deletes a remote branch.
 
 **Where it runs.**
 

@@ -193,3 +193,9 @@ def token_valid(rec: dict[str, Any], now: dt.datetime) -> tuple[bool, str | None
     if now.astimezone(dt.timezone.utc) - issued > dt.timedelta(seconds=PREVIEW_TTL_SECONDS):
         return False, "preview expired"
     return True, None
+
+
+def single_line(text: str) -> bool:
+    """No newline and no other control character: the value is written into a `# …` manifest
+    comment and a TOML basic string, and either breaks the file at the first one."""
+    return not any(ch == "\n" or ch == "\r" or (ord(ch) < 32 and ch != "\t") or ord(ch) == 127 for ch in text)

@@ -18,6 +18,7 @@ import sys
 import tempfile
 import threading
 import unittest
+import unittest.mock
 import urllib.error
 import urllib.request
 
@@ -378,9 +379,11 @@ class Outcomes(TempState):
         self.worker.set_now(NOW + dt.timedelta(minutes=31))
         rec, response = self.worker.submit(schedule_request(stage="submit", token=preview["proposal_id"]), ACTOR)
         self.assertEqual(response["error"]["code"], "preview_stale")
-        self.worker.set_now(NOW + dt.timedelta(minutes=5))
+        # previewed at 23:58Z, submitted at 00:02Z: the plan stamps the preview's date, so the diff still matches
+        self.worker.set_now(NOW.replace(hour=23, minute=58))
         preview, previewed = self.worker.preview(schedule_request(), ACTOR)
         new_base = commit_on_main(self.tmp, "docs/unrelated.md", "unrelated\n")
+        self.worker.set_now(NOW.replace(hour=23, minute=58) + dt.timedelta(minutes=4))
         rec, response = self.worker.submit(schedule_request(stage="submit", token=preview["proposal_id"]), ACTOR)
         self.assertEqual(rec["stage"], "submitted", response)
         self.assertEqual(rec["base"]["sha"], new_base)
@@ -434,13 +437,27 @@ class Outcomes(TempState):
         rec, response = self.worker.preview(schedule_request("gamma", specs=("Tue 03:30",)), ACTOR)
         self.assertEqual(response["error"]["code"], "trigger_required")
         self.assertEqual(response["error"]["choices"], ["gamma", "gamma-dispatch"])
+        rec, response = self.worker.preview({**schedule_request(), "reason": "two\nlines"}, ACTOR)
+        self.assertEqual(response["error"]["code"], "bad_request")
+        self.assertIn("one line", response["error"]["message"])
         preview, _ = self.worker.preview(schedule_request(), ACTOR)
         os.environ["FAKE_GH_PR_LIST"] = json.dumps([{"url": "https://github.com/fixture/repo/pull/7", "headRefName": "control-room/schedule-alpha-20260901T000000Z"}])
         rec, response = self.worker.submit(schedule_request(stage="submit", token=preview["proposal_id"]), ACTOR)
         self.assertEqual(response["error"]["code"], "open_proposal_exists")
         self.assertEqual(response["error"]["choices"], ["https://github.com/fixture/repo/pull/7"])
         self.assertEqual(remote_heads(self.remote), ["main"])
+        # a slug that merely extends this one (alpha-two) is another workflow, not an open proposal for alpha
+        os.environ["FAKE_GH_PR_LIST"] = json.dumps([{"url": "https://github.com/fixture/repo/pull/8", "headRefName": "control-room/schedule-alpha-two-20260901T000000Z"}])
+        same = re.compile(re.escape("control-room/schedule-alpha-") + r"\d{8}T\d{6}Z$")
+        self.assertEqual(self.worker._open_proposals(same, {}), [])
         os.environ.pop("FAKE_GH_PR_LIST")
+        # an exception that is neither a refusal nor a git failure is still a recorded, failed stage
+        with unittest.mock.patch.object(worker_module.Worker, "_push_and_open", side_effect=RuntimeError("stop before the push")):
+            rec, response = self.worker.submit(schedule_request(stage="submit", token=preview["proposal_id"]), ACTOR)
+        self.assertEqual((rec["stage"], rec["refusal"]["code"]), ("failed", "failed"), response)
+        self.assertIn("RuntimeError: stop before the push", response["error"])
+        self.assertEqual(record.validate_record(rec), [])
+        self.assertEqual(remote_heads(self.remote), ["main"])
         os.environ["FAKE_GH_FAIL"] = "create"
         rec, response = self.worker.submit(schedule_request(stage="submit", token=preview["proposal_id"]), ACTOR)
         os.environ.pop("FAKE_GH_FAIL")

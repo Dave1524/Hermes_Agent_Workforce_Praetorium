@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Any
 
 W19_COLUMNS = ("#", "residue", "tree", "has a check?", "who clears it", "how")
+DIFF_BODY_LIMIT = 40000
 
 
 def title(rec: dict[str, Any]) -> str:
@@ -56,8 +57,10 @@ def _attention(rec: dict[str, Any]) -> str:
 
 
 def _diff(rec: dict[str, Any]) -> str:
-    text = rec.get("diff") or "(diff stored beside the record)"
-    return f"```diff\n{text.rstrip()}\n```"
+    text = (rec.get("diff") or "(diff stored beside the record)").rstrip()
+    if len(text) > DIFF_BODY_LIMIT:  # GitHub refuses a body over 65,536 characters; the branch carries the rest
+        text = text[:DIFF_BODY_LIMIT].rstrip() + f"\n… diff truncated at {DIFF_BODY_LIMIT} characters; the branch and the record ({rec.get('diff_stat') or 'see files'}) carry the whole change"
+    return f"```diff\n{text}\n```"
 
 
 def _residue_table(report: dict[str, Any] | None) -> str:

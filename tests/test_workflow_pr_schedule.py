@@ -8,10 +8,12 @@ from __future__ import annotations
 import datetime as dt
 import pathlib
 import shutil
+import subprocess
 import sys
 import tempfile
 import tomllib
 import unittest
+import unittest.mock
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "bin"))
@@ -204,6 +206,29 @@ class Parsing(unittest.TestCase):
         self.assertEqual(sched.utc_datetime(elapses[0]["utc"]), dt.datetime(2026, 9, 20, 7, tzinfo=dt.timezone.utc))
         with self.assertRaises(ValueError):
             sched.systemd_analyze_calendar("Funday 25:00")
+
+    def test_calendar_parsing_under_a_utc_process_zone(self):
+        """A UTC process zone prints the elapse in UTC and no `(in UTC)` line (measured on the box
+        with TZ=UTC); the parser must not read that as `printed no elapse`."""
+        utc_output = ("  Original form: Sun 07:00\nNormalized form: Sun *-*-* 07:00:00\n"
+                      "    Next elapse: Sun 2026-09-20 07:00:00 UTC\n       From now: 4 days left\n"
+                      "   Iteration #2: Sun 2026-09-27 07:00:00 UTC\n       From now: 1 week 4 days left\n")
+        done = subprocess.CompletedProcess(["systemd-analyze"], 0, utc_output, "")
+        with unittest.mock.patch.object(sched.subprocess, "run", return_value=done):
+            elapses = sched.systemd_analyze_calendar("Sun 07:00")
+        self.assertEqual(elapses, [{"local": "Sun 2026-09-20 07:00:00 UTC", "utc": "Sun 2026-09-20 07:00:00 UTC"},
+                                   {"local": "Sun 2026-09-27 07:00:00 UTC", "utc": "Sun 2026-09-27 07:00:00 UTC"}])
+
+    def test_drift_preview_skips_only_on_a_skip_line(self):
+        """The drift script announces a skip as a `SKIP: ` line; the word inside a diff path
+        (tests/ci-expected-skips.txt) is not one."""
+        def runner(argv, cwd, env, timeout):
+            return 0, "  DRIFT [content] content differs: tests/ci-expected-skips.txt\n", ""
+        ctx = {"base_worktree": str(ROOT)}  # the script must exist at both ends; the faked runner never runs it
+        result = checks.drift_preview(ROOT, ctx, runner)
+        self.assertEqual(result["status"], "info", result)
+        skipped = checks.drift_preview(ROOT, ctx, lambda *a: (0, "SKIP: check_deploy_drift.sh — off the box\n", ""))
+        self.assertEqual(skipped["status"], "skip", skipped)
 
 
 if __name__ == "__main__":

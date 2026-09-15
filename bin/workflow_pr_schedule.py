@@ -37,14 +37,21 @@ def systemd_analyze_calendar(spec: str, iterations: int = 3) -> list[dict[str, s
     if done.returncode != 0:
         raise ValueError((done.stderr or done.stdout).strip() or f"systemd-analyze calendar exited {done.returncode}")
     elapses, pending = [], None
+
+    def flush() -> None:  # a UTC process zone prints the elapse in UTC and no "(in UTC)" line at all
+        if pending is not None and pending.endswith(" UTC"):
+            elapses.append({"local": pending, "utc": pending})
+
     for line in done.stdout.splitlines():
         elapse = ELAPSE_LINE.match(line)
         utc = UTC_LINE.match(line)
         if elapse:
+            flush()
             pending = elapse.group(1)
         elif utc and pending is not None:
             elapses.append({"local": pending, "utc": utc.group(1)})
             pending = None
+    flush()
     if not elapses:
         raise ValueError(f"systemd-analyze calendar printed no elapse for {spec!r}")
     return elapses

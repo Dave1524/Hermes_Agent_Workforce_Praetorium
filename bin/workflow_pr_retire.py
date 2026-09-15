@@ -12,6 +12,7 @@ import tomllib
 from typing import Any
 
 import workflow_retire_residue as residue
+import workflow_pr_record as record
 from workflow_pr_record import Plan, Refused, slug
 
 RETIRABLE = ("standing", "dormant", "spent")
@@ -50,19 +51,24 @@ def validate_retention(proposed: dict[str, Any]) -> dict[str, str]:
     unknown = sorted(set(retention) - set(RETENTION_KEYS))
     if unknown:
         raise Refused("bad_request", f"artifact_retention has unknown keys: {', '.join(unknown)}")
+    if not record.single_line(retention["note"]):
+        raise Refused("bad_request", "artifact_retention.note must be one line: it is written into a TOML string")
     return {key: retention[key] for key in RETENTION_KEYS}
 
 
 # --- subject set ----------------------------------------------------------------------------------
 
-def runner_file(root: pathlib.Path, runner: Any) -> str | None:
+def runner_files(root: pathlib.Path, runner: Any) -> list[str]:
+    """Every token of a manifest `runner` that is a file here: `bin/agent_propose.sh ->
+    bin/run_content_via_buzz.sh` names two, and the second is the one only this workflow runs."""
     if not isinstance(runner, str):
-        return None
+        return []
+    found = []
     for tok in re.split(r"(?:->)|[\s;|&]", runner):
         tok = tok.strip().strip("\"'")
-        if tok and (root / tok).is_file():
-            return tok
-    return None
+        if tok and (root / tok).is_file() and tok not in found:
+            found.append(tok)
+    return found
 
 
 def _exec_targets(root: pathlib.Path, service: pathlib.Path | None) -> list[str]:
@@ -109,8 +115,7 @@ def _runner_units(root: pathlib.Path, entries: list[dict[str, Any]], services: l
     """bin/ script → the live units that run it, by manifest `runner` or by ExecStart."""
     out: dict[str, list[str]] = {}
     for entry in entries:
-        path = runner_file(root, entry.get("runner"))
-        if path:
+        for path in runner_files(root, entry.get("runner")):
             out.setdefault(path, []).append(f"{entry['unit']}.service")
     for service in services:
         for target in _exec_targets(root, service):
@@ -151,14 +156,14 @@ def subject_set(root: pathlib.Path, item: dict[str, Any]) -> dict[str, Any]:
     unit_names = [u["name"] for u in units]
     runner_paths = []
     for entry in mine:
-        path = runner_file(root, entry.get("runner"))
-        if path and path not in runner_paths:
-            runner_paths.append(path)
+        for path in runner_files(root, entry.get("runner")):
+            if path not in runner_paths:
+                runner_paths.append(path)
     for unit in units:
         for target in _exec_targets(root, root / unit["service_path"] if unit["service_path"] else None):
             if target not in runner_paths:
                 runner_paths.append(target)
-    other_runners = {runner_file(root, e.get("runner")) for e in others}
+    other_runners = {path for e in others for path in runner_files(root, e.get("runner"))}
     runner_units = _runner_units(root, others, _live_services(root, unit_names))
     runners = []
     for path in runner_paths:
@@ -289,15 +294,17 @@ def archive_contract(worktree: pathlib.Path, relative: str, date: str, pid: str)
 def count_literals(root: pathlib.Path) -> dict[str, int]:
     entries = [e for _, e in residue._entries(root)]
     scheduled = [e for e in entries if e.get("surface") == "scheduled"]
-    return {"standing_all": sum(1 for e in entries if e.get("status") == "standing"),
+    standing = [e for e in entries if e.get("status") == "standing"]
+    return {"standing_all": len(standing),
             "standing_scheduled": sum(1 for e in scheduled if e.get("status") == "standing"),
             "logical_all": len({residue._logical(e) for e in entries}),
+            "logical_standing": len({residue._logical(e) for e in standing}),  # T5.3's LOGICAL_WORKFLOWS
             "logical_scheduled": len({residue._logical(e) for e in scheduled})}
 
 
 def decrement_count_literals(text: str, before: dict[str, int], removed_standing: int, removed_logical: int) -> tuple[str, list[str]]:
     standing = {before["standing_all"], before["standing_scheduled"]}
-    logical = {before["logical_all"], before["logical_scheduled"]}
+    logical = {before["logical_all"], before["logical_standing"], before["logical_scheduled"]}
     out, changed = [], []
     for line in text.splitlines(keepends=True):
         match = COUNT_LITERAL_RE.match(line.rstrip("\n"))
@@ -319,9 +326,14 @@ def append_retired_record(text: str, entry: dict[str, Any]) -> str:
             return "[" + ", ".join(toml_value(v) for v in value) + "]"
         if isinstance(value, dict):
             return "{ " + ", ".join(f"{k} = {toml_value(v)}" for k, v in value.items()) + " }"
-        return '"' + str(value).replace("\\", "\\\\").replace('"', '\\"') + '"'
+        return '"' + _toml_escape(str(value)) + '"'
     lines = ["[[retired]]"] + [f"{key} = {toml_value(value)}" for key, value in entry.items()]
     return text.rstrip("\n") + "\n\n" + "\n".join(lines) + "\n"
+
+
+def _toml_escape(text: str) -> str:
+    out = text.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\t", "\\t").replace("\r", "\\r")
+    return "".join(ch if ord(ch) >= 32 and ord(ch) != 127 else f"\\u{ord(ch):04X}" for ch in out)
 
 
 # --- the plan -------------------------------------------------------------------------------------

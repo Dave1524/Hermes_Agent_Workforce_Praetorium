@@ -140,8 +140,10 @@ def registry_entries(root: pathlib.Path) -> list[dict[str, Any]]:
         return []
     try:
         return list(tomllib.loads(path.read_text(encoding="utf-8")).get("retired", []))
-    except tomllib.TOMLDecodeError:
-        return []
+    except tomllib.TOMLDecodeError as exc:
+        # Never an empty list: that would read as "nothing retired" and turn every fail-closed
+        # consumer green on a registry nobody can parse.
+        raise ValueError(f"{REGISTRY} does not parse: {exc}") from exc
 
 
 def subject_paths(root: pathlib.Path, subjects: dict[str, Any]) -> list[str]:
