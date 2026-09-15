@@ -1,0 +1,7 @@
+# Fixture projection of design/agents/*.toml. Columns: unit scope status owner kind
+alpha	system	standing	claudius	timer
+beta	system	standing	claudius	timer
+gamma	system	standing	claudius	timer
+gamma-dispatch	system	standing	claudius	timer
+refresh	system	standing	trajan	timer
+buzz-agent@trajan	user	standing	trajan	service

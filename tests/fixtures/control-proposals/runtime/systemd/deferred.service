@@ -1,0 +1,2 @@
+[Unit]
+Description=deferred (fixture: runtime-only, prune deferred)

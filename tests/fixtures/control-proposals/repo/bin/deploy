@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Fixture stand-in for bin/deploy: only ever reached through the check bundle's runner, which the
+# suites fake. Refuses anything but a dry run so a real call here can never touch a tree.
+case " $* " in
+  *" --dry-run "*) echo "dry-run: (fixture deploy; nothing to ship)" ;;
+  *) echo "fixture deploy: refusing a non-dry-run call" >&2; exit 2 ;;
+esac

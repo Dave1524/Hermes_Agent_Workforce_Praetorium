@@ -22,7 +22,7 @@ def render_workflow(item: dict[str, Any], runs: list[dict[str, Any]], *,
         _header(item), _controls(item), _triggers(item), _runs(item, runs), _artifact(item),
         _tokens(item, runs), _benefit(item), _lineage(item), _links(item), _handoffs(item),
     )
-    return layout(item["id"], "".join(sections), status or {}, generated_at, scripts=("actions.js",))
+    return layout(item["id"], "".join(sections), status or {}, generated_at, scripts=("actions.js", "proposals.js"))
 
 
 def render_run(run: dict[str, Any], *, status: dict[str, Any] | None = None, generated_at: Any = None) -> str:

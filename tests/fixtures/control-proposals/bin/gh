@@ -1,0 +1,59 @@
+#!/usr/bin/env python3
+"""Fixture shim for `gh`: answers exactly what the proposal worker asks and refuses everything else.
+
+FAKE_GH_LOG      — path appended with one JSON line per `pr create` (argv + the --body-file bytes)
+FAKE_GH_PR_LIST  — JSON printed by `pr list --json ... --state open` (default `[]`)
+FAKE_GH_FAIL     — `create` makes `pr create` exit 1 with stderr `fake gh: refused`
+"""
+import json
+import os
+import sys
+
+
+def _log(entry):
+    log = os.environ.get("FAKE_GH_LOG")
+    if not log:
+        return
+    with open(log, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(entry) + "\n")
+
+
+def _counter():
+    log = os.environ.get("FAKE_GH_LOG")
+    if not log or not os.path.exists(log):
+        return 1
+    with open(log, encoding="utf-8") as fh:
+        return sum(1 for line in fh if '"pr create"' in line) + 1
+
+
+def _pr_create(argv):
+    if os.environ.get("FAKE_GH_FAIL") == "create":
+        _log({"call": "pr create", "argv": argv, "refused": True})
+        print("fake gh: refused", file=sys.stderr)
+        return 1
+    body = ""
+    if "--body-file" in argv:
+        path = argv[argv.index("--body-file") + 1]
+        with open(path, encoding="utf-8") as fh:
+            body = fh.read()
+    number = _counter()
+    _log({"call": "pr create", "argv": argv, "body": body})
+    print(f"https://github.com/fixture/repo/pull/{number}")
+    return 0
+
+
+def main(argv):
+    if argv[:2] == ["auth", "status"]:
+        return 0
+    if argv[:2] == ["pr", "list"] and "--json" in argv and "--state" in argv:
+        print(os.environ.get("FAKE_GH_PR_LIST", "[]"))
+        return 0
+    if argv[:2] == ["pr", "create"]:
+        return _pr_create(argv)
+    _log({"call": "unsupported", "argv": argv})
+    print(f"fake gh: unsupported invocation {argv!r}", file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

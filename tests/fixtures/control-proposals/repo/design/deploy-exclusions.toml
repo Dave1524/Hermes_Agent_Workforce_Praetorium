@@ -1,0 +1,8 @@
+# Fixture deploy exclusions: files the runtime tree keeps that source no longer ships.
+# Read by bin/check_deploy_drift.sh; each entry is a debt `bin/deploy --prune` settles.
+
+[[runtime_only]]
+path  = "systemd/deferred.service"
+tree  = "systemd"
+since = "2026-09-01"
+why   = "unrelated deferred removal — retired by hand, prune deferred until the next land"

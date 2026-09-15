@@ -1,0 +1,6 @@
+[Unit]
+Description=refresh (fixture)
+
+[Service]
+Type=oneshot
+ExecStart=/home/dave/agent-workforce/bin/run_refresh.sh

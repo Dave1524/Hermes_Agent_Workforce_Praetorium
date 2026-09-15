@@ -380,6 +380,82 @@ compared the same way: a `bin/control_broker.py` change is inert — and red —
 **Never:** widen the socket group, add dave to it, point `ExecStart` at `/home`, or add a sudoers
 line — each is the `--no-verify` of this design, the same escalation with the record removed.
 
+## Control Room proposals (T5.3b)
+
+**A schedule change or a retirement is a pull request, never an edit.** `Change schedule…` and
+`Retire…` on a workflow page produce a branch `control-room/<kind>-<workflow_id>-<UTC stamp>` in a
+dedicated bare clone of origin and a PR through `gh pr create`. Nothing here writes
+`~/dev/agent-workforce`, `~/agent-workforce`, `/etc` or `main`; nothing merges, force-pushes,
+deploys or runs a mutating `systemctl`. **The fleet stays off** — a schedule change applies at
+resume (T5.3a's moment), and a retirement's units are already disabled when the PR is merged.
+
+**Two stages, one identity.** `preview` builds the branch in a worktree, records the diff's
+sha256, runs the check bundle and answers with the diff, the checks, the residue tables and
+`submit_allowed`. `submit` rebuilds the plan under the preview's proposal id, refuses
+`preview_stale` unless the bytes match (30-minute token), pushes the one branch and opens the
+PR. A red hard check refuses `checks_failed`; a red *pinned* suite (one that names the unit) is
+accepted only with `acknowledge_pinned_tests` and opens a draft with a "Red on purpose until"
+section. Every request — previewed, submitted, refused, failed — writes one record under the
+state root with every git/gh argv; `stage: "list"` and `bin/workflow_pr.py list <id>` read them.
+The reason and the retention note are **one line each** (`bad_request` otherwise): both land in
+a manifest comment and a TOML string. Submit re-plans with the preview's clock, so a preview at
+23:58Z submitted at 00:02Z still matches. A submit that fails *after* its push (a `gh pr create`
+error) leaves the branch on origin with no PR; the next submit for that workflow is refused
+`open_proposal_exists` naming it — open its PR by hand or delete it
+(`gh api -X DELETE repos/<repo>/git/refs/heads/<branch>`), then submit again. Nothing in the
+worker deletes a remote branch.
+
+**Where it runs.**
+
+```
+Mac browser ──tailnet──▶ control-room.service (dave, ProtectHome=read-only)
+                           │  bin/control_room_proposals.py: shape, peer gate, actor, HTTP map
+                           ▼  bin/workflow_pr.py: the worker (lock, worktree, plan, checks, record)
+                         /var/lib/control-room-proposals/   (StateDirectory; the drop-in)
+                           ├─ repo.git      bare clone of origin, fetch main + push control-room/* only
+                           ├─ work/<pid>    the proposal worktree, removed after each stage
+                           └─ proposals/    one JSON record per request
+```
+
+The state root is `CONTROL_ROOM_PROPOSALS_ROOT` (`systemd/control-room.service.d/proposals.conf`
+sets it, plus the remote, the gh repo and the git author). Health: `bin/workflow_pr.py doctor`
+(state root writable, `repo.git` present and its origin, `ls-remote main`, `git`/`gh`/
+`systemd-analyze` on PATH, `gh auth status`, the timezone). First run: `bin/workflow_pr.py init`
+from the dave shell the drop-in describes. The CLI mirrors the dialog — `schedule <id>
+--on-calendar S [--delay D] [--persistent yes|no] [--trigger U] --reason R --preview|--submit
+TOKEN`, `retire <id> --reason R --receipts V --notion V --inbox V --note N --preview|--submit
+TOKEN` — and is the acceptance path (`tests/acceptance/control_room_proposals.sh`).
+
+**Landing a schedule PR (Dave, by hand — the PR body carries the same list):** merge → `git -C
+~/dev/agent-workforce pull --ff-only` → `bin/deploy` → `sudo cp systemd/<unit>.timer
+/etc/systemd/system/ && sudo systemctl daemon-reload` → only if that timer is active, `sudo
+systemctl restart <unit>.timer`; it is paused today, so the new schedule applies at resume →
+`bash bin/verify.sh`.
+
+**Landing a retirement (Dave, by hand):** merge → pull → `bin/deploy` (ships `systemd/archive/`)
+→ `sudo systemctl disable --now <unit>.timer` (a no-op while the fleet is off; it is the
+retirement, not a fleet change) → `sudo rm /etc/systemd/system/<unit>.{timer,service} && sudo
+systemctl daemon-reload && sudo systemctl reset-failed` → `ls -l` then `rm` the deny-listed
+`~/.config/agent-workforce/<job>.env` (no agent stats it; the PR says `unverifiable from an
+agent`) → `bin/deploy --prune` → `bin/workflow_pr.py clear <id> [--env-removed] --pr <url>`
+→ commit the registry line it writes → `bash bin/verify.sh`.
+
+**Prune cannot be aimed.** `bin/deploy --prune` deletes *everything* source no longer carries,
+so the PR's `deploy-preview` check lists what else the prune would take (the deferred entries in
+`design/deploy-exclusions.toml`), and the retirement adds its own files there so the deployed
+copies wait for the prune instead of failing the drift check on the branch.
+
+**The registry is the fail-closed half.** The PR appends a `[[retired]]` entry to
+`design/retired-workflows.toml` with the whole subject set (units, runners, profiles, contract,
+suites, env override, run markers, retention) and `residue_cleared_on = ""`.
+`tests/test_workflow_retirements.sh` is **red by design between merge and cleanup**: on the box it
+scans the deployed trees and the installed units (`bin/workflow_retire_residue.py --live`) and
+fails naming each pending item and the `clear` command; off the box that group skips out loud.
+`clear` re-runs the live scan, refuses while residue remains, and stamps the entry when the box
+is clean. The W19 table the scanner renders (`| # | residue | tree | has a check? | who clears it
+| how |`) is the same shape the 2026-09-11 retirement audit used, so the next audit reads the
+registry instead of the box.
+
 ## S1 — the Buzz interactive surface (brief 7, 2026-09-03)
 
 The five `buzz-agent@*` `--user` units. Their **mechanism** files have a source here

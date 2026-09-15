@@ -1,0 +1,43 @@
+# trajan — fixture manifest: one OnUnitActiveSec timer (refresh, the only occupant of the
+# scheduled surface) and one always-on service entry (buzz-agent@trajan).
+
+name    = "trajan"
+role    = "fixture — head of engineering"
+status  = "live"
+
+[surfaces.interactive]
+present     = true
+governed_by = "buzz-team/trajan.toml"
+
+[surfaces.scheduled]
+present     = true
+governed_by = "bin/run_refresh.sh"
+
+[surfaces.kanban]
+present = false
+
+[[workflows]]
+unit     = "refresh"
+surface  = "scheduled"
+trigger  = "every 15 min (OnUnitActiveSec)"
+profile  = "profiles/refresh_task.md"
+runner   = "bin/run_refresh.sh"
+route    = "ops"
+contract = "design/contracts/refresh.md"
+status   = "standing"
+suite    = []
+skills   = []
+
+[[workflows]]
+unit            = "buzz-agent@trajan"
+surface         = "interactive"
+scope           = "user"
+kind            = "service"
+trigger         = "always on"
+profile_in_repo = false
+runner          = "buzz-acp"
+route           = "none"
+contract        = "design/contracts/buzz-agent.md"
+status          = "standing"
+suite           = []
+skills          = []

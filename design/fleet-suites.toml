@@ -461,3 +461,85 @@ It tests the executor every contracted workflow will call, against the live know
 contract. Assigning it to knowledge-digest would credit one workflow with a suite that decides
 the receipt shape for all thirty.
 """
+
+[[suite]]
+path    = "tests/test_control_room_proposals.sh"
+owner   = "fleet"
+asserts = [
+  "proposal-preview-before-pr",           # preview writes nothing to the remote; submit pushes one control-room/* branch and opens one PR with the same diff
+  "proposal-submit-needs-fresh-preview",  # submit without a token, with a stale one, or after origin/main moved is refused with the fresh diff
+  "proposal-never-touches-main-or-runtime", # every git/gh argv stays inside the state root and the temp remote; main, origin and the runtime tree are byte-identical after
+  "proposal-refusals-and-status-map",     # every refusal code, its HTTP status and body shape, the peer gate, and the T5.3 501 stub when nothing is bound
+  "proposal-every-outcome-recorded",      # one validated record per request across previewed / submitted / refused / failed, with every git and gh argv
+  "proposal-list-stage",                  # list returns the records newest first without diff and makes no git call
+  "proposal-doctor",                      # doctor is all ok on the fixture and names what is missing otherwise; exit 1 on any fail
+  "proposals-js-flow",                    # proposals.js claims the buttons in the capture phase, previews, confirms, submits with the token and re-fetches
+  "proposal-realism-snapshot",            # a schedule preview over a fresh commit of the real checkout's file set runs the real join suites and touches exactly three files
+  "proposal-runner-no-recursion",         # a timed-out suite dies with its whole process tree, and this suite (pinned by the slug it names) runs nested without previewing again
+]
+why_no_workflow = """
+It tests the screen's PR path — the worker, its records and the HTTP seam — for whichever
+workflow was clicked. The screen is an operator surface, not a manifest workflow.
+"""
+
+[[suite]]
+path    = "tests/test_workflow_pr_schedule.sh"
+owner   = "fleet"
+asserts = [
+  "schedule-diff-is-exact",              # the timer's OnCalendar line, one manifest trigger and the contract tokens change and nothing else; two runs are byte-identical
+  "schedule-describes-tz-and-catch-up",  # the description carries the box timezone, local and UTC elapses, the catch-up sentence and when the change takes effect
+  "schedule-refuses-bad-spec",           # an unparseable spec fails the parse check and unit-verify and blocks submit; malformed input is bad_request with no git call
+  "schedule-collision-window",           # another timer elapsing inside the window is a named warning, never a refusal
+  "schedule-pinned-tests-named",         # a suite pinning the old OnCalendar goes red on the branch, blocks submit unless acknowledged, and opens a draft
+  "schedule-multi-trigger",              # a two-timer workflow needs a trigger choice and changes only the named timer
+  "schedule-randomized-and-persistent",  # delay and persistence edits land on their own lines; unset keeps the current value
+]
+why_no_workflow = """
+It tests the schedule plan for any calendar timer in the manifests; the fixture's alpha and
+gamma stand in for all of them.
+"""
+
+[[suite]]
+path    = "tests/test_workflow_pr_retire.sh"
+owner   = "fleet"
+asserts = [
+  "retire-removal-across-joins",      # the manifest block, units, runner, profiles, suite, contract, TSV rows and skip line go together; the archive and the registry gain their copies
+  "retire-keeps-shared-runner",       # a runner another live unit still execs is kept and named for the reviewer
+  "retire-two-trigger-retires-both",  # a logical workflow with two timers loses both units in one plan
+  "retire-empties-a-surface",         # the last entry on a surface flips present = false with a retired = line, and the real surfaces suite accepts it
+  "retire-needs-explicit-retention",  # no retention decision, no plan: receipts, notion and inbox each need a value from their vocabulary
+  "retire-count-literals-or-pinned",  # a count literal is decremented and its suite pinned; a suite that names the unit stays red and forces a draft
+  "retire-refusals",                  # a service, a planned entry and a short reason are refused with no change to the checkout
+  "retire-pr-body-sections",          # the PR body carries evidence, retention, removal, both W19 tables, checks, attention and the Dave-only land steps in order
+  "residue-fails-closed-on-branch",   # residue the plan left on the branch blocks submit as residue_in_branch naming the path
+]
+why_no_workflow = """
+It tests the retirement plan for any standing timer workflow; the fixture's alpha stands in
+for all of them, and the registry it writes is consumed by tests/test_workflow_retirements.sh.
+"""
+
+[[suite]]
+path    = "tests/test_workflow_retire_residue.sh"
+owner   = "fleet"
+asserts = [
+  "residue-source-classes",    # every W19 source class is found by the scanner with its line, tree, clearer and how
+  "residue-w19-table",         # the rendered table carries the W19 columns, one row per item and the verdict line
+  "residue-live-fails-closed", # installed units, deployed copies and runtime state block; the deny-listed env is never stat'ed and blocks until attested
+  "residue-cli",               # --source, --live and --all with --json parse and exit 0/1/2 as documented
+]
+why_no_workflow = """
+It tests the residue scanner over a fixture repo and fixture trees. The scanner reads every
+workflow's subjects; it belongs to none of them.
+"""
+
+[[suite]]
+path    = "tests/test_workflow_retirements.sh"
+owner   = "fleet"
+asserts = [
+  "retired-registry-clean-source", # every [[retired]] entry is well-formed, retention complete and clean in source; a synthetic half-retired entry is named
+  "retired-registry-live-clean",   # box only: a cleared entry stays clear live; an uncleared one fails naming the pending items and the clear command
+]
+why_no_workflow = """
+It consumes design/retired-workflows.toml, the register of workflows that no longer exist. A
+retired workflow cannot own the suite that proves it is gone.
+"""

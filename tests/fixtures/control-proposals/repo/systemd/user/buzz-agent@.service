@@ -1,0 +1,8 @@
+[Unit]
+Description=buzz agent %i (fixture)
+
+[Service]
+ExecStart=/home/dave/.local/bin/buzz-acp --name %i
+
+[Install]
+WantedBy=default.target

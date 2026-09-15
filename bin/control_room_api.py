@@ -32,6 +32,7 @@ from workflow_receipt import iso_utc, parse_time, utc_now, validate as validate_
 from control_room_cadence import cadence_for, freshness, parse_systemd_timestamp  # noqa: E402
 from control_room_benefit import benefit_row, load_ledger  # noqa: E402
 import control_room_control  # noqa: E402
+import control_room_proposals  # noqa: E402
 from control_room_exceptions import KINDS, classify  # noqa: E402
 from control_room_lineage import lineage  # noqa: E402
 from control_room_static import serve as serve_static  # noqa: E402
@@ -922,6 +923,8 @@ class ControlRoomHandler(BaseHTTPRequestHandler):
         segments = [s for s in urllib.parse.urlsplit(self.path).path.split("/") if s]
         if segments == ["api", API_VERSION, "control", "actions"]:
             control_room_control.handle_post(self, getattr(type(self), "control", None), self.model)
+        elif segments == ["api", API_VERSION, "control", "proposals"]:
+            control_room_proposals.handle_post(self, getattr(type(self), "proposals", None), self.model)
         elif len(segments) == 4 and segments[:3] == ["api", API_VERSION, "control"] and segments[3] in self.STUBS:
             self._control_stub(*self.STUBS[segments[3]])
         else:
@@ -981,6 +984,7 @@ def main(argv: list[str] | None = None) -> int:
                                  control_reader=control.receipts.last_action, retry_policy=control.retry_policy)
     server = make_server(args.host, args.port, model)
     server.RequestHandlerClass.control = control
+    server.RequestHandlerClass.proposals = control_room_proposals.ProposalsControl.from_env()
     print(f"control-room-api: listening on http://{args.host}:{server.server_port}/api/{API_VERSION}", flush=True)
     try:
         server.serve_forever()

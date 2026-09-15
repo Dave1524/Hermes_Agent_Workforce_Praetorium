@@ -1,0 +1,78 @@
+# claudius — fixture manifest for the T5.3b proposal suites. Three standing timer workflows on
+# the scheduled surface: alpha (owned runner), beta (shares bin/agent_propose.sh with alpha) and
+# gamma (two triggers, gamma + gamma-dispatch, folded by logical_workflow).
+
+name    = "claudius"
+role    = "fixture — head of research"
+status  = "live"
+
+[surfaces.interactive]
+present = false
+
+[surfaces.scheduled]
+present     = true
+governed_by = "bin/run_alpha_cc.sh, bin/run_beta_cc.sh, bin/run_gamma_cc.sh"
+tools       = ["Bash", "Read"]
+mcp         = []
+
+[surfaces.kanban]
+present = false
+
+[[workflows]]
+unit     = "alpha"
+surface  = "scheduled"
+trigger  = "Sun 09:00 (+5min jitter)"
+model    = "claude-opus-5"
+profile  = "profiles/alpha_task.md"
+runner   = "bin/run_alpha_cc.sh"
+route    = "research"
+web      = false
+contract = "design/contracts/alpha.md"
+status   = "standing"
+suite    = ["tests/test_alpha_smoke.sh"]
+skills   = []
+
+[[workflows]]
+unit     = "beta"
+surface  = "scheduled"
+trigger  = "Mon-Fri 06:00"
+model    = "claude-opus-5"
+profile  = "profiles/beta_task.md"
+runner   = "bin/run_beta_cc.sh"
+route    = "ops"
+web      = false
+contract = "design/contracts/beta.md"
+status   = "standing"
+suite    = ["tests/test_beta_smoke.sh"]
+skills   = []
+notes    = "Runs an hour after alpha would on a Sunday; both go through bin/agent_propose.sh."
+
+[[workflows]]
+unit             = "gamma"
+logical_workflow = "gamma"
+surface          = "scheduled"
+trigger          = "Tue 03:00"
+model            = "claude-opus-5"
+profile          = "profiles/gamma_task.md"
+runner           = "bin/run_gamma_cc.sh"
+route            = "research"
+web              = false
+contract         = "design/contracts/gamma.md"
+status           = "standing"
+suite            = ["tests/test_gamma_smoke.sh"]
+skills           = []
+
+[[workflows]]
+unit             = "gamma-dispatch"
+logical_workflow = "gamma"
+surface          = "scheduled"
+trigger          = "Sat 22:00"
+model            = "claude-opus-5"
+profile          = "profiles/gamma_dispatch_task.md"
+runner           = "bin/run_gamma_cc.sh"
+route            = "research"
+web              = false
+contract         = "design/contracts/gamma.md"
+status           = "standing"
+suite            = ["tests/test_gamma_smoke.sh"]
+skills           = []
