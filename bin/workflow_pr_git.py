@@ -70,7 +70,8 @@ class GitRepo:
         self.commands: list[dict[str, Any]] = []
 
     def _env(self) -> dict[str, str]:
-        env = {key: os.environ[key] for key in ("PATH", "HOME", "GH_TOKEN", "GH_CONFIG_DIR", "XDG_CONFIG_HOME") if key in os.environ}
+        passthrough = ("PATH", "HOME", "GH_TOKEN", "GH_CONFIG_DIR", "XDG_CONFIG_HOME")
+        env = {key: value for key, value in os.environ.items() if key in passthrough or key.startswith("FAKE_")}
         env.update({"GIT_CONFIG_GLOBAL": str(self.gitconfig), "GIT_CONFIG_NOSYSTEM": "1", "GIT_TERMINAL_PROMPT": "0",
                     "LC_ALL": "C", "TZ": "UTC"})
         return env

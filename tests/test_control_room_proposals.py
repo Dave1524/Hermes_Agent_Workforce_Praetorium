@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -28,6 +29,7 @@ GUARDED_SOURCES = ("bin/control_room_proposals.py", "bin/workflow_pr.py", "bin/w
 sys.path.insert(0, str(ROOT / "bin"))
 sys.path.insert(0, str(ROOT / "tests"))
 import control_room_api as api  # noqa: E402
+import workflow_pr as worker_module  # noqa: E402
 import workflow_pr_git as prgit  # noqa: E402
 import workflow_pr_record as record  # noqa: E402
 from control_room_fixture import FakeSystemd  # noqa: E402
@@ -121,6 +123,40 @@ class FakeRunner:
             if needle in " ".join(argv):
                 return code, output, ""
         return 0, f"  ok: {key}\n", ""
+
+
+def make_worker(tmp: pathlib.Path, remote: pathlib.Path, now: dt.datetime = NOW, runner=None, live=None) -> worker_module.Worker:
+    """A Worker over a temp state root, the fixture shims on PATH, suite runs faked."""
+    state = tmp / "state"
+    os.environ["FAKE_GH_LOG"] = str(tmp / "gh.log")
+    os.environ["FAKE_SYSTEMCTL_LOG"] = str(tmp / "systemctl.log")
+    os.environ.pop("FAKE_GH_PR_LIST", None)
+    os.environ.pop("FAKE_GH_FAIL", None)
+    clock = {"now": now}
+    live = live or {"runtime_root": str(FIXTURES / "runtime"), "etc_dir": str(FIXTURES / "etc"), "user_tree": str(FIXTURES / "user")}
+    worker = worker_module.Worker(state, str(remote), "fixture/repo", "Fixture Author <fixture@example.invalid>",
+                                  clock=lambda: clock["now"], runner=runner or FakeRunner(),
+                                  tz_reader=lambda: {"name": "Europe/Amsterdam", "source": "timedatectl"}, live=live)
+    worker.set_now = lambda value: clock.__setitem__("now", value)
+    worker.init()
+    return worker
+
+
+def gh_log(tmp: pathlib.Path) -> list[dict]:
+    path = tmp / "gh.log"
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+
+
+def schedule_request(workflow_id="alpha", specs=("Sun 07:00",), stage="preview", token=None, **proposed) -> dict:
+    proposed = {"on_calendar": list(specs), "randomized_delay_sec": None, "persistent": None, "trigger": None,
+                "manifest_trigger": None, "contract_trigger": None, "acknowledge_pinned_tests": False, **proposed}
+    return {"workflow_id": workflow_id, "kind": "schedule", "reason": "move the digest earlier", "stage": stage,
+            "preview_token": token, "proposed": proposed}
+
+
+ACTOR = {"kind": "screen", "remote": "100.86.82.17", "local": "100.86.82.16", "label": "dave via control-room from 100.86.82.17"}
 
 
 class TempState(unittest.TestCase):
@@ -273,8 +309,188 @@ class GitGuard(TempState):
                 if "argv" in context or "[" in context and "bin/deploy" in context:
                     self.assertIn("--dry-run", context, f"{relative}:{line} runs deploy without --dry-run")
             if relative != "bin/workflow_pr.py":
-                self.assertNotIn("~/dev/agent-workforce", text.replace("`~/dev/agent-workforce`", ""),
-                                 f"{relative} names the live checkout")
+                prose_stripped = re.sub(r"`[^`\n]*`", "", text)
+                self.assertNotIn("~/dev/agent-workforce", prose_stripped, f"{relative} names the live checkout outside a code span")
+
+
+class Outcomes(TempState):
+    def setUp(self) -> None:
+        super().setUp()
+        self.worker = make_worker(self.tmp, self.remote)
+
+    def records(self, workflow_id="alpha", kind="schedule"):
+        return record.list_records(self.state, workflow_id, kind, with_diff=True)
+
+    def test_preview_before_pr(self):
+        """(::proposal-preview-before-pr)"""
+        rec, response = self.worker.preview(schedule_request(), ACTOR)
+        self.assertEqual(rec["stage"], "previewed")
+        for key in ("diff", "diff_sha256", "checks", "preview_token", "submit_allowed", "branch", "base", "files", "expires_at"):
+            self.assertIn(key, response)
+        self.assertEqual(response["preview_token"], rec["proposal_id"])
+        self.assertEqual(response["branch"], f"control-room/schedule-alpha-{rec['proposal_id'].split('-')[0]}")
+        self.assertIn("+OnCalendar=Sun 07:00", response["diff"])
+        self.assertEqual(response["diff_sha256"], hashlib.sha256(response["diff"].encode()).hexdigest())
+        self.assertEqual(sorted(f["path"] for f in response["files"]), ["design/agents/claudius.toml", "design/contracts/alpha.md", "systemd/alpha.timer"])
+        self.assertEqual(remote_heads(self.remote), ["main"])
+        self.assertEqual(gh_log(self.tmp), [])
+        self.assertFalse((self.state / "work" / rec["proposal_id"]).exists())
+        self.assertEqual(response["base"]["sha"], self.seed_sha)
+        self.assertEqual(record.validate_record(rec), [])
+
+    def test_submit_needs_fresh_preview(self):
+        """(::proposal-submit-needs-fresh-preview)"""
+        rec, response = self.worker.submit(schedule_request(stage="submit"), ACTOR)
+        self.assertEqual(response["error"]["code"], "preview_required")
+        self.assertEqual(rec["stage"], "refused")
+        self.assertEqual(remote_heads(self.remote), ["main"])
+        preview, _ = self.worker.preview(schedule_request(), ACTOR)
+        token = preview["proposal_id"]
+        commit_on_main(self.tmp, "systemd/alpha.timer", (FIXTURES / "repo/systemd/alpha.timer").read_text().replace("5min", "7min"))
+        rec, response = self.worker.submit(schedule_request(stage="submit", token=token), ACTOR)
+        self.assertEqual(response["error"]["code"], "preview_stale")
+        self.assertIn("+OnCalendar=Sun 07:00", response["error"]["diff"])
+        self.assertIn("7min", response["error"]["diff"])
+        self.assertEqual(remote_heads(self.remote), ["main"])
+        preview, _ = self.worker.preview(schedule_request(), ACTOR)
+        self.worker.set_now(NOW + dt.timedelta(minutes=31))
+        rec, response = self.worker.submit(schedule_request(stage="submit", token=preview["proposal_id"]), ACTOR)
+        self.assertEqual(response["error"]["code"], "preview_stale")
+        self.worker.set_now(NOW + dt.timedelta(minutes=5))
+        preview, previewed = self.worker.preview(schedule_request(), ACTOR)
+        new_base = commit_on_main(self.tmp, "docs/unrelated.md", "unrelated\n")
+        rec, response = self.worker.submit(schedule_request(stage="submit", token=preview["proposal_id"]), ACTOR)
+        self.assertEqual(rec["stage"], "submitted", response)
+        self.assertEqual(rec["base"]["sha"], new_base)
+        branch = rec["branch"]
+        self.assertEqual(remote_heads(self.remote), [branch, "main"])
+        self.assertEqual(remote_diff(self.remote, branch), previewed["diff"])
+        self.assertEqual(rec["diff_sha256"], preview["diff_sha256"])
+        creates = [entry for entry in gh_log(self.tmp) if entry["call"] == "pr create"]
+        self.assertEqual(len(creates), 1)
+        argv = creates[0]["argv"]
+        for flag, value in (("--repo", "fixture/repo"), ("--base", "main"), ("--head", branch)):
+            self.assertEqual(argv[argv.index(flag) + 1], value)
+        self.assertIn("--title", argv)
+        self.assertIn("--body-file", argv)
+        self.assertNotIn("--draft", argv)
+        for section in ("# Schedule change: alpha (alpha.timer)", "## Current → proposed", "## Diff", "## Checks", "## Reviewer attention", "## Land (Dave-only"):
+            self.assertIn(section, creates[0]["body"])
+        self.assertEqual(response["pr"]["url"], "https://github.com/fixture/repo/pull/1")
+        self.assertEqual(response["stage"], "submitted")
+        self.assertFalse((self.state / "work" / rec["proposal_id"]).exists())
+        self.assertNotIn(branch, subprocess.run(["git", "branch", "--list"], cwd=self.state / "repo.git", capture_output=True, text=True).stdout)
+
+    def test_never_touches_main_or_runtime(self):
+        """(::proposal-never-touches-main-or-runtime) — the tree half."""
+        checkout_copy = self.tmp / "dev-agent-workforce"
+        shutil.copytree(FIXTURES / "repo", checkout_copy)
+        before_runtime, before_checkout = tree_digest(FIXTURES / "runtime"), tree_digest(checkout_copy)
+        before_main = _git(self.remote, "rev-parse", "main")
+        preview, _ = self.worker.preview(schedule_request(), ACTOR)
+        rec, _ = self.worker.submit(schedule_request(stage="submit", token=preview["proposal_id"]), ACTOR)
+        self.assertEqual(rec["stage"], "submitted")
+        self.assertEqual(tree_digest(FIXTURES / "runtime"), before_runtime)
+        self.assertEqual(tree_digest(checkout_copy), before_checkout)
+        self.assertEqual(_git(self.remote, "rev-parse", "main"), before_main)
+        pushes = [c["argv"] for r in self.records() for c in r["commands"] if c["argv"][:2] == ["git", "push"]]
+        self.assertEqual(len(pushes), 1)
+        self.assertRegex(pushes[0][3], r"^HEAD:refs/heads/control-room/schedule-alpha-\d{8}T\d{6}Z$")
+        self.assertEqual(pushes[0][:3], ["git", "push", "origin"])
+        for r in self.records():
+            for c in r["commands"]:
+                self.assertNotIn("--force", c["argv"])
+
+    def test_refusals_and_status_map(self):
+        """(::proposal-refusals-and-status-map) — the worker half; HTTP codes live in HttpSeam."""
+        rec, response = self.worker.preview(schedule_request("nope"), ACTOR)
+        self.assertEqual(response["error"]["code"], "unknown_workflow")
+        rec, response = self.worker.preview(schedule_request("buzz-agent@trajan"), ACTOR)
+        self.assertEqual(response["error"]["code"], "not_a_timer")
+        rec, response = self.worker.preview(schedule_request("refresh"), ACTOR)
+        self.assertEqual(response["error"]["code"], "not_calendar_timer")
+        rec, response = self.worker.preview(schedule_request("gamma", specs=("Tue 03:30",)), ACTOR)
+        self.assertEqual(response["error"]["code"], "trigger_required")
+        self.assertEqual(response["error"]["choices"], ["gamma", "gamma-dispatch"])
+        preview, _ = self.worker.preview(schedule_request(), ACTOR)
+        os.environ["FAKE_GH_PR_LIST"] = json.dumps([{"url": "https://github.com/fixture/repo/pull/7", "headRefName": "control-room/schedule-alpha-20260901T000000Z"}])
+        rec, response = self.worker.submit(schedule_request(stage="submit", token=preview["proposal_id"]), ACTOR)
+        self.assertEqual(response["error"]["code"], "open_proposal_exists")
+        self.assertEqual(response["error"]["choices"], ["https://github.com/fixture/repo/pull/7"])
+        self.assertEqual(remote_heads(self.remote), ["main"])
+        os.environ.pop("FAKE_GH_PR_LIST")
+        os.environ["FAKE_GH_FAIL"] = "create"
+        rec, response = self.worker.submit(schedule_request(stage="submit", token=preview["proposal_id"]), ACTOR)
+        os.environ.pop("FAKE_GH_FAIL")
+        self.assertEqual(rec["stage"], "failed")
+        self.assertTrue(response["branch_pushed"])
+        self.assertIn(rec["branch"], remote_heads(self.remote))
+        self.assertEqual(rec["refusal"]["code"], "failed")
+        shutil.rmtree(self.state)
+        rec, response = self.worker.preview(schedule_request(), ACTOR)
+        self.assertEqual(response["error"]["code"], "worker_unavailable")
+        self.assertIn("doctor", response["error"]["message"])
+
+    def test_every_outcome_recorded(self):
+        """(::proposal-every-outcome-recorded) — the worker half."""
+        preview, _ = self.worker.preview(schedule_request(), ACTOR)
+        self.worker.submit(schedule_request(stage="submit"), ACTOR)
+        os.environ["FAKE_GH_FAIL"] = "create"
+        self.worker.submit(schedule_request(stage="submit", token=preview["proposal_id"]), ACTOR)
+        os.environ.pop("FAKE_GH_FAIL")
+        stages = sorted(r["stage"] for r in self.records())
+        self.assertEqual(stages, ["failed", "previewed", "refused"])
+        for rec in self.records():
+            self.assertEqual(record.validate_record(rec), [], rec["proposal_id"])
+            for command in rec["commands"]:
+                self.assertIn(command["argv"][0], ("git", "gh"))
+                self.assertIn("exit", command)
+        failed = next(r for r in self.records() if r["stage"] == "failed")
+        self.assertTrue(any(c["argv"][:2] == ["gh", "pr"] and c["exit"] == 1 for c in failed["commands"]))
+        self.assertEqual(list(self.state.rglob("*.tmp")), [])
+        results = []
+
+        def run():
+            results.append(self.worker.preview(schedule_request(), ACTOR)[0])
+        threads = [threading.Thread(target=run) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        stages = sorted(r["stage"] for r in results)
+        self.assertIn(stages, (["previewed", "previewed"], ["previewed", "refused"]))
+        if "refused" in stages:
+            self.assertEqual(next(r for r in results if r["stage"] == "refused")["refusal"]["code"], "locked")
+        self.assertEqual(sorted(p.name for p in (self.state / "work").iterdir()), ["base"])
+
+    def test_list_stage(self):
+        """(::proposal-list-stage)"""
+        first, _ = self.worker.preview(schedule_request(), ACTOR)
+        self.worker.set_now(NOW + dt.timedelta(minutes=1))
+        second, _ = self.worker.preview(schedule_request(), ACTOR)
+        before = len(self.records())
+        listed = self.worker.list("alpha", "schedule")
+        self.assertEqual(listed["stage"], "list")
+        self.assertEqual([r["proposal_id"] for r in listed["items"]], [second["proposal_id"], first["proposal_id"]])
+        self.assertTrue(all("diff" not in r for r in listed["items"]))
+        self.assertEqual(len(self.records()), before)
+        self.assertEqual(self.worker.git.commands, [])
+
+    def test_doctor(self):
+        """(::proposal-doctor)"""
+        lines = self.worker.doctor()
+        self.assertTrue(all(status == "ok" for status, _ in lines), lines)
+        shutil.rmtree(self.state / "repo.git")
+        lines = self.worker.doctor()
+        self.assertIn(("fail", "repo.git missing — run: bin/workflow_pr.py init"), lines)
+        saved = os.environ["PATH"]
+        os.environ["PATH"] = "/nonexistent"
+        try:
+            lines = self.worker.doctor()
+        finally:
+            os.environ["PATH"] = saved
+        self.assertTrue(any(status == "fail" and "gh" in line for status, line in lines), lines)
+        self.assertEqual(worker_module.main(["--state", str(self.state), "--remote", str(self.remote), "doctor"]), 1)
 
 
 if __name__ == "__main__":
