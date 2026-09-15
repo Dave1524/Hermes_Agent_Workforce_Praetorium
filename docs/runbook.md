@@ -330,8 +330,9 @@ loopback-*bound* screen is a development instance and is allowed).
 | `stop` | `confirm: true`, non-empty reason, a run in progress | `stop --no-block <unit>.service` + poll ≤ 15 s | receipt notes a still-deactivating service |
 
 **Receipts:** every outcome — applied, previewed, refused, failed — is one file at
-`/var/lib/control-room/receipts/<workflow_id>/<receipt_id>.json` (`_refused/` for ids the
-allowlist does not know), written atomically, 0644, carrying the actor, every `systemctl` argv
+`/var/lib/control-room/receipts/<workflow_id>/<receipt_id>.json` (`_refused/` for anything
+refused before the workflow resolves — a malformed request, `peer_denied`, an id the allowlist
+does not know; `requested_workflow_id` keeps the id), written atomically, 0644, carrying the actor, every `systemctl` argv
 with exit and stderr, and the state before and after. The page's *last action* is the newest
 non-preview receipt for that workflow. The CLI form, through the root copy:
 

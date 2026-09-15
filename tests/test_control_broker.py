@@ -418,11 +418,22 @@ class PeerGate(BrokerCase):  # (::broker-peer-gate)
         request["actor"] = {"kind": "screen", "remote": remote, "local": local, "label": f"dave via control-room from {remote}"}
         return self.box.call_socket(request, peer_uids=peer_uids)
 
+    def assertPeerDeniedFiledUnderRefused(self) -> None:
+        files = self.box.receipt_files()
+        self.assertEqual(len(files), 3)
+        for path in files:
+            data = json.loads(path.read_text())
+            self.assertEqual(path.parent.name, "_refused", path)
+            self.assertIsNone(data["workflow_id"])
+            self.assertEqual(data["requested_workflow_id"], "knowledge-digest")
+            self.assertEqual(data["refusal"]["code"], "peer_denied")
+
     def test_peer_rules_in_screen_mode(self):
         self.assertRefused(self.screen("100.86.82.16"), "peer_denied", 403)
         self.assertRefused(self.screen("127.0.0.1"), "peer_denied", 403)
         self.assertRefused(self.screen(None), "peer_denied", 403)
         self.assertEqual(self.box.log(), [])
+        self.assertPeerDeniedFiledUnderRefused()
         allowed = self.screen("100.64.0.9")
         self.assertRefused(allowed, "state_conflict", 400)
         self.assertEqual(allowed["receipt"]["actor"]["kind"], "screen")

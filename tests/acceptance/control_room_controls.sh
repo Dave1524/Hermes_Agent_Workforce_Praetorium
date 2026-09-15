@@ -78,17 +78,20 @@ PY
 then pass "connect as dave raises PermissionError"; else flunk "connect as dave did not raise PermissionError"; fi
 
 echo "== 3. peer gate from this host"
-before=$(find "$RECEIPTS/knowledge-digest" -name '*.json' 2>/dev/null | wc -l)
 status=$(curl -s -o /tmp/crb-acceptance-peer.json -w '%{http_code}' -X POST "$SCREEN/api/v1/control/actions" \
   -H 'X-Control-Room: 1' -H 'Content-Type: application/json' \
   -d '{"workflow_id":"knowledge-digest","action":"pause","reason":"acceptance peer gate"}')
-after=$(find "$RECEIPTS/knowledge-digest" -name '*.json' 2>/dev/null | wc -l)
 if [ "$status" = 403 ] && grep -q '"peer_denied"' /tmp/crb-acceptance-peer.json; then
   pass "POST from the box itself -> 403 peer_denied"
 else
   flunk "POST from the box itself -> $status (expected 403 peer_denied)"
 fi
-if [ "$after" -gt "$before" ]; then pass "a new receipt landed under $RECEIPTS/knowledge-digest/"; else flunk "no new receipt under $RECEIPTS/knowledge-digest/"; fi
+# The peer gate fires before the allowlist lookup, so the workflow is unresolved and the receipt
+# files under _refused/ (requested_workflow_id keeps the id). Find it by the id the response names.
+peer_receipt=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["receipt"]["receipt_id"])' /tmp/crb-acceptance-peer.json 2>/dev/null)
+if [ -n "$peer_receipt" ] && [ -f "$RECEIPTS/_refused/$peer_receipt.json" ]; then
+  pass "its receipt $peer_receipt landed under $RECEIPTS/_refused/"
+else flunk "receipt '$peer_receipt' not found under $RECEIPTS/_refused/"; fi
 
 echo "== 4. CLI through the root copy"
 out=$(broker pause knowledge-digest --reason acceptance)
