@@ -394,5 +394,17 @@ class AcceptanceScriptLints(unittest.TestCase):  # (::control-acceptance-script-
         self.assertIn("--stage preview", text)
 
 
+class RunInProgressRule(unittest.TestCase):
+    def test_every_activating_substate_of_a_oneshot_is_running(self):
+        import control_room_state as state
+        for substate in ("start-pre", "start", "start-post"):
+            with self.subTest(substate=substate):
+                systemd = {"kind": "timer", "timer": {"activeState": "active"},
+                           "service": {"activeState": "activating", "subState": substate}}
+                self.assertTrue(state.service_running(systemd))
+                self.assertEqual(state.trigger_state(systemd), "running")
+        self.assertEqual(state.RUNNING_SUBSTATES, broker.RUNNING_SUBSTATES)
+
+
 if __name__ == "__main__":
     unittest.main()

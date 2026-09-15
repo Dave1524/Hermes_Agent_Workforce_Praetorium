@@ -329,6 +329,14 @@ loopback-*bound* screen is a development instance and is allowed).
 | `retry` | allowlist `retry: true` (the contract's `Retry` row), else `not_idempotent`; then as run_now | as run_now | `links.retry_of` |
 | `stop` | `confirm: true`, non-empty reason, a run in progress | `stop --no-block <unit>.service` + poll ≤ 15 s | receipt notes a still-deactivating service |
 
+**A run in progress is `activating/start-pre`, `start` or `start-post`** — every workflow unit
+here is `Type=oneshot`, so a run never reads `active/running`; `RUNNING_SUBSTATES` in
+`bin/control_broker.py` owns that set and the screen imports it. The first live resume
+(2026-09-15) caught its catch-up run in `start-pre` and receipted `catch_up_fired: false` because
+the set was `{running, start}`. While that run is in flight the timer's substate is `running` and
+systemd reports no `NextElapse`, so `next_scheduled_run` is `null` on the resume receipt — read it
+off the workflow page once the run ends.
+
 **Receipts:** every outcome — applied, previewed, refused, failed — is one file at
 `/var/lib/control-room/receipts/<workflow_id>/<receipt_id>.json` (`_refused/` for anything
 refused before the workflow resolves — a malformed request, `peer_denied`, an id the allowlist

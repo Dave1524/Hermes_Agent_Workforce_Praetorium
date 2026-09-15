@@ -57,7 +57,7 @@ SERVICE_PROPERTIES = ("ActiveState,SubState,LoadState,Result,InvocationID,"
                       "ExecMainStartTimestamp,ExecMainExitTimestamp")
 RUN_PROPERTIES = "InvocationID,ActiveState,ExecMainStartTimestamp"
 MASKED_STATES = {"masked", "masked-runtime"}
-RUNNING_SUBSTATES = {"running", "start"}
+RUNNING_SUBSTATES = {"running", "start", "start-pre", "start-post"}
 RECEIPT_KEYS = (
     "schema", "receipt_id", "workflow_id", "requested_workflow_id", "action", "requested_action",
     "stage", "trigger", "actor", "reason", "confirm", "requested_at", "completed_at", "before",

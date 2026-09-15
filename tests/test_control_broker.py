@@ -262,6 +262,23 @@ class ResumePreviewBeforeApply(BrokerCase):  # (::broker-resume-preview-before-a
         stale = self.box.call(req("knowledge-digest", "resume", stage="apply", preview_token=token))
         self.assertRefused(stale, "state_conflict", 400)
 
+    def test_catch_up_is_seen_in_every_activating_substate_of_a_oneshot(self):
+        for substate in ("start-pre", "start", "start-post"):
+            with self.subTest(substate=substate):
+                self.setUp()
+                self.box.stamp("knowledge-digest", "2026-09-06T09:04:00Z")
+                state = self.box.state()
+                state["knowledge-digest.service"]["_start_substate"] = substate
+                (self.box.root / "state.json").write_text(json.dumps(state))
+                token = self.preview()["preview"]["preview_token"]
+                applied = self.box.call(req("knowledge-digest", "resume", stage="apply", preview_token=token))
+                self.assertEqual(applied["result"], "applied", applied)
+                receipt = applied["receipt"]
+                self.assertEqual(receipt["after"]["units"][0]["service"]["subState"], substate)
+                self.assertEqual(receipt["after"]["state"], "running")
+                self.assertIs(receipt["catch_up_fired"], True)
+                self.tearDown()
+
     def test_a_token_from_a_changed_state_or_an_old_preview_is_stale(self):
         token = self.preview()["preview"]["preview_token"]
         state = self.box.state()

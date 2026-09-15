@@ -13,6 +13,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Any, Callable
 
+from control_broker import RUNNING_SUBSTATES
 from workflow_receipt import iso_utc, parse_time
 
 API_VERSION = "v1"
@@ -28,7 +29,7 @@ ACTION_IDS = ("pause", "resume", "run_now", "retry", "stop")
 
 def service_running(systemd: dict[str, Any]) -> bool:
     service = systemd["service"]
-    return service["activeState"] in {"activating", "active"} and service["subState"] in {"running", "start"}
+    return service["activeState"] in {"activating", "active"} and service["subState"] in RUNNING_SUBSTATES
 
 
 def trigger_state(systemd: dict[str, Any]) -> str:

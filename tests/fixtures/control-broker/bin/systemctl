@@ -11,7 +11,9 @@ one unit whose mutating verbs exit 1.
 Mutations mirror what real systemd does to the properties the broker re-reads: enable
 --now makes a timer active/waiting/enabled and, when the unit carries `_catch_up`, starts
 its service the way Persistent=true does; disable --now makes it inactive/dead/disabled;
-start makes a service active/running with a fresh InvocationID; stop makes it inactive.
+start makes a service active/running with a fresh InvocationID — or activating/<sub> when the
+unit carries `_start_substate` (a Type=oneshot run is activating/start-pre, start or start-post
+for its whole life and never reaches active/running); stop makes it inactive.
 """
 import datetime as dt
 import fcntl
@@ -95,7 +97,9 @@ def start_service(state, unit):
     counter = int(state.get("_invocation_counter", 0)) + 1
     state["_invocation_counter"] = counter
     props = state.setdefault(unit, {"LoadState": "loaded"})
-    props.update(ActiveState="active", SubState="running", Result="success", InvocationID=f"{counter:032x}",
+    substate = props.get("_start_substate", "running")
+    active = "active" if substate == "running" else "activating"
+    props.update(ActiveState=active, SubState=substate, Result="success", InvocationID=f"{counter:032x}",
                  ExecMainStartTimestamp=NOW, ExecMainExitTimestamp="")
 
 
