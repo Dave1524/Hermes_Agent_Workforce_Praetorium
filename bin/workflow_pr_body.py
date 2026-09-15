@@ -162,7 +162,16 @@ def _also_deleted(deploy: dict[str, Any] | None) -> list[str]:
         start = next(i for i, line in enumerate(lines) if line.startswith("also deleted by --prune"))
     except StopIteration:
         return []
-    return [line.strip() for line in lines[start + 1:] if line.strip() and line.strip() != "(nothing)"]
+    return [_tree_path(line) for line in lines[start + 1:] if line.strip() and line.strip() != "(nothing)"]
+
+
+def _tree_path(line: str) -> str:
+    """`  [systemd] delete deferred.service` → `systemd/deferred.service`."""
+    line = line.strip()
+    if not line.startswith("[") or "]" not in line:
+        return line
+    tree, rest = line[1:].split("]", 1)
+    return f"{tree.strip()}/{rest.split()[-1]}" if rest.split() else line
 
 
 def body(rec: dict[str, Any]) -> str:

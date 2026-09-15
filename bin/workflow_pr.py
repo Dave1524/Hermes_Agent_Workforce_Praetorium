@@ -129,6 +129,7 @@ class Worker:
         pid = rec["proposal_id"]
         try:
             prior = self._prior(stage, request, rec)
+            self._validate(request, rec)
             with self._lock():
                 self._prepare(rec)
                 worktree = self.git.worktree_add(pid)
@@ -167,6 +168,15 @@ class Worker:
             rec["proposed"] = prior.get("proposed")
         return prior
 
+    def _validate(self, request: dict[str, Any], rec: dict[str, Any]) -> None:
+        """Shape rules that need no git call: a reason for both kinds, the retention decision for retire."""
+        reason = rec.get("reason")
+        if not isinstance(reason, str) or not reason.strip():
+            raise Refused("bad_request", "reason is required")
+        if request["kind"] == "retire":
+            import workflow_pr_retire as retire
+            retire.validate_request(reason, rec.get("proposed"))
+
     def _prepare(self, rec: dict[str, Any]) -> None:
         reason = self.unavailable()
         if reason:
@@ -193,14 +203,14 @@ class Worker:
 
     def _plan_and_check(self, stage: str, rec: dict[str, Any], request: dict[str, Any], worktree: pathlib.Path,
                         live_item: dict[str, Any] | None, prior: dict[str, Any] | None, now: dt.datetime) -> dict[str, Any]:
-        pid = rec["proposal_id"]
+        pid = prior["proposal_id"] if prior else rec["proposal_id"]
         item = self._item(worktree, request["workflow_id"], live_item)
         proposed = rec.get("proposed") if rec.get("proposed") is not None else {}
         if request["kind"] == "schedule":
             plan = schedule.plan_schedule(worktree, item, proposed, now, pid, self.tz_reader(), self.calendar_runner)
         else:
             import workflow_pr_retire as retire
-            plan = retire.plan_retire(worktree, item, proposed, now, pid, self.live)
+            plan = retire.plan_retire(worktree, item, {**proposed, "reason": rec.get("reason")}, now, pid, self.live)
         text, stat, files = self.git.diff(worktree)
         sha = hashlib.sha256(text.encode("utf-8")).hexdigest()
         stamp = pid.split("-", 1)[0]
@@ -209,7 +219,8 @@ class Worker:
                    retention=plan.context().get("retention"))
         if prior and prior["diff_sha256"] != sha:
             raise Refused("preview_stale", "origin/main moved under the preview: the diff no longer matches byte-for-byte; preview again", diff=text)
-        ctx = {**plan.context(), "base_worktree": str(self.git.work / "base"), "subject_paths": plan.context().get("subject_paths", [])}
+        ctx = {**plan.context(), "base_worktree": str(self.git.work / "base"), "subject_paths": plan.context().get("subject_paths", []),
+               "runtime_root": (self.live or {}).get("runtime_root")}
         results = checks.run_checks(worktree, request["kind"], ctx, self.runner)
         rec["checks"] = results
         rec["residue"] = plan.context().get("residue")
@@ -218,7 +229,7 @@ class Worker:
         rec["stage"] = "previewed"
         rec["draft"] = checks.draft_required(results, acknowledge)
         expires = record.stamp(now + dt.timedelta(seconds=PREVIEW_TTL_SECONDS))
-        response = {"stage": "preview", "proposal_id": pid, "preview_token": pid, "expires_at": expires, "base": rec["base"],
+        response = {"stage": "preview", "proposal_id": rec["proposal_id"], "preview_token": pid, "expires_at": expires, "base": rec["base"],
                     "branch": branch, "summary": plan.summary, "description": plan.description, "files": files, "diff": text,
                     "diff_sha256": sha, "checks": results, "residue": rec["residue"], "retention": rec["retention"],
                     "submit_allowed": allowed, "submit_blockers": blockers}
@@ -312,7 +323,10 @@ def _worker(args: argparse.Namespace) -> Worker:
     state = args.state or os.environ.get("CONTROL_ROOM_PROPOSALS_ROOT") or os.path.expanduser("~/agent-workforce/var/control-proposals")
     remote = args.remote or os.environ.get("CONTROL_ROOM_PROPOSALS_REMOTE") or f"https://github.com/{DEFAULT_GH_REPO}.git"
     clock = (lambda: dt.datetime.fromisoformat(args.now.replace("Z", "+00:00"))) if args.now else utc_now
-    return Worker(state, remote, os.environ.get("CONTROL_ROOM_GH_REPO", DEFAULT_GH_REPO), os.environ.get("CONTROL_ROOM_GIT_AUTHOR", DEFAULT_AUTHOR), clock=clock)
+    live = {"runtime_root": os.path.expanduser("~/agent-workforce"), "etc_dir": "/etc/systemd/system",
+            "user_tree": os.path.expanduser("~/.config/systemd/user"), "checkout": os.path.expanduser("~/dev/agent-workforce")}
+    return Worker(state, remote, os.environ.get("CONTROL_ROOM_GH_REPO", DEFAULT_GH_REPO), os.environ.get("CONTROL_ROOM_GIT_AUTHOR", DEFAULT_AUTHOR),
+                  clock=clock, live=live)
 
 
 def _print_stage(rec: dict[str, Any], response: dict[str, Any]) -> int:

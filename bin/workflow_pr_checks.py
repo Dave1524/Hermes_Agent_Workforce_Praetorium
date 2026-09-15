@@ -128,6 +128,7 @@ def _read(path: pathlib.Path) -> str:
 
 def pinned_tests(worktree: pathlib.Path, ctx: dict[str, Any], runner: Runner) -> dict[str, Any]:
     suites = find_pinned_suites(worktree, ctx.get("slugs", []), ctx.get("deleted", []))
+    suites += [extra for extra in ctx.get("pinned_extra", []) if extra not in suites and (pathlib.Path(worktree) / extra).is_file()]
     if not suites:
         return _result("pinned-tests", "pinned", "pass", "no suite in tests/ names " + ", ".join(ctx.get("slugs", [])))
     failures, passes = [], []
@@ -146,6 +147,8 @@ def residue_source(worktree: pathlib.Path, ctx: dict[str, Any], runner: Runner) 
     report = residue.scan_source(worktree, ctx["subjects"])
     blocking = [item for item in report["items"] if item["blocks"]]
     output = residue.render_w19_table(report) if report["items"] else "no residue"
+    if blocking:
+        output = "blocking: " + ", ".join(f"{item['path']} ({item['class']})" for item in blocking) + "\n" + output
     return _result("residue-source", "hard", "fail" if blocking else "pass", output)
 
 
@@ -169,7 +172,7 @@ def drift_preview(worktree: pathlib.Path, ctx: dict[str, Any], runner: Runner) -
 
 def deploy_preview(worktree: pathlib.Path, ctx: dict[str, Any], runner: Runner) -> dict[str, Any]:
     script = pathlib.Path(worktree) / "bin" / "deploy"
-    runtime = os.environ.get("AGENT_WORKFORCE_RUNTIME") or os.path.expanduser("~/agent-workforce")
+    runtime = ctx.get("runtime_root") or os.path.expanduser("~/agent-workforce")
     if not script.is_file():
         return _result("deploy-preview", "info", "skip", "bin/deploy is not in this checkout")
     if not pathlib.Path(runtime).is_dir():
@@ -219,7 +222,8 @@ def submit_allowed(results: list[dict[str, Any]], kind: str, acknowledge_pinned:
     blockers = []
     for check in results:
         if check["class"] == "hard" and check["status"] == "fail":
-            blockers.append(f"checks_failed: {check['id']} — {check['output'].splitlines()[0] if check['output'] else 'failed'}")
+            prefix = "residue_in_branch" if check["id"] == "residue-source" else "checks_failed"
+            blockers.append(f"{prefix}: {check['id']} — {check['output'].splitlines()[0] if check['output'] else 'failed'}")
         if check["class"] == "pinned" and check["status"] == "fail" and not acknowledge_pinned:
             blockers.append(f"checks_failed: {check['id']} — " + "; ".join(
                 line.split(" (exit")[0] for line in check["output"].splitlines() if "(exit" in line) + " (acknowledge_pinned_tests opens a draft)")
