@@ -6,8 +6,8 @@ payload arrives on stdin and names the transcript, and the turn is everything af
 last human prompt (bin/transcript_reader.py). Codex agents run it as `notify` with
 `--codex-notify <json>`: the payload names the thread and turn, and the turn is read from
 the rollout under $CODEX_HOME (bin/rollout_reader.py). Both produce a Turn that
-bin/interaction_turn.py turns into the outcome — an accepted `buzz messages send` is the
-artifact, none is a decline — and one workflow_receipt under the agent's unit.
+bin/interaction_turn.py turns into the outcome — an accepted Buzz send is the artifact,
+none is a decline — and one workflow_receipt under the agent's unit.
 
 Three rules, all for the same reason — a hook that misbehaves damages the agent's turn:
 never write to stdout (a Stop hook's stdout is read by the harness), never exit non-zero

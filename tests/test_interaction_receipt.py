@@ -137,7 +137,7 @@ class StopHookTest(unittest.TestCase):
         got = self.box.read(f"buzz-agent@marcus/{SESSION}-a-2.json")
         self.assertEqual(receipt.validate(got), [])
         self.assertEqual(got["terminal"]["outcome"], "decline")
-        self.assertIn("no buzz messages send in this turn", got["terminal"]["reason"])
+        self.assertIn("no message published to Buzz in this turn", got["terminal"]["reason"])
         self.assertNotIn("artifact", got)
 
     def test_heartbeat_writes_nothing(self):
@@ -236,7 +236,7 @@ class CodexNotifyTest(unittest.TestCase):
         got = self.box.read(f"buzz-agent@augustus/{THREAD}-{TURN1}.json")
         self.assertEqual(receipt.validate(got), [])
         self.assertEqual(got["terminal"]["outcome"], "decline")
-        self.assertIn("no buzz messages send in this turn", got["terminal"]["reason"])
+        self.assertIn("no message published to Buzz in this turn", got["terminal"]["reason"])
         self.assertEqual(got["usage"], {"status": "measured", "input_tokens": 2000, "output_tokens": 120,
                                         "cache_tokens": 1500, "total_tokens": 2120})
 

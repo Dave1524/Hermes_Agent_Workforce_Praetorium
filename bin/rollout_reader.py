@@ -3,8 +3,9 @@
 The rollout lives at `$CODEX_HOME/sessions/YYYY/MM/DD/rollout-<ts>-<thread-id>.jsonl` and is
 found by globbing on the thread id, never on the date. Inside the span, a `function_call`
 (the 0.145 app-server's `exec_command`, arguments JSON with `cmd`) or a `custom_tool_call`
-(0.147's `exec`, a bare `input` string) whose command runs `buzz messages send` is a Send,
-accepted when its output by `call_id` reports `Process exited with code 0` or the relay's
+(0.147's `exec`, a bare `input` string) whose command is a Buzz send
+(interaction_turn.SEND_INVOCATION) is a Send, accepted when its output by `call_id` reports
+`Process exited with code 0` or the relay's
 `"accepted":true`. Usage is the turn's share of the thread total — the last `token_count`
 inside the span minus the last one before it — so a turn of several model responses is not
 reported as its final response alone. Codex spawns `notify` while it may still be writing
