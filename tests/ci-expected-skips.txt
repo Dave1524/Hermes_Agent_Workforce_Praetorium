@@ -69,6 +69,15 @@
 # check that a pointer does not name a vault skill that has been renamed away under it — not the
 # check that the tree reaches the runtime. Twelve lines now.
 
+# ONE LINE ADDED 2026-09-15: test_workflow_retirements.sh (T5.3b). Its subject is
+# design/retired-workflows.toml, which every checkout carries — group 1 runs in CI and proves each
+# [[retired]] entry is well-formed and leaves no blocking residue in source, on the real registry
+# and on a synthetic half-retired one. Only group 2 skips: it scans the deployed trees under
+# ~/agent-workforce and the installed units for residue the merge could not remove, and FAILS
+# naming the pending items and the clear command until Dave's hand has run. That red is the
+# design, not a flake — the same red the drift check shows post-merge, with names. Thirteen lines
+# now.
+
 SKIP: check-team-kinds.py — the live TEAM.md channel table, which is declared excluded from buzz-team/ adoption (absent: ~/.config/buzz-team/TEAM.md)
 SKIP: check_deploy_drift.sh — the deployed trees this check compares against (absent: ~/agent-workforce/bin ~/.config/systemd/user ~/.config/buzz-team)
 SKIP: live OpenCode agent contract tests (set OPENCODE_LIVE_TESTS=1 to spend model tokens)
@@ -81,3 +90,4 @@ SKIP: test_fleet_guards.sh — the live fleet state this suite asserts (absent: 
 SKIP: test_instruction_scaffolding.sh — the box's ~/dev project tree, which no checkout carries (absent: ~/dev)
 SKIP: test_memory_index_budget.sh — the shared memory index every session on this box loads (absent: ~/.claude/projects/-home-dave/memory/MEMORY.md)
 SKIP: test_pointer_skills.sh — the vault the pointer skills name (absent: ~/vault/08_skills)
+SKIP: test_workflow_retirements.sh — the deployed trees a live residue scan reads (absent: ~/agent-workforce/bin ~/agent-workforce/systemd)

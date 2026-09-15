@@ -1,0 +1,4 @@
+# Retired workflows — one [[retired]] per retired logical workflow, written by the retire plan
+# (bin/workflow_pr_retire.py), read by tests/test_workflow_retirements.sh and
+# bin/workflow_retire_residue.py --all. The subject set is copied here because the manifest
+# entry is gone by the time anything checks the residue.
