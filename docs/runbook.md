@@ -473,8 +473,10 @@ Every turn is receipted (T5.2): `buzz-team/agent-settings.json` declares a Claud
 hook running `bin/interaction_receipt.py`, which reads the turn from the transcript and writes
 one receipt under `var/workflow-receipts/buzz-agent@<name>/`; augustus, on codex-acp, gets the
 same writer from codex `notify` (`--codex-notify`, in `~/.config/codex-agents/augustus/config.toml`,
-outside this repo). The hook never blocks a stop: exit 0 on every path, nothing on stdout, one
-line in `logs/interaction_receipt.log`.
+outside this repo — a **top-level** key, so it sits above the first `[table]` header; appended
+at the end of the file it lands inside `[features]` and never fires. Landed 2026-09-15 with a
+`.bak-prenotify-2026-09-15` beside it). The hook never blocks a stop: exit 0 on every path,
+nothing on stdout, one line in `logs/interaction_receipt.log`.
 
 ### The loop
 
