@@ -20,6 +20,33 @@ PREVIEW_TTL_SECONDS = 1800
 DIFF_INLINE_LIMIT = 200_000
 PROPOSAL_ID_RE = re.compile(r"^\d{8}T\d{6}Z-(schedule|retire)-[a-z0-9][a-z0-9-]{0,63}-[0-9a-f]{6}$")
 
+
+
+class Refused(Exception):
+    """A request the worker declines before or after planning; becomes the record's refusal."""
+
+    def __init__(self, code: str, message: str, choices: list[str] | None = None, diff: str | None = None) -> None:
+        super().__init__(message)
+        self.code, self.message, self.choices, self.diff = code, message, choices, diff
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"code": self.code, "message": self.message, "choices": self.choices, "diff": self.diff}
+
+
+class Plan:
+    """What a planner did to a worktree: the paths it touched plus what the reviewer must see."""
+
+    def __init__(self, kind: str, workflow_id: str, units: list[str], edits: list[str], description: dict[str, Any],
+                 summary: str, reviewer_attention: list[str], context: dict[str, Any]) -> None:
+        self.kind, self.workflow_id, self.units = kind, workflow_id, units
+        self.edits, self.description, self.summary = edits, description, summary
+        self.reviewer_attention = reviewer_attention
+        self._context = context
+
+    def context(self) -> dict[str, Any]:
+        return {"kind": self.kind, "workflow_id": self.workflow_id, "units": self.units, "edits": list(self.edits), **self._context}
+
+
 _TYPES: dict[str, tuple[type, ...]] = {
     "schema": (int,), "proposal_id": (str,), "kind": (str,), "workflow_id": (str,), "stage": (str,),
     "actor": (dict,), "reason": (str, type(None)), "requested_at": (str,), "completed_at": (str,),

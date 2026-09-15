@@ -27,8 +27,10 @@ GUARDED_SOURCES = ("bin/control_room_proposals.py", "bin/workflow_pr.py", "bin/w
 
 sys.path.insert(0, str(ROOT / "bin"))
 sys.path.insert(0, str(ROOT / "tests"))
+import control_room_api as api  # noqa: E402
 import workflow_pr_git as prgit  # noqa: E402
 import workflow_pr_record as record  # noqa: E402
+from control_room_fixture import FakeSystemd  # noqa: E402
 
 os.environ["PATH"] = f"{FIXTURES / 'bin'}:{os.environ.get('PATH', '')}"
 os.environ["FAKE_CALENDAR"] = str(FIXTURES / "calendar.json")
@@ -84,6 +86,25 @@ def tree_digest(root: pathlib.Path) -> dict[str, str]:
         if path.is_file() and ".git" not in path.parts:
             digest[str(path.relative_to(root))] = hashlib.sha256(path.read_bytes()).hexdigest()
     return digest
+
+
+def make_item(worktree: pathlib.Path, workflow_id: str, control_state: str = "paused") -> dict:
+    """The read model's workflow dict over a checkout, with the live control state pinned."""
+    root = worktree.resolve()
+    model = api.ControlRoomReadModel(paths=api.SourcePaths(repo=root, runtime=root, receipts=root / "var" / "receipts"),
+                                     systemd=FakeSystemd(), clock=lambda: NOW, calendar_runner=lambda spec: [])
+    item, status = model.workflow_detail(workflow_id)
+    if item is None:
+        raise AssertionError(f"{workflow_id} not in {root}: {status}")
+    item["control"]["state"] = control_state
+    return item
+
+
+def checkout(tmp: pathlib.Path, name: str = "wt") -> pathlib.Path:
+    """A plain working copy of the remote's main for the pure planners."""
+    path = tmp / name
+    _git(tmp, "clone", "-q", str(tmp / "remote.git"), str(path))
+    return path
 
 
 class FakeRunner:
