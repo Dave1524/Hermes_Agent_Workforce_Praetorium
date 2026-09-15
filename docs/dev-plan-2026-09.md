@@ -95,7 +95,9 @@ Development needs no timer: every suite in this repo runs from fixtures (T5.1's
    Briefs: one per task under `.claude/briefs/t5-*.md` and `t6-1-hermes-residue.md` (2026-09-14),
    path on each tracker card's `Brief` property; land order T5.3, T5.3a, T5.3b, T5.2, T5.3c, T6.1.
 6. Every Claude row on the tracker is Done, or carries a `DECIDED` line with a reason and an owner.
-   T5.3d is `DECIDED — deferred`: no Marcus → Trajan scheduled path exists to trace.
+   T5.3d is `DECIDED — deferred, wanted` (Dave, 2026-09-15): the Marcus → Trajan scheduled
+   handoff path is wanted and not built yet; T5.3d reopens when that path lands. The receipt
+   fields it needs (`parent_run_id`, `handoff`) are already in the schema since T5.1.
 
 **Evidence-complete — per workflow, from the screen; a dated clock, not this week.**
 
