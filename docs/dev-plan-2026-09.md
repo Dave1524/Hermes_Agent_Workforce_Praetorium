@@ -487,6 +487,8 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   reports missing contracts, receipts or systemd visibility as degraded/Unknown rather than fake
   health, usage or cost. This is an enabling slice, not completion of T5.3: T5.1/T5.2 still own the
   real receipt stream, and the production frontend plus durable private hosting remain on this card.
+  Hosting landed with this card 2026-09-14 (`control-room.service`); the **production frontend moved
+  to T5.3e on 2026-09-15** — this card closed with the server-rendered UI.
   Gate: a deliberately failing check appears by name the next morning; the local browser reconciles
   30 logical workflows with no unexplained duplicate or missing artifact field, and shows health,
   incomplete runs, truthful agent usage, research lineage and one-click Notion output links.
@@ -534,6 +536,30 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   each terminal handoff links to its artifact or explicit failure evidence; the view works without
   opening Buzz Desktop; missing telemetry shows as `Unknown` and is never reconstructed from
   guesswork.
+- **T5.3e** [Claude, L, T5.3, T5.3a, T5.3b, T5.3c] **Production Control Room frontend.** Wire
+  the Figma Make prototype imported at `ui/control-room-prototype/` (`fe80764`, 2026-09-14) onto
+  the live `/api/v1/*` surface and ship it as the screen Dave opens. Added 2026-09-15 — the T5.3
+  card left "the production frontend" on itself and closed with the server-rendered UI, so the
+  prototype had a wiring sketch in its README and no card. Decisions, made once here: the SPA
+  serves at `/app/` and `/` lands on it; the T5.3 SSR pages stay reachable at their paths as the
+  no-JS fallback and are retired in a later card once the SPA has a week of use; the Vite build
+  output is **committed under `bin/control_room_ui/app/` with fixed file names** so `bin/deploy`
+  ships it, drift compares it, and neither deploy nor runtime needs Node; a source hash stamped
+  into the build (`BUILD.json`) is asserted by the gate, so source edited without a rebuild goes red
+  without Node present; CSP stays `default-src 'self'` (fonts self-hosted, no inline script or
+  style); Overview leads with the `/api/v1/exceptions` queue, so the exception-first rule from T5.3
+  survives the change of landing page. Prototype features with no backend are dropped, not faked:
+  output Approve/Reject/… (T5.4), incident Acknowledge (T5.3c is CLI declare/resolve), the DEMO
+  pill, every hardcoded number. Controls and proposals dialogs speak the T5.3a and T5.3b contracts
+  exactly — `bin/control_room_ui/actions.js` and `proposals.js` are the reference implementations.
+  One backend addition: `overview.reliability7d`, the per-day valid/eligible series the chart needs.
+  Gate: `/` lands on the SPA and every route renders with zero CSP violations; one row per logical
+  workflow (`augustus-content` once), the count taken from `/api/v1/workflows` and never from prose
+  — it has moved twice since this plan's baseline; every missing value renders `Unknown`/`unavailable`, never 0; a `resume`
+  preview and a schedule-change preview each render and are cancelled without touching live state;
+  a refused action renders its refusal code; the SSR paths still answer; `BUILD.json` matches the
+  source tree and, where Node is present, a rebuild is byte-identical to the committed output;
+  `bash bin/verify.sh` green after land.
 - **T5.4** [Claude, M, T5.2] Proof on real runs: one full week with every declared check of
   every contract executed against real runs; the pass matrix recorded in the brief.
   Reviewed requirement — **passing assertions prove delivery, not value.** Add a consumption and
@@ -698,11 +724,15 @@ because nothing violated it. T4.1 and T4.2 closed; T4.3 keeps one assertion, nam
    against.
 8. ~~**T3.3**~~ — repo half done `db0012e`; its calendar half (seven days of runs on deployed
    code, then a Monday digest) starts at the post-merge deploy and fleet resume.
-9. **T6.1**, alongside any of the above; nothing depends on it.
-10. **T0.3** — S, and it closes W20 either way.
-11. **T6.3** when Dave says.
+9. **T6.1**, alongside any of the above; nothing depends on it. It is the last open item on the
+   code-complete DoD, so it goes before T5.3e.
+10. **T5.3e** — the production frontend, after T6.1. Not on the code-complete DoD; touches no file
+    T6.1 touches, so the two can run in parallel worktrees if the calendar wants it. Brief:
+    `.claude/briefs/t5-3e-control-room-spa.md` (2026-09-15).
+11. **T0.3** — S, and it closes W20 either way.
+12. **T6.3** when Dave says.
 
-Startable today with no blocker: T7.2, T6.1, T0.3. Everything else waits on one of those,
+Startable today with no blocker: T7.2, T6.1, T5.3e, T0.3. Everything else waits on one of those,
 on a merge-and-deploy (T3.3's calendar half), or on a Dave item.
 
 Dave's queue, unchanged by this sweep: D2, D3, D4, D5, D6, L1, T6.3. D1 closed with T2.4; D7 and
