@@ -19,5 +19,18 @@
       "mcp__claude_ai_Google_Drive",
       "mcp__claude_ai_Figma"
     ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/agent-workforce/bin/interaction_receipt.py\"",
+            "timeout": 20
+          }
+        ]
+      }
+    ]
   }
 }
