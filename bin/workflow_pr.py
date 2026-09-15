@@ -323,10 +323,14 @@ def _worker(args: argparse.Namespace) -> Worker:
     state = args.state or os.environ.get("CONTROL_ROOM_PROPOSALS_ROOT") or os.path.expanduser("~/agent-workforce/var/control-proposals")
     remote = args.remote or os.environ.get("CONTROL_ROOM_PROPOSALS_REMOTE") or f"https://github.com/{DEFAULT_GH_REPO}.git"
     clock = (lambda: dt.datetime.fromisoformat(args.now.replace("Z", "+00:00"))) if args.now else utc_now
-    live = {"runtime_root": os.path.expanduser("~/agent-workforce"), "etc_dir": "/etc/systemd/system",
-            "user_tree": os.path.expanduser("~/.config/systemd/user"), "checkout": os.path.expanduser("~/dev/agent-workforce")}
     return Worker(state, remote, os.environ.get("CONTROL_ROOM_GH_REPO", DEFAULT_GH_REPO), os.environ.get("CONTROL_ROOM_GIT_AUTHOR", DEFAULT_AUTHOR),
-                  clock=clock, live=live)
+                  clock=clock, live=live_trees())
+
+
+def live_trees() -> dict[str, str]:
+    """The box's deployed and installed trees a live residue scan reads; `checkout` is read by `clear` alone."""
+    return {"runtime_root": os.path.expanduser("~/agent-workforce"), "etc_dir": "/etc/systemd/system",
+            "user_tree": os.path.expanduser("~/.config/systemd/user"), "checkout": os.path.expanduser("~/dev/agent-workforce")}
 
 
 def _print_stage(rec: dict[str, Any], response: dict[str, Any]) -> int:

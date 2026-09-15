@@ -18,6 +18,8 @@ import sys
 import tempfile
 import threading
 import unittest
+import urllib.error
+import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "tests" / "fixtures" / "control-proposals"
@@ -29,6 +31,7 @@ GUARDED_SOURCES = ("bin/control_room_proposals.py", "bin/workflow_pr.py", "bin/w
 sys.path.insert(0, str(ROOT / "bin"))
 sys.path.insert(0, str(ROOT / "tests"))
 import control_room_api as api  # noqa: E402
+import control_room_proposals as proposals_module  # noqa: E402
 import workflow_pr as worker_module  # noqa: E402
 import workflow_pr_git as prgit  # noqa: E402
 import workflow_pr_record as record  # noqa: E402
@@ -491,6 +494,112 @@ class Outcomes(TempState):
             os.environ["PATH"] = saved
         self.assertTrue(any(status == "fail" and "gh" in line for status, line in lines), lines)
         self.assertEqual(worker_module.main(["--state", str(self.state), "--remote", str(self.remote), "doctor"]), 1)
+
+
+class HttpSeam(TempState):
+    """(::proposal-refusals-and-status-map) — the HTTP half over the T5.3 fixture helper."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.worker = make_worker(self.tmp, self.remote)
+        self.control = proposals_module.ProposalsControl(self.worker)
+        repo = (FIXTURES / "repo").resolve()
+        self.model = api.ControlRoomReadModel(paths=api.SourcePaths(repo=repo, runtime=repo, receipts=repo / "var" / "receipts"),
+                                              systemd=FakeSystemd(), clock=lambda: NOW, calendar_runner=lambda spec: [])
+        self.server = api.make_server("127.0.0.1", 0, self.model)
+        self.server.RequestHandlerClass.proposals = self.control
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.base = f"http://127.0.0.1:{self.server.server_port}"
+        self.addCleanup(self._close)
+
+    def _close(self) -> None:
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=3)
+
+    def post(self, payload, headers=None, method="POST"):
+        body = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
+        request = urllib.request.Request(f"{self.base}/api/v1/control/proposals", data=body, method=method,
+                                         headers={"Content-Type": "application/json", "X-Control-Room": "1"} if headers is None else headers)
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                raw, status = response.read(), response.status
+        except urllib.error.HTTPError as error:
+            raw, status = error.read(), error.code
+        try:
+            return status, json.loads(raw)
+        except json.JSONDecodeError:
+            return status, None
+
+    def test_shape_and_status_map(self):
+        status, body = self.post(schedule_request("nope"))
+        self.assertEqual((status, body["error"]["code"]), (404, "unknown_workflow"))
+        status, body = self.post({**schedule_request(), "kind": "rm"})
+        self.assertEqual((status, body["error"]["code"]), (400, "unknown_kind"))
+        status, body = self.post({**schedule_request(), "stage": "merge"})
+        self.assertEqual((status, body["error"]["code"]), (400, "unknown_stage"))
+        status, body = self.post(schedule_request(), headers={"Content-Type": "application/json"})
+        self.assertEqual(status, 400)
+        status, body = self.post(b"not json")
+        self.assertEqual(status, 400)
+        status, body = self.post(schedule_request("../x"))
+        self.assertEqual((status, body["error"]["code"]), (400, "bad_request"))
+        status, body = self.post(schedule_request("buzz-agent@trajan"))
+        self.assertEqual(status, 400)
+        status, body = self.post(schedule_request("refresh"))
+        self.assertEqual((status, body["error"]["code"]), (400, "not_calendar_timer"))
+        status, body = self.post(schedule_request("gamma", specs=("Tue 03:30",)))
+        self.assertEqual((status, body["error"]["code"], body["error"]["choices"]), (400, "trigger_required", ["gamma", "gamma-dispatch"]))
+        status, body = self.post(schedule_request())
+        self.assertEqual((status, body["stage"]), (200, "preview"), body)
+        self.assertEqual(body["control"], self.model.workflow_detail("alpha")[0]["control"])
+        self.assertTrue(body["submit_allowed"], body["submit_blockers"])
+        status, body = self.post({**schedule_request(stage="list"), "kind": "schedule"})
+        self.assertEqual((status, body["stage"], len(body["items"])), (200, "list", 1))
+        for method in ("GET", "HEAD"):
+            status, _ = self.post(schedule_request(), method=method)
+            self.assertEqual(status, 405, method)
+
+    def test_peer_gate(self):
+        self.assertFalse(proposals_module.peer_allowed("100.86.82.16", "100.86.82.16")[0])
+        self.assertFalse(proposals_module.peer_allowed("127.0.0.1", "100.86.82.16")[0])
+        self.assertTrue(proposals_module.peer_allowed("100.86.82.20", "100.86.82.16")[0])
+        self.assertTrue(proposals_module.peer_allowed("100.86.82.16", "127.0.0.1")[0])
+        original = proposals_module._actor
+        proposals_module._actor = lambda handler: {"kind": "screen", "remote": "100.86.82.16", "local": "100.86.82.16", "label": "t"}
+        self.addCleanup(setattr, proposals_module, "_actor", original)
+        status, body = self.post(schedule_request())
+        self.assertEqual((status, body["error"]["code"]), (403, "peer_denied"))
+        self.assertEqual(remote_heads(self.remote), ["main"])
+
+    def test_open_pr_failed_and_unavailable(self):
+        status, preview = self.post(schedule_request())
+        self.assertEqual(status, 200, preview)
+        os.environ["FAKE_GH_PR_LIST"] = json.dumps([{"url": "https://github.com/fixture/repo/pull/7", "headRefName": "control-room/schedule-alpha-20260901T000000Z"}])
+        status, body = self.post(schedule_request(stage="submit", token=preview["proposal_id"]))
+        os.environ.pop("FAKE_GH_PR_LIST")
+        self.assertEqual((status, body["error"]["code"], body["error"]["choices"]), (400, "open_proposal_exists", ["https://github.com/fixture/repo/pull/7"]))
+        os.environ["FAKE_GH_FAIL"] = "create"
+        status, body = self.post(schedule_request(stage="submit", token=preview["proposal_id"]))
+        os.environ.pop("FAKE_GH_FAIL")
+        self.assertEqual(status, 500)
+        self.assertTrue(body["branch_pushed"])
+        self.assertIn(body["record"]["branch"], remote_heads(self.remote))
+        status, body = self.post(schedule_request(stage="submit", token=preview["proposal_id"]))
+        self.assertEqual((status, body["error"]["code"]), (400, "open_proposal_exists"), body)
+        self.assertIn(preview["branch"], body["error"]["message"])
+        shutil.rmtree(self.state)
+        status, body = self.post(schedule_request())
+        self.assertEqual((status, body["error"]["code"]), (503, "worker_unavailable"))
+        self.assertIn("doctor", body["error"]["message"])
+
+    def test_stub_when_nothing_bound(self):
+        self.server.RequestHandlerClass.proposals = None
+        status, body = self.post(schedule_request())
+        self.assertEqual((status, body["status"]), (501, "not_implemented"))
+        status, body = self.post(schedule_request("nope"))
+        self.assertEqual(status, 404)
 
 
 if __name__ == "__main__":
