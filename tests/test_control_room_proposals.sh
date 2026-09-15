@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # T5.3b — schedule changes and retirements as reviewed PRs: worker, records, HTTP seam.
-# The assertions and their (::id) anchors live in tests/test_control_room_proposals.py;
-# this wrapper also lints the hand-run acceptance script and greps proposals.js, because
-# both are shell/JS artefacts a Python suite would otherwise only reach by re-implementing bash.
+# The assertions and their (::id) anchors live in tests/test_control_room_proposals.py
+# (including the grep-level pass over bin/control_room_ui/proposals.js); this wrapper also
+# lints the hand-run acceptance script, a shell artefact the Python suite cannot shellcheck.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 

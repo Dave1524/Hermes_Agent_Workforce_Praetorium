@@ -33,6 +33,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 import control_room_api as api  # noqa: E402
 import control_room_proposals as proposals_module  # noqa: E402
 import workflow_pr as worker_module  # noqa: E402
+import workflow_pr_checks as checks  # noqa: E402
 import workflow_pr_git as prgit  # noqa: E402
 import workflow_pr_record as record  # noqa: E402
 from control_room_fixture import FakeSystemd  # noqa: E402
@@ -143,6 +144,24 @@ def make_worker(tmp: pathlib.Path, remote: pathlib.Path, now: dt.datetime = NOW,
     worker.set_now = lambda value: clock.__setitem__("now", value)
     worker.init()
     return worker
+
+
+def snapshot_repo(tmp: pathlib.Path) -> tuple[pathlib.Path, str]:
+    """For one realism test: the real checkout's file set (tracked + untracked, never its history)
+    committed fresh in a temp dir and served as the remote. `origin` is never named."""
+    src = tmp / "snapshot-src"
+    listed = subprocess.run(["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"], cwd=ROOT,
+                            capture_output=True, check=True).stdout.decode().split("\0")
+    for relative in listed:
+        if not relative or relative.startswith(".claude/"):
+            continue
+        source = ROOT / relative
+        if not source.is_file():
+            continue
+        target = src / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    return make_remote(tmp, src)
 
 
 def gh_log(tmp: pathlib.Path) -> list[dict]:
@@ -600,6 +619,48 @@ class HttpSeam(TempState):
         self.assertEqual((status, body["status"]), (501, "not_implemented"))
         status, body = self.post(schedule_request("nope"))
         self.assertEqual(status, 404)
+
+
+class JsFlow(unittest.TestCase):
+    """(::proposals-js-flow) — grep-level over the dialog script."""
+
+    def test_script_carries_the_flow(self):
+        text = (ROOT / "bin/control_room_ui/proposals.js").read_text()
+        for needle in ("data-proposal-kind", "capture", "stopImmediatePropagation", '"stage":"preview"', '"stage":"submit"',
+                       '"stage":"list"', "preview_token", "artifact_retention", "acknowledge_pinned_tests", "confirm(",
+                       "<dialog", "proposals.css", "`/api/v1/workflows/${"):
+            self.assertIn(needle, text, needle)
+        self.assertNotIn("style=", text)
+        self.assertTrue((ROOT / "bin/control_room_ui/proposals.css").is_file())
+        page = (ROOT / "bin/control_room_view_workflow.py").read_text()
+        self.assertIn('"proposals.js"', page)
+
+
+class Realism(TempState):
+    """(::proposal-realism-snapshot) — the real checkout's file set as the remote, real join suites."""
+
+    def test_schedule_preview_over_the_snapshot(self):
+        tmp = self.tmp / "snap"
+        tmp.mkdir()
+        remote, _ = snapshot_repo(tmp)
+        worker = make_worker(tmp, remote, runner=checks.subprocess_runner)
+        request = schedule_request("knowledge-digest", specs=("Sun 07:00",))
+        rec, response = worker.preview(request, ACTOR)
+        self.assertEqual(rec["stage"], "previewed", response.get("error"))
+        by_id = {c["id"]: c for c in response["checks"]}
+        self.assertEqual(by_id["manifest-joins"]["status"], "pass", by_id["manifest-joins"]["output"])
+        self.assertEqual(by_id["unit-verify"]["status"], "pass", by_id["unit-verify"]["output"])
+        self.assertIn("tests/test_knowledge_digest_smoke.sh", by_id["pinned-tests"]["output"])
+        self.assertIn(by_id["pinned-tests"]["status"], ("pass", "fail"))
+        self.assertEqual(sorted(f["path"] for f in response["files"]),
+                         ["design/agents/claudius.toml", "design/contracts/knowledge-digest.md", "systemd/knowledge-digest.timer"])
+        manifest_hunk = [l for l in response["diff"].split("diff --git a/design/agents/claudius.toml")[1].split("diff --git")[0].splitlines()
+                         if l.startswith(("+", "-")) and not l.startswith(("+++", "---"))]
+        self.assertEqual(len(manifest_hunk), 2, manifest_hunk)
+        self.assertTrue(all("trigger" in l for l in manifest_hunk), manifest_hunk)
+        self.assertIn("+OnCalendar=Sun 07:00", response["diff"])
+        for command in rec["commands"]:
+            self.assertTrue(all("github.com" not in a for a in command["argv"]), command["argv"])
 
 
 if __name__ == "__main__":
