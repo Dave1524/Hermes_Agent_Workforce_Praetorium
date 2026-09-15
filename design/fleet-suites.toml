@@ -475,6 +475,7 @@ asserts = [
   "proposal-doctor",                      # doctor is all ok on the fixture and names what is missing otherwise; exit 1 on any fail
   "proposals-js-flow",                    # proposals.js claims the buttons in the capture phase, previews, confirms, submits with the token and re-fetches
   "proposal-realism-snapshot",            # a schedule preview over a fresh commit of the real checkout's file set runs the real join suites and touches exactly three files
+  "proposal-runner-no-recursion",         # a timed-out suite dies with its whole process tree, and this suite (pinned by the slug it names) runs nested without previewing again
 ]
 why_no_workflow = """
 It tests the screen's PR path — the worker, its records and the HTTP seam — for whichever

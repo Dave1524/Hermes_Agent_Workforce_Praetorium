@@ -21,25 +21,44 @@ JOIN_SUITES = ("tests/test_fleet_ownership.sh", "tests/test_workflow_coverage.sh
                "tests/test_contract_schema.sh")
 PRODUCER_SUITE = "tests/test_buzz_unit_wiring.sh"
 SUITE_TIMEOUT_SECONDS = 120
+# Set in every suite's environment. A suite that itself previews a proposal (the realism test
+# in tests/test_control_room_proposals.py) names a workflow slug, so pinned-tests would pin it
+# and it would preview again inside itself without end; it skips that test under the marker.
+NESTED_MARKER = "WORKFLOW_PR_NESTED"
 PASSTHROUGH_ENV = ("PATH", "HOME", "AGENT_WORKFORCE_RUNTIME", "FAKE_CALENDAR", "FAKE_SYSTEMCTL_STATE", "FAKE_SYSTEMCTL_LOG",
                    "FAKE_GH_LOG", "FAKE_GH_PR_LIST", "FAKE_GH_FAIL")
 Runner = Callable[[list[str], pathlib.Path, dict[str, str], int], tuple[int, str, str]]
 
 
 def subprocess_runner(argv: list[str], cwd: pathlib.Path, env: dict[str, str], timeout: int) -> tuple[int, str, str]:
+    # A suite is its own process group so a timeout kills the whole tree: subprocess.run's
+    # timeout kills only the direct child and orphans everything it spawned.
     try:
-        done = subprocess.run(argv, cwd=cwd, env=env, timeout=timeout, capture_output=True, text=True)
-    except subprocess.TimeoutExpired as exc:
-        return 124, exc.stdout or "", f"timed out after {timeout}s"
+        proc = subprocess.Popen(argv, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                text=True, start_new_session=True)
     except OSError as exc:
         return 127, "", str(exc)
-    return done.returncode, done.stdout, done.stderr
+    try:
+        out, err = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _kill_group(proc)
+        out, _ = proc.communicate()
+        return 124, out or "", f"timed out after {timeout}s"
+    return proc.returncode, out, err
+
+
+def _kill_group(proc: subprocess.Popen) -> None:
+    import signal
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
 
 
 def check_env() -> dict[str, str]:
     env = {key: os.environ[key] for key in PASSTHROUGH_ENV if key in os.environ}
     env.update({key: value for key, value in os.environ.items() if key.startswith("DRIFT_")})
-    env.update({"LC_ALL": "C", "TZ": "UTC"})
+    env.update({"LC_ALL": "C", "TZ": "UTC", NESTED_MARKER: "1"})
     return env
 
 

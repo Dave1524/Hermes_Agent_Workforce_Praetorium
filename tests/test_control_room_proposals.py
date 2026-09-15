@@ -636,10 +636,30 @@ class JsFlow(unittest.TestCase):
         self.assertIn('"proposals.js"', page)
 
 
+class SuiteRunner(unittest.TestCase):
+    """(::proposal-runner-no-recursion) — a timed-out suite dies with its whole process tree, and
+    every suite runs under the nested marker so the realism test cannot preview inside itself."""
+
+    def test_timeout_kills_the_process_group(self):
+        marker = pathlib.Path(tempfile.mkdtemp(prefix="crp-runner-")) / "grandchild"
+        self.addCleanup(shutil.rmtree, marker.parent, True)
+        script = f"(sleep 30; touch {marker}) & wait"
+        code, _, err = checks.subprocess_runner(["bash", "-c", script], pathlib.Path.cwd(), checks.check_env(), 1)
+        self.assertEqual(code, 124)
+        self.assertIn("timed out", err)
+        still_running = subprocess.run(["pgrep", "-f", str(marker)], capture_output=True, text=True).stdout.strip()
+        self.assertEqual(still_running, "", "the grandchild outlived the timeout")
+
+    def test_suites_run_under_the_nested_marker(self):
+        self.assertEqual(checks.check_env()[checks.NESTED_MARKER], "1")
+
+
 class Realism(TempState):
     """(::proposal-realism-snapshot) — the real checkout's file set as the remote, real join suites."""
 
     def test_schedule_preview_over_the_snapshot(self):
+        if os.environ.get(checks.NESTED_MARKER):
+            self.skipTest("nested inside a proposal's own pinned-tests run")
         tmp = self.tmp / "snap"
         tmp.mkdir()
         remote, _ = snapshot_repo(tmp)
@@ -652,6 +672,8 @@ class Realism(TempState):
         self.assertEqual(by_id["unit-verify"]["status"], "pass", by_id["unit-verify"]["output"])
         self.assertIn("tests/test_knowledge_digest_smoke.sh", by_id["pinned-tests"]["output"])
         self.assertIn(by_id["pinned-tests"]["status"], ("pass", "fail"))
+        self.assertIn("tests/test_control_room_proposals.sh + tests/test_control_room_proposals.py: pass",
+                      by_id["pinned-tests"]["output"], "this suite names the slug, so it is pinned and must not recurse")
         self.assertEqual(sorted(f["path"] for f in response["files"]),
                          ["design/agents/claudius.toml", "design/contracts/knowledge-digest.md", "systemd/knowledge-digest.timer"])
         manifest_hunk = [l for l in response["diff"].split("diff --git a/design/agents/claudius.toml")[1].split("diff --git")[0].splitlines()
