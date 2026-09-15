@@ -193,7 +193,7 @@ class ProposeReceiptTest(unittest.TestCase):
         self.assertEqual(written["usage"]["output_tokens"], 92)
         self.assertEqual(written["cost"]["status"], "measured")
         self.assertEqual(written["cost"]["amount"], 0.0555477)
-        self.assertEqual(written["model"], "claude-opus-5")
+        self.assertEqual(written["model"], "claude-haiku-4-5-20251001", "the envelope's modelUsage key, not the manifest model")
         usage.unlink()
         env["INVOCATION_ID"] = "inv0002"
         done = subprocess.run([sys.executable, str(ADAPTER), "PROPOSAL", "--proposal", "_inbox/agents/x.md"],
