@@ -1,0 +1,2 @@
+vault_sync_guard[check]: OK: mirror clean and current
+DECLINE: no 05_knowledge/ or 11_entities/ changes in the last 7 days
