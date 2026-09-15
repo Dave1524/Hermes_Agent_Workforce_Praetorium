@@ -131,9 +131,8 @@ def render_digest(entries: list[dict[str, Any]], template: str) -> tuple[str, st
 
 # --- transport ------------------------------------------------------------------------------
 class Sender:
-    def __init__(self, args: argparse.Namespace, log) -> None:
+    def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
-        self.log = log
 
     def _receipts_after(self, offset: int) -> list[dict[str, Any]]:
         try:
@@ -180,7 +179,7 @@ class Sweep:
         self.args = args
         self.now = parse_time(args.now) or utc_now()
         self.log_path = HOME / "logs" / "workflow-incidents.log"
-        self.sender = Sender(args, self.log)
+        self.sender = Sender(args)
         self.state_path = args.state_dir / "state.json"
         self.sent = 0
 
