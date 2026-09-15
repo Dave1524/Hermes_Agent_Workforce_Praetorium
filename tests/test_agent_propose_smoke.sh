@@ -40,6 +40,7 @@ echo "\$@" >> "$home/hermes_argv.log"
 # --session-id and the transcript lands at ~/.claude/projects/<slug>/<id>.jsonl. Record what
 # this attempt saw, and on request write a transcript there in the real record shapes.
 echo "\${AGENT_SESSION_ID:-unset}" >> "$home/session_ids.log"
+echo "GRAFT_DIR=\${GRAFT_DIR:-unset} GRAFT_NO_SEED=\${GRAFT_NO_SEED:-unset} GRAFT_NO_REFRESH=\${GRAFT_NO_REFRESH:-unset} GRAFT_NO_GITIGNORE=\${GRAFT_NO_GITIGNORE:-unset} GRAFT_NO_IGNORE=\${GRAFT_NO_IGNORE:-unset}" >> "$home/graft_env.log"
 if [ "\${MOCK_WRITE_TRANSCRIPT:-}" = "1" ]; then
   mkdir -p "$home/.claude/projects/fixture"
   cat > "$home/.claude/projects/fixture/\${AGENT_SESSION_ID}.jsonl" <<'JSONL'
@@ -140,6 +141,11 @@ assert "cost.log cost_src=openrouter-key-api (NUC-27)" "grep -q 'cost_src=openro
 assert "cost.log usage_before parsed from /key probe (NUC-27)" "grep -q 'usage_before=1.5' '$h1/agent-workforce/logs/cost.log'"
 assert "cost.log cost_usd_delta = after-before (NUC-27)" "grep -q 'cost_usd_delta=0.000000' '$h1/agent-workforce/logs/cost.log'"
 assert "cost.log proposal=none" "grep -q 'proposal=none' '$h1/agent-workforce/logs/cost.log'"
+# The graft Claude Code hooks (user scope) write their index and session telemetry into the
+# session's cwd — the inbox worktree — unless GRAFT_DIR points elsewhere; the first resumed run
+# on 2026-09-15 was discarded by the write boundary for exactly that.
+assert "runtime sees GRAFT_DIR outside the inbox worktree" "grep -qE '^GRAFT_DIR=/' '$h1/graft_env.log' && ! grep -q 'GRAFT_DIR=$h1/agent-worktrees' '$h1/graft_env.log'"
+assert "runtime sees every graft kill switch on" "grep -q 'GRAFT_NO_SEED=1 GRAFT_NO_REFRESH=1 GRAFT_NO_GITIGNORE=1 GRAFT_NO_IGNORE=1' '$h1/graft_env.log'"
 assert "cost.log memory=no-store (NUC-21 glue ran)" "grep -q 'memory=no-store' '$h1/agent-workforce/logs/cost.log'"
 assert "logs no-store when profile memory dir absent" "grep -q 'MEMORY: no per-profile store' '$h1/agent-workforce/logs/agent_propose.log'"
 assert "no phantom --max-turns flag passed to runtime (NUC-16: hermes -z has none)" "! grep -q -- '--max-turns' '$h1/hermes_argv.log'"

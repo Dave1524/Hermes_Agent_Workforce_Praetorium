@@ -25,6 +25,14 @@ WORKTREE="$HOME/agent-worktrees/inbox"
 LOG_DIR="$HOME/agent-workforce/logs"
 LOCK="${AGENT_PROPOSE_LOCK:-/tmp/agent_propose.lock}"
 mkdir -p "$LOG_DIR"
+# The graft Claude Code hooks (~/.claude/settings.json, user scope, since 2026-09-11) write
+# their index and per-session telemetry into the session's cwd — this worktree — and the Stop
+# hook does it from a detached process that outlives the run, so the write boundary below saw
+# `graft/` and discarded the first resumed run (2026-09-15). GRAFT_DIR moves every graft write
+# out of the worktree; the kill switches stop it indexing the vault or touching the root
+# .gitignore/.ignore. Runtime state, so under var/ and never deployed over.
+export GRAFT_DIR="$HOME/agent-workforce/var/graft"
+export GRAFT_NO_SEED=1 GRAFT_NO_REFRESH=1 GRAFT_NO_GITIGNORE=1 GRAFT_NO_IGNORE=1
 log() { echo "$(date -Is) $*" | tee -a "$LOG_DIR/agent_propose.log"; }
 
 run_started=$(date +%s)
