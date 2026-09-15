@@ -139,7 +139,7 @@ def handle_post(handler: Any, proposals: ProposalsControl | None, model: Any) ->
     actor = _actor(handler)
     allowed, why = peer_allowed(actor["remote"], actor["local"])
     if not allowed:
-        _refusal(handler, "peer_denied", why, HTTPStatus.FORBIDDEN)
+        handler._json(HTTPStatus.FORBIDDEN, proposals.worker.refuse(_request(body), actor, "peer_denied", why)[1])
         return
     item, _ = model.workflow_detail(body["workflow_id"])
     if item is None:

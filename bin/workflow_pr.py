@@ -134,6 +134,17 @@ class Worker:
                 response = self._run_locked(stage, request, rec, live_item, prior, now)
         except Refused as refusal:
             response = self._refused(rec, refusal)
+        return self._finish(rec, response)
+
+    def refuse(self, request: dict[str, Any], actor: dict[str, Any], code: str, message: str) -> tuple[dict[str, Any], dict[str, Any]]:
+        """A refusal decided before the worker runs (the peer gate): recorded with who and from
+        where, like every other outcome — when the state root is there to record it."""
+        rec = record.new_record(request["kind"], request["workflow_id"], actor, request.get("reason"), self.clock())
+        rec["proposed"] = request.get("proposed")
+        response = self._refused(rec, Refused(code, message))
+        return self._finish(rec, response) if not self.unavailable() else (rec, response)
+
+    def _finish(self, rec: dict[str, Any], response: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
         rec["completed_at"] = record.stamp(self.clock())
         record.write(self.state, rec)
         response["record"] = {k: v for k, v in rec.items() if k not in ("diff",)}
@@ -369,6 +380,7 @@ def _print_stage(rec: dict[str, Any], response: dict[str, Any]) -> int:
         print(f"preview {rec['proposal_id']} on {rec['base']['sha'][:12]} → {rec['branch']}\n{response.get('summary', '')}\n")
         print(json.dumps(response.get("description"), indent=2))
         print("\n" + (rec.get("diff") or ""))
+        _print_retire_tables(rec)
         for check in rec["checks"]:
             print(f"{check['status']:>5}  {check['id']} [{check['class']}]  {check['output'].splitlines()[0] if check['output'] else ''}")
         print("\nsubmit_allowed:", response.get("submit_allowed"), *response.get("submit_blockers", []), sep="\n  ")
@@ -379,6 +391,16 @@ def _print_stage(rec: dict[str, Any], response: dict[str, Any]) -> int:
         return 0
     print(f"{rec['stage']}: {json.dumps(rec.get('refusal'))}", file=sys.stderr)
     return 1
+
+
+def _print_retire_tables(rec: dict[str, Any]) -> None:
+    """The retire half of what the dialog and the PR body show: both W19 tables and the retention row."""
+    if rec["kind"] != "retire":
+        return
+    residue, retention = rec.get("residue") or {}, rec.get("retention") or {}
+    print("\nResidue — On this branch after the removal\n" + body._residue_table(residue.get("source")))
+    print("\nResidue — On the box after merge (live scan at preview time)\n" + body._residue_table(residue.get("live")))
+    print("\nArtifact retention: " + " ".join(f"{key}={retention.get(key, '—')}" for key in ("receipts", "notion", "inbox", "note")))
 
 
 def _request(args: argparse.Namespace) -> dict[str, Any]:

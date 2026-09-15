@@ -148,6 +148,21 @@ class Removal(TempState):
         self.assertFalse((wt / "bin/run_alpha_cc.sh").exists(), plan.description["removal"])
         self.assertTrue((wt / "bin/agent_propose.sh").exists())
 
+    def test_exec_targets_join_continuation_lines(self):
+        """A unit whose ExecStart continues over `\\` lines (buzz-agent@.service does) is one
+        command, not a shlex error that fails the whole retire preview."""
+        wt = checkout(self.tmp)
+        unit = wt / "systemd/user/wrapped.service"
+        unit.parent.mkdir(parents=True, exist_ok=True)
+        unit.write_text("[Service]\nExecStart=/home/dave/agent-workforce/bin/run_alpha_cc.sh \\\n  --flag one \\\n  --flag two\n")
+        self.assertEqual(retire._exec_targets(wt, unit), ["bin/run_alpha_cc.sh"])
+        unit.write_text("[Service]\nExecStart=/home/dave/agent-workforce/bin/run_alpha_cc.sh 'unterminated\n")
+        self.assertEqual(retire._exec_targets(wt, unit), ["bin/run_alpha_cc.sh"])
+        _git(wt, "add", "systemd/user/wrapped.service")
+        _git(wt, "commit", "-qm", "a wrapped runner")
+        subjects = retire.subject_set(wt, make_item(wt, "alpha"))
+        self.assertIn("wrapped.service", " ".join(str(r) for r in subjects["runners"]))
+
     def test_count_literals_match_the_views_suite(self):
         """LOGICAL_WORKFLOWS in T5.3's suite counts logical workflows over *standing* entries; a
         planned entry with its own logical id must not move the number the literal is matched on."""
@@ -277,6 +292,23 @@ class ThroughTheWorker(TempState):
 
     def check(self, response, check_id):
         return next(c for c in response["checks"] if c["id"] == check_id)
+
+    def test_cli_preview_prints_the_residue_tables(self):
+        """The shell sees what the dialog and the PR body see: both W19 tables, the deny-listed
+        env override as `unverifiable`, the retention decision — not only the diff and checks."""
+        import contextlib
+        import io
+        import workflow_pr as worker_module
+        rec, response = self.worker.preview(retire_request(), ACTOR)
+        self.assertEqual(rec["stage"], "previewed", response)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(worker_module._print_stage(rec, response), 0)
+        text = out.getvalue()
+        self.assertIn("On this branch after the removal", text)
+        self.assertIn("On the box after merge", text)
+        self.assertIn("unverifiable from an agent", text)
+        self.assertIn("receipts=", text)
 
     def test_count_literals_or_pinned(self):
         rec, response = self.worker.preview(retire_request(), ACTOR)

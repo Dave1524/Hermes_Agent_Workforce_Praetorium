@@ -75,15 +75,37 @@ def _exec_targets(root: pathlib.Path, service: pathlib.Path | None) -> list[str]
     if service is None:
         return []
     out = []
-    for line in service.read_text(encoding="utf-8", errors="replace").splitlines():
+    for line in _joined_lines(service.read_text(encoding="utf-8", errors="replace")):
         if not line.startswith("ExecStart="):
             continue
-        for tok in shlex.split(line.split("=", 1)[1], posix=True):
+        for tok in _tokens(line.split("=", 1)[1]):
             marker = tok.find("/bin/")
             candidate = "bin/" + tok[marker + 5:] if marker >= 0 else tok
             if (root / candidate).is_file() and candidate not in out:
                 out.append(candidate)
     return out
+
+
+def _joined_lines(text: str) -> list[str]:
+    """systemd's line continuation: a trailing backslash joins the next line."""
+    out: list[str] = []
+    pending = ""
+    for line in text.splitlines():
+        if line.endswith("\\"):
+            pending += line[:-1] + " "
+            continue
+        out.append(pending + line)
+        pending = ""
+    if pending:
+        out.append(pending)
+    return out
+
+
+def _tokens(command: str) -> list[str]:
+    try:
+        return shlex.split(command, posix=True)
+    except ValueError:
+        return command.split()
 
 
 def _service_env(service: pathlib.Path | None, key: str, unit: str) -> str | None:

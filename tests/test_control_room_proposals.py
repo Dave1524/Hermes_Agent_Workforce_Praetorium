@@ -608,6 +608,20 @@ class HttpSeam(TempState):
         status, body = self.post(schedule_request())
         self.assertEqual((status, body["error"]["code"]), (403, "peer_denied"))
         self.assertEqual(remote_heads(self.remote), ["main"])
+        self.assertEqual((body["record"]["stage"], body["record"]["refusal"]["code"]), ("refused", "peer_denied"), body)
+        self.assertEqual(body["record"]["actor"]["remote"], "100.86.82.16")
+        listed = self.worker.list("alpha", "schedule")["items"]
+        self.assertEqual([r["refusal"]["code"] for r in listed], ["peer_denied"], "a denied peer is recorded, with who and from where")
+
+    def test_drop_in_environment_values_are_single_assignments(self):
+        """systemd splits an unquoted Environment= value on whitespace: the author line became
+        `CONTROL_ROOM_GIT_AUTHOR=Praetorium` plus three `Invalid environment assignment` warnings."""
+        for line in (ROOT / "systemd/control-room.service.d/proposals.conf").read_text().splitlines():
+            if not line.startswith("Environment="):
+                continue
+            value = line.split("=", 1)[1]
+            quoted = value.startswith('"') and value.endswith('"') and value.count('"') == 2
+            self.assertTrue(quoted or " " not in value, f"unquoted value with whitespace: {line}")
 
     def test_open_pr_failed_and_unavailable(self):
         status, preview = self.post(schedule_request())
