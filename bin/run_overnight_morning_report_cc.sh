@@ -22,6 +22,7 @@ set -euo pipefail
 # inherited umask (0002 under systemd here), which would silently widen them to 664.
 umask 077
 
+BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
 CLAUDE_BIN="${CLAUDE_BIN:-/home/linuxbrew/.linuxbrew/bin/claude}"
 WORKDIR="${MORNING_REPORT_WORKDIR:-$HOME/agent-workforce}"
 MODEL="${MORNING_REPORT_MODEL:-claude-sonnet-5}"
@@ -38,7 +39,7 @@ mkdir -p "$HOME/logs/overnight"
 # a vault checkout — the job reads ~/agent-worktrees/inbox by absolute path with Read/Glob/
 # Grep. Declare AGENT_MCP_DEPS=none in the job env to skip the daemon probes too.
 cd "$WORKDIR"
-exec "$CLAUDE_BIN" -p "$(cat "$TASK_FILE")" \
+exec "$BIN_DIR/cc_run.sh" "$CLAUDE_BIN" -p "$(cat "$TASK_FILE")" \
   --model "$MODEL" \
   --permission-mode dontAsk \
   --strict-mcp-config \

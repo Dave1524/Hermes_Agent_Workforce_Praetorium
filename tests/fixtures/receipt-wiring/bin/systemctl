@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Fake systemctl for tests/test_receipt_sweep.py. Answers from sweep-state.tsv beside itself —
+# one row per unit: the timer's ActiveState and LastTriggerUSec, the service's InvocationID,
+# ExecMainStartTimestamp, ExecMainExitTimestamp, Result, ExecMainStatus and ActiveState — and
+# appends every call to calls.log beside itself with the scope it arrived under, so the suite
+# can assert a `scope = "user"` row reached the shim as `systemctl --user`. A comma-separated
+# -p list answers one key=value line per property, as systemctl does; --value drops the keys;
+# a unit the table does not know is `inactive` with empty properties, as systemctl reports an
+# unloaded unit. Timestamps are stored as `@<epoch>`, the --timestamp=unix form.
+set -u
+here="$(dirname "$0")"
+scope=system
+if [ "${1:-}" = "--user" ]; then scope=user; shift; fi
+printf '%s %s\n' "$scope" "$*" >>"$here/calls.log"
+
+column() {   # $1 unit  $2 column number
+  awk -F'\t' -v u="$1" -v c="$2" '$0 !~ /^#/ && $1 == u { print $c; exit }' "$here/sweep-state.tsv"
+}
+answer() {   # $1 timer|service  $2 unit  $3 property
+  local v=""
+  case "$1:$3" in
+    timer:ActiveState)                v=$(column "$2" 2) ;;
+    timer:LastTriggerUSec)            v=$(column "$2" 8) ;;
+    service:InvocationID)             v=$(column "$2" 3) ;;
+    service:ExecMainStartTimestamp)   v=$(column "$2" 4) ;;
+    service:ExecMainExitTimestamp)    v=$(column "$2" 5) ;;
+    service:Result)                   v=$(column "$2" 6) ;;
+    service:ExecMainStatus)           v=$(column "$2" 7) ;;
+    service:ActiveState)              v=$(column "$2" 9) ;;
+  esac
+  case "$3" in ActiveState) [ -n "$v" ] || v=inactive ;; esac
+  echo "$v"
+}
+
+case "${1:-}" in
+  show)
+    name=$2; shift 2
+    unit=${name%.*}; suffix=${name##*.}
+    props=""; value=0
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        -p|--property) props=$2; shift ;;
+        --property=*)  props=${1#--property=} ;;
+        --value)       value=1 ;;
+      esac
+      shift
+    done
+    IFS=','
+    for p in $props; do
+      v=$(answer "$suffix" "$unit" "$p")
+      if [ "$value" = 1 ]; then echo "$v"; else echo "$p=$v"; fi
+    done
+    ;;
+  is-active)
+    name=$2; s=$(answer "${name##*.}" "${name%.*}" ActiveState)
+    echo "$s"
+    [ "$s" = active ]
+    ;;
+  *)
+    echo "fake systemctl: unsupported call: $*" >&2
+    exit 1
+    ;;
+esac

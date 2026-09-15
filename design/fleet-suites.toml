@@ -455,6 +455,9 @@ asserts = [
   "exec-usage-never-zero",           # unavailable is null, measured is the envelope's exact integers; a zero is only the runtime's zero
   "exec-next-action-from-contract",  # next_action copied from ## Outputs; `none` becomes null
   "exec-refuses-non-contract-rows",  # kind = "service" and contract_exempt exit 2 with a reason and no receipt
+  "exec-failed-flag",                # --failed REASON forces `failed`, reason first; the checks still run
+  "exec-decline-flag",               # --decline REASON is the decline branch without a ^DECLINE: line
+  "exec-run-id-flag",                # --run-id ID overrides INVOCATION_ID and the sweep's systemd lookup
 ]
 why_no_workflow = """
 It tests the executor every contracted workflow will call, against the live knowledge-digest
@@ -542,4 +545,66 @@ asserts = [
 why_no_workflow = """
 It consumes design/retired-workflows.toml, the register of workflows that no longer exist. A
 retired workflow cannot own the suite that proves it is gone.
+"""
+
+[[suite]]
+path    = "tests/test_cc_run.sh"
+owner   = "fleet"
+asserts = [
+  "cc-run-unset-is-exec",            # AGENT_USAGE_JSON unset: the invocation is byte-identical to today, an exec and nothing more
+  "cc-run-result-passthrough",       # set: stdout carries the envelope's .result text, so ^DECLINE: and the provider-error regex read what they read today
+  "cc-run-envelope-captured",        # set: the JSON envelope lands atomically at $AGENT_USAGE_JSON with claude's own exit status
+  "cc-run-garbage-is-unavailable",   # a non-JSON envelope is captured as unavailable, never a partial sum rendered as measured
+]
+why_no_workflow = """
+It tests the exec seam every headless Claude Code runner passes through; crediting one of the
+nine would say the other eight are not covered by it.
+"""
+
+[[suite]]
+path    = "tests/test_propose_receipt.sh"
+owner   = "fleet"
+asserts = [
+  "propose-receipt-every-exit",           # agent_propose.sh writes exactly one receipt on every exit path, with the brief's outcome map; receipt failure never changes the exit code
+  "propose-receipt-usage-from-envelope",  # a CC run's usage and cost are the captured envelope's; a hermes run is unavailable with null tokens
+  "propose-receipt-no-unit-no-receipt",   # a hand run outside any unit writes nothing and says so
+  "content-evidence-from-log",            # augustus-content's outcome and handoff come from the attempt log's transition, decline and trigger lines; failed lines never count
+  "receipt-reads-back-valid",             # every receipt validates and control_room_api lists it as valid
+]
+why_no_workflow = """
+It tests the receipt path shared by the eleven agent_propose.sh rows against fixture attempt
+logs and envelopes. Assigning it to one of them would credit that row alone.
+"""
+
+[[suite]]
+path    = "tests/test_interaction_receipt.sh"
+owner   = "fleet"
+asserts = [
+  "interaction-send-is-artifact",             # a buzz messages send whose result was accepted is the artifact, nostr:event:<id>, under the agent's unit
+  "interaction-silence-is-decline",           # no send is a decline whose reason says the transcript cannot tell silence from a reply that never published
+  "interaction-heartbeat-no-receipt",         # a heartbeat prompt is not a turn: nothing written, one log line, in both harnesses
+  "interaction-usage-summed",                 # Claude usage is the sum over the turn's assistant messages, counted once per message id
+  "interaction-send-is-a-command",            # the send must sit in command position; a grep or echo naming the string is not a send
+  "interaction-never-blocks-stop",            # malformed stdin, missing transcript, no unit, unwritable root: exit 0, empty stdout, one log line
+  "codex-notify-send-is-artifact",            # the codex notify payload plus the rollout under CODEX_HOME give the same receipt shape
+  "codex-notify-silence-is-decline",          # a turn without a send is a decline, usage still measured from the rollout
+  "codex-notify-usage-from-rollout",          # the turn's share of the thread total: last token_count in the span minus the last before it
+  "codex-notify-missing-rollout-unavailable", # no rollout: a receipt with usage unavailable and the reason naming the missing rollout
+  "codex-notify-never-fails",                 # malformed payload, wrong type, no CODEX_HOME, no unit: exit 0, empty stdout, one log line, no env value logged
+  "receipt-reads-back-valid",                 # every receipt validates and control_room_api lists it as valid
+]
+why_no_workflow = """
+It tests the turn-end hook shared by the five buzz-agent@* rows over synthetic transcripts and
+a synthetic rollout. The interactive contract is one file for five units; so is its suite.
+"""
+
+[[suite]]
+path    = "tests/test_receipt_coverage.sh"
+owner   = "fleet"
+asserts = [
+  "receipt-coverage-every-standing-row",  # every standing row has exactly one receipt producer, decided by what systemd execs; the producible workflow_ids equal the logical set
+]
+why_no_workflow = """
+It joins every standing row to the producer that receipts it. A coverage claim over all of
+them cannot be credited to any one of them.
 """

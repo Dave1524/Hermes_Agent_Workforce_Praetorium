@@ -174,6 +174,21 @@ refresh_scorecard() {
   "$sc" >>"$LOG_DIR/scorecard.log" 2>&1 || log "scorecard refresh failed (non-fatal)"
 }
 
+BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+write_receipt() {
+  # T5.2: one receipt per run, on every exit path, through bin/propose_receipt.py -> the
+  # contract executor. Fail-soft by construction: the receipt is evidence about the run and
+  # must never become the run's outcome, so this function returns 0 whatever the adapter
+  # does, and the exit that follows it is the one the script would have taken anyway. The
+  # adapter's own stdout is the executor's check table, kept in agent_propose.log.
+  local outcome=$1; shift
+  local rc=0
+  python3 "$BIN_DIR/propose_receipt.py" "$outcome" "$@" 2>&1 | tee -a "$LOG_DIR/agent_propose.log" || rc=$?
+  # $rc is tee's; the adapter's status is the executor's verdict, which is not this run's.
+  [ "$rc" -eq 0 ] || log "receipt: not written (propose_receipt.py exit $rc) — the run's own outcome stands"
+  return 0
+}
+
 block_exit() {
   # NUC-37: a preflight gate failed -> this run is BLOCKED, not "nothing to propose".
   # Record it (visible in cost.log + the scorecard) then exit 0 — blocked is not a
@@ -182,6 +197,7 @@ block_exit() {
   # circuits to 'unknown' with no network call and the record carries profile=unknown.
   log "BLOCKED: $1"
   log_cost BLOCKED
+  write_receipt BLOCKED --reason "$1"
   refresh_scorecard
   exit 0
 }
@@ -203,7 +219,7 @@ brave_healthy() {
 }
 
 exec 9>"$LOCK"
-flock -n 9 || { log "SKIP: previous run still active"; exit 0; }
+flock -n 9 || { log "SKIP: previous run still active"; write_receipt SKIP; exit 0; }
 
 # ── Preflight: every gate must hold, else BLOCKED (recorded) with NO proposal (NUC-37) ──
 # NOTE: the "previous run still active" SKIP at the flock above stays a SILENT exit —
@@ -251,6 +267,10 @@ run_task="${AGENT_TASK_SLUG:-standing}"
 # ExecStartPost inherits no export from the run, so the path must be derivable from the
 # task slug rather than merely passed down.
 export AGENT_ATTEMPT_LOG="${AGENT_ATTEMPT_LOG:-$LOG_DIR/last-attempt/$run_task.log}"
+# T5.2: where bin/cc_run.sh leaves the Claude Code JSON envelope for the receipt's usage and
+# cost. Per attempt like the log above; a hermes runtime writes nothing here and the receipt
+# says `unavailable`, never a number from cost.log's shared-key delta.
+export AGENT_USAGE_JSON="${AGENT_USAGE_JSON:-$LOG_DIR/last-attempt/$run_task.usage.json}"
 # W1 (2026-09-02): the episodic store keys on the OWNING PERSONA; the cost record keys on
 # the RUNTIME. They were one variable, and that is why six jobs logged memory=no-store on
 # every run for months — AGENT_PROFILE has been model-named (claude-opus / claude-sonnet)
@@ -398,6 +418,7 @@ while [ "$attempt" -lt "$max_attempts" ]; do
   attempt_out="$AGENT_ATTEMPT_LOG"
   mkdir -p "$(dirname "$attempt_out")"
   : > "$attempt_out"
+  rm -f "$AGENT_USAGE_JSON"
   timeout "${AGENT_TIMEOUT_MINUTES:-30}m" bash -lc "$run_cmd" \
     >"$attempt_out" 2>&1 || rc=$?
   cat "$attempt_out" >>"$LOG_DIR/agent_run.log"
@@ -429,6 +450,7 @@ if $is_dedup; then
   log "DEDUP: kanban idempotent hit — card already terminal for today's key; no run recorded"
   run_outcome=DEDUP; run_proposal=none; mem_status=na
   log_cost DEDUP
+  write_receipt DEDUP
   refresh_scorecard
   exit 0
 fi
@@ -451,6 +473,7 @@ if ! $ok; then
     log "$fail_reason (ops mode — no worktree reset)"
   fi
   log_cost "$fail_outcome"
+  write_receipt "$fail_outcome" --rc "$rc"
   refresh_scorecard
   exit 1
 fi
@@ -462,6 +485,7 @@ if [ "$run_mode" = ops ]; then
   run_proposal=none
   mem_status=na
   log_cost OPS
+  write_receipt OPS
   refresh_scorecard
   exit 0
 fi
@@ -472,6 +496,7 @@ if [ -n "$violations" ]; then
   log "FATAL: agent touched files outside _inbox/agents/ — discarding everything: $violations"
   git -C "$WORKTREE" reset --hard -q && git -C "$WORKTREE" clean -fdq
   log_cost VIOLATION
+  write_receipt VIOLATION
   refresh_scorecard
   exit 1
 fi
@@ -526,4 +551,9 @@ else
 fi
 
 log_cost "$run_outcome"
+if [ "$run_outcome" = PROPOSAL ]; then
+  write_receipt PROPOSAL --proposal "$(printf '%s\n' "$proposal_changes" | head -1)"
+else
+  write_receipt NOPROPOSAL
+fi
 refresh_scorecard

@@ -6,6 +6,7 @@
 # them. Revert: restore the live override's AGENT_RUNTIME_CMD to the kernel.
 set -euo pipefail
 
+BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
 CLAUDE_BIN="${CLAUDE_BIN:-/home/linuxbrew/.linuxbrew/bin/claude}"
 INBOX="$HOME/agent-worktrees/inbox"
 TASK_FILE="$HOME/agent-workforce/profiles/bd_stall_radar_task.md"
@@ -24,7 +25,7 @@ SKILLS_DIR="${PRAETORIUM_SKILLS_DIR:-$HOME/agent-workforce/skills/claudius}"
 # env so agent_propose.sh skips the daemon probes too. No vault_sync_guard — the radar
 # flags inward and nothing leaves the box.
 cd "$INBOX"
-exec "$CLAUDE_BIN" -p "$(cat "$TASK_FILE")" \
+exec "$BIN_DIR/cc_run.sh" "$CLAUDE_BIN" -p "$(cat "$TASK_FILE")" \
   --model claude-sonnet-5 \
   --permission-mode dontAsk \
   --strict-mcp-config \

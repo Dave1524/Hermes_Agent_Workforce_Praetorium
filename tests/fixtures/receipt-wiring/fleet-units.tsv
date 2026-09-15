@@ -1,0 +1,9 @@
+# A subset of config/fleet-units.tsv for tests/test_receipt_sweep.py, over the manifest rows
+# in tests/fixtures/receipt-wiring/agents/. Same columns as the live file.
+# unit	scope	status	owner	kind
+env-probe	user	standing	fixture	timer
+logical-child	system	standing	fixture	timer
+knowledge-digest	system	standing	fixture	timer
+always-on	user	standing	fixture	timer
+workflow-receipt-sweep	system	standing	trajan	timer
+spent-job	system	spent	fixture	timer

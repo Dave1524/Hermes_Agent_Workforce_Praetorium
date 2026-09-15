@@ -1,0 +1,7 @@
+# systemd's answers for tests/fixtures/receipt-wiring/bin/systemctl, one row per unit. All
+# synthetic: the invocation ids are patterns, the epochs are 2026-09-15 UTC.
+# unit	timer_active	invocation_id	exec_main_start	exec_main_exit	result	exec_main_status	last_trigger	service_active
+env-probe	active	e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5	@1789452600	@1789452660	success	0	@1789452600	inactive
+logical-child	active	1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c	@1789456200	@1789456300	exit-code	1	@1789456200	failed
+knowledge-digest	inactive	d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1	@1789000000	@1789000100	success	0		inactive
+always-on	active	a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0	@1789450000	@1789450010	success	0	@1789450000	inactive

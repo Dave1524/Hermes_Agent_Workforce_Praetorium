@@ -103,7 +103,9 @@ class BenefitLedgerJoin(unittest.TestCase):  # (::benefit-ledger-join)
             with urllib.request.urlopen(f"{base}/api/v1/benefit", timeout=5) as response:
                 env = json.loads(response.read())
         self.assertEqual(env["dataStatus"]["benefitLedger"], "degraded")
-        self.assertEqual(len(env["items"]), 30)
+        # one row per logical workflow; the pair itself is pinned by ::control-room-30-of-31
+        standing = [e for e in build_model()._manifests()[0] if e.get("status") == "standing"]
+        self.assertEqual(len(env["items"]), len({e.get("logical_workflow") or e["unit"] for e in standing}))
 
 
 class BenefitRateAndLatency(unittest.TestCase):  # (::benefit-rate-and-latency)

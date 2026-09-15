@@ -90,7 +90,7 @@ why = "the one asymmetric file: he admits all five other identities and none of 
 [[adopted]]
 path = "agent-settings.json"
 read_by = "`claude --settings`, via claude-agent-wrapper.sh"
-why = "the connector deny-list that closed agent-model.md 6.1. Inert for augustus — codex permission profiles do not reach an ACP session — so his absence of connectors is asserted separately"
+why = "the connector deny-list that closed agent-model.md 6.1, and since T5.2 the Stop hook that receipts every turn through bin/interaction_receipt.py. Both inert for augustus — codex permission profiles do not reach an ACP session, and his turn-end is codex `notify` in his own config.toml — so his absence of connectors is asserted separately"
 
 [[adopted]]
 path = "claude-agent-wrapper.sh"

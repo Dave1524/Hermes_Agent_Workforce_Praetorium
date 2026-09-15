@@ -84,6 +84,27 @@ log "detected $count new Picked row(s) — dispatching Augustus draft run via ag
 export AGENT_JOB_OVERRIDES="$AUGUSTUS_OVERRIDES"
 export CONTENT_ENTRY_POINT=picked-change
 export CONTENT_BOARD_SNAPSHOT="$SNAPSHOT"
+# T5.2: one systemd invocation, two receipts — this tick's under its own id, the dispatched
+# run's under <tick>-draft with the tick as parent — both folded under augustus-content/ by
+# the manifest's logical_workflow. The child writes its own through agent_propose.sh; the
+# tick writes its own below, after it knows whether the state advanced. A hand run outside
+# systemd names the tick after its start time, like the executor would.
+tick_id="${INVOCATION_ID:-content-change-dispatch-$(date +%s)}"
+child_run_id="$tick_id-draft"
+export AGENT_RECEIPT_UNIT=augustus-content
+export AGENT_RUN_ID="$child_run_id"
+export AGENT_PARENT_RUN_ID="$tick_id"
+tick_receipt() {
+  # Fail-soft like write_receipt in agent_propose.sh: the receipt is evidence about the
+  # tick and can never become the tick's exit status, which is 0 on every path past here.
+  local executor="${CONTRACT_EXEC:-$ROOT/bin/contract_exec.py}"
+  "$executor" content-change-dispatch --vantage run --run-id "$tick_id" \
+    --handoff-actor praetorium --handoff-recipient augustus --handoff-event "$child_run_id" "$@" \
+    2>&1 | tee -a "$LOG_DIR/content_change_dispatch.log" \
+    || log "receipt: not written (executor exit ${PIPESTATUS[0]}) — the tick's own outcome stands"
+  return 0
+}
+held() { log "$1"; tick_receipt --failed "$1"; exit 0; }
 # NUC-44: mark where cost.log ends BEFORE dispatching, so the outcome check below reads
 # only the record this dispatch produced and never an older one.
 COST_LOG="${AGENT_COST_LOG:-$LOG_DIR/cost.log}"
@@ -96,8 +117,7 @@ if [ "$rc" -ne 0 ]; then
   # a non-zero here (e.g. flock SKIP returns 0, but a real failure) means we did NOT
   # confirm the Picked rows were drafted. Leave STATE untouched so the next tick
   # retries them rather than silently swallowing an undrafted Picked row.
-  log "agent_propose.sh returned $rc — leaving state unchanged so new rows retry next tick"
-  exit 0
+  held "agent_propose.sh returned $rc — state held so new rows retry next tick"
 fi
 
 # ── 3c. Belt and braces: rc=0 is a CLAIM of success, the cost.log record is evidence ──
@@ -109,8 +129,7 @@ fi
 crashed=$(awk -v skip="$cost_lines_before" \
   'NR > skip && /outcome=CRASHED/ { n++ } END { print n+0 }' "$COST_LOG" 2>/dev/null || echo 0)
 if [ "${crashed:-0}" -gt 0 ]; then
-  log "agent_propose.sh exited 0 but recorded outcome=CRASHED — leaving state unchanged so new rows retry next tick"
-  exit 0
+  held "agent_propose.sh exited 0 but recorded outcome=CRASHED — state held so new rows retry next tick"
 fi
 
 # A successful exit is still only a claim.  The exact content run must have written a
@@ -120,21 +139,18 @@ run_record=$(awk -v skip="$cost_lines_before" \
   'NR > skip && /task=augustus-content/ && /outcome=OPS/ { line=$0 } END { print line }' \
   "$COST_LOG" 2>/dev/null || true)
 if [ -z "$run_record" ]; then
-  log "agent_propose.sh exited 0 but recorded no successful augustus-content OPS run — leaving state unchanged"
-  exit 0
+  held "agent_propose.sh exited 0 but recorded no successful augustus-content OPS run — state held"
 fi
 
 snapshot_after=$(cksum "$SNAPSHOT" 2>/dev/null || echo absent)
 if [ "$snapshot_after" = "$snapshot_before" ]; then
-  log "agent_propose.sh recorded OPS but left no fresh content snapshot — leaving state unchanged"
-  exit 0
+  held "agent_propose.sh recorded OPS but left no fresh content snapshot — state held"
 fi
 
 run_id=$(sed -n 's/^run_id=//p' "$SNAPSHOT" 2>/dev/null | tail -1)
 entry_point=$(sed -n 's/^entry_point=//p' "$SNAPSHOT" 2>/dev/null | tail -1)
 if [[ ! "$run_id" =~ ^[0-9a-f]{64}$ ]] || [ "$entry_point" != picked-change ]; then
-  log "snapshot has no valid picked-change run identity — leaving state unchanged"
-  exit 0
+  held "snapshot has no valid picked-change run identity — state held"
 fi
 
 draft_page=$(sed -n 's/^page=\([^[:space:]]*\) from=Picked to=Draft$/\1/p' "$SNAPSHOT" | tail -1)
@@ -146,15 +162,13 @@ if [ -n "$draft_page" ]; then
     [ "$page" = "$draft_page" ] && page_was_new=true
   done <<<"$new_ids"
   if ! $page_was_new; then
-    log "run_id=$run_id drafted page=$draft_page, not one of this tick's new Picked rows — leaving state unchanged"
-    exit 0
+    held "run_id=$run_id drafted page=$draft_page, not one of this tick's new Picked rows — state held"
   fi
   terminal="draft page=$draft_page"
 elif [[ "$decline_event" =~ ^[0-9a-f]{64}$ ]]; then
   terminal="decline event=$decline_event"
 else
-  log "run_id=$run_id has neither Picked-to-Draft evidence nor an owned decline — leaving state unchanged"
-  exit 0
+  held "run_id=$run_id has neither Picked-to-Draft evidence nor an owned decline — state held"
 fi
 
 # A draft resolves only the newly Picked page it names.  Any sibling new rows remain
@@ -177,4 +191,5 @@ fi
 # ── 4. Only after an evidenced terminal outcome, commit state ──
 printf '%s\n' "$next_state" | grep -v '^[[:space:]]*$' > "$STATE" || true
 log "dispatch complete — entry_point=picked-change run_id=$run_id $terminal state advanced to $(printf '%s\n' "$next_state" | grep -c . || true) eligible Picked row(s)"
+tick_receipt --state-change "content_picked.state advanced: $terminal"
 exit 0

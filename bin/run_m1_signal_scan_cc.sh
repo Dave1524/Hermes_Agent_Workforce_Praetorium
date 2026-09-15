@@ -8,6 +8,7 @@
 # script is only the "brain" it execs. Revert: restore m1_signal_scan.env.bak.
 set -euo pipefail
 
+BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
 CLAUDE_BIN="${CLAUDE_BIN:-/home/linuxbrew/.linuxbrew/bin/claude}"
 INBOX="$HOME/agent-worktrees/inbox"
 TASK_FILE="$HOME/agent-workforce/profiles/m1_signal_scan_cc_task.md"
@@ -29,7 +30,7 @@ SKILLS_DIR="${PRAETORIUM_SKILLS_DIR:-$HOME/agent-workforce/skills/claudius}"
 # its `cd "$INBOX"` checkout with Read/Glob/Grep and needs no qmd retrieval. Declare
 # AGENT_MCP_DEPS=none in the job env so agent_propose.sh skips the daemon probes too.
 cd "$INBOX"
-exec "$CLAUDE_BIN" -p "$(cat "$TASK_FILE")" \
+exec "$BIN_DIR/cc_run.sh" "$CLAUDE_BIN" -p "$(cat "$TASK_FILE")" \
   --model claude-sonnet-5 \
   --permission-mode dontAsk \
   --strict-mcp-config \

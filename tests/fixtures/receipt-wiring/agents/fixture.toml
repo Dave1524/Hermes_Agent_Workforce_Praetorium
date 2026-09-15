@@ -1,0 +1,46 @@
+# Manifest fixture for tests/test_receipt_sweep.py — the rows tests/fixtures/receipt-wiring/
+# fleet-units.tsv names, in the shape of tests/fixtures/contract-exec/agents/fixture.toml and
+# over the same two fixture contracts. Never read by the validator or the coverage checker —
+# both glob design/agents/ only. The sibling trajan.toml carries the sweep's own row.
+name = "fixture"
+
+[[workflows]]
+unit     = "env-probe"
+surface  = "scheduled"
+trigger  = "fixture"
+scope    = "user"
+model    = "fixture-model"
+contract = "tests/fixtures/contract-exec/contracts/env-probe.md"
+status   = "standing"
+
+[[workflows]]
+unit     = "logical-child"
+logical_workflow = "logical-parent"
+surface  = "scheduled"
+trigger  = "fixture"
+contract = "tests/fixtures/contract-exec/contracts/none-next.md"
+status   = "standing"
+
+[[workflows]]
+unit     = "knowledge-digest"
+surface  = "scheduled"
+trigger  = "fixture"
+contract = "tests/fixtures/contract-exec/contracts/none-next.md"
+status   = "standing"
+
+[[workflows]]
+unit     = "always-on"
+surface  = "interactive"
+trigger  = "event-driven"
+scope    = "user"
+kind     = "service"
+contract = "tests/fixtures/contract-exec/contracts/none-next.md"
+status   = "standing"
+
+[[workflows]]
+unit     = "spent-job"
+surface  = "scheduled"
+trigger  = "once"
+contract = "tests/fixtures/contract-exec/contracts/none-next.md"
+contract_exempt = "spent: fixture — its one fire is behind it"
+status   = "spent"

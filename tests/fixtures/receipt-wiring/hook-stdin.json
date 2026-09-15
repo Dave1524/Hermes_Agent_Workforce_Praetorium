@@ -1,0 +1,7 @@
+{
+  "session_id": "5e5e5e5e-5e5e-4e5e-8e5e-5e5e5e5e5e5e",
+  "transcript_path": "tests/fixtures/receipt-wiring/transcript-send.jsonl",
+  "cwd": "/home/dave",
+  "hook_event_name": "Stop",
+  "stop_hook_active": false
+}

@@ -508,7 +508,8 @@ class PeerRuleTable(unittest.TestCase):
         self.assertEqual(broker.peer_allowed("127.0.0.1", "127.0.0.1"), (True, "loopback-bound development instance"))
 
 
-RETRY_DECLARED = {"knowledge-digest", "agent-proposal", "weekly-pre-assembly", "m1-signal-scan", "scorecard"}
+RETRY_DECLARED = {"knowledge-digest", "agent-proposal", "weekly-pre-assembly", "m1-signal-scan", "scorecard",
+                  "workflow-receipt-sweep"}
 
 
 def manifest_entries() -> list[dict]:

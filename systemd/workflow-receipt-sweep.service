@@ -1,0 +1,15 @@
+# Receipts the platform rows the fleet's run-path producers cannot reach (T5.2, criterion 6):
+# one receipt per finished timer invocation, written from systemd's own record by
+# bin/receipt_sweep.py, never overwriting one the run itself wrote. Ships DISABLED — the
+# brief installs it with daemon-reload only; enabling it is Dave's resume, not a deploy step.
+[Unit]
+Description=Workflow receipt sweep — one receipt per finished timer invocation
+OnFailure=agent-alert@%n.service
+
+[Service]
+Type=oneshot
+User=dave
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+ExecStart=/home/dave/agent-workforce/bin/receipt_sweep.py
+TimeoutStartSec=15min
+NoNewPrivileges=true

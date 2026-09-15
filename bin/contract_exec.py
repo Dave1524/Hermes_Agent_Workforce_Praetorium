@@ -2,7 +2,8 @@
 """Contract executor (T5.1): run every check of a unit's contract for one run, write one receipt.
 
     contract_exec.py <unit> --vantage run|sweep [--artifact URI] [--state-change EVIDENCE]
-                     [--usage-json FILE] [--skipped REASON] [--parent-run-id ID]
+                     [--usage-json FILE] [--skipped REASON] [--failed REASON] [--decline REASON]
+                     [--run-id ID] [--parent-run-id ID]
                      [--handoff-actor A --handoff-recipient R --handoff-event E]
 
 Every ```check block under the contract's ## Acceptance checks runs as bash under `set -u`
@@ -12,9 +13,11 @@ and nothing else from this process. Exit 0 is `passed`, 77 `not_applicable`, any
 never omitted. The receipt lists every check the contract declares.
 
 Exactly one terminal outcome is derived, never defaulted: any failed check -> `failed`; else
-a fresh `^DECLINE:` line in the attempt log -> `decline`; else an artifact URI or state-change
-evidence -> `artifact`; else `failed` ("neither artifact nor decline"). `skipped` only when
-the caller says so. The receipt cannot be written without one (bin/workflow_receipt.py).
+a fresh `^DECLINE:` line in the attempt log (or the caller's --decline) -> `decline`; else an
+artifact URI or state-change evidence -> `artifact`; else `failed` ("neither artifact nor
+decline"). `skipped` only when the caller says so; --failed forces `failed` with the caller's
+reason first, and the checks still run so the receipt says what else was true. The receipt
+cannot be written without one (bin/workflow_receipt.py).
 
 Exit 0 when the outcome is artifact, decline or skipped; 1 when it is failed; 2 when the unit
 cannot be decided at all — no manifest row, kind = "service", contract_exempt, an unreadable
@@ -70,6 +73,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--state-change", metavar="EVIDENCE", help="state-change evidence instead of an artifact")
     p.add_argument("--usage-json", metavar="FILE", help="a `claude -p --output-format json` envelope")
     p.add_argument("--skipped", metavar="REASON", help="the run never happened; record why, run nothing")
+    p.add_argument("--failed", metavar="REASON", help="the producer already knows the run failed; checks still run")
+    p.add_argument("--decline", metavar="REASON", help="a decline the producer evidenced without a ^DECLINE: line")
+    p.add_argument("--run-id", metavar="ID", help="overrides INVOCATION_ID and every derived id")
     p.add_argument("--parent-run-id")
     p.add_argument("--handoff-actor")
     p.add_argument("--handoff-recipient")
@@ -148,6 +154,7 @@ class Run:
                                         or self.home / "agent-workforce" / "logs" / "last-attempt" / f"{self.unit}.log")
         self.vault = pathlib.Path(os.path.realpath(args.vault or env.get("VAULT") or self.home / "vault"))
         self.invocation_id = env.get("INVOCATION_ID")
+        self.explicit_run_id = args.run_id
 
     def systemctl(self) -> str:
         return "systemctl --user" if self.scope == "user" else "systemctl"
@@ -252,11 +259,11 @@ def fresh_decline(run: Run) -> str | None:
 
 
 def terminal_outcome(assertions: list[dict[str, Any]], decline: str | None, has_evidence: bool,
-                     skipped: str | None) -> dict[str, Any]:
+                     skipped: str | None, forced_failure: str | None = None) -> dict[str, Any]:
     if skipped is not None:
         return {"outcome": "skipped", "reason": skipped}
-    reasons = []
-    if not decline and not has_evidence:
+    reasons = [forced_failure] if forced_failure else []
+    if not decline and not has_evidence and not forced_failure:
         reasons.append("neither artifact nor decline")
     failed = [a["id"] for a in assertions if a["status"] == "failed"]
     if failed:
@@ -276,6 +283,8 @@ def run_identity(run: Run, env: dict[str, str]) -> str:
     service's current InvocationID; an inactive service answers empty, and the fallback then
     names the sweep rather than borrowing a run id that is not this one's.
     """
+    if run.explicit_run_id:
+        return run.explicit_run_id
     if run.vantage == "sweep":
         cmd = run.systemctl().split() + ["show", f"{run.unit}.service", "-p", "InvocationID", "--value"]
         try:
@@ -365,8 +374,8 @@ def execute(args: argparse.Namespace) -> int:
     else:
         assertions = [run_check(check, env, run.vantage, run.home if run.home.is_dir() else pathlib.Path.cwd())
                       for check in declared_checks(contract_text)]
-    terminal = terminal_outcome(assertions, fresh_decline(run), bool(args.artifact or args.state_change),
-                                args.skipped)
+    terminal = terminal_outcome(assertions, args.decline or fresh_decline(run),
+                                bool(args.artifact or args.state_change), args.skipped, args.failed)
     receipt = build_receipt(run, run_identity(run, env), assertions, terminal, args, contract_text)
     path = workflow_receipt.write(receipt, args.receipt_root)
     print_table(receipt, path)

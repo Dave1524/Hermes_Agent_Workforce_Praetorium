@@ -134,9 +134,15 @@ ls ~/.hermes/profiles/                              # the Hermes profiles below
   `skipped` — derived from the contract's check results and the run's own attempt log, never
   defaulted to success: a receipt with no outcome cannot be written. `usage` and `cost` are
   `measured` or `unavailable`, and `unavailable` is a value the Control Room renders, not an
-  absence — its token and amount fields are null, never 0. Not to be confused with the two
-  other "receipt" files: `bin/delivery_receipt.py` (Buzz delivery, JSONL) and
-  `bin/run_record.sh` (`cost.log` records).
+  absence — its token and amount fields are null, never 0. Four producers write it (T5.2,
+  2026-09-15), decided by what systemd execs: `bin/agent_propose.sh` (its own run, every
+  exit path), `bin/content_change_dispatch.sh` (its tick, handing the child its run ids),
+  `bin/receipt_sweep.py` (every other standing timer, from systemd's record, under the
+  shipped-disabled `workflow-receipt-sweep.timer`) and `bin/interaction_receipt.py` (each
+  `buzz-agent@*` turn, from the Claude Code Stop hook or codex `notify`);
+  `tests/test_receipt_coverage.sh` proves every standing row has exactly one. Not to be
+  confused with the two other "receipt" files: `bin/delivery_receipt.py` (Buzz delivery,
+  JSONL) and `bin/run_record.sh` (`cost.log` records).
 - `control-room.service` — the **Control Room** (T5.3, 2026-09-14), serving
   `http://praetorium:8787/` from `bin/control_room_api.py` + `bin/control_room_ui/`. Reads only;
   binds the Tailscale address only (`bin/control_room_serve.sh` refuses to start without one);
