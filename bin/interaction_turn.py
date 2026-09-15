@@ -14,7 +14,9 @@ from typing import Any
 
 import workflow_receipt
 
-SEND_COMMAND = "buzz messages send"
+# In command position only — at the start, after a shell separator, `exec` or `$(`, with an
+# optional path prefix — so a grep or an echo that mentions the string is not a send.
+SEND_INVOCATION = re.compile(r"(?:^|[;&|(\n]\s*|\bexec\s+|\$\(\s*)(?:[\w~./-]*/)?buzz\s+messages\s+send\b")
 EVENT_ID = re.compile(r'"event_id"\s*:\s*"([0-9a-f]{64})"')
 SILENCE = ("no buzz messages send in this turn — deliberate silence or a reply that never "
            "published; the transcript cannot tell which")
@@ -40,7 +42,7 @@ class Turn:
 
 
 def is_send(command: str) -> bool:
-    return SEND_COMMAND in command
+    return SEND_INVOCATION.search(command) is not None
 
 
 def event_id_in(output: str) -> str | None:

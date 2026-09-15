@@ -35,6 +35,7 @@ Scheduled **proposal** agent jobs share `bin/agent_propose.sh` (lock, preflight,
 | Daily plan (ops) | **Mon–Fri 06:00** | `praetorium-daily-plan.{service,timer}` | `~/.config/agent-workforce/daily_plan.env` | `profiles/daily_plan_task.md` | *(headless Claude Code)* |
 | EOD summary (ops) | daily **22:15** | `praetorium-eod-summary.{service,timer}` | `~/.config/agent-workforce/eod_summary.env` | `profiles/eod_summary_task.md` | *(headless Claude Code)* |
 | Agent inbox → Notion sync | `agent-inbox-sync.timer` | `agent-inbox-sync.{service,timer}` | *(service embeds the pipeline cmd)* | n/a | n/a |
+| Workflow receipt sweep (no LLM; T5.2) | daily **05:50** — **shipped disabled**, `systemctl is-enabled workflow-receipt-sweep.timer` reads `disabled` until Dave enables it | `workflow-receipt-sweep.{service,timer}` | n/a | `bin/receipt_sweep.py` — one receipt per finished platform invocation, from systemd's own record | n/a |
 
 **Two rows above were corrected 2026-09-02 (W1).** They named `profiles/weekly_pre_assembly_task.md`
 and `profiles/overnight_morning_report_task.md` — both archived to `profiles/archive/` on 2026-09-01 —
@@ -215,6 +216,11 @@ Two consequences that are correct and will still surprise:
 - **A campaign exclusion expiring turns the gate red on a calendar, with no commit.** The two
   content-research campaigns expire 2026-09-03 23:00 and 2026-09-04 01:30; after that their
   `/etc` units are red until they are deleted from `/etc` (brief 6 owns that).
+
+**`workflow-receipt-sweep.timer` is installed like any other unit and then NOT enabled** —
+`sudo cp` + `daemon-reload` only, no `enable --now`; `tests/test_receipt_sweep.sh`'s
+`sweep-unit-ships-disabled` asserts no step in the repo enables it, and the first
+`systemctl enable` is Dave's from the Control Room, not a deploy step.
 
 Deploy a unit after changing `systemd/`:
 
@@ -462,6 +468,13 @@ The five `buzz-agent@*` `--user` units. Their **mechanism** files have a source 
 (`buzz-team/`) as of 2026-09-03; their **charters** do not and will not — those live in the
 deny-listed `~/.config/buzz-agents/` tree, and `profile_in_repo = false` in each manifest is
 how that is declared rather than assumed.
+
+Every turn is receipted (T5.2): `buzz-team/agent-settings.json` declares a Claude Code `Stop`
+hook running `bin/interaction_receipt.py`, which reads the turn from the transcript and writes
+one receipt under `var/workflow-receipts/buzz-agent@<name>/`; augustus, on codex-acp, gets the
+same writer from codex `notify` (`--codex-notify`, in `~/.config/codex-agents/augustus/config.toml`,
+outside this repo). The hook never blocks a stop: exit 0 on every path, nothing on stdout, one
+line in `logs/interaction_receipt.log`.
 
 ### The loop
 

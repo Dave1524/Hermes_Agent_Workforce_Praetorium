@@ -43,6 +43,8 @@ def load(name):
 
 receipt = load("workflow_receipt")
 api = load("control_room_api")
+sys.path.insert(0, str(ROOT / "bin"))
+import interaction_turn as turn  # noqa: E402 — a dataclass module must be imported, not exec'd
 
 
 class Sandbox:
@@ -155,6 +157,17 @@ class StopHookTest(unittest.TestCase):
                                         "output_tokens": 40 + 60 + 20,
                                         "cache_tokens": (300 + 5000) + 6500 + 7800,
                                         "total_tokens": 3900 + 120 + 19600})
+
+    def test_send_is_a_command_not_a_mention(self):
+        # (::interaction-send-is-a-command) — a grep or an echo that names the string is not a
+        # send; the invocation must sit in command position, path prefix allowed
+        for command in ('buzz messages send --channel c --content hi', 'cd ~ && buzz messages send --channel c',
+                        '~/.local/bin/buzz messages send --channel c', 'out=$(buzz messages send --channel c)',
+                        'buzz feed get --limit 5; buzz messages send --channel c'):
+            self.assertTrue(turn.is_send(command), command)
+        for command in ('grep -n "buzz messages send" ~/x.log', 'echo "buzz messages send"',
+                        'buzz messages get --channel c', 'buzz messages sender'):
+            self.assertFalse(turn.is_send(command), command)
 
     def test_never_blocks_stop(self):
         # (::interaction-never-blocks-stop)
