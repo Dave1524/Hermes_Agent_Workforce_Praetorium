@@ -252,8 +252,9 @@ class GitGuard(TempState):
                                                 capture_output=True, text=True).stdout)
 
     def test_sources_carry_no_forbidden_argv(self):
-        forbidden = [r"pr merge", r"--force", r"push\s*\+", r"systemctl.*\b(enable|disable|start|stop|restart)\b",
-                     r"\bmask\b"]
+        forbidden = [r"""["']pr["'],\s*["']merge["']""", r"""["']--force["']""", r"""["']push["'],\s*["']\+""",
+                     r"""["']systemctl["'].*["'](enable|disable|start|stop|restart|mask|unmask|daemon-reload)["']""",
+                     r"""["']--no-verify["']"""]
         for relative in GUARDED_SOURCES:
             path = ROOT / relative
             if not path.exists():
