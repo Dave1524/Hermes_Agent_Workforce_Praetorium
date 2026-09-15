@@ -1,0 +1,10 @@
+# The sweep's own manifest row, for tests/test_receipt_sweep.py: the LIVE contract, so the
+# suite proves design/contracts/workflow-receipt-sweep.md's run check over a real sweep.
+name = "trajan"
+
+[[workflows]]
+unit     = "workflow-receipt-sweep"
+contract = "design/contracts/workflow-receipt-sweep.md"
+surface  = "platform"
+status   = "standing"
+trigger  = "fixture"

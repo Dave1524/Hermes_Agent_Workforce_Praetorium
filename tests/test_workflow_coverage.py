@@ -357,7 +357,7 @@ if entries and contract_checked < len(entries):
             f"checked {contract_checked} of {len(entries)} entries — the join skipped some")
 
 # --- standing reconciliation (T4.5) ---------------------------------------------------
-# 31 entries are 30 workflows: a logical_workflow field folds a second trigger into the
+# 32 entries are 31 workflows: a logical_workflow field folds a second trigger into the
 # entry it triggers (content-change-dispatch -> augustus-content). The fold is declared,
 # never inferred, so the only unexplained duplicate left is a unit name declared twice —
 # and a fold is honest only if its key is a declared unit and every trigger of one

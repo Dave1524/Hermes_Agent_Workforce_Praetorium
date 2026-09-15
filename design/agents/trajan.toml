@@ -176,6 +176,25 @@ alerted = true                   # wired 2026-09-01 (D2)
 in_repo = true
 
 [[workflows]]
+unit = "workflow-receipt-sweep"
+contract = "design/contracts/workflow-receipt-sweep.md"
+surface = "platform"
+status = "standing"
+suite    = ["tests/test_receipt_sweep.sh"]
+skills   = []
+trigger = "daily 05:50"
+runner = "bin/receipt_sweep.py"
+what = "one receipt per finished timer invocation, from systemd's record — ships disabled (T5.2)"
+route = "ops"
+alerted = true
+in_repo = true
+notes = """
+T5.2 criterion 6. Platform rows have no receipt seam of their own, so the sweep writes theirs
+from `systemctl show`; a run-path receipt is never overwritten and a paused timer writes
+nothing. The timer is installed with daemon-reload only and enabled at Dave's resume.
+"""
+
+[[workflows]]
 unit = "qmd-refresh"
 contract = "design/contracts/qmd-refresh.md"
 surface = "platform"

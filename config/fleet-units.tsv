@@ -84,5 +84,6 @@ praetorium-eod-summary	system	standing	marcus	timer
 qmd-refresh	system	standing	trajan	timer
 raw-ingest	system	standing	claudius	timer
 scorecard	system	standing	trajan	timer
+workflow-receipt-sweep	system	standing	trajan	timer
 ttm-pool-drain	system	standing	trajan	timer
 weekly-pre-assembly	system	standing	marcus	timer

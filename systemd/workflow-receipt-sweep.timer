@@ -1,0 +1,12 @@
+# Daily 05:50, before daily-plan (06:00) and the morning report (06:15), so the morning
+# read sees yesterday's receipts. Persistent, so a missed 05:50 fires at boot. The [Install]
+# section makes the timer enable-able; nothing in bin/, tests/ or systemd/ enables it.
+[Unit]
+Description=Schedule the workflow receipt sweep daily at 05:50
+
+[Timer]
+OnCalendar=*-*-* 05:50
+Persistent=true
+
+[Install]
+WantedBy=timers.target
