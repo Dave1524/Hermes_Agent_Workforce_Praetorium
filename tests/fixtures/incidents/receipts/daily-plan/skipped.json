@@ -1,0 +1,40 @@
+{
+  "agent": "marcus",
+  "artifact": null,
+  "assertions": [
+    {
+      "id": "artifact-exists",
+      "message": "the run never happened",
+      "status": "not_applicable"
+    }
+  ],
+  "cost": {
+    "amount": null,
+    "confidence": null,
+    "currency": null,
+    "source": null,
+    "status": "unavailable"
+  },
+  "ended_at": "2026-09-14T06:00:01Z",
+  "handoff": null,
+  "model": null,
+  "next_action": null,
+  "parent_run_id": null,
+  "run_id": "skipped-2026-09-14",
+  "schema_version": 1,
+  "started_at": "2026-09-14T06:00:00Z",
+  "state_change": null,
+  "terminal": {
+    "outcome": "skipped",
+    "reason": "lock held"
+  },
+  "unit": "praetorium-daily-plan",
+  "usage": {
+    "cache_tokens": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "status": "unavailable",
+    "total_tokens": null
+  },
+  "workflow_id": "daily-plan"
+}

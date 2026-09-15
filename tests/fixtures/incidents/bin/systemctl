@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Fake systemctl for tests/test_incident_notify.py, answering the read model's multi-property
+# `systemctl show <unit> --no-pager --timestamp=utc --property=A --property=B ...` with one
+# `Key=Value` line per property, read from $FAKE_SYSTEMD_STATE/<unit>/<Key> (empty when the
+# file is absent). The T5.1 fake (tests/fixtures/contract-exec/bin/systemctl) answers one
+# property per call and prints the bare value, which bin/control_room_api.py's parser cannot
+# read, so it is not reused here. `--user` exits 1 with the same message the API tests use.
+set -u
+state="${FAKE_SYSTEMD_STATE:?}"
+if [ "${1:-}" = "--user" ]; then echo "user bus unavailable in fixture" >&2; exit 1; fi
+printf '%s\n' "$*" >> "$state/calls.log"
+[ "${1:-}" = show ] || { echo "fake systemctl: unsupported call: $*" >&2; exit 1; }
+unit=$2; shift 2
+for arg in "$@"; do
+  case "$arg" in
+    --property=*) key=${arg#--property=}
+      if [ -f "$state/$unit/$key" ]; then printf '%s=%s\n' "$key" "$(cat "$state/$unit/$key")"
+      else printf '%s=\n' "$key"; fi ;;
+  esac
+done
+exit 0

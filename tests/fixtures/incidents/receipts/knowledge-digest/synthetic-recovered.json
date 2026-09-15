@@ -1,0 +1,47 @@
+{
+  "agent": "claudius",
+  "artifact": {
+    "title": "2026-09-14 knowledge digest",
+    "uri": "file:///home/dave/agent-worktrees/inbox/_inbox/agents/2026-09-14_knowledge-digest.md"
+  },
+  "assertions": [
+    {
+      "id": "artifact-exists",
+      "message": "ok",
+      "status": "passed"
+    }
+  ],
+  "cost": {
+    "amount": null,
+    "confidence": null,
+    "currency": null,
+    "source": null,
+    "status": "unavailable"
+  },
+  "ended_at": "2026-09-14T09:04:00Z",
+  "handoff": null,
+  "model": null,
+  "next_action": {
+    "action": "Promote from the inbox",
+    "actor": "Dave",
+    "due_at": null
+  },
+  "parent_run_id": null,
+  "run_id": "synthetic-recovered-2026-09-14",
+  "schema_version": 1,
+  "started_at": "2026-09-14T09:00:00Z",
+  "state_change": null,
+  "terminal": {
+    "outcome": "artifact",
+    "reason": null
+  },
+  "unit": "knowledge-digest",
+  "usage": {
+    "cache_tokens": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "status": "unavailable",
+    "total_tokens": null
+  },
+  "workflow_id": "knowledge-digest"
+}

@@ -69,3 +69,4 @@ bd-followup-drafts.service	bd	file	wired	allowed	none
 m1-signal-scan.service	signals	status	wired	never	none
 agent-inbox-sync.service	approvals	summary	wired	allowed	none
 inbox-backlog-alert.service	approvals	summary	wired	allowed	none
+workflow-incidents.service	incidents	summary	wired	allowed	none

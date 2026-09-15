@@ -32,8 +32,8 @@ EXEC_START = re.compile(r"^ExecStart=(\S+)", re.MULTILINE)
 
 SELF_RECEIPTING = {"agent_propose.sh": "scheduled", "content_change_dispatch.sh": "dispatch",
                    "receipt_sweep.py": "sweep-self"}
-EXPECTED_TALLY = {"scheduled": 11, "dispatch": 1, "sweep": 14, "sweep-self": 1, "interaction": 5}
-LOGICAL_WORKFLOWS = 31
+EXPECTED_TALLY = {"scheduled": 11, "dispatch": 1, "sweep": 15, "sweep-self": 1, "interaction": 5}
+LOGICAL_WORKFLOWS = 32
 
 
 def load(name):

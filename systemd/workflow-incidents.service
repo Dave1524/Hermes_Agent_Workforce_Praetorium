@@ -1,0 +1,24 @@
+# workflow-incidents.service — T5.3c.
+# Model-free (no LLM, no OpenRouter spend): sweeps the Control Room read model for
+# actionable workflow incidents and posts each once to the Buzz `incidents` stream via
+# bin/deliver.sh, plus a recovery when it clears and one digest a day while any stay open.
+# Silent when nothing is wrong. Ships DISABLED — installed with daemon-reload only; enabling
+# the timer and filling ROUTE_incidents in bin/buzz_routes.env are Dave's calls, not deploy
+# steps. Shape copied from inbox-backlog-alert.service (plain bin runner + OnFailure alert).
+[Unit]
+Description=Actionable workflow incidents → Buzz incidents stream (T5.3c)
+After=network-online.target
+Wants=network-online.target
+OnFailure=agent-alert@%n.service
+
+[Service]
+Type=oneshot
+User=dave
+Environment=DELIVERY_ROUTE=incidents
+Environment=DELIVERY_JOB=%n
+Environment=DELIVERY_RUNTIME=none
+Environment=CONTROL_ROOM_REPO_ROOT=/home/dave/dev/agent-workforce
+Environment=INCIDENT_LINK_TEMPLATE=http://praetorium:8787/api/v1/incidents#{key}
+ExecStart=/home/dave/agent-workforce/bin/deliver_incidents.sh
+TimeoutStartSec=4min
+NoNewPrivileges=true
