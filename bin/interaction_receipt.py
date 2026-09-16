@@ -14,7 +14,8 @@ never write to stdout (a Stop hook's stdout is read by the harness), never exit 
 (a failing Stop hook blocks the stop), never log or print an environment value (the
 agent's process carries its Nostr key). The unit comes from INTERACTION_RECEIPT_UNIT or
 from /proc/self/cgroup; a heartbeat prompt (~/.config/buzz-team/heartbeat.prompt) is not
-a turn and gets no receipt.
+a turn and gets no receipt. Claude Code sees the heartbeat verbatim; codex-acp hands it
+over with the <base> layer prepended in the same user message, so the match is on the tail.
 """
 from __future__ import annotations
 
@@ -80,7 +81,7 @@ def heartbeat_text() -> str:
 
 def refuse_heartbeat(prompt: str | None) -> None:
     heartbeat = heartbeat_text()
-    if prompt is not None and heartbeat and prompt.strip() == heartbeat:
+    if prompt is not None and heartbeat and prompt.strip().endswith(heartbeat):
         raise NoReceipt("heartbeat: no receipt")
 
 
