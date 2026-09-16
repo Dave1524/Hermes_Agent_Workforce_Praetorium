@@ -45,12 +45,14 @@ from control_room_view_workflow import render_run, render_workflow  # noqa: E402
 from control_room_views import not_found  # noqa: E402
 from control_room_state import (  # noqa: E402
     ACTION_IDS,
+    ACTIVE_STATES,
     control_for,
     fold_cadence,
     health as health_of,
     last_valid_artifact,
     links_for,
     no_cadence,
+    role_of,
     trigger_state,
 )
 
@@ -229,18 +231,30 @@ class ControlRoomReadModel:
         self.retry_policy = retry_policy
         self.static_dir = static_dir or pathlib.Path(__file__).resolve().parent / "control_room_ui"
 
-    def _manifests(self) -> tuple[list[dict[str, Any]], list[str]]:
-        rows: list[dict[str, Any]] = []
+    def _manifest_docs(self) -> tuple[list[tuple[pathlib.Path, dict[str, Any]]], list[str]]:
+        docs: list[tuple[pathlib.Path, dict[str, Any]]] = []
         errors: list[str] = []
         manifest_dir = self.paths.repo / "design" / "agents"
         if not manifest_dir.is_dir():
             return [], [f"manifest directory unavailable: {manifest_dir}"]
         for path in sorted(manifest_dir.glob("*.toml")):
             try:
-                data = tomllib.loads(path.read_text())
+                docs.append((path, tomllib.loads(path.read_text())))
             except (OSError, tomllib.TOMLDecodeError) as exc:
                 errors.append(f"{path.name}: {type(exc).__name__}: {exc}")
-                continue
+        return docs, errors
+
+    def _personas(self) -> list[dict[str, Any]]:
+        """One per design/agents/*.toml — the persona, whether or not it owns a workflow."""
+        docs, _ = self._manifest_docs()
+        return [{"name": str(data.get("name") or path.stem), "title": data.get("role"),
+                 "harness": data.get("harness"), "manifest": str(path.relative_to(self.paths.repo))}
+                for path, data in docs]
+
+    def _manifests(self) -> tuple[list[dict[str, Any]], list[str]]:
+        rows: list[dict[str, Any]] = []
+        docs, errors = self._manifest_docs()
+        for path, data in docs:
             owner = str(data.get("name") or path.stem)
             for workflow in data.get("workflows", []):
                 if not isinstance(workflow, dict) or not workflow.get("unit"):
@@ -439,6 +453,7 @@ class ControlRoomReadModel:
                     f"{contract.get('beneficiary') or 'its beneficiary'}"
                 )
             cadence = fold_cadence(triggers)
+            surface = triggers[0]["surface"]
             last_valid = last_valid_artifact(workflow_receipts, self.clock())
             benefit = benefit_row({"id": logical_id, "contract": contract}, workflow_receipts,
                                   (ledger or {}).get(logical_id))
@@ -448,6 +463,9 @@ class ControlRoomReadModel:
                 "owners": owner_set,
                 "owner": owner_set[0] if len(owner_set) == 1 else None,
                 "purpose": purpose,
+                "surface": surface,
+                "role": role_of(surface),
+                "requiredBy": [],
                 "lifecycle": group[0].get("status", "unknown"),
                 "health": health_of(latest, triggers),
                 "manifestPaths": sorted({str(entry["manifest"]) for entry in group}),
@@ -538,12 +556,17 @@ class ControlRoomReadModel:
         }
 
     def list_workflows(self, query: dict[str, list[str]]) -> dict[str, Any]:
+        """Runtimes (`agent-runtime`) leave the list here and only here: the read model is the
+        registry every other consumer reads, and `?role=all` is the `?lifecycle=all` convention."""
         include_nonstanding = query.get("lifecycle") == ["all"]
         items, status = self.workflows(include_nonstanding=include_nonstanding)
+        if not query.get("role"):
+            items = [item for item in items if item["role"] != "agent-runtime"]
         exact_filters = {
             "health": "health",
             "agent": "owner",
             "lifecycle": "lifecycle",
+            "role": "role",
         }
         for parameter, field in exact_filters.items():
             wanted = query.get(parameter, [])
@@ -672,21 +695,7 @@ class ControlRoomReadModel:
         items: list[dict[str, Any]] = []
         for owner in owners:
             owner_receipts = by_owner.get(owner, [])
-            measured_usage = [r["usage"] for r in owner_receipts if (r.get("usage") or {}).get("status") == "measured"]
-            measured_cost = [r["cost"] for r in owner_receipts if (r.get("cost") or {}).get("status") == "measured"]
-            usage = {"status": "unavailable", "inputTokens": None, "outputTokens": None, "cacheTokens": None, "totalTokens": None}
-            if measured_usage:
-                usage = {
-                    "status": "measured",
-                    "inputTokens": sum(int(value.get("input_tokens") or 0) for value in measured_usage),
-                    "outputTokens": sum(int(value.get("output_tokens") or 0) for value in measured_usage),
-                    "cacheTokens": sum(int(value.get("cache_tokens") or 0) for value in measured_usage),
-                    "totalTokens": sum(int(value.get("total_tokens") or 0) for value in measured_usage),
-                }
-            currencies = {value.get("currency") for value in measured_cost}
-            cost: dict[str, Any] = {"status": "unavailable", "amount": None, "currency": None}
-            if measured_cost and len(currencies) == 1:
-                cost = {"status": "measured", "amount": round(sum(float(value.get("amount") or 0) for value in measured_cost), 8), "currency": currencies.pop()}
+            usage, cost = self._sum_measured(owner_receipts)
             items.append({"agent": owner, "runCount": len(owner_receipts), "usage": usage, "cost": cost})
         status = {
             "receipts": "available" if not source_errors and not malformed else "degraded",
@@ -695,12 +704,89 @@ class ControlRoomReadModel:
         }
         return self._envelope(items, status)
 
+    @staticmethod
+    def _sum_measured(receipts: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Sums over measured receipts only; none measured reads unavailable with null fields, never 0."""
+        measured_usage = [r["usage"] for r in receipts if (r.get("usage") or {}).get("status") == "measured"]
+        measured_cost = [r["cost"] for r in receipts if (r.get("cost") or {}).get("status") == "measured"]
+        usage: dict[str, Any] = {"status": "unavailable", "inputTokens": None, "outputTokens": None,
+                                 "cacheTokens": None, "totalTokens": None}
+        if measured_usage:
+            usage = {
+                "status": "measured",
+                "inputTokens": sum(int(value.get("input_tokens") or 0) for value in measured_usage),
+                "outputTokens": sum(int(value.get("output_tokens") or 0) for value in measured_usage),
+                "cacheTokens": sum(int(value.get("cache_tokens") or 0) for value in measured_usage),
+                "totalTokens": sum(int(value.get("total_tokens") or 0) for value in measured_usage),
+            }
+        currencies = {value.get("currency") for value in measured_cost}
+        cost: dict[str, Any] = {"status": "unavailable", "amount": None, "currency": None}
+        if measured_cost and len(currencies) == 1:
+            cost = {"status": "measured", "amount": round(sum(float(value.get("amount") or 0) for value in measured_cost), 8),
+                    "currency": currencies.pop()}
+        return usage, cost
+
     def benefit(self) -> dict[str, Any]:
         workflows, status = self.workflows()
         return self._envelope([workflow["benefit"] for workflow in workflows], status)
 
-    def overview(self) -> dict[str, Any]:
+    TURN_WINDOW_DAYS = 7
+
+    def _runtime_of(self, row: dict[str, Any] | None) -> dict[str, Any]:
+        """The agent's runtime from its `interactive` row: systemd's ActiveState as printed, `unknown`
+        when the bus answered nothing; `since` is the start when active, else the last exit."""
+        if row is None:
+            return {"unit": None, "scope": None, "state": "unknown", "since": None}
+        trigger = row["triggers"][0]
+        service = trigger["systemd"]["service"]
+        state = service["activeState"] if trigger["systemd"]["status"] == "available" else "unknown"
+        since = service["startedAt"] if state in ACTIVE_STATES else service["endedAt"]
+        return {"unit": trigger["unit"], "scope": trigger["scope"], "state": state, "since": since}
+
+    def _agent_items(self, workflows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        receipts, _, _ = self.receipts()
+        floor = self.clock() - dt.timedelta(days=self.TURN_WINDOW_DAYS)
+        items: list[dict[str, Any]] = []
+        for persona in sorted(self._personas(), key=lambda value: value["name"]):
+            name = persona["name"]
+            runtime_row = next((w for w in workflows if w["role"] == "agent-runtime" and w["id"] == f"buzz-agent@{name}"), None)
+            turns = [r for r in receipts if r.get("vantage") == "interaction" and r.get("workflow_id") == f"buzz-agent@{name}"]
+            recent = [r for r in turns if (parse_time(r.get("ended_at")) or floor) > floor]
+            usage, cost = self._sum_measured(recent)
+            items.append({
+                **persona,
+                "runtime": self._runtime_of(runtime_row),
+                "health": runtime_row["health"] if runtime_row else "unknown",
+                "lastTurn": self._run_summary(turns[0]) if turns else None,
+                "turns7d": len(recent),
+                "usage7d": usage,
+                "cost7d": cost,
+                "ownedWorkflows": [{"id": w["id"], "role": w["role"]} for w in workflows
+                                   if name in w["owners"] and w["role"] != "agent-runtime"],
+                "requiredBy": list(runtime_row["requiredBy"]) if runtime_row else [],
+            })
+        return items
+
+    def agents(self) -> dict[str, Any]:
         workflows, status = self.workflows()
+        return self._envelope(self._agent_items(workflows), status)
+
+    def agent_detail(self, name: str) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+        envelope = self.agents()
+        return next((item for item in envelope["items"] if item["name"] == name), None), envelope["dataStatus"]
+
+    @staticmethod
+    def _agent_summary(agents: list[dict[str, Any]]) -> dict[str, int]:
+        buckets = {"total": len(agents), "up": 0, "down": 0, "unknown": 0}
+        for agent in agents:
+            state = agent["runtime"]["state"]
+            buckets["up" if state in ACTIVE_STATES else "unknown" if state == "unknown" else "down"] += 1
+        return buckets
+
+    def overview(self) -> dict[str, Any]:
+        every_row, status = self.workflows()
+        workflows = [workflow for workflow in every_row if workflow["role"] != "agent-runtime"]
+        agents = self._agent_summary(self._agent_items(every_row))
         incidents = [item for item in self.incidents()["items"] if item["status"] == "open"]
         counts = defaultdict(int)
         for workflow in workflows:
@@ -722,6 +808,7 @@ class ControlRoomReadModel:
                 "paused": counts["paused"],
                 "unknown": counts["unknown"],
                 "incompleteRuns": sum(len(w["incompleteRuns"]) for w in workflows) + counts["running"],
+                "agents": agents,
             },
             "needsAttention": incidents,
             "recentOutputs": outputs,
@@ -836,7 +923,7 @@ class ControlRoomHandler(BaseHTTPRequestHandler):
         elif segments == ["exceptions"]:
             self._html(HTTPStatus.OK, render_exceptions(model.exceptions(), model.overview(), model.incidents()), head_only)
         elif segments == ["portfolio"]:
-            self._html(HTTPStatus.OK, render_portfolio(model.list_workflows({})), head_only)
+            self._html(HTTPStatus.OK, render_portfolio(model.list_workflows({"role": ["all"]})), head_only)
         elif segments == ["benefit"]:
             self._html(HTTPStatus.OK, render_benefit(model.benefit()), head_only)
         elif len(segments) == 2 and segments[0] == "workflows":
@@ -950,6 +1037,16 @@ class ControlRoomHandler(BaseHTTPRequestHandler):
             item, status = self.model.run_detail(segments[3])
             if item is None:
                 self._json(HTTPStatus.NOT_FOUND, {"error": "run not found"}, head_only)
+            else:
+                self._json(HTTPStatus.OK, self.model._envelope(item, status), head_only)
+            return
+        if segments == ["api", API_VERSION, "agents"]:
+            self._json(HTTPStatus.OK, self.model.agents(), head_only)
+            return
+        if len(segments) == 4 and segments[:3] == ["api", API_VERSION, "agents"]:
+            item, status = self.model.agent_detail(segments[3])
+            if item is None:
+                self._json(HTTPStatus.NOT_FOUND, {"error": "agent not found"}, head_only)
             else:
                 self._json(HTTPStatus.OK, self.model._envelope(item, status), head_only)
             return

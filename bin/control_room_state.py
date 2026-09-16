@@ -25,6 +25,22 @@ ACTIVE_STATES = {"active", "activating", "reloading"}
 PAUSED_STATES = {"inactive", "deactivating"}
 CONTROL_STATES = ("paused", "active", "running", "unknown")
 ACTION_IDS = ("pause", "resume", "run_now", "retry", "stop")
+ROLES = ("agent-workflow", "system-workflow", "agent-runtime")
+ROLE_OF_SURFACE = {
+    "scheduled": "agent-workflow",
+    "buzz_dispatch": "agent-workflow",
+    "platform": "system-workflow",
+    "interactive": "agent-runtime",
+}
+
+
+def role_of(surface: Any) -> str:
+    """The row's role, from its manifest surface. A surface outside the vocabulary raises rather
+    than reading as a fourth role: `unknown` here would be a row the screen files nowhere."""
+    try:
+        return ROLE_OF_SURFACE[surface]
+    except KeyError:
+        raise ValueError(f"surface {surface!r} has no role; expected one of {sorted(ROLE_OF_SURFACE)}") from None
 
 
 def service_running(systemd: dict[str, Any]) -> bool:

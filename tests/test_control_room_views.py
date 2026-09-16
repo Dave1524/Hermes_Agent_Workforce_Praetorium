@@ -93,10 +93,41 @@ class ThirtyOfThirtyOne(ServedCase):  # (::control-room-30-of-31)
         self.assertEqual(len(set(ids)), LOGICAL_WORKFLOWS)
         augustus = rows(html)["augustus-content"]
         self.assertEqual(len(re.findall(r'class="chip[^"]*trigger-state', augustus)), 2)
+        roles = dict(re.findall(r'<tr[^>]*\bdata-workflow="([^"]+)"[^>]*\bdata-role="([^"]+)"', html))
+        self.assertEqual(set(roles), set(ids))
+        self.assertEqual(set(roles.values()), {"agent-workflow", "system-workflow", "agent-runtime"})
+        self.assertEqual(roles["augustus-content"], "agent-workflow")
+        self.assertEqual(roles["fleet-turn-check"], "system-workflow")
+        self.assertEqual(roles["buzz-agent@aurelian"], "agent-runtime")
         for workflow_id, row in rows(html).items():
             cell = re.search(r'<td[^>]*data-cell="artifact"[^>]*>(.*?)</td>', row, re.DOTALL)
             self.assertIsNotNone(cell, workflow_id)
             self.assertTrue(re.sub(r"<[^>]+>", "", cell.group(1)).strip(), workflow_id)
+
+
+class AgentsApi(ServedCase):  # (::control-room-agents)
+    def test_five_agents_four_up_and_an_unreachable_bus_is_unknown(self):
+        status, _, body = get(self.base, "/api/v1/agents")
+        self.assertEqual(status, 200)
+        items = json.loads(body)["items"]
+        self.assertEqual([item["name"] for item in items], ["augustus", "aurelian", "claudius", "marcus", "trajan"])
+        states = {item["name"]: item["runtime"]["state"] for item in items}
+        self.assertEqual(states, {"augustus": "active", "aurelian": "unknown", "claudius": "active",
+                                  "marcus": "active", "trajan": "active"})
+        for item in items:
+            self.assertEqual(item["runtime"]["unit"], f"buzz-agent@{item['name']}")
+            self.assertEqual(item["runtime"]["scope"], "user")
+            self.assertNotIn("agent-runtime", {owned["role"] for owned in item["ownedWorkflows"]})
+        trajan = next(item for item in items if item["name"] == "trajan")
+        self.assertIn({"id": "fleet-turn-check", "role": "system-workflow"}, trajan["ownedWorkflows"])
+        _, _, overview = get(self.base, "/api/v1/overview")
+        summary = json.loads(overview)["summary"]
+        self.assertEqual(summary["agents"], {"total": 5, "up": 4, "down": 0, "unknown": 1})
+        self.assertEqual(summary["workflows"], LOGICAL_WORKFLOWS - 5)
+        _, _, listed = get(self.base, "/api/v1/workflows")
+        self.assertEqual(len(json.loads(listed)["items"]), LOGICAL_WORKFLOWS - 5)
+        _, _, everything = get(self.base, "/api/v1/workflows?role=all")
+        self.assertEqual(len(json.loads(everything)["items"]), LOGICAL_WORKFLOWS)
 
 
 class ExceptionsDefault(ServedCase):  # (::control-room-exceptions-default)
