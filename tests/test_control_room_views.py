@@ -100,10 +100,19 @@ class ThirtyOfThirtyOne(ServedCase):  # (::control-room-30-of-31)
 
 
 class ExceptionsDefault(ServedCase):  # (::control-room-exceptions-default)
-    def test_root_redirects_to_exceptions(self):
+    def test_root_redirects_to_the_app_shell(self):
         status, headers = get_no_redirect(self.base, "/")
         self.assertEqual(status, 302)
-        self.assertEqual(headers["Location"], "/exceptions")
+        self.assertEqual(headers["Location"], "/app/")
+
+    def test_app_shell_leads_with_the_exceptions_queue(self):
+        shell = self.html("/app/")
+        self.assertIn('<div id="root">', shell)
+        self.assertIn('src="/app/assets/app.js"', shell)
+        status, headers, body = get(self.base, "/app/assets/app.js")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers["Content-Type"], "text/javascript")
+        self.assertIn("/api/v1/exceptions", body.decode())
 
     def test_queue_lists_raw_ingest_failed_first(self):
         html = self.html("/exceptions")
@@ -248,11 +257,93 @@ class StaticFailsClosed(ServedCase):  # (::control-room-static-fails-closed)
         self.assertEqual(static.serve(ui, "x.py")[0], 404)
         self.assertEqual(static.serve(ui, "")[0], 404)
 
+    def test_app_assets_route_matrix(self):
+        status, headers, body = get(self.base, "/app/assets/app.js")
+        self.assertEqual((status, headers["Content-Type"], headers["Cache-Control"]), (200, "text/javascript", "no-store"))
+        self.assertEqual(headers["X-Content-Type-Options"], "nosniff")
+        status, headers, body = get(self.base, "/app/assets/app.css")
+        self.assertEqual((status, headers["Content-Type"]), (200, "text/css"))
+        fonts = sorted((ROOT / "bin" / "control_room_ui" / "app" / "assets").glob("*.woff2"))
+        self.assertTrue(fonts, "the committed build ships self-hosted woff2 fonts")
+        status, headers, body = get(self.base, f"/app/assets/{fonts[0].name}")
+        self.assertEqual((status, headers["Content-Type"]), (200, "font/woff2"))
+        self.assertEqual(body, fonts[0].read_bytes())
+        self.assertEqual(get(self.base, "/app/assets/index.html")[0], 404)
+        self.assertEqual(get(self.base, "/app/assets/x/y.js")[0], 404)
+        self.assertEqual(get(self.base, "/app/assets")[0], 404)
+        self.assertEqual(get(self.base, "/app/assets/missing.js")[0], 404)
+        self.assertIn(get(self.base, "/app/assets/../index.html")[0], (400, 404))
+        self.assertIn(get(self.base, "/app/assets/..%2Fapp.js")[0], (400, 404))
+
+    def test_app_helpers_share_one_guard(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            (root / "app" / "assets").mkdir(parents=True)
+            (root / "app" / "index.html").write_text("<div id=\"root\"></div>")
+            (root / "app" / "assets" / "f.woff2").write_bytes(b"wOF2")
+            (root / "app" / "assets" / "a.js").write_text("js")
+            (root / "secret.js").write_text("no")
+            self.assertEqual(static.serve_app_asset(root, "f.woff2"), (200, "font/woff2", b"wOF2"))
+            self.assertEqual(static.serve_app_asset(root, "a.js")[:2], (200, "text/javascript"))
+            self.assertEqual(static.serve_app_asset(root, "index.html")[0], 404)
+            self.assertEqual(static.serve_app_asset(root, "../index.html")[0], 404)
+            self.assertEqual(static.serve_app_asset(root, "../../secret.js")[0], 404)
+            self.assertEqual(static.serve_app_asset(root, "")[0], 404)
+            self.assertEqual(static.serve_app_shell(root), (200, b"<div id=\"root\"></div>"))
+            (root / "app" / "index.html").unlink()
+            self.assertEqual(static.serve_app_shell(root), (404, b""))
+
     def test_pages_reference_only_self_hosted_assets(self):
         for path in ("/exceptions", "/portfolio", "/benefit", "/workflows/raw-ingest", "/runs/run-0913"):
             page = self.html(path)
             for src in re.findall(r'(?:src|href)="([^"]+\.(?:js|css))"', page):
                 self.assertTrue(src.startswith("/static/"), (path, src))
+
+
+class SpaShell(ServedCase):  # (::control-room-spa-shell)
+    ROUTES = ("/app", "/app/", "/app/workflows", "/app/workflows/raw-ingest", "/app/runs/run-0913",
+              "/app/incidents", "/app/usage", "/app/activity", "/app/not-a-route")
+
+    def test_every_client_route_serves_the_shell_with_html_headers(self):
+        shell = (ROOT / "bin" / "control_room_ui" / "app" / "index.html").read_bytes()
+        for path in self.ROUTES:
+            status, headers, body = get(self.base, path)
+            self.assertEqual(status, 200, path)
+            self.assertEqual(headers["Content-Type"], "text/html; charset=utf-8", path)
+            self.assertEqual(headers["Content-Security-Policy"], CSP, path)
+            self.assertEqual(headers["X-Frame-Options"], "DENY", path)
+            self.assertEqual(headers["Cache-Control"], "no-store", path)
+            self.assertEqual(headers["X-Content-Type-Options"], "nosniff", path)
+            self.assertEqual(headers["Referrer-Policy"], "no-referrer", path)
+            self.assertEqual(body, shell, path)
+
+    def test_head_carries_no_body_and_dotdot_is_refused(self):
+        status, headers, body = get(self.base, "/app/workflows/x", method="HEAD")
+        self.assertEqual((status, body), (200, b""))
+        self.assertTrue(headers["Content-Type"].startswith("text/html"))
+        self.assertEqual(get(self.base, "/app/../x")[0], 400)
+
+    def test_shell_references_only_self_hosted_assets_under_the_csp(self):
+        shell = (ROOT / "bin" / "control_room_ui" / "app" / "index.html").read_text()
+        refs = re.findall(r'(?:src|href)="([^"]+)"', shell)
+        self.assertTrue(refs)
+        for ref in refs:
+            self.assertTrue(ref.startswith("/app/assets/"), ref)
+        self.assertNotRegex(shell, r"<script(?![^>]*\bsrc=)")
+        self.assertNotIn("<style", shell)
+        self.assertNotIn("http://", shell)
+        self.assertNotIn("https://", shell)
+        self.assertNotRegex(shell, r"\son[a-z]+=")
+
+    def test_missing_shell_is_a_json_404(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with serving(build_model(static_dir=pathlib.Path(tmp))) as base:
+                status, headers, body = get(base, "/app/workflows")
+                self.assertEqual(status, 404)
+                self.assertTrue(headers["Content-Type"].startswith("application/json"))
+                self.assertEqual(json.loads(body)["error"], "app shell not found")
+                self.assertEqual(get(base, "/app/assets/app.js")[0], 404)
+                self.assertEqual(get_no_redirect(base, "/")[0], 302)
 
 
 class HtmlHeaders(ServedCase):  # (::control-room-html-headers)

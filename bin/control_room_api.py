@@ -37,7 +37,7 @@ from control_room_exceptions import KINDS, classify  # noqa: E402
 from control_room_lineage import lineage  # noqa: E402
 import incident_state  # noqa: E402
 import workflow_incidents  # noqa: E402
-from control_room_static import serve as serve_static  # noqa: E402
+from control_room_static import serve as serve_static, serve_app_asset, serve_app_shell  # noqa: E402
 from control_room_view_benefit import render_benefit  # noqa: E402
 from control_room_view_exceptions import render_exceptions  # noqa: E402
 from control_room_view_portfolio import render_portfolio  # noqa: E402
@@ -711,6 +711,7 @@ class ControlRoomReadModel:
             "apiVersion": API_VERSION,
             "generatedAt": iso_utc(self.clock()),
             "dataStatus": status,
+            "reliability7d": self._reliability_7d(runs, status["receipts"]),
             "summary": {
                 "workflows": len(workflows),
                 "healthy": counts["healthy"],
@@ -726,6 +727,28 @@ class ControlRoomReadModel:
             "recentOutputs": outputs,
             "agentUsage": self.usage()["items"],
         }
+
+    RELIABILITY_DAYS = 7
+    ELIGIBLE_OUTCOMES = {"artifact", "decline", "failed"}
+
+    def _reliability_7d(self, runs: list[dict[str, Any]], receipts_status: str) -> dict[str, Any]:
+        """Valid artifacts over eligible runs per UTC day, the last seven ending today. A day with no
+        runs is a measured 0/0; the whole series is unavailable only when the receipt source is."""
+        if receipts_status == "unavailable":
+            return {"status": "unavailable", "days": []}
+        today = self.clock().astimezone(dt.timezone.utc).date()
+        days = [today - dt.timedelta(days=offset) for offset in range(self.RELIABILITY_DAYS - 1, -1, -1)]
+        counts = {day: {"eligible": 0, "valid": 0} for day in days}
+        for run in runs:
+            ended = parse_time(run.get("endedAt"))
+            if ended is None or run.get("outcome") not in self.ELIGIBLE_OUTCOMES:
+                continue
+            bucket = counts.get(ended.astimezone(dt.timezone.utc).date())
+            if bucket is None:
+                continue
+            bucket["eligible"] += 1
+            bucket["valid"] += int(run["outcome"] == "artifact")
+        return {"status": "measured", "days": [{"day": day.isoformat(), **counts[day]} for day in days]}
 
     def activity(self) -> dict[str, Any]:
         runs, status = self.list_runs()
@@ -796,13 +819,17 @@ class ControlRoomHandler(BaseHTTPRequestHandler):
     def _text(self, status: int, text: str, head_only: bool) -> None:
         self._send(status, "text/plain; charset=utf-8", text.encode("utf-8"), head_only)
 
+    APP_PREFIX = "app"
+
     def _route_page(self, segments: list[str], head_only: bool) -> bool:
         model = self.model
         if not segments:
             self.send_response(HTTPStatus.FOUND)
-            self.send_header("Location", "/exceptions")
+            self.send_header("Location", f"/{self.APP_PREFIX}/")
             self.send_header("Content-Length", "0")
             self.end_headers()
+        elif segments[0] == self.APP_PREFIX:
+            self._app(segments[1:], head_only)
         elif segments == ["favicon.ico"]:
             self.send_response(HTTPStatus.NO_CONTENT)
             self.end_headers()
@@ -845,6 +872,27 @@ class ControlRoomHandler(BaseHTTPRequestHandler):
             self._json(HTTPStatus.NOT_FOUND, {"error": "static file not found"}, head_only)
             return
         self._send(HTTPStatus.OK, content_type, payload, head_only)
+
+    def _app(self, segments: list[str], head_only: bool) -> None:
+        """/app and every client route serve the SPA shell; only /app/assets/<name> is a file.
+
+        The shell carries HTML_HEADERS like the SSR pages, so the CSP governs the bundle it loads.
+        A shell that is not on disk means the runtime tree was deployed without a build — a 404
+        that names it, never a fallback to the SSR views, which would hide the missing deploy."""
+        if segments[:1] == ["assets"]:
+            status, content_type, payload = (404, None, b"")
+            if len(segments) == 2:
+                status, content_type, payload = serve_app_asset(self.model.static_dir, segments[1])
+            if status != HTTPStatus.OK or content_type is None:
+                self._json(HTTPStatus.NOT_FOUND, {"error": "app asset not found"}, head_only)
+                return
+            self._send(HTTPStatus.OK, content_type, payload, head_only)
+            return
+        status, payload = serve_app_shell(self.model.static_dir)
+        if status != HTTPStatus.OK:
+            self._json(HTTPStatus.NOT_FOUND, {"error": "app shell not found"}, head_only)
+            return
+        self._send(HTTPStatus.OK, "text/html; charset=utf-8", payload, head_only, self.HTML_HEADERS)
 
     def _route_api_extra(self, segments: list[str], head_only: bool) -> bool:
         if len(segments) == 5 and segments[:3] == ["api", API_VERSION, "workflows"] and segments[4] == "contract":
@@ -987,7 +1035,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--host", default="127.0.0.1", help="listen address; defaults to loopback")
     parser.add_argument("--port", type=int, default=8787, help="listen port; defaults to 8787")
     parser.add_argument("--static-dir", default=str(pathlib.Path(__file__).resolve().parent / "control_room_ui"),
-                        help="directory served under /static/; defaults to bin/control_room_ui next to this script")
+                        help="directory served under /static/ (SSR assets) and, from its app/ subtree, /app/ "
+                             "(the committed SPA build); defaults to bin/control_room_ui next to this script")
     return parser.parse_args(argv)
 
 

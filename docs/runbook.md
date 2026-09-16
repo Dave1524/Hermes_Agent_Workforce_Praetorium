@@ -228,8 +228,12 @@ rsync -a ~/dev/agent-workforce/docs/ ~/agent-workforce/docs/
 ## Control Room (T5.3)
 
 **URL:** `http://praetorium:8787/` (MagicDNS) or `http://100.86.82.16:8787/` — from the tailnet
-only. `/` redirects to `/exceptions`; the other views are `/portfolio`, `/benefit`,
-`/workflows/<id>` and `/runs/<run_id>`; the JSON behind them is `/api/v1/*`.
+only. `/` redirects to `/app/`, the single-page app (T5.3e, 2026-09-16): Overview, Workflows,
+a workflow page, a run page, Incidents, Usage and Activity, every one of them read from
+`/api/v1/*` and re-fetched every 60 s (the toggle in the header, remembered per browser) or on
+Refresh. The server-rendered pages stay as the no-JS fallback — `/exceptions`, `/portfolio`,
+`/benefit`, `/workflows/<id>`, `/runs/<run_id>` — and share the API with the app, so both
+show the same numbers or the same `unavailable`.
 
 **Unit:** `systemd/control-room.service` (system scope, `User=dave`, `Restart=on-failure`), the
 one hand-started unit on this box that is not a workflow timer. It is **not** a manifest
@@ -257,16 +261,46 @@ does not ship it), timer files under `systemd/`, `systemctl show` in both scopes
 one; until then every workflow's health comes from systemd alone and the Exceptions queue says
 so in its empty state.
 
-**What it never writes:** anything. Every HTTP write method is 405 except the two control
-stubs (`POST /api/v1/control/{actions,proposals}`), which validate the request and answer 501
-until T5.3a/T5.3b wire them. It runs no `systemctl` verb but `show`, touches no timer, no
-receipt, no vault, no Notion.
+**What it never writes:** anything of its own. Every HTTP write method is 405 except the two
+control endpoints (`POST /api/v1/control/{actions,proposals}`), which validate the request and
+hand it to the broker socket (§ Control Room controls) or the proposal builder (§ Control Room
+proposals) — and answer 501 only on a box where neither is wired. The service itself runs no
+`systemctl` verb but `show`, touches no timer, no receipt, no vault, no Notion; every change
+the screen can cause is a broker receipt or a pull request, never an edit.
 
 **Drift:** the screen's code ships with `bin/` (including the nested `bin/control_room_ui/`,
 which is why the bin half of `check_deploy_drift.sh` compares recursively since 2026-09-14);
 the unit is compared against `/etc/systemd/system/` like every other. `design/` changes need
 no deploy — the service reads the checkout — but a `bin/` change is inert until `bin/deploy`
 **and** a restart.
+
+### Frontend build (T5.3e)
+
+The app's source is `ui/control-room/` (React + Vite + TypeScript, its own `README.md`); what
+the service serves is the **committed build** at `bin/control_room_ui/app/` — `index.html`,
+`assets/app.js`, `assets/app.css`, the woff2 font subsets and `BUILD.json`. It is committed so
+`bin/deploy` ships it and the drift check compares it like any other `bin/` file, and so the
+box needs no Node to serve it.
+
+```bash
+bin/control_room_build_ui.sh          # typecheck, vitest, build, stamp; prints the changed files
+git add bin/control_room_ui/app ui/control-room && git commit
+bin/deploy && sudo systemctl restart control-room.service
+```
+
+`BUILD.json` is `{"schema":1,"source_sha256":"…"}`: the hash `bin/control_room_ui_stamp.sh`
+prints over every tracked or unignored file under `ui/control-room` (path and bytes, sorted;
+no timestamp, no Node version). `tests/test_control_room_spa.sh` recomputes it, so a source
+edit that was not rebuilt is red on the box and in CI without a toolchain; where Node ≥ 22
+and `node_modules` exist (the box has both; CI installs them) it also runs typecheck, the
+vitest suites and a rebuild that must be byte-identical to the committed output. The build
+script refuses Node < 22 and runs `npm ci` when `node_modules` is absent (`--ci` to force it).
+
+Output names are fixed (`vite.config.ts`), so a rebuild changes bytes, never membership:
+`bin/deploy` without `--prune` is enough. `--prune` is needed only when a file is *removed*
+from the build — a font subset dropped, say — because the runtime copy would otherwise keep
+serving it. Every static response is `Cache-Control: no-store`, so fixed names cost nothing
+in staleness.
 
 ## Control Room controls (T5.3a)
 

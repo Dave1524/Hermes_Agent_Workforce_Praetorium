@@ -36,6 +36,21 @@ jobs:
           shellcheck --version | sed -n '2p'
           python3 --version
 
+      # The Control Room SPA (T5.3e): tests/test_control_room_spa.sh runs its toolchain half
+      # — typecheck, vitest, and a rebuild that must be byte-identical to the committed
+      # bin/control_room_ui/app/ — wherever node >= 22 and node_modules exist, and prints a
+      # SKIP: line otherwise. Installing both here is what keeps that line OUT of
+      # tests/ci-expected-skips.txt: CI proves the committed build, not just its stamp.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/control-room/package-lock.json
+
+      - name: npm ci (ui/control-room)
+        shell: bash
+        run: npm ci --prefix ui/control-room
+
       - name: bash bin/verify.sh
         shell: bash
         run: bash bin/verify.sh 2>&1 | tee gate.log

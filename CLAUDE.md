@@ -144,6 +144,11 @@ ls ~/.hermes/profiles/                              # base0, leantest, default (
   binds the Tailscale address only (`bin/control_room_serve.sh` refuses to start without one);
   reads `design/` from the **source checkout** because `bin/deploy` never ships it. Not a
   manifest workflow — no timer, no contract, no manifest row. Runbook § Control Room.
+  Since T5.3e (2026-09-16) `/` lands on the single-page app: source in `ui/control-room/`,
+  served from its **committed build** `bin/control_room_ui/app/`, rebuilt only by
+  `bin/control_room_build_ui.sh` and stamped by `BUILD.json`, which
+  `tests/test_control_room_spa.sh` recomputes — edit the source without rebuilding and the
+  gate is red. The server-rendered pages remain as the no-JS fallback.
 - `control-room-broker.socket` + `control-room-broker@.service` — the **control broker**
   (T5.3a, 2026-09-14) behind the screen's pause / resume / run now / retry / stop: a root-owned
   unix socket (`/run/control-room-broker.sock`, `root:control-room 0660`) that only
