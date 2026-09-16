@@ -106,8 +106,7 @@ visible), and worth knowing before a canary night is scheduled.
 - Appends this attempt's output to `~/agent-workforce/logs/agent_run.log`, keeps the attempt
   itself at `logs/last-attempt/standing-research.log` (truncated per attempt, kept after the
   run so `ExecStartPost` can read it), and a record to `cost.log`.
-- Writes one episodic line to `~/.hermes/profiles/claudius/memories/MEMORY.md` — the store
-  exists, so this job records `memory=fallback`, not `no-store` (measured 2026-09-10 04:46).
+- No episodic store (retired T6.1, 2026-09-14); the per-run record is the receipt.
 - Touches `/home/dave/logs/run-markers/agent-proposal.service`.
 - Takes `${AGENT_PROPOSE_LOCK:-/tmp/agent_propose.lock}`, the fleet-wide propose lock.
 - Delivery receipt appended by `bin/deliver.sh` to `~/logs/delivery-receipts.jsonl`.

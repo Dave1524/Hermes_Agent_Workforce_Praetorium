@@ -97,8 +97,7 @@ visible.
 - Commits the proposal and pushes it to the box-safe repo's `agents/inbox` branch.
 - Appends this attempt's output to `~/agent-workforce/logs/agent_run.log`, keeps the attempt
   itself at `logs/last-attempt/m1-signal-scan.log`, and a record to `cost.log`.
-- Writes one episodic line to `~/.hermes/profiles/claudius/memories/MEMORY.md` — the store
-  exists, so this job records `memory=fallback`, not `no-store`.
+- No episodic store (retired T6.1, 2026-09-14); the per-run record is the receipt.
 - Touches `/home/dave/logs/run-markers/m1-signal-scan.service`.
 - Takes `${AGENT_PROPOSE_LOCK:-/tmp/agent_propose.lock}`, the fleet-wide propose lock.
 - **Egress**: web queries and page fetches, the only outbound traffic in this contract.

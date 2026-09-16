@@ -60,7 +60,7 @@ positions in a count, and a table that renumbers on retirement silently invalida
 |---|---|---|---|---|---|
 | **S1** | Buzz interactive | `claude-agent-acp` (marcus, claudius, trajan, aurelian); `codex-acp` in bwrap (augustus) | all five personas | Claude Code built-ins + `mcp__qmd-mcp__*` + 7 `notion_*` (broker) + **whatever `~/.claude/settings.json` does not deny** | `buzz-team/<name>.toml` **(source, since 2026-09-03)** → `~/.config/buzz-team/<name>.toml` (who may wake whom); `~/.config/systemd/user/buzz-agent@.service` (flags); `~/.claude/settings.json` (`permissions.deny`) |
 | **S2** | Scheduled headless CC | `claude -p` from `bin/run_*_cc.sh`, wrapped by `bin/agent_propose.sh` | nobody — the owner persona is *accountability*, the executor is anonymous | **no MCP** (`--strict-mcp-config --mcp-config '{"mcpServers":{}}'` — no connector tool exists in the session) plus the `agent_propose.sh` write boundary (proposal mode: anything outside `_inbox/agents/**` discards the whole worktree; ops mode has none). `--allowedTools` is enforced under `--permission-mode dontAsk` (T2.2, 2026-09-09): a tool not on the list is denied, not prompted. A bare `Bash` entry still permits any command the model writes, so Bash is not a sandbox; the write boundary is still the proposal-mode guard. | the wrapper script, one per workflow, in `bin/` |
-| ~~**S3**~~ | ~~Hermes kanban dispatch~~ — **RETIRED 2026-09-02 (D7)** | ~~`hermes-gateway` auto-dispatches `ready` cards every 60s~~; the gateway is disabled+stopped, the board is archived (`design/archive/hermes-kanban-board.md`), `bin/kanban_run_and_wait.sh` is deleted | ~~marcus, claudius, augustus, trajan~~ — nobody | ~~Hermes toolsets + a real skills index with a per-profile allowlist~~ | `~/.hermes/profiles/<p>/config.yaml` and `bin/apply_skills_allowlist.sh` **both survive** — the CLI still reads them (§3) |
+| ~~**S3**~~ | ~~Hermes kanban dispatch~~ — **RETIRED 2026-09-02 (D7)** | ~~`hermes-gateway` auto-dispatches `ready` cards every 60s~~; the gateway is disabled+stopped, the board is archived (`design/archive/hermes-kanban-board.md`), `bin/kanban_run_and_wait.sh` is deleted | ~~marcus, claudius, augustus, trajan~~ — nobody | ~~Hermes toolsets + a real skills index with a per-profile allowlist~~ | ~~`~/.hermes/profiles/<p>/config.yaml` and `bin/apply_skills_allowlist.sh` both survived the board~~; profiles deleted 2026-09-14 (T6.1) |
 | **S4** | Buzz-dispatched scheduled | `bin/run_content_via_buzz.sh` — a timer that triggers **S1** and waits | augustus only | inherits S1 entirely | `bin/buzz_routes.env` (destination, kind, who to wake) + the profile augustus is told to read |
 
 **S1 cannot be woken by a scheduled workflow, and that is now settled rather than open
@@ -162,23 +162,17 @@ Bash must be absent as a binary or caught by the write boundary.
   `capture-learning`, `codex`, `ddd-design`, `quality-check`, `task-manage`,
   `task-triage`). The vault's **32** `08_skills/*/SKILL.md` are markdown reachable by
   path or qmd — an agent reads them, nothing offers them.
-- **The hermes profiles have a real skill index**: 148 `SKILL.md` across nine
-  `~/.hermes/shared-skills/` subdirectories, with `skills.external_dirs` +
-  `skills.disabled` applied per profile. Measured 2026-09-01 — offered counts are
-  **marcus 46, trajan 44, claudius 25, augustus 23**. Note the two lists are disjoint:
-  **`disabled` removes zero of the allowlisted skills** (0 name collisions on all four
-  profiles — it suppresses Hermes's *bundled* set, `apple-notes`, `imessage`,
-  `computer-use` and friends). So the effective offering is exactly the `external_dirs`
-  total; `disabled` is a separate hygiene list and should not be read as narrowing the
-  allowlist.
+- **The hermes profiles had a real skill index** — 148 `SKILL.md` under
+  `~/.hermes/shared-skills/`, with `skills.external_dirs` + `skills.disabled` applied per
+  profile; the measured per-profile counts (2026-09-01) and the disjointness of the two
+  lists are recorded in `design/archive/hermes-profiles-2026-09-14.md`.
 
-  **These are profile facts, not S3 facts, and that distinction is why they survive
-  2026-09-02.** The index is resolved per `~/.hermes/profiles/<p>/`, and a profile is
-  reachable from any `hermes -p <profile>` invocation — S3 was one caller, and it is not
-  the last one: `bin/local_tier_eval.sh:105` runs `-p marcus` six times a day. Do not
-  relocate these counts into an S1/S2 claim, where the bullet above records that no skill
-  index exists at all; a number moved somewhere it is false is worse than a number with a
-  retired owner.
+  **Those were profile facts, not S3 facts, and that distinction is why they outlived
+  2026-09-02.** The index was resolved per `~/.hermes/profiles/<p>/`, reachable from any
+  `hermes -p <profile>` invocation — S3 was one caller; its last caller moved to base0
+  (T6.1), which has no skill index. The persona profiles are deleted (T6.1, 2026-09-14). Do
+  not relocate the archived counts into an S1/S2 claim, where the bullet above records
+  that no skill index exists at all.
 
 So the NUC-42 skills-allowlist work governed **only S3**, and S3 is retired
 (2026-09-02, D7). The measurement that settles what it was worth is in
@@ -189,11 +183,10 @@ only surface that offered it. So "which skills per agent" now has a precise answ
 agent happens to read") everywhere — which is a cleaner statement of the same gap, not
 a new one.
 
-That is an argument for deciding §8.4 deliberately, not for deleting the mechanism.
-`bin/apply_skills_allowlist.sh` writes the config a live platform job reads; whether the
-allowlist affects a `-z` oneshot is **unverified**, and "S3 is gone" is not evidence
-either way.
-**Deciding what to do about that is §8, decision 3.**
+The mechanism itself is retired T6.1 (2026-09-14): `bin/apply_skills_allowlist.sh` wrote
+the config of profiles that no longer exist, and its last reader (`local-tier-eval`) runs
+on base0. Whether the allowlist ever affected a `-z` oneshot was never measured and now
+cannot be. **§8, decision 3 is closed.**
 
 **Declared per entry 2026-09-11 (T3.2), and the allocation is a bet with these numbers.**
 Every `[[workflows]]` entry now carries `skills = [...]`, joined by
@@ -224,7 +217,8 @@ heading-extraction runs leave no Claude transcript and record `skills_src=none`,
 ## 3. What a manifest is
 
 One file per persona: `design/agents/<name>.toml`. It is the single normative statement
-of what that agent is, owns, may do and may not do — **across all four surfaces**.
+of what that agent is, owns, may do and may not do — **across the three live surfaces**
+(S3 and its hermes profiles retired: D7, then T6.1).
 
 TOML rather than YAML or JSON, for two box-specific reasons: `tomllib` is in the Python
 3.14 stdlib here while **PyYAML is not installed**, so a validator can parse TOML with
@@ -755,10 +749,9 @@ claims.
    so the allowlist was never exercised from a card in the surface's whole life. The S3
    *offering* is retired with the surface.
 
-   **This is explicitly NOT licence to delete `bin/apply_skills_allowlist.sh` or
-   `docs/skills_allowlist.md`.** They write and document
-   `~/.hermes/profiles/<p>/config.yaml`, which `bin/local_tier_eval.sh:105` reads six
-   times a day via `hermes -p marcus`. (a) and (b) are untouched and still open.
+   **CLOSED 2026-09-14 (T6.1):** `bin/apply_skills_allowlist.sh` and
+   `docs/skills_allowlist.md` deleted, with the last reader (`bin/local_tier_eval.sh`)
+   rerouted to base0. (a) and (b) are untouched.
 
    **(b) DECLARED 2026-09-11 by T3.2.** Every entry now states its offer in `skills = [...]`
    and the coverage suite joins it to the mechanism that delivers it (§2 carries the

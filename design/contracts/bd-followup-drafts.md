@@ -122,7 +122,7 @@ deals are dropped before ranking, and if that empties the list the decline is ea
 - Reads Notion. **No Notion write, ever.**
 - Appends this attempt's output to `~/agent-workforce/logs/agent_run.log`, keeps the attempt
   itself at `logs/last-attempt/bd-followup-drafts.log`, and a record to `cost.log`.
-- Writes one episodic line to `~/.hermes/profiles/claudius/memories/MEMORY.md`.
+- No episodic store (retired T6.1, 2026-09-14); the per-run record is the receipt.
 - Touches `/home/dave/logs/run-markers/bd-followup-drafts.service` — load-bearing here, not
   bookkeeping: `deliver.sh:229` faults `artifact_error` on a marker that is missing or older
   than the artifact.
