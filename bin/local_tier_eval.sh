@@ -126,8 +126,11 @@ run_one() {
   local outfile="$work/$tag.out"
   local started ended
   started=$(date +%s)
+  # base0 carries the `local` alias block (qwen3-64k, custom:ollama_local, temperature 0):
+  # profile configs replace the global one rather than merging, and the persona profiles
+  # that used to carry it were deleted at T6.1 (2026-09-16).
   timeout "${TIMEOUT_MIN}m" "$HERMES" -t "$toolset" -z "$prompt" \
-    -p marcus -m "$model" >"$outfile" 2>"$work/$tag.err"
+    -p base0 -m "$model" >"$outfile" 2>"$work/$tag.err"
   ended=$(date +%s)
   local verdict
   verdict=$(python3 "$SCORER" "$task" "$outfile" "$work")

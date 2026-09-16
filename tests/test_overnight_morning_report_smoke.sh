@@ -295,7 +295,7 @@ echo "--- overnight-morning-report: the profile keeps its retired-surface exclus
 # single morning, which is the readiness-report phantom-blocker shape.
 assert 'kanban/gateway absence is explicitly not a fault' \
   "grep -qF 'do not report their absence as a fault' '$TASK'"
-assert 'and hermes cron is demoted, not treated as the schedule source' \
-  "grep -qF 'Do **not** treat' '$TASK'"
+assert 'and no instruction to inspect the retired hermes cron host (T6.1)' \
+  "! grep -q 'hermes/cron' '$TASK'"
 
 exit $fail

@@ -176,8 +176,8 @@ tmp="$(mktemp "${TMPDIR:-/tmp}/scorecard.XXXXXX")" || { echo "scorecard: mktemp 
   echo "_As of last recorded run: ${last_ts}_"
   echo
   echo "> De-identified, box-safe aggregate — no proposal contents, no client-identifiable"
-  echo "> data. Actual \$ spend: **OpenRouter dashboard is the source of truth** (hermes token"
-  echo "> accounting is unreliable, #4404/#20741). Infra health: see \`praetorium-status.sh\` (NUC-18)."
+  echo "> data. Actual \$ spend: **OpenRouter dashboard is the source of truth** — cost.log's"
+  echo "> delta is \`unknown\` (T6.1); receipts carry measured usage. Infra health: see \`praetorium-status.sh\` (NUC-18)."
   echo
   echo "| Signal | Value |"
   echo "|---|---|"
