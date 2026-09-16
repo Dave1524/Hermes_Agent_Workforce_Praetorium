@@ -1,338 +1,259 @@
 import { useState } from "react";
-import { WORKFLOWS, MARCUS_TRAJAN_TIMELINE } from "../data";
-import HealthBadge from "../components/HealthBadge";
-import Dialogs from "../components/Dialogs";
-import { AgentAvatar } from "./Overview";
+import { getText } from "@/api/client";
+import { runListResponseSchema } from "@/api/schemas/run";
+import { workflowDetailResponseSchema } from "@/api/schemas/workflow";
+import AgentAvatar from "@/components/AgentAvatar";
+import ArtifactLink from "@/components/ArtifactLink";
+import ControlStateBadge from "@/components/ControlStateBadge";
+import DataStatusStrip from "@/components/DataStatusStrip";
+import HealthBadge from "@/components/HealthBadge";
+import { CostCell, NotMeasured, UsageCell } from "@/components/MeasurementCell";
+import OutcomeBadge from "@/components/OutcomeBadge";
+import { Panel, Row } from "@/components/Panel";
+import { ErrorNotice, Loading } from "@/components/ResourceState";
+import RouteLink from "@/components/RouteLink";
+import When from "@/components/When";
+import type { Benefit } from "@/model/benefit";
+import { toRun } from "@/model/run";
+import { formatCadence, formatDuration, formatUtc } from "@/model/time";
+import { formatCost, formatUsage } from "@/model/tokens";
+import { type TriggerView, type WorkflowDetail as Detail, toWorkflowDetail } from "@/model/workflowDetail";
+import { usePageResource, useSecondaryResource } from "@/shell/usePageResource";
 
-interface Props {
-  workflowId: string;
-  onBack: () => void;
-}
+const pct = (rate: number | null): string => (rate === null ? "—" : `${Math.round(rate * 100)}%`);
 
-export default function WorkflowDetail({ workflowId, onBack }: Props) {
-  const wf = WORKFLOWS.find((w) => w.id === workflowId) ?? WORKFLOWS[0];
-  const [dialog, setDialog] = useState<any>(null);
-  const [confirmedDialog, setConfirmedDialog] = useState<string | null>(null);
-  const [overflowOpen, setOverflowOpen] = useState(false);
-  const [expandedLineage, setExpandedLineage] = useState<string | null>(null);
+export default function WorkflowDetail({ workflowId }: { workflowId: string }) {
+  const encoded = encodeURIComponent(workflowId);
+  const workflow = usePageResource(`/api/v1/workflows/${encoded}`, workflowDetailResponseSchema);
+  const runs = useSecondaryResource(`/api/v1/workflows/${encoded}/runs`, runListResponseSchema);
 
-  const isStandingResearch = wf.id === "standing-research";
-  const isAutoSync = wf.id === "auto-sync";
-
-  const handleConfirm = (type: string) => {
-    setConfirmedDialog(type);
-    setTimeout(() => setConfirmedDialog(null), 4000);
-  };
+  if (workflow.status === "error" && workflow.error) return <ErrorNotice what={`workflow ${workflowId}`} error={workflow.error} onRetry={workflow.refresh} />;
+  if (!workflow.data) return <Loading what={`workflow ${workflowId}`} />;
+  const d = toWorkflowDetail(workflow.data.items);
+  const { row } = d;
 
   return (
-    <div className="p-6 max-w-[1100px] mx-auto">
-      {/* Back */}
-      <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-text-2 hover:text-text mb-5 transition-colors">
-        <span>←</span> Workflows
-      </button>
+    <>
+      <DataStatusStrip status={workflow.data.dataStatus} />
+      <div className="p-6 max-w-[1100px] mx-auto">
+        <RouteLink to={{ name: "workflows" }} className="inline-flex items-center gap-1.5 text-sm text-text-2 hover:text-text mb-5 transition-colors">
+          <span aria-hidden>←</span> Workflows
+        </RouteLink>
 
-      {/* Header */}
-      <div className="bg-surface border border-border rounded-md p-5 mb-5">
-        <div className="flex items-start gap-4">
-          <AgentAvatar name={wf.agent} size="md" />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-lg font-semibold text-text">{wf.name}</h1>
-              <HealthBadge health={wf.health} size="md" />
-            </div>
-            <p className="text-text-2 text-sm mt-1.5 max-w-xl">{wf.purpose}</p>
-            <p className="text-muted text-xs mt-2 italic">
-              When <span className="not-italic text-text-2">{wf.trigger}</span> occurs, this workflow produces{" "}
-              <span className="not-italic text-text-2">{wf.artifact}</span> for Dave, so he can act on it promptly.
-            </p>
-          </div>
-          <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-            <a href={wf.notionUrl} className="px-3 py-1.5 text-xs font-medium bg-accent-dim border border-accent/30 text-accent rounded hover:bg-accent/20 transition-colors">
-              Open latest output
-            </a>
-            <button onClick={() => setDialog(wf.health === "paused" ? "resume" : "pause")} className="px-3 py-1.5 text-xs border border-border text-text-2 rounded hover:bg-surface-3 transition-colors">
-              {wf.health === "paused" ? "Resume" : "Pause"}
-            </button>
-            <button onClick={() => setDialog("run")} className="px-3 py-1.5 text-xs border border-border text-text-2 rounded hover:bg-surface-3 transition-colors">Run now</button>
-            <button onClick={() => setDialog("retry")} className={`px-3 py-1.5 text-xs border border-border rounded transition-colors ${wf.retryEnabled ? "text-text-2 hover:bg-surface-3" : "text-muted cursor-not-allowed opacity-60"}`}>Retry</button>
-            <button onClick={() => setDialog("stop")} className="px-3 py-1.5 text-xs border border-red/30 text-red rounded hover:bg-red-dim transition-colors">Stop</button>
-            <div className="relative">
-              <button onClick={() => setOverflowOpen((p) => !p)} className="px-2 py-1.5 text-xs border border-border text-text-2 rounded hover:bg-surface-3 transition-colors">···</button>
-              {overflowOpen && (
-                <div className="absolute right-0 top-full mt-1 w-40 bg-surface-3 border border-border rounded shadow-lg z-10">
-                  <button onClick={() => { setDialog("schedule"); setOverflowOpen(false); }} className="block w-full text-left px-3 py-2 text-sm text-text-2 hover:bg-surface-2 hover:text-text transition-colors">Change schedule</button>
-                  <button onClick={() => { setDialog("retire"); setOverflowOpen(false); }} className="block w-full text-left px-3 py-2 text-sm text-red hover:bg-red-dim transition-colors">Retire workflow</button>
-                </div>
-              )}
+        <header className="bg-surface border border-border rounded-md p-5 mb-5">
+          <div className="flex items-start gap-4">
+            <AgentAvatar name={row.owner} size="md" />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-3 flex-wrap">
+                <h2 className="text-lg font-semibold text-text">{row.name}</h2>
+                <HealthBadge health={row.health} size="md" />
+                <ControlStateBadge state={row.controlState} />
+                <span className="font-mono text-xs text-muted">{row.id}</span>
+              </div>
+              {d.purpose && <p className="text-text-2 text-sm mt-1.5 max-w-xl">{d.purpose}</p>}
+              <ContractSentence detail={d} />
             </div>
           </div>
+        </header>
+
+        <div className="grid grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
+          <Card label="Last run"><When iso={row.lastRunAt} /></Card>
+          <Card label="Next run"><When iso={row.nextRunAt} estimated={row.nextRunEstimated} /></Card>
+          <Card label="Valid / eligible">{d.benefit ? `${Math.round((d.benefit.validArtifactRate ?? 0) * (d.benefit.eligibleRuns ?? 0))} / ${d.benefit.eligibleRuns ?? "—"}` : "—"}</Card>
+          <Card label="Valid artifact rate">{pct(d.benefit?.validArtifactRate ?? null)}</Card>
+          <Card label="Tokens (last run)">{formatUsage(row.usage)}</Card>
+          <Card label="Cost (last run)">{formatCost(row.cost)}</Card>
         </div>
 
-        {confirmedDialog && (
-          <div className="mt-4 px-3 py-2 bg-green-dim border border-green/20 rounded text-xs text-green font-mono">
-            ✓ Action "{confirmedDialog}" completed successfully.
-            {confirmedDialog === "run" && " · Run ID: run-" + wf.id.slice(0, 4) + "-" + Date.now().toString(36)}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <Panel title="Triggers & schedules">
+            {d.triggers.length === 0 && <p className="text-xs text-muted">No triggers wired to this workflow.</p>}
+            <div className="space-y-2">
+              {d.triggers.map((t, i) => <TriggerCard key={t.unit} index={i + 1} trigger={t} />)}
+            </div>
+            <div className="mt-3 text-xs text-muted font-mono">
+              control source {d.controlSource ?? "—"} · last trigger {formatUtc(d.lastTriggerAt) ?? "—"}
+            </div>
+          </Panel>
+
+          <Panel title="Latest output">
+            <Row label="Artifact"><ArtifactLink artifact={d.lastRun?.artifact ?? null} /></Row>
+            <Row label="Outcome">{d.lastRun ? <OutcomeBadge outcome={d.lastRun.outcome} /> : "—"}</Row>
+            <Row label="Ended"><When iso={d.lastRun?.endedAt} /></Row>
+            <Row label="Run">{d.lastRun?.id ? <RouteLink to={{ name: "run", id: d.lastRun.id }} className="text-accent hover:underline">{d.lastRun.id}</RouteLink> : "—"}</Row>
+            <Row label="Last valid artifact"><When iso={d.lastValidArtifactAt} /></Row>
+            <Row label="Freshness">{row.artifactFreshness ?? "—"}</Row>
+            {d.lastRun?.reason && <p className="text-xs text-text-2 mt-2">{d.lastRun.reason}</p>}
+          </Panel>
+
+          <Panel title="Recent runs">
+            {runs.status === "error" && runs.error && <ErrorNotice what="the runs" error={runs.error} onRetry={runs.refresh} />}
+            {!runs.data && runs.status !== "error" && <Loading what="runs" />}
+            {runs.data && <RunsTable runs={runs.data.items.map(toRun)} />}
+          </Panel>
+
+          <Panel title="Benefit evidence">
+            <BenefitPanel benefit={d.benefit} />
+          </Panel>
+
+          <Panel title="Lineage">
+            {d.lineage.length === 0 && <p className="text-xs text-muted">No lineage recorded.</p>}
+            {d.lineage.map((s) => (
+              <Row key={s.stage} label={s.stage}>
+                {s.value.length === 0 ? "—" : s.value.join(", ")}
+                {s.source && <span className="text-muted"> · {s.source}</span>}
+              </Row>
+            ))}
+          </Panel>
+
+          <Panel title="Contract & links">
+            <Row label="Contract">{d.contractStatus ?? "—"}{d.contractError && <span className="text-red"> · {d.contractError}</span>}</Row>
+            <Row label="Local">{d.links?.contractLocal ?? "—"}</Row>
+            <Row label="GitHub">{d.links?.contractGithub ? <a href={d.links.contractGithub} target="_blank" rel="noreferrer noopener" className="text-accent hover:underline">open</a> : "—"}</Row>
+            <Row label="Dev plan">{d.links?.devPlanDoc ? <a href={d.links.devPlanDoc} target="_blank" rel="noreferrer noopener" className="text-accent hover:underline">{d.links.devPlanTracker ?? "doc"}</a> : (d.links?.devPlanTracker ?? "—")}</Row>
+            <Row label="Tasks">{d.links?.taskIds.length ? d.links.taskIds.join(", ") : "—"}</Row>
+            <Row label="Manifests">{d.manifestPaths.length ? d.manifestPaths.join(", ") : "—"}</Row>
+            {d.contract && <ContractText workflowId={row.id} />}
+          </Panel>
+        </div>
+
+        {d.incompleteRuns.length > 0 && (
+          <div className="mt-5">
+            <Panel title="Incomplete runs">
+              <RunsTable runs={d.incompleteRuns} />
+            </Panel>
           </div>
         )}
       </div>
+    </>
+  );
+}
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
-        {[
-          { label: "Last run", value: wf.lastRun, mono: true },
-          { label: "Next run", value: wf.nextRun, mono: true },
-          { label: "7d reliability", value: `${wf.reliability7d}%`, mono: true },
-          { label: "Valid / eligible", value: `${wf.validOutputs} / ${wf.eligibleRuns}`, mono: true },
-          { label: "Tokens", value: wf.tokens, mono: true },
-          { label: "Cost", value: wf.cost, mono: true },
-        ].map((c) => (
-          <div key={c.label} className="bg-surface border border-border rounded-md px-3 py-3">
-            <div className={`text-base font-semibold ${c.mono ? "font-mono" : ""} text-text`}>{c.value}</div>
-            <div className="text-xs text-muted mt-0.5">{c.label}</div>
-          </div>
-        ))}
-      </div>
+function Card({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-surface border border-border rounded-md px-3 py-3">
+      <div className="text-base font-semibold font-mono text-text">{children}</div>
+      <div className="text-xs text-muted mt-0.5">{label}</div>
+    </div>
+  );
+}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* Triggers */}
-        <Section title="Triggers & schedules">
-          <div className="space-y-2">
-            <TriggerRow index={1} trigger={wf.trigger} tz="Europe/London" catchup="Disabled" eligibility="No constraints" />
-          </div>
-        </Section>
-
-        {/* Latest output */}
-        <Section title="Latest output">
-          <div className="space-y-2">
-            <Row label="Title" value={wf.latestOutput} />
-            <Row label="Created" value={wf.lastRunTimestamp} />
-            <Row label="Status" value={wf.latestOutputStatus} />
-            <Row label="Notion destination" value="Dave's workspace · Workflows board" />
-            <div className="pt-2 flex gap-2 flex-wrap">
-              {["Approve", "Reject", "Edit", "Archive"].map((a) => (
-                <button key={a} className="px-2.5 py-1 text-xs border border-border text-text-2 rounded hover:bg-surface-3 transition-colors">{a}</button>
-              ))}
-            </div>
-          </div>
-        </Section>
-
-        {/* Recent runs */}
-        <Section title="Recent runs">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="text-muted border-b border-border">
-                <th className="text-left py-1.5 font-medium">Run</th>
-                <th className="text-left py-1.5 font-medium">Outcome</th>
-                <th className="text-left py-1.5 font-medium">Duration</th>
-                <th className="text-right py-1.5 font-medium">Tokens</th>
-                <th className="text-right py-1.5 font-medium">Cost</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {MOCK_RUNS.filter((r) => r.workflow === wf.id).map((run) => (
-                <tr key={run.id} className="hover:bg-surface-3 transition-colors">
-                  <td className="py-2 font-mono text-text-2">{run.id.slice(-8)}</td>
-                  <td className="py-2"><RunOutcomeBadge outcome={run.outcome} /></td>
-                  <td className="py-2 font-mono text-muted">{run.duration}</td>
-                  <td className="py-2 font-mono text-muted text-right">{run.tokens}</td>
-                  <td className="py-2 font-mono text-muted text-right">{run.cost}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Section>
-
-        {/* Benefit evidence */}
-        <Section title="Benefit evidence">
-          <p className="text-xs text-muted mb-3">Consumption signals measured independently — not combined into a score.</p>
-          <div className="space-y-2">
-            {[
-              { label: "Opened", value: "6 of 7", pct: 86 },
-              { label: "Approved", value: "6 of 7", pct: 86 },
-              { label: "Sent or published", value: "4 of 7", pct: 57 },
-              { label: "Marked useful", value: "5 of 7", pct: 71 },
-            ].map((sig) => (
-              <div key={sig.label} className="flex items-center gap-3">
-                <span className="text-xs text-text-2 w-32 shrink-0">{sig.label}</span>
-                <div className="flex-1 h-1.5 bg-surface-3 rounded-full overflow-hidden">
-                  <div className="h-full bg-accent rounded-full" style={{ width: `${sig.pct}%` }} />
-                </div>
-                <span className="text-xs font-mono text-muted w-12 text-right">{sig.value}</span>
-              </div>
-            ))}
-          </div>
-        </Section>
-      </div>
-
-      {/* Research lineage — Standing Research only */}
-      {isStandingResearch && (
-        <div className="mt-5">
-          <Section title="Research workflow lineage">
-            <p className="text-xs text-text-2 mb-4">Select any stage to see evidence. This lineage explains why a particular topic was researched.</p>
-            <div className="flex items-start gap-2 flex-wrap">
-              {LINEAGE_STAGES.map((stage, i) => (
-                <div key={stage.id} className="flex items-start gap-2">
-                  <button
-                    onClick={() => setExpandedLineage(expandedLineage === stage.id ? null : stage.id)}
-                    className={`px-3 py-2 rounded-md text-left text-xs transition-colors border ${
-                      expandedLineage === stage.id
-                        ? "bg-accent-dim border-accent/40 text-accent"
-                        : "bg-surface border-border text-text-2 hover:bg-surface-3"
-                    }`}
-                  >
-                    <div className="font-medium text-[10px] text-muted mb-0.5 uppercase tracking-wider">Stage {i + 1}</div>
-                    {stage.label}
-                  </button>
-                  {i < LINEAGE_STAGES.length - 1 && <span className="text-muted text-lg mt-2">→</span>}
-                </div>
-              ))}
-            </div>
-            {expandedLineage && (
-              <div className="mt-4 bg-surface border border-border rounded-md p-4">
-                {(() => {
-                  const stage = LINEAGE_STAGES.find((s) => s.id === expandedLineage)!;
-                  return (
-                    <>
-                      <p className="text-sm font-medium text-text mb-1.5">{stage.label}</p>
-                      <p className="text-xs text-text-2">{stage.evidence}</p>
-                    </>
-                  );
-                })()}
-              </div>
-            )}
-          </Section>
-        </div>
+function ContractSentence({ detail }: { detail: Detail }) {
+  const c = detail.contract;
+  if (!c) return null;
+  return (
+    <p className="text-muted text-xs mt-2 italic" data-testid="contract-sentence">
+      When <span className="not-italic text-text-2">{c.trigger ?? "its trigger"}</span> occurs, this workflow produces{" "}
+      <span className="not-italic text-text-2">{c.artifact ?? "an artifact"}</span> for <span className="not-italic text-text-2">{c.beneficiary ?? "its beneficiary"}</span>
+      {c.next_actor && c.next_action && (
+        <>
+          , so <span className="not-italic text-text-2">{c.next_actor}</span> can <span className="not-italic text-text-2">{c.next_action}</span>
+        </>
       )}
-
-      {/* Agent handoff timeline — Auto Sync only */}
-      {isAutoSync && (
-        <div className="mt-5">
-          <Section title="Run & agent-handoff detail · run-dp-20260910-0702">
-            <div className="mb-3 grid grid-cols-3 gap-3 text-xs">
-              <div><span className="text-muted">Parent run</span><br /><span className="font-mono text-text-2">run-dp-20260910-0702</span></div>
-              <div><span className="text-muted">Child run</span><br /><span className="font-mono text-text-2">run-aws-20260910-0902</span></div>
-              <div><span className="text-muted">Duration</span><br /><span className="font-mono text-text-2">8m 22s</span></div>
-            </div>
-            <div className="space-y-0 border-l-2 border-border ml-3">
-              {MARCUS_TRAJAN_TIMELINE.map((ev, i) => (
-                <TimelineEvent key={i} event={ev} />
-              ))}
-            </div>
-          </Section>
-        </div>
-      )}
-
-      <Dialogs workflow={wf} dialog={dialog} onClose={() => setDialog(null)} onConfirm={handleConfirm} />
-    </div>
+      .
+    </p>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function TriggerCard({ index, trigger }: { index: number; trigger: TriggerView }) {
   return (
-    <div className="bg-surface border border-border rounded-md p-4">
-      <h3 className="text-xs font-semibold text-text mb-3 uppercase tracking-wider">{title}</h3>
-      {children}
-    </div>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between py-1 text-sm border-b border-border last:border-0">
-      <span className="text-text-2">{label}</span>
-      <span className="text-text font-mono text-xs pt-0.5">{value}</span>
-    </div>
-  );
-}
-
-function TriggerRow({ index, trigger, tz, catchup, eligibility }: { index: number; trigger: string; tz: string; catchup: string; eligibility: string }) {
-  return (
-    <div className="bg-surface-2 border border-border rounded p-3 text-xs space-y-1">
+    <div className="bg-surface-2 border border-border rounded p-3 text-xs" data-testid="trigger">
       <div className="flex items-center gap-2 mb-1">
         <span className="text-accent font-mono">Trigger {index}</span>
+        <span className="font-mono text-text-2">{trigger.unit}</span>
+        {trigger.kind && <span className="text-muted">· {trigger.kind}</span>}
       </div>
-      <Row label="Schedule" value={trigger} />
-      <Row label="Timezone" value={tz} />
-      <Row label="Catch-up" value={catchup} />
-      <Row label="Eligibility" value={eligibility} />
+      <Row label="Timer">{trigger.timerState ?? "—"}{trigger.enabledState && <span className="text-muted"> · {trigger.enabledState}</span>}</Row>
+      <Row label="Schedule">{trigger.spec ?? "—"}{trigger.cadenceSeconds !== null && <span className="text-muted"> · {formatCadence(trigger.cadenceSeconds)}</span>}</Row>
+      <Row label="Last trigger"><When iso={trigger.lastTriggerAt} /></Row>
+      <Row label="Next run"><When iso={trigger.nextRunAt} /></Row>
+      <Row label="Persistent">{trigger.persistent === null ? "—" : trigger.persistent ? "yes" : "no"}</Row>
+      {trigger.errors.length > 0 && <p className="text-red mt-1 font-mono">{trigger.errors.join("; ")}</p>}
     </div>
   );
 }
 
-function RunOutcomeBadge({ outcome }: { outcome: string }) {
-  const map: Record<string, string> = {
-    success: "text-green bg-green-dim", failed: "text-red bg-red-dim",
-    incomplete: "text-amber bg-amber-dim", running: "text-blue bg-blue-dim",
-  };
+function RunsTable({ runs }: { runs: ReturnType<typeof toRun>[] }) {
+  if (runs.length === 0) return <p className="text-xs text-muted">No runs recorded.</p>;
   return (
-    <span className={`font-mono px-1.5 py-0.5 rounded text-[10px] capitalize ${map[outcome] ?? "text-text-2 bg-surface-3"}`}>{outcome}</span>
+    <table className="w-full text-xs">
+      <thead>
+        <tr className="text-muted border-b border-border">
+          <th className="text-left py-1.5 font-medium">Run</th>
+          <th className="text-left py-1.5 font-medium">Outcome</th>
+          <th className="text-left py-1.5 font-medium">Ended</th>
+          <th className="text-left py-1.5 font-medium">Duration</th>
+          <th className="text-right py-1.5 font-medium">Tokens</th>
+          <th className="text-right py-1.5 font-medium">Cost</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-border">
+        {runs.map((run) => (
+          <tr key={run.id} className="hover:bg-surface-3 transition-colors">
+            <td className="py-2 font-mono">{run.id ? <RouteLink to={{ name: "run", id: run.id }} className="text-accent hover:underline">{run.id}</RouteLink> : "—"}</td>
+            <td className="py-2"><OutcomeBadge outcome={run.outcome} /></td>
+            <td className="py-2"><When iso={run.endedAt} /></td>
+            <td className="py-2 font-mono text-muted">{formatDuration(run.durationSeconds) ?? "—"}</td>
+            <td className="py-2 text-right"><UsageCell usage={run.usage} /></td>
+            <td className="py-2 text-right"><CostCell cost={run.cost} /></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
-function TimelineEvent({ event }: { event: any }) {
-  const iconMap: Record<string, string> = {
-    handoff: "⇄", info: "·", working: "◌", complete: "✓", artifact: "📎",
-  };
-  const colorMap: Record<string, string> = {
-    handoff: "text-accent", info: "text-text-2", working: "text-blue",
-    complete: "text-green", artifact: "text-amber",
-  };
+const DECISION_STYLE: Record<Benefit["decision"], string> = {
+  Keep: "text-green bg-green-dim",
+  Improve: "text-amber bg-amber-dim",
+  Retire: "text-red bg-red-dim",
+  Unknown: "text-muted bg-surface-3",
+};
+
+function BenefitPanel({ benefit }: { benefit: Benefit | null }) {
+  if (!benefit) return <p className="text-xs text-muted">No benefit ledger entry for this workflow.</p>;
+  const signals = benefit.consumption.status === "measured" ? benefit.consumption.value : null;
+  const denominator = signals?.artifactRuns ?? 0;
+  const bars: Array<[string, number]> = signals ? [["Opened", signals.opened], ["Approved", signals.approved], ["Sent", signals.sent], ["Marked useful", signals.markedUseful]] : [];
   return (
-    <div className="relative flex items-start gap-3 pl-6 pb-4">
-      <div className="absolute left-[-1px] top-0 w-2 h-2 rounded-full bg-border border-2 border-surface translate-x-[-50%] translate-y-1" />
-      <div>
-        <span className="text-muted font-mono text-xs">{event.time}</span>{" "}
-        <span className={`font-medium text-xs ${colorMap[event.type]}`}>{event.actor}</span>{" "}
-        <span className={`text-xs mr-1 ${colorMap[event.type]}`}>{iconMap[event.type]}</span>
-        <span className="text-xs text-text-2">{event.event}</span>
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 mb-2">
+        <span className={`font-mono px-2 py-0.5 rounded text-[11px] ${DECISION_STYLE[benefit.decision]}`} data-decision={benefit.decision}>{benefit.decision}</span>
+        {benefit.decidedBy && <span className="text-xs text-muted">by {benefit.decidedBy} · {formatUtc(benefit.decidedAt) ?? "—"}</span>}
       </div>
+      <Row label="Eligible runs">{benefit.eligibleRuns ?? "—"}</Row>
+      <Row label="Valid artifact rate">{pct(benefit.validArtifactRate)}</Row>
+      <Row label="Latency">{formatDuration(benefit.latencySeconds) ?? "—"}</Row>
+      <Row label="Manual minutes avoided">{benefit.manualMinutesAvoided ?? "—"}</Row>
+      <p className="text-xs text-muted pt-2">Consumption signals, measured independently and never combined into a score.</p>
+      {signals === null ? (
+        <NotMeasured status={benefit.consumption.status === "unknown" ? "unknown" : "unavailable"} />
+      ) : (
+        bars.map(([label, n]) => (
+          <div key={label} className="flex items-center gap-3">
+            <span className="text-xs text-text-2 w-28 shrink-0">{label}</span>
+            <meter className="flex-1 h-1.5" min={0} max={Math.max(denominator, 1)} value={n} aria-label={label} />
+            <span className="text-xs font-mono text-muted w-14 text-right">{n} of {denominator}</span>
+          </div>
+        ))
+      )}
     </div>
   );
 }
 
-const MOCK_RUNS = [
-  { id: "run-sr-20260910-0901", workflow: "standing-research", outcome: "incomplete", duration: "4m 12s", tokens: "48.2K", cost: "$0.42" },
-  { id: "run-sr-20260908-0902", workflow: "standing-research", outcome: "success", duration: "6m 44s", tokens: "52.1K", cost: "$0.46" },
-  { id: "run-sr-20260905-0901", workflow: "standing-research", outcome: "success", duration: "5m 58s", tokens: "44.8K", cost: "$0.39" },
-  { id: "run-dp-20260910-0702", workflow: "daily-plan", outcome: "success", duration: "1m 58s", tokens: "12.4K", cost: "$0.09" },
-  { id: "run-dp-20260909-0700", workflow: "daily-plan", outcome: "success", duration: "2m 04s", tokens: "11.8K", cost: "$0.08" },
-  { id: "run-dp-20260908-0701", workflow: "daily-plan", outcome: "success", duration: "1m 48s", tokens: "10.9K", cost: "$0.07" },
-  { id: "run-aws-20260910-1500", workflow: "auto-sync", outcome: "running", duration: "—", tokens: "—", cost: "—" },
-  { id: "run-aws-20260910-1400", workflow: "auto-sync", outcome: "success", duration: "38s", tokens: "8.9K", cost: "$0.06" },
-  { id: "run-aws-20260910-1300", workflow: "auto-sync", outcome: "success", duration: "35s", tokens: "8.2K", cost: "$0.05" },
-  { id: "run-ac-20260910-1100", workflow: "augustus-content", outcome: "incomplete", duration: "3m 22s", tokens: "31.7K", cost: "$0.28" },
-  { id: "run-ac-20260909-1102", workflow: "augustus-content", outcome: "success", duration: "4m 10s", tokens: "34.2K", cost: "$0.30" },
-  { id: "run-kd-20260909-1702", workflow: "knowledge-digest", outcome: "success", duration: "5m 28s", tokens: "22.1K", cost: "$0.19" },
-  { id: "run-fe-20260902-0604", workflow: "fleet-eval", outcome: "success", duration: "8m 12s", tokens: "19.3K", cost: "$0.16" },
-];
-
-const LINEAGE_STAGES = [
-  {
-    id: "candidates", label: "Candidate sources",
-    evidence: "32 sources monitored: RSS feeds, newsletters, curated reading lists. Scanned by Claudius on each eligible run. Last scan: 2026-09-10 09:01.",
-  },
-  {
-    id: "criteria", label: "Selection criteria",
-    evidence: "Topics must: (1) appear in ≥2 sources, (2) align with stated research interests, (3) not duplicate a proposal in the last 30 days. Criteria version: v4.",
-  },
-  {
-    id: "selected", label: "Selected topic & reason",
-    evidence: "Topic: Byzantine fiscal policy (6th–7th century). Reason: appeared in 4 sources, matches stated interest in late antique economic history, no duplicate in 30-day window.",
-  },
-  {
-    id: "trigger", label: "Schedule / trigger",
-    evidence: "Run triggered by cron schedule: Tue/Thu 09:00 Europe/London. Run initiated at 09:01:14. No catch-up. Eligible.",
-  },
-  {
-    id: "run", label: "Claudius research run",
-    evidence: "Run ID: run-sr-20260910-0901. Duration: 4m 12s. Outcome: incomplete. No proposal or valid decline produced. Contract requires one of the two artifacts.",
-  },
-  {
-    id: "notion", label: "Notion proposal",
-    evidence: "No proposal was created in this run. Previous proposal (Sep 8): 'Sassanid trade routes' — approved by Dave on Sep 9.",
-  },
-  {
-    id: "action", label: "Dave's next action",
-    evidence: "Review run log (run-sr-20260910-0901), then either retry the run or provide a manual decline note in the Standing Research Notion page.",
-  },
-];
+function ContractText({ workflowId }: { workflowId: string }) {
+  const [text, setText] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const load = () => {
+    getText(`/api/v1/workflows/${encodeURIComponent(workflowId)}/contract`)
+      .then(setText)
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+  };
+  return (
+    <details className="mt-3" onToggle={(e) => e.currentTarget.open && text === null && load()}>
+      <summary className="text-xs text-accent cursor-pointer">Contract text</summary>
+      {error && <p className="text-xs text-red mt-2 font-mono">{error}</p>}
+      {text !== null && <pre className="mt-2 text-[11px] font-mono text-text-2 bg-surface-2 border border-border rounded p-3 overflow-x-auto whitespace-pre-wrap">{text}</pre>}
+    </details>
+  );
+}
