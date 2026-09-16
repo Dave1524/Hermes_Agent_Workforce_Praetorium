@@ -587,6 +587,10 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   and the four `profiles/*.env.example` that name it, then retire or reroute each. Keep
   `base0` and `leantest` while local-tier-eval needs them. Gate: a grep for hermes across
   `bin/ systemd/ profiles/` returns only historical notes; verify green.
+  **LANDED 2026-09-16, PR #43 (`c85ae37`)**: gate `tests/test_hermes_residue.sh` green, verify
+  green, drift clean; brave-mcp restarted on the repo launcher and read; units, allowlist and
+  base0 alias block in place. Profile deletion (land step 7) and D4 wait on Dave; MEASURED
+  `ls ~/.hermes/profiles/` to be written there.
 - **T6.2** [Claude, M] W19, the design and profiles half: `design/workflow-registry.md:77-78`,
   `design/eval-spec.md:166-167`, `augustus.toml`'s scheduled surface (`present = false` or a
   stated reason), the two `profiles/` task files declared runtime-only, the W19 row updated.
