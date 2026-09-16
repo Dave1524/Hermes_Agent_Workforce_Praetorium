@@ -173,13 +173,16 @@ Ids are the stable names; `## Known failure modes` references them, never the nu
    ```
 
 5. **Claims carry the FACT/INFERENCE labels.** The profile makes the split mandatory because
-   an unlabelled research proposal reads as evidence when half of it is reasoning.
+   an unlabelled research proposal reads as evidence when half of it is reasoning. The label
+   is matched as a word, not as the literal `FACT:` the profile spells: the model bolds it
+   (`**FACT** (source)`, `**FACT:**`), and the literal read 0 against an artifact carrying 34
+   of them — a red on every run from the first receipt (2026-09-16) with nothing wrong.
 
    ```check id=claims-are-labelled
    f="$AGENT_INBOX_DIR/${RUN_DATE}_standing-research.md"
    [ -f "$f" ] || { echo "n/a: no artifact this run"; exit 77; }
-   n="$(grep -c 'FACT:' "$f")"
-   [ "$n" -ge 1 ] || echo "no FACT: label anywhere — every claim is unlabelled"
+   n="$(grep -cw 'FACT' "$f")"
+   [ "$n" -ge 1 ] || echo "no FACT label anywhere — every claim is unlabelled"
    [ "$n" -ge 1 ]
    ```
 
