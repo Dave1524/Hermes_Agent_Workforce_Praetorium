@@ -602,6 +602,24 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   `requires` resolve and render both ways with `satisfied` null on an unavailable bus; a stubbed
   down requirement produces a BLOCKED receipt; `guards` refused off-platform; `bash bin/verify.sh`
   green after land with no root file changed. Brief: `.claude/briefs/t5-3f-workflow-roles.md`.
+  **DONE 2026-09-16, `7166798` (PR #45, merged `ae378f5`).** `role` is `control_room_state.role_of(surface)`
+  and nothing else; `/api/v1/workflows` answers 26 rows (11 agent, 15 system) and 31 with `?role=all`,
+  `/portfolio` still 31 with `data-role`; `/api/v1/agents` answers for the five and the Agents view
+  renders them read-only (runtime state, last turn, 7-day turns/usage/cost, owns, required-by).
+  `requires` has one resolver, `bin/workflow_requires.py`, and one suite,
+  `tests/test_workflow_requires.sh`: resolves statically, agrees across a fold, mirrors the unit
+  file's `Wants=/Requires=/BindsTo=`, and a `run_content_via_buzz.sh` hand-off must require its
+  owner's runtime; `EXTERNAL_UNITS` names the one unit no repo file describes (`system/ollama.service`).
+  `satisfied` is tri-state and unknown is never a refusal — `agent_propose.sh` and
+  `local_tier_eval.sh` pre-flight `check` and refuse only a requirement known down; the suites drive
+  a fake `systemctl` on PATH. `dependency-down` fires for an enabled workflow only, so the paused
+  fleet raises nothing. `guards` declared on five platform entries, a chip and a Pause/Stop notice
+  that never blocks. Fifteen `what` strings are sentences. SPA 35 files / 224 tests, rebuilt and
+  restamped. Landed on the box the same afternoon: `bin/deploy` (exactly the ten `bin/` files the
+  branch drift named), `control-room.service` restarted, live API read as the brief's step 3
+  predicts — five runtimes `inactive`, augustus "Required by augustus-content (paused)",
+  `buzz-agent@augustus — inactive` / `buzz-notion-broker — active`, no `dependency-down`. No timer,
+  runtime, broker or root-owned file touched.
 - **T5.4** [Claude, M, T5.2] Proof on real runs: one full week with every declared check of
   every contract executed against real runs; the pass matrix recorded in the brief.
   Reviewed requirement — **passing assertions prove delivery, not value.** Add a consumption and
@@ -773,13 +791,11 @@ because nothing violated it. T4.1 and T4.2 closed; T4.3 keeps one assertion, nam
    code, then a Monday digest) starts at the post-merge deploy and fleet resume.
 9. ~~**T6.1**~~ — done 2026-09-16 (PR #43); it was the last open item on the code-complete DoD.
 10. ~~**T5.3e**~~ — done 2026-09-16, `03da64a` (PR #44, merged `f566716`); live at `/app/`.
-11. **T5.3f** — roles, Agents view, `requires`/`guards`, after T5.3e (landed 2026-09-16). Not on
-    the code-complete DoD; touches the read model, two runners, the manifests and the SPA; no root
-    file. Brief: `.claude/briefs/t5-3f-workflow-roles.md` (2026-09-16).
+11. ~~**T5.3f**~~ — done 2026-09-16, `7166798` (PR #45, merged `ae378f5`); live at `/app/agents`.
 12. **T0.3** — S, and it closes W20 either way.
 13. **T6.3** when Dave says.
 
-Startable today with no blocker: T7.2, T5.3f, T0.3. Everything else waits on one of those,
+Startable today with no blocker: T7.2, T0.3. Everything else waits on one of those,
 on a merge-and-deploy (T3.3's calendar half), or on a Dave item.
 
 Dave's queue, unchanged by this sweep: D2, D3, D4, D5, D6, L1, T6.3. D1 closed with T2.4; D7 and
