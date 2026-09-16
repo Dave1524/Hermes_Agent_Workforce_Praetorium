@@ -6,12 +6,16 @@ import AgentAvatar from "@/components/AgentAvatar";
 import ArtifactLink from "@/components/ArtifactLink";
 import ControlStateBadge from "@/components/ControlStateBadge";
 import DataStatusStrip from "@/components/DataStatusStrip";
+import GuardsChip from "@/components/GuardsChip";
 import HealthBadge from "@/components/HealthBadge";
-import { CostCell, NotMeasured, UsageCell } from "@/components/MeasurementCell";
+import { NotMeasured } from "@/components/MeasurementCell";
 import OutcomeBadge from "@/components/OutcomeBadge";
 import { Panel, Row } from "@/components/Panel";
+import RequiresChip from "@/components/RequiresChip";
+import RequiresPanel from "@/components/RequiresPanel";
 import { ErrorNotice, Loading } from "@/components/ResourceState";
 import RouteLink from "@/components/RouteLink";
+import RunsTable from "@/components/RunsTable";
 import When from "@/components/When";
 import WorkflowControls from "@/components/WorkflowControls";
 import type { Benefit } from "@/model/benefit";
@@ -49,6 +53,8 @@ export default function WorkflowDetail({ workflowId }: { workflowId: string }) {
                 <h2 className="text-lg font-semibold text-text">{row.name}</h2>
                 <HealthBadge health={row.health} size="md" />
                 <ControlStateBadge state={row.controlState} />
+                <RequiresChip requires={row.requires} />
+                <GuardsChip guards={row.guards} />
                 <span className="font-mono text-xs text-muted">{row.id}</span>
               </div>
               {d.purpose && <p className="text-text-2 text-sm mt-1.5 max-w-xl">{d.purpose}</p>}
@@ -100,6 +106,8 @@ export default function WorkflowDetail({ workflowId }: { workflowId: string }) {
           <Panel title="Benefit evidence">
             <BenefitPanel benefit={d.benefit} />
           </Panel>
+
+          <RequiresPanel requires={row.requires} requiredBy={row.requiredBy} />
 
           <Panel title="Lineage">
             <p className="text-xs text-muted mb-2">Each stage names where its value came from; a stage with nothing behind it is Unknown, never a guess.</p>
@@ -180,36 +188,6 @@ function TriggerCard({ index, trigger }: { index: number; trigger: TriggerView }
       <Row label="Persistent">{trigger.persistent === null ? "—" : trigger.persistent ? "yes" : "no"}</Row>
       {trigger.errors.length > 0 && <p className="text-red mt-1 font-mono">{trigger.errors.join("; ")}</p>}
     </div>
-  );
-}
-
-function RunsTable({ runs }: { runs: ReturnType<typeof toRun>[] }) {
-  if (runs.length === 0) return <p className="text-xs text-muted">No runs recorded.</p>;
-  return (
-    <table className="w-full text-xs">
-      <thead>
-        <tr className="text-muted border-b border-border">
-          <th className="text-left py-1.5 font-medium">Run</th>
-          <th className="text-left py-1.5 font-medium">Outcome</th>
-          <th className="text-left py-1.5 font-medium">Ended</th>
-          <th className="text-left py-1.5 font-medium">Duration</th>
-          <th className="text-right py-1.5 font-medium">Tokens</th>
-          <th className="text-right py-1.5 font-medium">Cost</th>
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-border">
-        {runs.map((run) => (
-          <tr key={run.id} className="hover:bg-surface-3 transition-colors">
-            <td className="py-2 font-mono">{run.id ? <RouteLink to={{ name: "run", id: run.id }} className="text-accent hover:underline">{run.id}</RouteLink> : "—"}</td>
-            <td className="py-2"><OutcomeBadge outcome={run.outcome} /></td>
-            <td className="py-2"><When iso={run.endedAt} /></td>
-            <td className="py-2 font-mono text-muted">{formatDuration(run.durationSeconds) ?? "—"}</td>
-            <td className="py-2 text-right"><UsageCell usage={run.usage} /></td>
-            <td className="py-2 text-right"><CostCell cost={run.cost} /></td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
   );
 }
 

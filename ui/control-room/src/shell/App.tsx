@@ -10,6 +10,8 @@ import RunDetail from "@/pages/RunDetail";
 import Incidents from "@/pages/Incidents";
 import Usage from "@/pages/Usage";
 import Activity from "@/pages/Activity";
+import Agents from "@/pages/Agents";
+import AgentDetail from "@/pages/AgentDetail";
 import { useRefresh } from "./RefreshContext";
 import { type HealthStatus, useHealth } from "./useHealth";
 
@@ -21,6 +23,8 @@ const TITLES: Record<MatchedRoute["name"], string> = {
   incidents: "Incidents",
   usage: "Usage",
   activity: "Activity",
+  agents: "Agents",
+  agent: "Agent Detail",
 };
 
 const HEALTH_DOT: Record<HealthStatus, string> = {
@@ -31,7 +35,7 @@ const HEALTH_DOT: Record<HealthStatus, string> = {
 };
 
 const isNavActive = (route: MatchedRoute, nav: MatchedRoute["name"]): boolean =>
-  route.name === nav || (nav === "workflows" && (route.name === "workflow" || route.name === "run"));
+  route.name === nav || (nav === "workflows" && (route.name === "workflow" || route.name === "run")) || (nav === "agents" && route.name === "agent");
 
 const page = (route: MatchedRoute): ReactNode => {
   switch (route.name) {
@@ -49,6 +53,10 @@ const page = (route: MatchedRoute): ReactNode => {
       return <Usage />;
     case "activity":
       return <Activity />;
+    case "agents":
+      return <Agents />;
+    case "agent":
+      return <AgentDetail name={route.id} />;
   }
 };
 

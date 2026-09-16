@@ -1,4 +1,6 @@
 import { useState } from "react";
+import DependencyNotice from "@/components/DependencyNotice";
+import type { DependentView } from "@/model/requires";
 import ControlOutcome from "./ControlOutcome";
 import DialogFrame, { Field, buttonClass, inputClass } from "./DialogFrame";
 import { useControlAction } from "./useControlAction";
@@ -10,7 +12,12 @@ export interface ControlDialogProps {
   onChanged: () => void;
 }
 
-export default function PauseDialog({ workflowId, workflowName, onClose, onChanged }: ControlDialogProps) {
+export interface DependencyProps {
+  requiredBy: DependentView[];
+  guards: string | null;
+}
+
+export default function PauseDialog({ workflowId, workflowName, onClose, onChanged, requiredBy, guards }: ControlDialogProps & DependencyProps) {
   const [reason, setReason] = useState("");
   const { state, send } = useControlAction(workflowId);
   const done = state.phase === "applied";
@@ -30,6 +37,7 @@ export default function PauseDialog({ workflowId, workflowName, onClose, onChang
       }
     >
       <p>The timer is disabled and stops scheduling runs. A run already in progress finishes; nothing is killed.</p>
+      <DependencyNotice action="pause" requiredBy={requiredBy} guards={guards} />
       <Field label="Reason (optional, goes on the receipt)">
         <input className={inputClass} value={reason} onChange={(e) => setReason(e.target.value)} disabled={done} />
       </Field>

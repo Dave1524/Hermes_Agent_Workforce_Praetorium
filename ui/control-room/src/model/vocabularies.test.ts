@@ -2,6 +2,7 @@ import { toBenefitDecision } from "./benefit";
 import { toControlState } from "./controlState";
 import { toHealth } from "./health";
 import { toOutcome } from "./outcome";
+import { toRole } from "./role";
 
 describe("vocabularies fall back to unknown", () => {
   it.each(["healthy", "running", "incomplete", "failed", "paused", "unknown"] as const)("health %s", (v) => {
@@ -27,5 +28,11 @@ describe("vocabularies fall back to unknown", () => {
   });
   it.each(["keep", null, undefined])("benefit %o -> Unknown", (v) => {
     expect(toBenefitDecision(v)).toBe("Unknown");
+  });
+  it.each(["agent-workflow", "system-workflow", "agent-runtime"] as const)("role %s", (v) => {
+    expect(toRole(v)).toBe(v);
+  });
+  it.each(["platform", null, undefined])("role %o -> unknown", (v) => {
+    expect(toRole(v)).toBe("unknown");
   });
 });

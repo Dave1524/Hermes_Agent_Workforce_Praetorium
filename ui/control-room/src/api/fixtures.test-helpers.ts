@@ -4,6 +4,7 @@ import type { ExceptionRow } from "./schemas/exceptions";
 import type { Incident } from "./schemas/incidents";
 import type { UsageItem } from "./schemas/usage";
 import type { OverviewResponse } from "./schemas/overview";
+import type { Agent } from "./schemas/agent";
 
 // Shapes mirror tests/fixtures/control-room receipts at NOW = 2026-09-14T08:00:00Z.
 export const FIXTURE_NOW = new Date("2026-09-14T08:00:00Z");
@@ -61,6 +62,14 @@ export const activeWorkflow: Workflow = {
   purpose: "Mirror the agent inbox into Notion",
   lifecycle: "active",
   health: "healthy",
+  surface: "scheduled",
+  role: "agent-workflow",
+  requires: [
+    { unit: "buzz-agent@marcus", scope: "user", workflow: "buzz-agent@marcus", state: "active", satisfied: true },
+    { unit: "buzz-notion-broker", scope: "user", workflow: null, state: "active", satisfied: true },
+  ],
+  requiredBy: [],
+  guards: null,
   manifestPaths: ["design/workflows/agent-inbox-sync.toml"],
   contract: { path: "design/contracts/agent-inbox-sync.toml", trigger: "timer", artifact: "notion row", beneficiary: "dave", next_actor: "dave", next_action: "review", benefit_hypothesis: "less manual triage", benefit_signal: "opened", task_ids: ["T5.1"] },
   contractStatus: "ok",
@@ -125,6 +134,7 @@ export const pausedWorkflow: Workflow = {
   owners: ["claudius"],
   owner: "claudius",
   health: "failed",
+  requires: [{ unit: "ollama.service", scope: "system", workflow: null, state: "inactive", satisfied: false }],
   lastRun: failedRun,
   latestOutput: null,
   usage: failedRun.usage,
@@ -154,6 +164,11 @@ export const unavailableWorkflow: Workflow = {
   purpose: null,
   lifecycle: "active",
   health: "unknown",
+  surface: "platform",
+  role: "system-workflow",
+  requires: [{ unit: "qmd-mcp", scope: "system", workflow: null, state: "unknown", satisfied: null }],
+  requiredBy: [],
+  guards: "Without it the weekly pre-read is never assembled.",
   manifestPaths: [],
   contract: null,
   contractStatus: "missing",
@@ -174,6 +189,35 @@ export const unavailableWorkflow: Workflow = {
   validArtifactRate: null,
   incompleteRuns: [],
   lineage: [],
+};
+
+export const runtimeWorkflow: Workflow = {
+  ...unavailableWorkflow,
+  id: "buzz-agent@marcus",
+  name: "buzz-agent@marcus",
+  owners: ["marcus"],
+  owner: "marcus",
+  purpose: "Marcus's live Buzz session",
+  health: "healthy",
+  surface: "interactive",
+  role: "agent-runtime",
+  requires: [],
+  requiredBy: [{ workflow: "agent-inbox-sync", enabled: true }],
+  guards: null,
+  control: { ...unavailableWorkflow.control!, state: "active" },
+};
+
+export const dependencyDownException: ExceptionRow = {
+  kind: "dependency-down",
+  workflowId: "raw-ingest",
+  owner: "claudius",
+  issue: "requires ollama.service (system): inactive",
+  failedAssertions: [],
+  requiredAction: "Start the required unit or resume its workflow; until then every run is refused at pre-flight.",
+  evidence: { runId: null, artifactUri: null },
+  paused: false,
+  since: null,
+  alsoFailed: null,
 };
 
 export const failedException: ExceptionRow = {
@@ -227,7 +271,7 @@ export const overview: OverviewResponse = {
   apiVersion: "1",
   generatedAt: "2026-09-14T08:00:00Z",
   dataStatus: { manifests: "available", receipts: "available", systemd: "available", errors: {} },
-  summary: { workflows: 31, healthy: 22, running: 1, failed: 1, incomplete: 0, needAttention: 4, paused: 30, unknown: 2, incompleteRuns: 0 },
+  summary: { workflows: 31, healthy: 22, running: 1, failed: 1, incomplete: 0, needAttention: 4, paused: 30, unknown: 2, incompleteRuns: 0, agents: { total: 5, up: 4, down: 0, unknown: 1 } },
   reliability7d: {
     status: "measured",
     days: [
@@ -242,4 +286,47 @@ export const overview: OverviewResponse = {
   },
   recentOutputs: [measuredRun],
   agentUsage: [measuredUsage, unavailableUsage],
+};
+
+export const interactionTurn: RunSummary = {
+  ...measuredRun,
+  id: "turn-0914",
+  workflowId: "buzz-agent@marcus",
+  unit: "buzz-agent@marcus.service",
+  startedAt: "2026-09-14T07:30:00Z",
+  endedAt: "2026-09-14T07:31:10Z",
+  artifact: { uri: null, title: "reply in #ops", kind: "buzz-message" },
+  assertions: [],
+  nextAction: null,
+  receiptPath: "var/workflow-receipts/buzz-agent@marcus/turn-0914.json",
+};
+
+export const agentUp: Agent = {
+  name: "marcus",
+  title: "Chief of staff",
+  harness: "claude-agent-acp",
+  manifest: "design/agents/marcus.toml",
+  runtime: { unit: "buzz-agent@marcus", scope: "user", state: "active", since: "2026-09-13T21:04:35Z" },
+  health: "healthy",
+  lastTurn: interactionTurn,
+  turns7d: 3,
+  usage7d: measuredUsage.usage,
+  cost7d: measuredUsage.cost,
+  ownedWorkflows: [{ id: "agent-inbox-sync", role: "agent-workflow" }],
+  requiredBy: [{ workflow: "agent-inbox-sync", enabled: true }],
+};
+
+export const agentDown: Agent = {
+  name: "aurelian",
+  title: "Cold verification",
+  harness: "claude-agent-acp",
+  manifest: "design/agents/aurelian.toml",
+  runtime: { unit: "buzz-agent@aurelian", scope: "user", state: "unknown", since: null },
+  health: "unknown",
+  lastTurn: null,
+  turns7d: 0,
+  usage7d: unavailableUsage.usage,
+  cost7d: unavailableUsage.cost,
+  ownedWorkflows: [],
+  requiredBy: [],
 };

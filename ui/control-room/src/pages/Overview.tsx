@@ -1,6 +1,6 @@
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import { exceptionsResponseSchema } from "@/api/schemas/exceptions";
-import { type Reliability, overviewResponseSchema } from "@/api/schemas/overview";
+import { type AgentSummary, type Reliability, overviewResponseSchema } from "@/api/schemas/overview";
 import AgentAvatar from "@/components/AgentAvatar";
 import DataStatusStrip from "@/components/DataStatusStrip";
 import { CostCell, UsageCell } from "@/components/MeasurementCell";
@@ -15,6 +15,11 @@ import { formatTokens } from "@/model/tokens";
 import { toAgentUsage, totalCost } from "@/model/usage";
 import { usePageResource, useSecondaryResource } from "@/shell/usePageResource";
 import ArtifactLink from "@/components/ArtifactLink";
+
+const agentsTile = (agents: AgentSummary | null | undefined): string => {
+  if (!agents || agents.total === null || agents.total === undefined) return "—";
+  return `${agents.total} · ${agents.up ?? "—"} up`;
+};
 
 export default function Overview() {
   const overview = usePageResource("/api/v1/overview", overviewResponseSchema);
@@ -31,8 +36,9 @@ export default function Overview() {
     <>
       <DataStatusStrip status={dataStatus} />
       <div className="p-6 max-w-[1200px] mx-auto space-y-6">
-        <div className="grid grid-cols-5 gap-3">
+        <div className="grid grid-cols-6 gap-3">
           <div data-testid="stat-workflows"><Stat label="Workflows" value={summary.workflows ?? "—"} tone="text-text-2" /></div>
+          <div data-testid="stat-agents"><Stat label="Agents" value={agentsTile(summary.agents)} tone="text-text-2" /></div>
           <div data-testid="stat-healthy"><Stat label="Healthy" value={summary.healthy ?? "—"} tone="text-green" /></div>
           <div data-testid="stat-running"><Stat label="Running" value={summary.running ?? "—"} tone="text-blue" /></div>
           <div data-testid="stat-failed"><Stat label="Failed" value={summary.failed ?? "—"} tone="text-red" /></div>
@@ -67,10 +73,10 @@ export default function Overview() {
             <div className="bg-surface border border-border rounded-md divide-y divide-border">
               {usage.map((a) => (
                 <div key={a.agent} className="px-4 py-2.5 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
+                  <RouteLink to={{ name: "agent", id: a.agent }} className="flex items-center gap-2 hover:text-accent">
                     <AgentAvatar name={a.agent} />
                     <span className="text-sm text-text">{a.agent}</span>
-                  </div>
+                  </RouteLink>
                   <div className="text-right space-y-0.5">
                     <div><UsageCell usage={a.usage} /></div>
                     <div><CostCell cost={a.cost} /></div>
@@ -132,7 +138,7 @@ function ExceptionCard({ row }: { row: ExceptionView }) {
         <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${row.kind === "failed" ? "bg-red" : "bg-amber"}`} aria-hidden />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] font-mono uppercase tracking-wider text-muted">{exceptionKindLabel(row.kind)}</span>
+            <span className="text-[10px] font-mono uppercase tracking-wider text-muted" data-testid="exception-kind">{exceptionKindLabel(row.kind)}</span>
             {row.workflowId && <RouteLink to={{ name: "workflow", id: row.workflowId }} className="font-medium text-sm text-text hover:text-accent">{row.workflowId}</RouteLink>}
             {row.owner && <span className="text-text-2 text-xs">· {row.owner}</span>}
             {row.paused && <span className="text-[10px] font-mono text-text-2 bg-surface-3 rounded px-1.5">paused</span>}
