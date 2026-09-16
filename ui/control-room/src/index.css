@@ -1,6 +1,5 @@
 @import '@fontsource-variable/inter';
-@import '@fontsource/jetbrains-mono/400.css';
-@import '@fontsource/jetbrains-mono/500.css';
+@import '@fontsource-variable/jetbrains-mono/wght.css';
 @import 'tailwindcss';
 
 @theme inline {
@@ -26,7 +25,7 @@
   --color-red-dim: #281010;
   --color-gray: #4a4a55;
   --font-family-sans: 'Inter Variable', system-ui, -apple-system, sans-serif;
-  --font-family-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-family-mono: 'JetBrains Mono Variable', 'Fira Code', monospace;
 }
 
 html, body, #root {
@@ -48,5 +47,5 @@ html, body, #root {
 *::-webkit-scrollbar-thumb { background: #2a2a32; border-radius: 2px; }
 
 .font-mono {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'JetBrains Mono Variable', monospace;
 }
