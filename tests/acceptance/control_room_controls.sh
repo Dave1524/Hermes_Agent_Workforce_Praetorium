@@ -9,6 +9,14 @@
 # Steps 1-4b assert (PASS/FAIL); step 5 prints what to do on the screen from the Mac and asserts
 # nothing. The script greps itself first: it must never carry a resume apply, an enable, or a
 # confirmed action — a confirmed start would bring a runtime up.
+#
+# Nothing here assumes a live state. On 2026-09-16 this script carried `pause knowledge-digest`
+# and `pause buzz-pr-watch`, expecting state_conflict because both were paused on the day it
+# was written; both had since been enabled by hand, so the T5.3g land run paused them. `pause`
+# needs no confirm, so its only guard is the state, and a state is not a property of a script.
+# broker() therefore refuses to issue an unconfirmed applying verb (pause, run_now) against any
+# id the installed allowlist knows as a workflow, and the state-dependent cases accept whichever
+# refusal or preview the live state produces.
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
 
@@ -45,7 +53,26 @@ for pattern in "${forbidden[@]}"; do
 done
 pass "self-check: no apply, no enable, no confirm in this script"
 
-broker() { # broker <act args...>: the root copy through sudo, JSON on stdout
+GUARD_TRIPPED=$(mktemp)
+trap 'rm -f "$GUARD_TRIPPED"' EXIT
+is_allowlisted_workflow() { # is_allowlisted_workflow <id>: exit 0 when the installed allowlist knows it, or cannot be read
+  python3 - "$ALLOWLIST" "$1" 2>/dev/null <<'PY'
+import json, sys
+try:
+    sys.exit(0 if sys.argv[2] in json.load(open(sys.argv[1]))["workflows"] else 1)
+except Exception:
+    sys.exit(0)
+PY
+}
+broker() { # broker <verb> <id> [args...]: the root copy through sudo, JSON on stdout
+  # Runs inside $(...), so the verdict travels through a file, not $fail.
+  case "$1" in
+    pause|run_now)
+      if is_allowlisted_workflow "$2"; then
+        echo "FAIL: refusing to issue '$1 $2' — it applies without confirm when the live state allows" | tee -a "$GUARD_TRIPPED" >&2
+        echo '{}'; return 1
+      fi ;;
+  esac
   sudo /usr/bin/python3 "$LIB" act "$@" 2>/dev/null
 }
 field() { # field <json> <python expression over d>
@@ -96,24 +123,22 @@ if [ -n "$peer_receipt" ] && [ -f "$RECEIPTS/_refused/$peer_receipt.json" ]; the
 else flunk "receipt '$peer_receipt' not found under $RECEIPTS/_refused/"; fi
 
 echo "== 4. CLI through the root copy"
-out=$(broker pause knowledge-digest --reason acceptance)
-if [ "$(field "$out" 'd["result"]')" = refused ] && [ "$(field "$out" 'd["refusal"]["code"]')" = state_conflict ]; then
-  pass "pause knowledge-digest -> refused state_conflict (already paused)"
-else flunk "pause knowledge-digest -> $(field "$out" 'd["result"]') / $(field "$out" 'd["refusal"]')"; fi
+# resume --stage preview is the one workflow verb that reads the state and never changes it:
+# paused -> previewed (with the catch-up implication), enabled -> refused state_conflict. Which
+# one is the live state's business, so both pass and the line says which.
+resume_preview() { # resume_preview <workflow>: PASS on previewed or state_conflict, sets $out
+  out=$(broker resume "$1" --stage preview --reason acceptance)
+  local result; result=$(field "$out" 'd["result"]')
+  if [ "$result" = previewed ]; then
+    pass "resume $1 --stage preview -> previewed (it is paused)"
+    echo "     implication: $(field "$out" 'd["preview"]["implication"]["message"]')"
+  elif [ "$result" = refused ] && [ "$(field "$out" 'd["refusal"]["code"]')" = state_conflict ]; then
+    pass "resume $1 --stage preview -> refused state_conflict (it is enabled)"
+  else flunk "resume $1 --stage preview -> $result / $(field "$out" 'd["refusal"]')"; fi
+}
+resume_preview knowledge-digest
 
-out=$(broker resume knowledge-digest --stage preview --reason acceptance)
-if [ "$(field "$out" 'd["result"]')" = previewed ]; then
-  pass "resume knowledge-digest --stage preview -> previewed"
-  echo "     implication: $(field "$out" 'd["preview"]["implication"]["message"]')"
-  if [ "$(field "$out" 'd["preview"]["implication"]["catchUp"]')" = True ]; then
-    pass "preview reports catchUp: true (Persistent=yes, last Sunday elapse missed)"
-  else flunk "preview reports catchUp: $(field "$out" 'd["preview"]["implication"]["catchUp"]') (expected True)"; fi
-else flunk "resume knowledge-digest --stage preview -> $(field "$out" 'd["result"]')"; fi
-
-out=$(broker pause buzz-pr-watch --reason acceptance)
-if [ "$(field "$out" 'd["refusal"]["code"]')" = state_conflict ]; then
-  pass "pause buzz-pr-watch -> refused state_conflict"
-else flunk "pause buzz-pr-watch -> $(field "$out" 'd["result"]') / $(field "$out" 'd["refusal"]')"; fi
+resume_preview buzz-pr-watch
 if [ "$(field "$out" 'any("--machine=dave@.host" in c["argv"] and "--user" in c["argv"] for c in d["receipt"]["commands"])')" = True ]; then
   pass "its receipt's commands carry --user --machine=dave@.host"
 else flunk "its receipt's commands do not carry --user --machine=dave@.host"; fi
@@ -171,11 +196,11 @@ else flunk "pause buzz-agent@marcus -> $(field "$out" 'd["refusal"]')"; fi
 echo "== 5. screen (from the Mac; no assertion)"
 cat <<EOF
   Open $SCREEN/workflows/knowledge-digest (http://praetorium:8787/workflows/knowledge-digest).
-  Expect: Controls shows 'paused'; Resume enabled; Retry disabled with its reason as tooltip;
-  last action = the newest non-preview receipt for this workflow (step 4's refused stop,
-  confirmation_required).
-  Click Resume -> the preview dialog states the catch-up implication -> Cancel.
-  Nothing resumed; the fleet is still off.
+  Expect the verbs the live state allows: paused -> Resume enabled and Pause disabled; enabled
+  -> the reverse. Retry disabled with its reason as tooltip; last action = the newest
+  non-preview receipt for this workflow (step 4's refused stop, confirmation_required).
+  Click the one enabled verb -> the dialog (Resume: the preview states the catch-up
+  implication) -> Cancel. Nothing paused or resumed.
 
   Open $SCREEN/app/agents/marcus.
   Expect the verbs the live state allows: with the unit active, 'Stop agent now' and 'Restart
@@ -187,5 +212,6 @@ cat <<EOF
   Nothing started, stopped or restarted.
 EOF
 
+if [ -s "$GUARD_TRIPPED" ]; then fail=1; fi
 if [ "$fail" -eq 0 ]; then echo "ALL PASS"; else echo "SOME FAIL"; fi
 exit "$fail"
