@@ -305,6 +305,7 @@ guards_fixture() {  # guards_fixture <name> <manifest> <unit> <sed-expr>
 fx_guards_agent=$(guards_fixture agent claudius knowledge-digest 's/^skills *= \[/guards = "Without it nothing."\nskills = [/')
 fx_guards_two=$(guards_fixture two trajan fleet-turn-check 's/^guards *= .*/guards = "Two sentences. Not one."/')
 fx_guards_open=$(guards_fixture open trajan fleet-turn-check 's/^guards *= .*/guards = "No period at the end"/')
+fx_what_two=$(guards_fixture what trajan qmd-refresh 's/^what *= .*/what = "Vault pull. Then re-index."/')
 
 # One assertion per rule, each named as design/fleet-suites.toml declares it.
 #
@@ -376,12 +377,14 @@ assert 'fixture (d): a trajan entry declaring systematic-debugging is skills-joi
 check guards-platform-only \
   'guards sits only on surface = "platform" entries'  # (::guards-platform-only)
 check one-sentence \
-  'every guards is one plain sentence: non-empty, ending in a period, on one line'  # (::one-sentence)
+  'every guards, and every standing platform what, is one plain sentence: non-empty, ending in a period, on one line'  # (::one-sentence)
 assert 'fixture (e): guards on a scheduled entry is guards-platform-only, and only that' \
   "[ \"\$fx_guards_agent\" = \"\$live_entries:guards-platform-only\" ]"
 assert 'fixture (f): a two-sentence guards is one-sentence, and only that' \
   "[ \"\$fx_guards_two\" = \"\$live_entries:one-sentence\" ]"
 assert 'fixture (g): a guards with no period is one-sentence, and only that' \
   "[ \"\$fx_guards_open\" = \"\$live_entries:one-sentence\" ]"
+assert 'fixture (h): a two-sentence platform what is one-sentence, and only that' \
+  "[ \"\$fx_what_two\" = \"\$live_entries:one-sentence\" ]"
 
 exit $fail

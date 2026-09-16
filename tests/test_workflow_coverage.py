@@ -510,14 +510,22 @@ if entries and skills_checked < len(entries):
 # `guards` is the one sentence a system workflow says about what its absence costs, and it
 # sits only on surface = "platform" entries: an agent workflow's absence is its contract's
 # beneficiary going without, already said by the contract. The screen renders the field
-# verbatim, so it is one plain sentence — non-empty, ending in a period, no newline — and
-# the rule is a function so the platform `what` rewrites are held to the same shape.
-SENTENCE_FIELDS = ("guards",)
+# verbatim, so it is one plain sentence — non-empty, ending in a period, no newline, no
+# second sentence — and a standing platform entry's `what` is held to the same shape,
+# because the Workflows page prints it as the row's purpose where an agent row prints its
+# contract's, and a manifest shorthand ("vault pull + re-index + embed") is not a purpose.
 
 
 def one_sentence(value):
     return isinstance(value, str) and value.strip() == value and bool(value) \
         and value.endswith(".") and "\n" not in value and value.count(". ") == 0
+
+
+def sentence_fields(w):
+    fields = ["guards"] if "guards" in w else []
+    if w.get("surface") == "platform" and w.get("status") == "standing":
+        fields.append("what")
+    return fields
 
 
 guards_checked = 0
@@ -532,11 +540,11 @@ for owner, w in entries:
                 "contract already does")
     if "guards" in w:
         guards_declared += 1
-    for field in SENTENCE_FIELDS:
-        if field in w and not one_sentence(w[field]):
+    for field in sentence_fields(w):
+        if not one_sentence(w.get(field)):
             problem("one-sentence",
                     f"{unit} ({owner}): {field} is not one plain sentence ending in a period "
-                    f"on one line: {w[field]!r}")
+                    f"on one line: {w.get(field)!r}")
 
 # design/fleet-suites.toml's own SCHEMA is asserted by tests/test_fleet_guards.sh (path)
 # exists, owner is in the enum, asserts non-empty). Consumed here, not re-validated. The

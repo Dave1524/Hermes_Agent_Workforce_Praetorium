@@ -86,7 +86,7 @@ asserts = [
   "skills-join",            # T3.2: sorted(skills) equals the offer the entry's mechanism delivers to the run
   "skills-join-counted",    # T3.2: the join reports entries checked = manifest count, and heading-extraction count > 0
   "guards-platform-only",   # T5.3f: guards sits only on surface = "platform" entries — an agent workflow's contract already says what its absence costs
-  "one-sentence",           # T5.3f: guards (and, from step 6, a platform what) is one plain sentence: non-empty, ends in a period, one line
+  "one-sentence",           # T5.3f: every guards and every standing platform what is one plain sentence: non-empty, ends in a period, one line, no second sentence
 ]
 why_no_workflow = """
 It grades the registry, not a job. Nothing execs it and nothing ever should — its subject is
