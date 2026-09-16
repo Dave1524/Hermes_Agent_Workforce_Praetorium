@@ -644,6 +644,22 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   `bash bin/verify.sh` green after land with the root copies re-installed by hand; **no runtime is
   started, stopped or restarted by any step** — the first live Start is Dave's, from the screen.
   Brief: `.claude/briefs/t5-3g-runtime-controls.md`.
+  **DONE 2026-09-16, `6d72f90` (PR #47, merged `f07a874`).** Broker: `RUNTIME_RE`,
+  `RUNTIME_ACTIONS`, the `runtimes` allowlist table (five rendered, two spent rows still
+  excluded), `RUNTIME_PROPERTIES` with no `ExecStart`/`Environment`, `start`/`restart --no-block`
+  + a 6 s settle window (`--start-settle`), restart waiting out `deactivating` before the settle
+  clock, `links.agent`; read model `control_actions(state, source, role)` with `failed` → paused
+  for services; the agent page's `AgentControls` + `RuntimeDialog` (boot policy as a fact,
+  double-hosting line on Start, dependents on Stop/Restart) and a `LastActionPanel` that renders
+  the API's seam shape — the review found the old panel parsed it with the receipt schema and
+  never rendered. Land: `bin/deploy`, both root copies re-installed by hand, one
+  `control-room.service` restart, drift clean, no `buzz-agent@*` touched. **The land's acceptance
+  run paused `knowledge-digest` and `buzz-pr-watch`:** the script's step 4 issued `pause` against
+  both expecting `state_conflict` from the state they had on T5.3a's land day, and both had been
+  enabled by hand since; `pause` needs no confirm, so it applied (receipts
+  `20260916T195002Z-pause-081e8a`, `20260916T195003Z-pause-*`). Fixed in `2c9fb4a`: the script
+  refuses an unconfirmed applying verb against any allowlisted workflow and the state cases became
+  `resume --stage preview`; re-run 31 PASS. Resuming the two is Dave's, from the screen.
 - **T5.4** [Claude, M, T5.2] Proof on real runs: one full week with every declared check of
   every contract executed against real runs; the pass matrix recorded in the brief.
   Reviewed requirement — **passing assertions prove delivery, not value.** Add a consumption and
