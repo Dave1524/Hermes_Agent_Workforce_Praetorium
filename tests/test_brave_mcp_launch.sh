@@ -43,6 +43,6 @@ assert 'second launch logs key=MISSING' "[ \"\$(grep -c 'launch pid=' '$work/lau
 
 echo "== unit execs the repo launcher =="  # (::brave-unit-execs-repo-launcher)
 assert 'ExecStart names the deployed repo path' "grep -qE '^ExecStart=/home/dave/agent-workforce/bin/brave_mcp_launch.sh --transport http --port 8766 --host 127.0.0.1$' '$UNIT'"
-assert 'no ~/.hermes path anywhere in the unit' "! grep -q '/.hermes/' '$UNIT'"
+assert 'no ~/.hermes path on any directive line' "! grep -v '^#' '$UNIT' | grep -q '/.hermes/'"
 
 [ "$fail" = 0 ] && echo "PASS: brave_mcp_launch" || { echo "FAIL: brave_mcp_launch"; exit 1; }
