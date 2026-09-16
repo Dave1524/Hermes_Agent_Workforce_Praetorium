@@ -8,6 +8,8 @@ Box-side operational home for the AI agent workforce running on **Praetorium**, 
 - `profiles/` – per-agent profile/task instructions (incl. augustus / bd-stall / weekly-pre)
 - `docs/` – runbooks, workflow rules, data-boundary guidelines
 - `systemd/` – timers and services for automated tasks (canonical unit sources)
+- `ui/` – the Control Room single-page app (`ui/control-room/`, React + Vite); its committed
+  build lives under `bin/control_room_ui/app/` so the box serves it without Node
 - `config/job-overrides/` – non-secret per-job env templates (`AGENT_JOB_OVERRIDES`)
 - `.claude/briefs/` – current and archived NUC improvement briefs
 
