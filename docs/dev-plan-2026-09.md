@@ -575,6 +575,33 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   Landed on the box the same morning: `bin/deploy`, `control-room.service` restarted 11:52 CEST,
   live `/` → 302 `/app/`, shell with CSP/DENY/no-store, `..` 400, GET on control 405, overview
   from real receipts (31 workflows, `reliability7d` measured over 7 days). No timer touched.
+- **T5.3f** [Claude, L, T5.3e] **Workflow roles, the Agents view, `requires` and `guards`.**
+  Added 2026-09-16 from Dave's reading of the first live screen: the Workflows list puts three
+  kinds of thing in one table because they share a systemd unit — agent workflows (an agent works,
+  the output is Dave's), system workflows (a script keeps the box honest) and the five
+  `buzz-agent@*` runtimes, which are not workflows at all (no trigger, no end, no output; their
+  turns are, and are already receipted). It cannot say which rows are mandatory, and the system
+  descriptions are manifest shorthand (`git add -A + commit + push of this repo`). Decisions, made
+  once here: `role` is derived from the manifest's existing `surface` by one function, never a
+  second field; the runtimes leave `/api/v1/workflows` at the HTTP layer only (`?role=all`
+  restores them; the read model every consumer reads is unchanged) and get `/api/v1/agents` and
+  an Agents view, read-only; "mandatory" is a relationship, so it is one manifest field
+  `requires = [...]` resolved statically (bare name = manifest unit; `user/`, `system/` prefix for
+  the two units outside the manifests) and rendered both ways — `requires` on the dependent with
+  a tri-state `satisfied`, `requiredBy` on the dependency — plus a `dependency-down` exception
+  when an enabled workflow's requirement is down; the executor honours it (`agent_propose.sh`
+  BLOCKED pre-flight, `local_tier_eval.sh` log + exit 0) so a down runtime is a one-second
+  refusal instead of a twenty-minute poll; the audit found exactly three hard dependencies
+  (`augustus-content`/`content-change-dispatch` → `buzz-agent@augustus` + `buzz-notion-broker`,
+  `local-tier-eval` → `ollama.service`) and `fleet-turn-check` is deliberately not one; what
+  cannot be computed is declared — `guards = "<what stops working>"` on load-bearing platform
+  entries (Dave, 2026-09-16), a chip and a pause-time notice; no broker change, because no
+  timer→timer dependency exists and the runtimes are not broker units; the 15 platform `what`
+  strings become sentences. Gate: every row carries `role`; the list omits runtimes by default and
+  `/portfolio` still lists every logical unit; `/api/v1/agents` answers for the five; the three
+  `requires` resolve and render both ways with `satisfied` null on an unavailable bus; a stubbed
+  down requirement produces a BLOCKED receipt; `guards` refused off-platform; `bash bin/verify.sh`
+  green after land with no root file changed. Brief: `.claude/briefs/t5-3f-workflow-roles.md`.
 - **T5.4** [Claude, M, T5.2] Proof on real runs: one full week with every declared check of
   every contract executed against real runs; the pass matrix recorded in the brief.
   Reviewed requirement — **passing assertions prove delivery, not value.** Add a consumption and
@@ -744,15 +771,15 @@ because nothing violated it. T4.1 and T4.2 closed; T4.3 keeps one assertion, nam
    against.
 8. ~~**T3.3**~~ — repo half done `db0012e`; its calendar half (seven days of runs on deployed
    code, then a Monday digest) starts at the post-merge deploy and fleet resume.
-9. **T6.1**, alongside any of the above; nothing depends on it. It is the last open item on the
-   code-complete DoD, so it goes before T5.3e.
-10. **T5.3e** — the production frontend, after T6.1. Not on the code-complete DoD; touches no file
-    T6.1 touches, so the two can run in parallel worktrees if the calendar wants it. Brief:
-    `.claude/briefs/t5-3e-control-room-spa.md` (2026-09-15).
-11. **T0.3** — S, and it closes W20 either way.
-12. **T6.3** when Dave says.
+9. ~~**T6.1**~~ — done 2026-09-16 (PR #43); it was the last open item on the code-complete DoD.
+10. ~~**T5.3e**~~ — done 2026-09-16, `03da64a` (PR #44, merged `f566716`); live at `/app/`.
+11. **T5.3f** — roles, Agents view, `requires`/`guards`, after T5.3e (landed 2026-09-16). Not on
+    the code-complete DoD; touches the read model, two runners, the manifests and the SPA; no root
+    file. Brief: `.claude/briefs/t5-3f-workflow-roles.md` (2026-09-16).
+12. **T0.3** — S, and it closes W20 either way.
+13. **T6.3** when Dave says.
 
-Startable today with no blocker: T7.2, T6.1, T5.3e, T0.3. Everything else waits on one of those,
+Startable today with no blocker: T7.2, T5.3f, T0.3. Everything else waits on one of those,
 on a merge-and-deploy (T3.3's calendar half), or on a Dave item.
 
 Dave's queue, unchanged by this sweep: D2, D3, D4, D5, D6, L1, T6.3. D1 closed with T2.4; D7 and
