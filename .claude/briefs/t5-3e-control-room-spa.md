@@ -1,17 +1,18 @@
 # Brief: T5.3e — Production Control Room frontend (the Figma prototype, wired)
 
-**Date:** 2026-09-15   **Verify:** `bash bin/verify.sh` from the repo root (includes
+**Date:** 2026-09-15, refreshed 2026-09-16 (T6.1 landed; every anchor re-verified — see § Refresh)   **Verify:** `bash bin/verify.sh` from the repo root (includes
 `bin/check_deploy_drift.sh`; extra gates and smoke: none — see § Land-time steps for why the gate is
 red on the branch and green only after `bin/deploy` + a service restart).
 
 **Size:** L. **Standing constraint (Dave, 2026-09-14):** the scheduled fleet is OFF except what Dave
-has resumed from the screen (`knowledge-digest.timer`, `workflow-incidents.timer` on 2026-09-15 —
-enumerate with `systemctl list-timers --all`, never trust this line). No step in this brief enables,
+has resumed from the screen (MEASURED 2026-09-16: `workflow-incidents.timer` only — `knowledge-digest`
+was paused from the screen 2026-09-15 10:34Z, receipt `20260915T103402Z-pause-eb964f`; enumerate
+with `systemctl list-timers --all`, never trust this line). No step in this brief enables,
 starts, stops, pauses or resumes any workflow timer. Every control-path acceptance step below is a
 **preview** or a **refusal** — neither touches live state. The one restart is `control-room.service`.
 
-**Order:** after T6.1 (the last open code-complete DoD item). Disjoint files; parallel worktrees are
-fine. Source of acceptance: `docs/dev-plan-2026-09.md` T5.3e (card at :537).
+**Order:** T6.1 landed 2026-09-16 (PR #43, `c85ae37`) — nothing blocks this card. Source of
+acceptance: `docs/dev-plan-2026-09.md` T5.3e (card at :539).
 
 ## Acceptance criteria
 
@@ -37,8 +38,9 @@ fine. Source of acceptance: `docs/dev-plan-2026-09.md` T5.3e (card at :537).
    stamp check still runs. CI installs Node 22 + `npm ci` before `verify.sh`, so CI runs the full
    path and **no** line is added to `tests/ci-expected-skips.txt`.
 5. **One row per logical workflow** on `/app/workflows` (`augustus-content` once with both
-   triggers in its expander); the count equals `len(items)` of `/api/v1/workflows` (32 on
-   2026-09-15 — read the API, not this number). No client-side grouping: the API already
+   triggers in its expander); the count equals `len(items)` of `/api/v1/workflows` (31 MEASURED
+   2026-09-16, after T6.1 retired memory-consolidation; 32 the day before — read the API, not
+   this number). No client-side grouping: the API already
    reconciles.
 6. **Exception-first landing survives:** `/app/` (Overview) leads with "Needs attention" rendered
    from `/api/v1/exceptions` `items` in the API's `kind` order (`failed, stale-input,
@@ -76,12 +78,13 @@ fine. Source of acceptance: `docs/dev-plan-2026-09.md` T5.3e (card at :537).
 12. Verify green after land; the Python suites and the SPA suite green on the branch; drift red on
     the branch is explained by exactly the files this brief adds or changes under `bin/`.
 
-## Existing state (read, confirmed 2026-09-15)
+## Existing state (read 2026-09-15; anchors re-verified 2026-09-16 — no `bin/control_room_*` file
+changed in between)
 
-**Backend** (`bin/control_room_api.py`, 1010 lines):
-- Dispatch `_route` :862-923; `_route_page` :801-805 does `/` → 302 `/exceptions` with
+**Backend** (`bin/control_room_api.py`, 1014 lines):
+- Dispatch `_route` :862-923; `_route_page` :799-810 does `/` → 302 `/exceptions` with
   `Content-Length: 0` and no other headers; `/favicon.ico` → 204 (:806-808); SSR pages :809-840;
-  `_static` :842-847 → `control_room_static.serve`; `_route_api_extra` :850-859 (contract text,
+  `_static` :842-847 → `control_room_static.serve`; `_route_api_extra` :849-859 (contract text,
   `/api/v1/control/**` GET → 405); API ladder :876-920; unknown → JSON 404. No SPA fallback exists.
 - Headers: `CSP` :770; `COMMON_HEADERS` :771 (`Cache-Control: no-store`, `X-Content-Type-Options:
   nosniff`, `Referrer-Policy: no-referrer`) on **every** `_send`; `HTML_HEADERS` :772 adds CSP +
@@ -89,7 +92,7 @@ fine. Source of acceptance: `docs/dev-plan-2026-09.md` T5.3e (card at :537).
 - Static: `bin/control_room_static.py` `CONTENT_TYPES = {css, js, svg}` (:12), `serve()` :12-24
   refuses `/` or `\` in the name (:18), resolves and requires `path.parent == root` (:20-23) — flat
   directory only, no html/woff2. Static dir = `model.static_dir` (:230), default
-  `<script dir>/control_room_ui`, CLI `--static-dir` (:985-991); `bin/control_room_serve.sh` passes
+  `<script dir>/control_room_ui`, CLI `--static-dir` (:989-990); `bin/control_room_serve.sh` passes
   none, so the live static dir is the **deployed** `~/agent-workforce/bin/control_room_ui`.
 - Envelope `_envelope` :532-538 is camelCase: `{apiVersion, generatedAt, dataStatus, items}`.
   `dataStatus` :478-499: `manifests|contracts|receipts|systemd|benefitLedger` ∈
@@ -122,7 +125,7 @@ fine. Source of acceptance: `docs/dev-plan-2026-09.md` T5.3e (card at :537).
 - `/api/v1/exceptions` :641-663: rows `{kind, workflowId, owner, issue, failedAssertions[],
   requiredAction, evidence{runId, artifactUri}, paused, since, alsoFailed}` in `KINDS` order
   (`control_room_exceptions.py:20`), plus top-level `dataQuality[]`.
-- `/api/v1/incidents` :607-637: `{id, status ∈ open|resolved, class, key, severity, workflowId,
+- `/api/v1/incidents` :613-637: `{id, status ∈ open|resolved, class, key, severity, workflowId,
   agent, issue, failedAssertion, requiredAction, runId, evidence, firstSeen, lastSeen, resolvedAt,
   notifiedAt, observations}` + `dataStatus.incidentState`. Classes/severity:
   `workflow_incidents.SEVERITY` (:36-44). **No ack endpoint.**
@@ -195,13 +198,15 @@ fine. Source of acceptance: `docs/dev-plan-2026-09.md` T5.3e (card at :537).
   from apt). No `node_modules`, no `dist` anywhere under `ui/`.
 - Tests: `tests/control_room_fixture.py` (`build_model()` :71-80 over the real checkout +
   `FakeSystemd`, `serving(model)` :83-93 on loopback); `tests/test_control_room_views.py`:
-  `ExceptionsDefault` :100-106 asserts the 302 target is `/exceptions`; `StaticFailsClosed` :233-249;
+  `ExceptionsDefault` :102-114 asserts the 302 target is `/exceptions`; `StaticFailsClosed` :232-256;
   `test_pages_reference_only_self_hosted_assets` :251-256; headers :262-266; HEAD :270-274;
-  `STANDING_ENTRIES = 33`, `LOGICAL_WORKFLOWS = 32` :29-30. Suite registry `design/fleet-suites.toml`
-  :305-343 (asserts `control-room-static-fails-closed` :334, `control-room-html-headers` :335), with
-  `(::id)` anchors as comments on the test classes.
-- Runbook: `docs/runbook.md` § Control Room :255-296 (restart after deploy :269; drift note
-  :292-296), § controls :298, § proposals :390. No section on the frontend build.
+  `STANDING_ENTRIES = 32`, `LOGICAL_WORKFLOWS = 31` :29-30 (set by T6.1, MEASURED 2026-09-16). Suite
+  registry `design/fleet-suites.toml` :307-343 (asserts `control-room-static-fails-closed` :335,
+  `control-room-html-headers` :336), with `(::id)` anchors as comments on the test classes. The
+  `control-room-30-of-31` comment at :326 still reads "31 standing entries render as exactly 30
+  Portfolio rows" — the 2026-09-10 baseline, two retirements stale.
+- Runbook: `docs/runbook.md` § Control Room :228-270 (restart after deploy :242; drift note
+  :265-269), § controls :271, § proposals :363. No section on the frontend build.
 
 ## Architecture decisions (complete option; reasons once)
 
@@ -324,13 +329,15 @@ are pinned-test-only; Preview → Create retirement PR).
 - `tests/test_control_room_api.py` — `reliability7d` measured/unavailable cases.
 - `design/fleet-suites.toml` — reword `control-room-exceptions-default`; extend
   `control-room-static-fails-closed`; add `control-room-spa-shell`, `control-room-overview-reliability`;
-  new `[[suite]]` for `tests/test_control_room_spa.sh`.
+  new `[[suite]]` for `tests/test_control_room_spa.sh`; while there, the `control-room-30-of-31`
+  comment (:326) states the counts as "the two constants in `tests/test_control_room_views.py`"
+  instead of numbers, so the next retirement cannot stale it again (id unchanged).
 - `.github/workflows/verify.yml` — `actions/setup-node@v4` (node 22, cache npm with
   `ui/control-room/package-lock.json`) + `npm ci --prefix ui/control-room` before the gate.
 - `docs/runbook.md` § Control Room — `/` lands on `/app/`; SSR paths listed as fallback; new
   "Frontend build" subsection (rebuild command, what `BUILD.json` is, deploy + restart, `--prune`
-  only if a file is removed from the build); fix the stale :287-290 "501 until T5.3a/b" sentence.
-- `CLAUDE.md` — the `control-room.service` bullet names `ui/control-room/` as source and
+  only if a file is removed from the build); fix the stale :260-263 "501 until T5.3a/b" sentence.
+- `CLAUDE.md` — the `control-room.service` bullet (:142) names `ui/control-room/` as source and
   `bin/control_room_ui/app/` as its committed build; `README.md` — add `ui/` to "What this repo
   holds".
 - `docs/dev-plan-2026-09.md` — already carries the card; at land, the DONE line.
@@ -459,7 +466,8 @@ Vitest (`ui/control-room/src/**/*.test.ts(x)`):
 4. From the Mac: `http://praetorium:8787/` lands on `/app/`. Acceptance, in this order, changing
    nothing: row count equals `/api/v1/workflows` `len(items)`; a workflow with no receipts shows
    `Unknown`/`unavailable` and no `0`; open the browser console — zero CSP reports across all seven
-   routes; `knowledge-digest` → Resume → the preview renders `implication` → **Cancel**; a workflow
+   routes; `knowledge-digest` (paused since 2026-09-15, `resume.enabled: true` on 09-16 — any paused
+   row if that changed) → Resume → the preview renders `implication` → **Cancel**; a workflow
    whose contract does not declare retry idempotent → Retry is disabled with its `reason`; a
    `run_now` on a two-trigger workflow (`augustus-content`) → `trigger_required` picker → **Cancel**;
    Change schedule → Preview renders diff/checks/residue → **close without submitting**; Proposals
@@ -479,8 +487,12 @@ Vitest (`ui/control-room/src/**/*.test.ts(x)`):
 
 ## Notes / preconditions
 
-- Live logical row count on 2026-09-15: **32** (`/api/v1/workflows`), 33 standing entries
-  (`tests/test_control_room_views.py:29-30`). The plan's "30 of 31" is the 2026-09-10 baseline.
+- Live logical row count MEASURED 2026-09-16: **31** (`/api/v1/workflows` on the Tailscale bind),
+  32 standing entries (`tests/test_control_room_views.py:29-30`, set by T6.1). It was 32/33 on
+  2026-09-15 and 30/31 at the plan's 2026-09-10 baseline — three values in six days, which is why
+  the gate reads the API and the brief's numbers are dated. `overview.summary` on 09-16:
+  `paused 22, unknown 8, running 1, healthy 0` — the Overview will open on a mostly-paused fleet,
+  so the empty "No exceptions" state and the paused chip are the first things Dave sees.
 - `ProtectHome=read-only` on the service is fine: it reads the deployed static dir; nothing writes.
 - The dev loop is `python3 bin/control_room_api.py --host 127.0.0.1 --port 8788` (loopback bind →
   `peer_allowed` lets POSTs through; control/proposals answer 501 unless bound) and `npm run dev`
@@ -494,3 +506,21 @@ Vitest (`ui/control-room/src/**/*.test.ts(x)`):
   recorded finding in the PR, not a silent softening.
 - Recharts is kept for the two charts; it is the largest dependency (~150 KB gz). Acceptable for a
   private single-operator screen; note the bundle size in the README after the first build.
+
+## Refresh 2026-09-16 (what changed since 2026-09-15; the body above is already corrected)
+
+- T6.1 landed (PR #43, `c85ae37`); the four persona profiles are deleted, D4 closed. Nothing blocks
+  this card and nothing it touches was touched — `bin/control_room_*.py`, `bin/control_room_ui/`,
+  `ui/control-room-prototype/` (still `fe80764`, 20 files, no `node_modules`/`dist`),
+  `bin/deploy`, `bin/check_deploy_drift.sh`, `bin/verify.sh`, `.github/workflows/verify.yml` and
+  `tests/ci-expected-skips.txt` (13 lines) are byte-identical to what the brief read.
+- T6.1 retired `memory-consolidation`: 31 logical / 32 standing (was 32/33). Acceptance 5, the
+  tests paragraph and § Notes carry the new figures, dated. The T5.3-era fleet-suites comment
+  still says 30/31 — folded into the fleet-suites edit above.
+- `knowledge-digest.timer` is no longer resumed (Dave paused it from the screen 2026-09-15
+  10:34Z). Live resumed set on 09-16: `workflow-incidents.timer`. The land-time resume-preview
+  step still targets `knowledge-digest`; it is paused with `resume.enabled: true`.
+- Runbook shrank by 27 lines above the Control Room section (T6.1 step 9), so its anchors moved:
+  § Control Room :228-270, § controls :271, § proposals :363, the stale 501 sentence :260-263.
+  `design/fleet-suites.toml` control-room entries moved +1 (:307-343). Dev-plan card :539.
+- `control-room.service` running since 2026-09-16 06:52 CEST; `/` still 302 `/exceptions`.
