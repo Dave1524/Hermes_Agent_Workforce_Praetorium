@@ -25,7 +25,7 @@ machine state with a live reader:
 ```
 systemctl --user list-units 'buzz-agent@*' --all    # the chat fleet — five units on 2026-09-05
 ls design/agents/                                   # the personas — one manifest each
-ls ~/.hermes/profiles/                              # base0, leantest, default (+ augustus until D4)
+ls ~/.hermes/profiles/                              # base0, leantest, default (MEASURED 2026-09-16)
 ```
 
 - Box name: **Praetorium**. Keep the Roman-emperor convention for any additional agent profiles.
@@ -38,8 +38,8 @@ ls ~/.hermes/profiles/                              # base0, leantest, default (
   leg (`bin/deliver.sh`, until the Discord cutover) and the profiles `base0` / `leantest` —
   `qwen3-64k` on Ollama, Tier 0 (zero egress) — for `local-tier-eval`. The four persona profiles
   (`SOUL.md`, `config.yaml`, episodic store, skills allowlist) were deleted 2026-09-14 (T6.1;
-  record: `design/archive/hermes-profiles-2026-09-14.md`), augustus's pending **D4** — pin
-  `only: ["azure"]` or delete. `tests/test_hermes_residue.sh` is the gate.
+  record: `design/archive/hermes-profiles-2026-09-14.md`; augustus's on 2026-09-16, closing
+  **D4**). `tests/test_hermes_residue.sh` is the gate.
 - **Vespasianus / `trading_researcher` was never built** — treat that roster row as lapsed, not
   pending. PolyScalper research is not staffed on the box.
 - Per-profile Discord identities were never built: `discord-bot.service` is staged in

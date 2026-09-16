@@ -47,7 +47,7 @@ runner; it does not inherit this tool list unexamined.
 [surfaces.kanban]
 present = false
 retired = "2026-09-02"   # D7 retired the board; T6.1 (2026-09-14) retired the hermes profile it governed
-notes   = "Board retired 2026-09-02 (D7); profile deletion waits on D4 (ZDR pin vs delete). Counts and history: design/archive/hermes-profiles-2026-09-14.md."
+notes   = "Board retired 2026-09-02 (D7); profile deleted 2026-09-16 (T6.1 land, D4 closed). Counts and history: design/archive/hermes-profiles-2026-09-14.md."
 
 [surfaces.buzz_dispatch]
 present     = true
@@ -164,4 +164,4 @@ why      = "single-publisher rule; prose in run_content_via_buzz.sh"
 [[must_not]]
 rule     = "read Tier-A vault context on an unpinned provider"
 enforced = false
-why      = "D4: pin `only: [\"azure\"]` on the hermes profile or delete it (T6.1 deletes everything else; the profile is read by nothing after T6.1)"
+why      = "D4 closed 2026-09-16: the hermes profile that carried the unpinned provider is deleted (T6.1); the live runtime is buzz-agent@augustus, whose routing is the unit's, not a profile's"

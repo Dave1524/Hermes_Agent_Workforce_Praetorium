@@ -589,8 +589,8 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   `bin/ systemd/ profiles/` returns only historical notes; verify green.
   **LANDED 2026-09-16, PR #43 (`c85ae37`)**: gate `tests/test_hermes_residue.sh` green, verify
   green, drift clean; brave-mcp restarted on the repo launcher and read; units, allowlist and
-  base0 alias block in place. Profile deletion (land step 7) and D4 wait on Dave; MEASURED
-  `ls ~/.hermes/profiles/` to be written there.
+  base0 alias block in place. Four persona profiles tarballed to `~/OUTBOX/` and deleted
+  2026-09-16 (D4 closed: delete); MEASURED `ls ~/.hermes/profiles/` → `base0 default leantest`.
 - **T6.2** [Claude, M] W19, the design and profiles half: `design/workflow-registry.md:77-78`,
   `design/eval-spec.md:166-167`, `augustus.toml`'s scheduled surface (`present = false` or a
   stated reason), the two `profiles/` task files declared runtime-only, the W19 row updated.
@@ -614,7 +614,8 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   `.config/agent-workforce/**` and `ENCRYPTION_RECOVERY.md`; grant `/home/linuxbrew` read;
   `workspace_roots` entries relative. A posture change, proven working here 2026-08-04.
 - **D4** [Dave, S] Augustus's ZDR pin. Closes with T6.1 if his Hermes profile is deleted;
-  otherwise set `only: ["azure"]`. Decide which.
+  otherwise set `only: ["azure"]`. Decide which. **CLOSED 2026-09-16: deleted** with the
+  other three at T6.1 land (nothing read it; the live augustus is the Buzz unit).
 - **D5** [Dave, M] Vault edit, Mac-side: make
   `03_projects/active/ai_agent_workforce/buzz_architecture.md` win retrieval for "how does the
   workforce publish and get proposals approved", then re-baseline `fleet_eval`'s

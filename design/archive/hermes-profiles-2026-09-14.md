@@ -69,9 +69,9 @@ CLI and venv stay: `bin/deliver.sh`'s Discord leg execs them until the Discord c
 
 ## Land record
 
-- Backup tarball: `~/OUTBOX/hermes-profiles-retired-<date>.tgz` — **TBD at land** (land-time
-  step 7; mode 600; marcus, claudius, trajan; plus augustus only if D4 = delete).
-- `ls ~/.hermes/profiles/` after land: **TBD at land** (`augustus base0 default leantest`, or
-  `base0 default leantest` if D4 = delete).
-- **D4: open.** Augustus's profile is read by nothing after T6.1. Dave decides: delete it (D4
-  closes) or pin `only: ["azure"]` in its `config.yaml` (the profile stays, read by nothing).
+- Backup tarball: `~/OUTBOX/hermes-profiles-retired-2026-09-16.tgz` (mode 600, 88 MB; marcus,
+  claudius, trajan, augustus — outside every repo). Restore is `tar xzf … -C ~/.hermes/profiles`.
+- `ls ~/.hermes/profiles/` after land: `base0 default leantest` (MEASURED 2026-09-16).
+- **D4: closed 2026-09-16 — deleted.** Dave's call: the profile was read by nothing after T6.1,
+  and the live augustus (`buzz-agent@augustus`, codex-acp) never read it; a pin would have
+  guarded a file no runtime execs.
