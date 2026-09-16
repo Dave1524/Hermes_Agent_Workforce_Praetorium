@@ -620,6 +620,29 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   predicts — five runtimes `inactive`, augustus "Required by augustus-content (paused)",
   `buzz-agent@augustus — inactive` / `buzz-notion-broker — active`, no `dependency-down`. No timer,
   runtime, broker or root-owned file touched.
+- **T5.3g** [Claude, M, T5.3f, T5.3a] **Runtime controls: Start / Stop / Restart an agent from the
+  Agents view.** Added 2026-09-16 — T5.3f shipped the Agents view read-only and named this as the
+  separate decision; Dave made it the same day. The five `buzz-agent@<name>` user units are
+  `inactive/dead/disabled` (MEASURED 2026-09-16) and the only way to bring one up is a shell on the
+  box. Decisions, made once here: the actions are the session-scoped systemd verbs `start`, `stop`,
+  `restart` — labelled "Start agent now" / "Stop agent now" / "Restart agent now" — and boot policy
+  (`UnitFileState`) is shown as a fact, never changed from the screen; `restart` is in because it
+  is the fix for a `check-loaded.sh` STALE after a `.env`/`.prompt` edit; the runtime's wire id is
+  its read-model id `buzz-agent@<name>` on the existing `workflow_id` key (one id space, one
+  receipts tree, one reader), so the broker gains a `RUNTIME_RE` beside `UNIT_RE` rather than
+  widening it; the allowlist gains a `runtimes` table rendered from the standing `kind = "service"`
+  entries and the five leave `excluded`; every runtime action needs `confirm: true`, stop and
+  restart need a reason, and a start that dies inside `RestartSec` is receipted with a `note`
+  naming `NRestarts`; the broker never runs `status` and never reads `ExecStart` (the launched
+  process carries the agent's key in argv); required-by stays a notice, not a refusal — T5.3f's
+  executor pre-flight makes stopping a required runtime a one-second BLOCKED for its dependent.
+  Gate: unknown ids, a workflow verb on a runtime and a runtime verb on a workflow are refused and
+  receipted with zero mutating calls; user scope is addressed through `--user --machine`; every
+  outcome writes one receipt under `receipts/buzz-agent@<name>/`; the agent page's buttons are
+  enabled from the re-read state, never the click; the hand-run acceptance adds refusal-only cases;
+  `bash bin/verify.sh` green after land with the root copies re-installed by hand; **no runtime is
+  started, stopped or restarted by any step** — the first live Start is Dave's, from the screen.
+  Brief: `.claude/briefs/t5-3g-runtime-controls.md`.
 - **T5.4** [Claude, M, T5.2] Proof on real runs: one full week with every declared check of
   every contract executed against real runs; the pass matrix recorded in the brief.
   Reviewed requirement — **passing assertions prove delivery, not value.** Add a consumption and
@@ -792,10 +815,11 @@ because nothing violated it. T4.1 and T4.2 closed; T4.3 keeps one assertion, nam
 9. ~~**T6.1**~~ — done 2026-09-16 (PR #43); it was the last open item on the code-complete DoD.
 10. ~~**T5.3e**~~ — done 2026-09-16, `03da64a` (PR #44, merged `f566716`); live at `/app/`.
 11. ~~**T5.3f**~~ — done 2026-09-16, `7166798` (PR #45, merged `ae378f5`); live at `/app/agents`.
-12. **T0.3** — S, and it closes W20 either way.
-13. **T6.3** when Dave says.
+12. **T5.3g** — M; Dave's decision of 2026-09-16, startable now, nothing blocks it.
+13. **T0.3** — S, and it closes W20 either way.
+14. **T6.3** when Dave says.
 
-Startable today with no blocker: T7.2, T0.3. Everything else waits on one of those,
+Startable today with no blocker: T5.3g, T7.2, T0.3. Everything else waits on one of those,
 on a merge-and-deploy (T3.3's calendar half), or on a Dave item.
 
 Dave's queue, unchanged by this sweep: D2, D3, D4, D5, D6, L1, T6.3. D1 closed with T2.4; D7 and
