@@ -1,4 +1,5 @@
 import type { Agent } from "@/api/schemas/agent";
+import type { LastAction } from "@/api/schemas/workflow";
 import { type Health, toHealth } from "./health";
 import { type Cost, type Measurement, type Usage, costFromCamel, usageFromCamel } from "./measurement";
 import { type DependentView, toDependent } from "./requires";
@@ -29,7 +30,7 @@ export interface AgentView {
   manifest: string | null;
   runtime: RuntimeView;
   actions: ActionView[];
-  lastAction: unknown;
+  lastAction: LastAction | null;
   health: Health;
   lastTurn: Run | null;
   turns7d: number | null;

@@ -766,12 +766,26 @@ def _await_settle(runner: Runner, scope: str, unit: str, seconds: int, out: dict
         time.sleep(1)
 
 
+def _await_stop_phase(runner: Runner, scope: str, unit: str, out: dict[str, Any]) -> bool:
+    """A restart's stop half runs under TimeoutStopSec, longer than the settle window; the
+    settle clock starts once the unit has left `deactivating`, else the receipt would read a
+    restart that paused the runtime."""
+    deadline = time.monotonic() + STOP_POLL_SECONDS
+    while runner.show(scope, unit, "ActiveState").get("ActiveState") == "deactivating":
+        if time.monotonic() >= deadline:
+            out["note"] = (f"{unit} still deactivating after {STOP_POLL_SECONDS} s; TimeoutStopSec applies "
+                           f"and the start half has not begun")
+            return False
+        time.sleep(1)
+    return True
+
+
 def _execute_runtime(action: str, runtime: dict[str, Any], runner: Runner, cfg: Config, out: dict[str, Any]) -> None:
     scope, verb, unit = plan_runtime(action, runtime)
     runner.mutate(scope, verb, unit)
     if action == "stop":
         _await_stop(runner, scope, unit, out)
-    else:
+    elif action == "start" or _await_stop_phase(runner, scope, unit, out):
         _await_settle(runner, scope, unit, cfg.start_settle, out)
     out["result"] = "applied"
 

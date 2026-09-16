@@ -464,7 +464,7 @@ an enabled one comes back at the next boot, and both dialogs say so. A workflow 
 |---|---|---|---|
 | `start` | `confirm: true`; not active/activating, else `state_conflict` | `start --no-block <unit>.service`, then poll `show` ≤ 6 s | `note` when the unit is `failed` or `activating/auto-restart` inside the window, naming `NRestarts`, `journalctl --user -u <unit>` and `check-loaded.sh` |
 | `stop` | `confirm: true`; non-empty reason; active/activating, else `state_conflict` | `stop --no-block <unit>.service` + poll ≤ 15 s | as workflow stop |
-| `restart` | as stop | `restart --no-block <unit>.service`, then the start poll | as start |
+| `restart` | as stop | `restart --no-block <unit>.service`, wait out `deactivating` (≤ 15 s), then the start poll | as start; a stop half still running at 15 s is noted, never receipted as `paused` |
 
 The settle window is `START_SETTLE_SECONDS` (`RestartSec=5` in the template + 1;
 `--start-settle` / `CONTROL_BROKER_START_SETTLE_SECONDS`, 0 in the suite). A runtime whose
@@ -472,7 +472,10 @@ credential the relay refuses starts cleanly and dies into `Restart=on-failure`, 
 `applied` with `after.state = active` (activating counts) and the note is the tell — read the
 journal before clicking again. `before`/`after` carry `{state, fingerprint, units: [{unit,
 scope, timer: null, service}]}` with the screen's four-value `state`, and `links.agent =
-/agents/<owner>`.
+/agents/<owner>`. The page's *last action* is the API's summary of the newest non-preview
+receipt (`ControlReceipts._seam`: result, action, refusal code, note, before/after as states,
+actor, receipt id) — not the receipt file; the SPA parses that shape (`lastActionSchema`), which
+from T5.3e until T5.3g it did not, so every workflow page read "No control action recorded."
 
 **The broker reads `RUNTIME_PROPERTIES` and nothing else** — `ActiveState, SubState,
 UnitFileState, LoadState, Result, InvocationID, ExecMainStartTimestamp, ExecMainExitTimestamp,

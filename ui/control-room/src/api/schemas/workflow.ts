@@ -65,6 +65,25 @@ export const controlActionSchema = z.object({
   reason: z.string().nullish(),
 });
 
+// bin/control_room_control.py ControlReceipts._seam: the page's last action is this summary of
+// the newest non-preview receipt, not the receipt itself — before/after are state strings.
+export const lastActionSchema = z
+  .object({
+    action: z.string().nullish(),
+    actor: z.string().nullish(),
+    reason: z.string().nullish(),
+    at: z.string().nullish(),
+    result: z.string().nullish(),
+    refusal: z.string().nullish(),
+    note: z.string().nullish(),
+    before: z.string().nullish(),
+    after: z.string().nullish(),
+    receiptId: z.string().nullish(),
+    links: z.record(z.string(), z.string().nullish()).nullish(),
+  })
+  .catchall(z.unknown());
+export type LastAction = z.infer<typeof lastActionSchema>;
+
 export const controlSchema = z.object({
   state: z.string().nullish(),
   source: z.string().nullish(),
@@ -72,7 +91,7 @@ export const controlSchema = z.object({
   nextRunEstimated: z.boolean().nullish(),
   lastTriggerAt: z.string().nullish(),
   persistent: z.boolean().nullish(),
-  lastAction: z.unknown().nullish(),
+  lastAction: lastActionSchema.nullish(),
   actions: z.array(controlActionSchema).default([]),
 });
 

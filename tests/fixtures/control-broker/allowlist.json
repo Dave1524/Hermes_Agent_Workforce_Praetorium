@@ -24,6 +24,12 @@
       "scope": "user",
       "template": "buzz-agent@.service",
       "unit": "buzz-agent@marcus"
+    },
+    "buzz-agent@slow": {
+      "owner": "claudius",
+      "scope": "user",
+      "template": "buzz-agent@.service",
+      "unit": "buzz-agent@slow"
     }
   },
   "schema": 1,

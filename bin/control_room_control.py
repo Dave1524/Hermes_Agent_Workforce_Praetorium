@@ -199,6 +199,8 @@ class ControlReceipts:
             "reason": receipt.get("reason"),
             "at": receipt.get("completed_at"),
             "result": receipt.get("result"),
+            "refusal": (receipt.get("refusal") or {}).get("code"),
+            "note": receipt.get("note"),
             "before": (receipt.get("before") or {}).get("state"),
             "after": (receipt.get("after") or {}).get("state"),
             "receiptId": receipt.get("receipt_id"),

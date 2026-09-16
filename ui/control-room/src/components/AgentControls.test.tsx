@@ -58,9 +58,10 @@ describe("AgentControls", () => {
   });
 
   it("renders the last control action receipt when the control carries one", () => {
-    const lastAction = { receipt_id: "rcpt-3", result: "refused", action: "restart", workflow_id: "buzz-agent@marcus", refusal: { code: "confirmation_required", message: "restart needs confirm" }, links: { agent: "/agents/marcus" } };
+    const lastAction = { action: "restart", actor: "dave via control-room from 100.125.209.101", reason: "acceptance", at: "2026-09-16T17:00:00Z", result: "refused", refusal: "confirmation_required", note: null, before: "active", after: null, receiptId: "20260916T170000Z-restart-0a0a0a", links: { agent: "/agents/marcus" } };
     render(<AgentControls agent={toAgent({ ...agentUp, control: { ...agentUp.control!, lastAction } })} onChanged={() => {}} />);
-    expect(screen.getByTestId("receipt")).toHaveAttribute("data-result", "refused");
-    expect(screen.getByTestId("receipt")).toHaveTextContent("confirmation_required");
+    expect(screen.getByTestId("last-action")).toHaveAttribute("data-result", "refused");
+    expect(screen.getByTestId("last-action")).toHaveTextContent("confirmation_required");
+    expect(screen.getByTestId("last-action")).toHaveTextContent("20260916T170000Z-restart-0a0a0a");
   });
 });

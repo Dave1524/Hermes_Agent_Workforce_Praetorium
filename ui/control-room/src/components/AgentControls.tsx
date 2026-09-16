@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { controlReceiptSchema, type RuntimeActionId, runtimeActionIdSchema } from "@/api/schemas/control";
+import { type RuntimeActionId, runtimeActionIdSchema } from "@/api/schemas/control";
 import { buttonClass } from "@/components/dialogs/DialogFrame";
 import RuntimeDialog, { RUNTIME_LABELS } from "@/components/dialogs/RuntimeDialog";
 import type { AgentView } from "@/model/agent";
+import LastActionPanel from "./LastActionPanel";
 import { Panel } from "./Panel";
-import ReceiptPanel from "./ReceiptPanel";
 
 interface Props {
   agent: AgentView;
@@ -27,7 +27,6 @@ export default function AgentControls({ agent, onChanged }: Props) {
   const [open, setOpen] = useState<RuntimeActionId | null>(null);
   const unit = agent.runtime.unit;
   const actions = runtimeActions(agent);
-  const lastReceipt = controlReceiptSchema.safeParse(agent.lastAction);
 
   return (
     <Panel title="Controls">
@@ -52,7 +51,7 @@ export default function AgentControls({ agent, onChanged }: Props) {
         </div>
         <div className="mt-3">
           <div className="text-[10px] font-mono uppercase tracking-wider text-muted mb-1.5">Last control action</div>
-          {lastReceipt.success ? <ReceiptPanel receipt={lastReceipt.data} /> : <p className="text-xs text-muted">No control action recorded.</p>}
+          <LastActionPanel lastAction={agent.lastAction} />
         </div>
       </div>
       {open && unit && <RuntimeDialog action={open} agent={agent} unit={unit} onClose={() => setOpen(null)} onChanged={onChanged} />}

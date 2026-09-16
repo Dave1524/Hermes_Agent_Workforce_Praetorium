@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { controlReceiptSchema } from "@/api/schemas/control";
 import PauseDialog from "@/components/dialogs/PauseDialog";
 import ResumeDialog from "@/components/dialogs/ResumeDialog";
 import RetireDialog from "@/components/dialogs/RetireDialog";
@@ -9,9 +8,9 @@ import ScheduleDialog from "@/components/dialogs/ScheduleDialog";
 import StopDialog from "@/components/dialogs/StopDialog";
 import { buttonClass } from "@/components/dialogs/DialogFrame";
 import type { WorkflowDetail } from "@/model/workflowDetail";
+import LastActionPanel from "./LastActionPanel";
 import { Panel } from "./Panel";
 import ProposalsList from "./ProposalsList";
-import ReceiptPanel from "./ReceiptPanel";
 
 type Open = "pause" | "resume" | "run_now" | "retry" | "stop" | "schedule" | "retire" | null;
 
@@ -28,7 +27,6 @@ export default function WorkflowControls({ detail, onChanged }: Props) {
   const [menu, setMenu] = useState(false);
   const [proposalsTick, setProposalsTick] = useState(0);
   const { row } = detail;
-  const lastReceipt = controlReceiptSchema.safeParse(detail.lastAction);
   const changed = () => {
     onChanged();
     setProposalsTick((t) => t + 1);
@@ -71,7 +69,7 @@ export default function WorkflowControls({ detail, onChanged }: Props) {
         </div>
         <div className="mt-3">
           <div className="text-[10px] font-mono uppercase tracking-wider text-muted mb-1.5">Last control action</div>
-          {lastReceipt.success ? <ReceiptPanel receipt={lastReceipt.data} /> : <p className="text-xs text-muted">No control action recorded.</p>}
+          <LastActionPanel lastAction={detail.lastAction} />
         </div>
         <div className="mt-3">
           <div className="text-[10px] font-mono uppercase tracking-wider text-muted mb-1.5">Proposals</div>

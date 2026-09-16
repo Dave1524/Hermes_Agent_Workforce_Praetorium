@@ -1,4 +1,4 @@
-import type { Contract, Trigger, Workflow } from "@/api/schemas/workflow";
+import type { Contract, LastAction, Trigger, Workflow } from "@/api/schemas/workflow";
 import { type Benefit, toBenefit } from "./benefit";
 import { type Run, toRun } from "./run";
 import { type WorkflowRow, toWorkflowRow } from "./workflowRow";
@@ -59,7 +59,7 @@ export interface WorkflowDetail {
   lastValidArtifactAt: string | null;
   controlSource: string | null;
   lastTriggerAt: string | null;
-  lastAction: unknown;
+  lastAction: LastAction | null;
 }
 
 const toTrigger = (t: Trigger): TriggerView => ({

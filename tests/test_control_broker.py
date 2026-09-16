@@ -459,6 +459,19 @@ class RuntimeStartStopRestart(BrokerCase):  # (::broker-runtime-actions)
         self.assertNotEqual(receipt["after"]["units"][0]["service"]["invocationId"], old)
         self.assertIsNone(receipt["note"])
 
+    def test_restart_waits_out_the_stop_phase_before_the_settle_window(self):
+        # TimeoutStopSec is 90 s and RestartSec 5 s: a control group still exiting when the settle
+        # window closes must not be receipted as `paused` — that reads as "the restart stopped it".
+        old = self.box.state()["buzz-agent@slow.service"]["InvocationID"]
+        response = self.box.call(req("buzz-agent@slow", "restart", confirm=True, reason="prompt edited"), settle=1)
+        self.assertEqual(response["result"], "applied", response)
+        receipt = self.runtime_receipt(response, "claudius")
+        self.assertEqual(receipt["after"]["state"], "active")
+        self.assertEqual(receipt["after"]["units"][0]["service"]["subState"], "running")
+        self.assertNotEqual(receipt["after"]["units"][0]["service"]["invocationId"], old)
+        self.assertIsNone(receipt["note"])
+        self.assertEqual(mutating(self.box.log()), [f"{self.USER} restart --no-block buzz-agent@slow.service --no-pager"])
+
     def test_a_unit_that_dies_inside_the_settle_window_is_applied_with_a_note(self):
         response = self.box.call(req("buzz-agent@flaky", "start", confirm=True), settle=1)
         self.assertEqual(response["result"], "applied", response)

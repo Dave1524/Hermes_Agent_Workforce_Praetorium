@@ -16,7 +16,9 @@ unit carries `_start_substate` (a Type=oneshot run is activating/start-pre, star
 for its whole life and never reaches active/running); stop makes it inactive; restart is stop
 then start with NRestarts reset, as a manual restart is. A unit carrying `_dies_after_start`
 comes up activating/auto-restart with NRestarts incremented — the Restart=on-failure loop a
-runtime whose credential the relay refuses falls into (T5.3g).
+runtime whose credential the relay refuses falls into (T5.3g). A unit carrying `_slow_stop: N`
+answers `deactivating` to the next N show calls after a restart before it comes up — a control
+group that takes longer than RestartSec to exit under TimeoutStopSec.
 """
 import datetime as dt
 import fcntl
@@ -66,6 +68,10 @@ def show(state, args):
     props = state.get(unit)
     if props is None:
         props = {"LoadState": "not-found", "ActiveState": "inactive"}
+    if int(props.get("_deactivating_left") or 0) > 0:
+        props["_deactivating_left"] = int(props["_deactivating_left"]) - 1
+        if props["_deactivating_left"] == 0:
+            start_service(state, unit)
     for key in wanted:
         if key.startswith("_"):
             continue
@@ -94,6 +100,9 @@ def mutate(state, verb, unit):
         return 0
     if verb == "restart" and unit.endswith(".service"):
         props.update(NRestarts="0")
+        if props.get("_slow_stop"):
+            props.update(ActiveState="deactivating", SubState="stop-sigterm", _deactivating_left=int(props["_slow_stop"]))
+            return 0
         start_service(state, unit)
         return 0
     sys.stderr.write(f"fake systemctl: unsupported call: {verb} {unit}\n")
@@ -127,6 +136,7 @@ def main(argv):
         state = load(handle)
         if verb == "show" and rest:
             show(state, rest)
+            save(handle, state)
             return 0
         if verb in ("enable", "disable", "start", "stop", "restart") and len(rest) == 1:
             code = mutate(state, verb, rest[0])

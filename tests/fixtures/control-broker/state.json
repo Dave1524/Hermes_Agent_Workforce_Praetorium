@@ -169,5 +169,17 @@
   "ExecMainExitTimestamp": "",
   "NRestarts": "0",
   "_dies_after_start": true
+ },
+ "buzz-agent@slow.service": {
+  "LoadState": "loaded",
+  "ActiveState": "active",
+  "SubState": "running",
+  "UnitFileState": "enabled",
+  "Result": "success",
+  "InvocationID": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+  "ExecMainStartTimestamp": "Mon 2026-09-14 06:00:01 UTC",
+  "ExecMainExitTimestamp": "",
+  "NRestarts": "0",
+  "_slow_stop": 4
  }
 }

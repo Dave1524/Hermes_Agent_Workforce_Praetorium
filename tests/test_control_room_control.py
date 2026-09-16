@@ -139,9 +139,11 @@ class LastActionFromReceipts(unittest.TestCase):  # (::control-last-action-from-
         with redirect_stderr(stderr):
             last = control.ControlReceipts(FIXTURE / "receipts").last_action("knowledge-digest")
         self.assertIsNotNone(last)
-        self.assertEqual(set(last), {"action", "actor", "reason", "at", "result", "before", "after", "receiptId", "links"})
+        self.assertEqual(set(last), {"action", "actor", "reason", "at", "result", "refusal", "note", "before", "after", "receiptId", "links"})
         self.assertEqual(last["receiptId"], "20260913T193000Z-resume-447a45")
         self.assertEqual(last["result"], "refused")
+        self.assertEqual(last["refusal"], json.loads((FIXTURE / "receipts" / "knowledge-digest" / "20260913T193000Z-resume-447a45.json").read_text())["refusal"]["code"])
+        self.assertIsNone(last["note"])
         self.assertEqual(last["action"], "resume")
         self.assertEqual(last["at"], "2026-09-13T19:30:00Z")
         self.assertIsInstance(last["actor"], str)
