@@ -4,6 +4,7 @@ import { type Cost, type Measurement, type Usage, costFromCamel, usageFromCamel 
 import { type DependentView, toDependent } from "./requires";
 import { type Role, toRole } from "./role";
 import { type Run, toRun } from "./run";
+import { type ActionView, toActions } from "./workflowDetail";
 
 export type RuntimeStatus = "up" | "down" | "unknown";
 
@@ -13,6 +14,7 @@ export interface RuntimeView {
   state: string;
   status: RuntimeStatus;
   since: string | null;
+  unitFileState: string | null;
 }
 
 export interface OwnedWorkflow {
@@ -26,6 +28,8 @@ export interface AgentView {
   harness: string | null;
   manifest: string | null;
   runtime: RuntimeView;
+  actions: ActionView[];
+  lastAction: unknown;
   health: Health;
   lastTurn: Run | null;
   turns7d: number | null;
@@ -54,7 +58,10 @@ export const toAgent = (a: Agent): AgentView => ({
     state: a.runtime?.state ?? "unknown",
     status: toRuntimeStatus(a.runtime?.state),
     since: a.runtime?.since ?? null,
+    unitFileState: a.runtime?.unitFileState ?? null,
   },
+  actions: toActions(a.control),
+  lastAction: a.control?.lastAction ?? null,
   health: toHealth(a.health),
   lastTurn: a.lastTurn ? toRun(a.lastTurn) : null,
   turns7d: a.turns7d ?? null,

@@ -3,12 +3,14 @@ import { envelope } from "./envelope";
 import { costCamelSchema, usageCamelSchema } from "./measurement";
 import { dependentSchema } from "./requires";
 import { runSummarySchema } from "./run";
+import { controlSchema } from "./workflow";
 
 export const agentRuntimeSchema = z.object({
   unit: z.string().nullish(),
   scope: z.string().nullish(),
   state: z.string().nullish(),
   since: z.string().nullish(),
+  unitFileState: z.string().nullish(),
 });
 
 export const ownedWorkflowSchema = z.object({
@@ -22,6 +24,7 @@ export const agentSchema = z.object({
   harness: z.string().nullish(),
   manifest: z.string().nullish(),
   runtime: agentRuntimeSchema.nullish(),
+  control: controlSchema.nullish(),
   health: z.string().nullish(),
   lastTurn: runSummarySchema.nullish(),
   turns7d: z.number().nullish(),

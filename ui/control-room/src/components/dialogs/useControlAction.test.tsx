@@ -1,5 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { mockFetch } from "@/api/mockFetch.test-helpers";
+import { type RuntimeActionId } from "@/api/schemas/control";
 import { triggerChoices, useControlAction } from "./useControlAction";
 
 const control = { state: "paused", actions: [] };
@@ -39,6 +40,32 @@ describe("useControlAction", () => {
       await result.current.send({ action: "stop", reason: "runaway" });
     });
     expect(JSON.parse(String(calls[0]!.init?.body))).toEqual({ workflow_id: "raw-ingest", action: "stop", reason: "runaway", confirm: true });
+  });
+
+  it.each<[RuntimeActionId, string]>([
+    ["stop", "reason_required"],
+    ["restart", "reason_required"],
+  ])("%s on a runtime refuses client-side without a reason -> %s, nothing posted", async (action, code) => {
+    const { fetchMock } = mockFetch({ "/api/v1/control/actions": applied });
+    const { result } = renderHook(() => useControlAction("buzz-agent@marcus"));
+    await act(async () => {
+      await result.current.send({ action, reason: "" });
+    });
+    expect(result.current.state).toMatchObject({ phase: "refused", status: 0, refusal: { code } });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each<[RuntimeActionId, string | undefined, Record<string, unknown>]>([
+    ["start", undefined, { workflow_id: "buzz-agent@marcus", action: "start", confirm: true }],
+    ["start", "after the .env edit", { workflow_id: "buzz-agent@marcus", action: "start", reason: "after the .env edit", confirm: true }],
+    ["restart", "prompt changed", { workflow_id: "buzz-agent@marcus", action: "restart", reason: "prompt changed", confirm: true }],
+  ])("%s with reason %s posts confirm: true — the broker's confirmation_required gate is met by the dialog", async (action, reason, body) => {
+    const { calls } = mockFetch({ "/api/v1/control/actions": applied });
+    const { result } = renderHook(() => useControlAction("buzz-agent@marcus"));
+    await act(async () => {
+      await result.current.send(reason === undefined ? { action } : { action, reason });
+    });
+    expect(JSON.parse(String(calls[0]!.init?.body))).toEqual(body);
   });
 
   it("a trigger_required refusal exposes its choices", async () => {

@@ -32,6 +32,7 @@ describe("Agents", () => {
     expect(aurelian.getByText(/owns no workflow/i)).toBeInTheDocument();
     expect(aurelian.queryByTestId("required-by")).toBeNull();
     expect(screen.queryByRole("button", { name: /start|stop|restart/i })).toBeNull();
+    expect(within(cards[0]!).getByTestId("boot-policy-chip")).toHaveTextContent("boot: enabled");
   });
 
   it("shows an error notice when the API fails", async () => {

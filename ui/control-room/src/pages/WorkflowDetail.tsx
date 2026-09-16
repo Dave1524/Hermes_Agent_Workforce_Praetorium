@@ -73,7 +73,7 @@ export default function WorkflowDetail({ workflowId }: { workflowId: string }) {
         </div>
 
         <div className="mb-5">
-          <WorkflowControls detail={d} onChanged={workflow.refresh} />
+          {row.role === "agent-runtime" ? <RuntimeControlsPointer owner={row.owner} /> : <WorkflowControls detail={d} onChanged={workflow.refresh} />}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -249,5 +249,17 @@ function ContractText({ workflowId }: { workflowId: string }) {
       {error && <p className="text-xs text-red mt-2 font-mono">{error}</p>}
       {text !== null && <pre className="mt-2 text-[11px] font-mono text-text-2 bg-surface-2 border border-border rounded p-3 overflow-x-auto whitespace-pre-wrap">{text}</pre>}
     </details>
+  );
+}
+
+// A runtime takes start / stop / restart, not the workflow verbs; those live on its agent page.
+function RuntimeControlsPointer({ owner }: { owner: string | null }) {
+  return (
+    <Panel title="Controls">
+      <p className="text-xs text-text-2" data-testid="runtime-controls-pointer">
+        This is an agent runtime. Start, stop and restart it from{" "}
+        {owner ? <RouteLink to={{ name: "agent", id: owner }} className="text-accent hover:underline">the {owner} agent page</RouteLink> : "its agent page"}.
+      </p>
+    </Panel>
   );
 }

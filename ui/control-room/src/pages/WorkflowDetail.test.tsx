@@ -64,6 +64,9 @@ describe("WorkflowDetail", () => {
     expect(screen.queryByTestId("requires-chip")).toBeNull();
     expect(screen.getByTestId("dependent")).toHaveAttribute("data-enabled", "true");
     expect(within(screen.getByTestId("dependent")).getByRole("link", { name: "agent-inbox-sync" })).toHaveAttribute("href", "/app/workflows/agent-inbox-sync");
+    expect(screen.queryByTestId("controls")).toBeNull();
+    expect(screen.queryByRole("button", { name: /pause|resume|run now|retry|stop/i })).toBeNull();
+    expect(within(screen.getByTestId("runtime-controls-pointer")).getByRole("link", { name: "the marcus agent page" })).toHaveAttribute("href", "/app/agents/marcus");
     mockFetch({ "/api/v1/workflows/weekly-pre-assembly": envelope(unavailableWorkflow), "/api/v1/workflows/weekly-pre-assembly/runs": envelope([]) });
     renderInShell(<WorkflowDetail workflowId="weekly-pre-assembly" />);
     await waitFor(() => expect(screen.getByTestId("guards-chip")).toHaveAttribute("title", "Without it the weekly pre-read is never assembled."));

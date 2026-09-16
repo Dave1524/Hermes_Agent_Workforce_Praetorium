@@ -1,8 +1,11 @@
 import { z } from "zod";
 import { controlSchema } from "./workflow";
 
-// POST /api/v1/control/actions — the T5.3a seam (bin/control_room_control.py FORWARDED_KEYS).
-export const controlActionIdSchema = z.enum(["pause", "resume", "run_now", "retry", "stop"]);
+// POST /api/v1/control/actions — the T5.3a seam (bin/control_room_control.py FORWARDED_KEYS);
+// start and restart are the T5.3g runtime verbs, stop serves both vocabularies.
+export const controlActionIdSchema = z.enum(["pause", "resume", "run_now", "retry", "stop", "start", "restart"]);
+export const runtimeActionIdSchema = z.enum(["start", "stop", "restart"]);
+export type RuntimeActionId = z.infer<typeof runtimeActionIdSchema>;
 export type ControlActionId = z.infer<typeof controlActionIdSchema>;
 
 export const controlRequestSchema = z.object({
