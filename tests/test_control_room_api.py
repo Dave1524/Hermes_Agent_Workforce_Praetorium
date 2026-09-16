@@ -133,6 +133,8 @@ class ControlRoomApiTest(unittest.TestCase):
             'what="Compares source against the deployed tree for Dave."\n'
             'requires=["system/ollama.service"]\n'
             'guards="Without it a hand edit under /etc is caught by nothing."\n'
+            '[[workflows]]\nunit="spent-kickoff"\nsurface="scheduled"\ntrigger="once, 2026-08-03"\n'
+            'status="spent"\ncontract_exempt="spent: its one date fired 2026-08-03; nothing is promised any more"\n'
         )
         (self.repo / "design" / "contracts" / "daily-plan.md").write_text(CONTRACT.format(unit="daily-plan", owner="marcus"))
         (self.repo / "design" / "contracts" / "drift-check.md").write_text(CONTRACT.format(unit="drift-check", owner="trajan"))
@@ -322,6 +324,32 @@ class ControlRoomApiTest(unittest.TestCase):
         aurelian = next(item for item in down.agents()["items"] if item["name"] == "aurelian")
         self.assertEqual((aurelian["runtime"]["state"], aurelian["runtime"]["since"]), ("failed", "2026-09-11T06:30:00Z"))
         self.assertEqual(down.overview()["summary"]["agents"], {"total": 4, "up": 0, "down": 1, "unknown": 3})
+
+    def test_contract_exempt_is_a_declaration_not_a_degraded_source(self):
+        item, status = self.model.workflow_detail("spent-kickoff")
+        self.assertEqual((item["contractStatus"], item["contractError"]), ("exempt", None))
+        self.assertEqual(item["contractExempt"], "spent: its one date fired 2026-08-03; nothing is promised any more")
+        self.assertEqual((status["contracts"], status["errors"]["contracts"]), ("available", []))
+        self.assertFalse(any(i["id"] == "contract-unavailable:spent-kickoff" for i in self.model.incidents()["items"]))
+        self.assertEqual(self.model.list_workflows({"lifecycle": ["all"]})["dataStatus"]["errors"]["contracts"],
+                         ["buzz-agent@aurelian: contract not declared"])
+
+    def test_detail_status_describes_this_workflow_not_the_list(self):
+        item, status = self.model.workflow_detail("daily-plan")
+        self.assertEqual(item["contractExempt"], None)
+        self.assertEqual((status["contracts"], status["errors"]["contracts"]), ("available", []))
+        self.assertEqual((status["systemd"], status["errors"]["systemd"]), ("available", []))
+        (self.receipts / "daily-plan").mkdir(exist_ok=True)
+        (self.receipts / "daily-plan" / "bad.json").write_text("{")
+        _, status = self.model.workflow_detail("daily-plan")
+        self.assertEqual((status["receipts"], [m["path"] for m in status["errors"]["malformedReceipts"]]), ("degraded", ["daily-plan/bad.json"]))
+        _, other = self.model.workflow_detail("drift-check")
+        self.assertEqual((other["receipts"], other["errors"]["malformedReceipts"]), ("available", []))
+        _, aurelian = self.model.workflow_detail("buzz-agent@aurelian")
+        self.assertEqual(aurelian["contracts"], "degraded")
+        self.assertEqual(aurelian["errors"]["contracts"], ["buzz-agent@aurelian: contract not declared"])
+        self.assertEqual(aurelian["systemd"], "degraded")
+        self.assertTrue(all(e.startswith("buzz-agent@aurelian: ") for e in aurelian["errors"]["systemd"]), aurelian["errors"]["systemd"])
 
     def test_missing_contract_and_user_bus_are_visible(self):
         response = self.model.list_workflows({"role": ["all"]})
