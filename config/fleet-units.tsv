@@ -74,7 +74,6 @@ inbox-backlog-alert	system	standing	trajan	timer
 knowledge-digest	system	standing	claudius	timer
 local-tier-eval	system	standing	trajan	timer
 m1-signal-scan	system	standing	claudius	timer
-memory-consolidation	system	standing	trajan	timer
 nekovri-subsidy-kickoff	user	spent	trajan	timer
 nekovri-subsidy-watchdog	user	spent	trajan	timer
 overnight-morning-report	system	standing	marcus	timer

@@ -27,7 +27,7 @@ const PLAN = 'docs/dev-plan-2026-09.md'
 
 const MISSING_CONTRACTS = []
 const ALIAS_WORKFLOWS = ['praetorium-daily-plan', 'praetorium-eod-summary', 'overnight-morning-report', 'weekly-pre-assembly', 'm1-signal-scan']
-const WORKFLOW_ENTRIES = 35
+const WORKFLOW_ENTRIES = 34
 
 const TASKS = {
   'T6.4': { size: 'S', review: 'medium', deploy: false, shipsRed: false, expectedRed: [],
@@ -49,7 +49,7 @@ const TASKS = {
     gateCmd: `python3 tests/test_workflow_coverage.py > /tmp/t12.out 2>&1; [ $(grep -ciE '^PROBLEM.*(model|alias|sonnet)' /tmp/t12.out) = ${ALIAS_WORKFLOWS.length} ]`,
     gateWords: `the red list equals the ${ALIAS_WORKFLOWS.length} alias workflows; tools, tools_web, mcp and model are joined against --allowedTools, --strict-mcp-config, --model read out of the runner; claudius's per-workflow web split is honoured` },
   'T6.1': { size: 'M', review: 'high', deploy: true, shipsRed: false, expectedRed: [],
-    gateCmd: "diff -q systemd/memory-consolidation.service /etc/systemd/system/memory-consolidation.service && ! grep -rniE 'hermes' bin/ systemd/ profiles/ | grep -viE 'retired|historical|was |until 20|removed 20|migrat' | grep -q .",
+    gateCmd: "bash tests/test_hermes_residue.sh && [ ! -e /etc/systemd/system/memory-consolidation.timer ]",
     gateWords: 'grep for hermes across bin/ systemd/ profiles/ returns only historical notes; the changed unit ran once live and its journal output was read; base0 and leantest kept' },
 }
 
@@ -91,7 +91,7 @@ Return: branch (git rev-parse --abbrev-ref HEAD), headCommit, briefPath, phaseRe
 function landPrompt(id, t, ship, baseline, today) {
   return `You are the independent verifier and landing agent for task ${id} (${PLAN}). You did not write this code. Work in ${REPO} (the main checkout), which must be on main and clean; stop if not.
 1. git fetch origin. Rebase branch ${ship.branch} onto main in a temporary worktree under .claude/worktrees/land-${id} (a conflict = stop, failingAssertion='rebase conflict'). If git diff --name-only main..${ship.branch} names .claude/briefs/current.md or any archive/ file containing buzz-task-scheduling, stop (failingAssertion='touched the live current.md'). Then in the main checkout: git merge --ff-only ${ship.branch}.
-${t.deploy ? `2. Read the merged brief's "## Runtime actions" section and run exactly those commands, nothing more: bin/deploy (from main), the targeted rm lines, sudo cp systemd/memory-consolidation.service /etc/systemd/system/ && sudo systemctl daemon-reload, sudo systemctl start memory-consolidation.service, journalctl -u memory-consolidation -n 40 --no-pager. Put the journal text in gateEvidence.` : '2. No deploy for this task. If bin/verify.sh reports DRIFT on a file this task changed, that is a red, not something to deploy away.'}
+${t.deploy ? `2. Read the merged brief's "## Runtime actions" section and run exactly those commands, nothing more: bin/deploy (from main), the targeted rm lines, sudo cp systemd/brave-mcp.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl restart brave-mcp.service, journalctl -u brave-mcp.service -n 20 --no-pager, the sudo rm of the two archived memory-consolidation units from /etc + daemon-reload. Put the journal text in gateEvidence.` : '2. No deploy for this task. If bin/verify.sh reports DRIFT on a file this task changed, that is a red, not something to deploy away.'}
 3. bash bin/verify.sh > /tmp/land-${id}.out 2>&1; verifyExit=$?. allRed = lines matching ^\\s*FAIL:|^PROBLEM\\t|^\\s*DRIFT . newRed = allRed minus this baseline: ${JSON.stringify(baseline)}. Expected new red for this task: ${JSON.stringify(t.expectedRed)} (one line per item, matched by substring, nothing else).
 4. Plan gate. Run: ${t.gateCmd}  -> gateExit. Then judge these words against the tree and put the commands and lines you used in gateEvidence: "${t.gateWords}". gateVerdict = met | not met.
 5. The code review is a gate, not a note. Independent read, calibration-pinned. Read ~/.config/buzz-team/aurelian-calibration.md § "Code / config" and § "Binding"; compute diff_digest = git diff --binary origin/main..main | sha256sum and calibration_digest = sha256sum of that file; apply the rubric's five bullets to the diff. Then invoke the code-review skill at effort ${t.review} on git diff origin/main..main. reviewConfirmed = CONFIRMED findings (file:line: summary); reviewPlausible = the rest.

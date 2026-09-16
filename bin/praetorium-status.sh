@@ -120,8 +120,7 @@ fi
 # the S3 retirement (open-decisions.md D7). Both would now report a retired surface on
 # every run — `active=inactive enabled=disabled` forever, and a cron count against a host
 # that no longer exists — and a status view that reports a retired surface every run
-# trains its reader to skip it. The gateway unit is still on disk for one review cycle;
-# if it is ever restarted it will appear above by failing, not by being whitelisted here.
+# trains its reader to skip it. The gateway unit itself was deleted at T6.1 (2026-09-16).
 echo; echo "── qmd index"
 qmd status 2>/dev/null | head -8 || echo "  qmd index not built yet (finish_boxsafe_clone.sh)"
 echo; echo "── qmd MCP daemon (agent transport, NUC-16)"
@@ -129,21 +128,12 @@ qmd_daemon="unreachable"
 if command -v curl >/dev/null 2>&1 && curl -sf --max-time 2 http://127.0.0.1:8765/health >/dev/null 2>&1; then
   qmd_daemon="reachable"
 fi
-qmd_profile="unknown"
-prof="$HOME/.hermes/profiles/claudius/config.yaml"
-if [ -f "$prof" ]; then
-  qmd_block=$(awk '/^  qmd:/{f=1;next} f&&/^  [A-Za-z]/{f=0} f' "$prof")
-  if printf '%s\n' "$qmd_block" | grep -qE '^[[:space:]]*url:'; then
-    qmd_profile="daemon (http)"
-  elif printf '%s\n' "$qmd_block" | grep -qE '^[[:space:]]*command:'; then
-    qmd_profile="cold-spawn (stdio) — NUC-16 regression"
-  fi
-fi
 printf "  endpoint : http://127.0.0.1:8765/mcp (%s)\n" "$qmd_daemon"
-printf "  profile  : claudius qmd = %s\n" "$qmd_profile"
 echo; echo "── Research MCP (Brave)"
 brave_key="MISSING"
-if grep -qE '^BRAVE_API_KEY=.+' "$HOME/.hermes/.env" 2>/dev/null || [ -n "${BRAVE_API_KEY:-}" ]; then
+# brave-mcp.env is the EnvironmentFile brave-mcp.service loads — the key that matters is the
+# one the daemon sees, so probe that file and never its value.
+if grep -qE '^BRAVE_API_KEY=.+' "$HOME/.config/agent-workforce/brave-mcp.env" 2>/dev/null || [ -n "${BRAVE_API_KEY:-}" ]; then
   brave_key="set"
 fi
 brave_server="npx-missing"
@@ -168,8 +158,8 @@ elif command -v google-chrome >/dev/null 2>&1 || command -v chromium >/dev/null 
   fetch_chromium="installed"
 else
   shopt -s nullglob
-  # Playwright cache (hermes _chromium_installed method 3) OR agent-browser's own
-  # Chrome-for-testing dir (agent-browser 0.31.1 installs here; NUC-22).
+  # Playwright cache OR agent-browser's own Chrome-for-testing dir (agent-browser 0.31.1
+  # installs here; NUC-22).
   _pw=( "$HOME"/.cache/ms-playwright/chromium-* "$HOME"/.cache/ms-playwright/chromium_headless_shell-* \
         "$HOME"/.agent-browser/browsers/chrome-*/chrome "$HOME"/.agent-browser/browsers/chromium-*/chrome )
   shopt -u nullglob
@@ -178,33 +168,12 @@ fi
 fetch_runner="MISSING"
 if command -v agent-browser >/dev/null 2>&1; then
   fetch_runner="agent-browser"
-elif [ -x "$HOME/.hermes/hermes-agent/node_modules/.bin/agent-browser" ]; then
-  fetch_runner="agent-browser (hermes-local)"   # what hermes actually resolves + uses
 elif command -v npx >/dev/null 2>&1; then
   fetch_runner="npx-fallback"
 fi
 printf "  mode    : %s\n" "local-headless-chromium"
 printf "  chromium: %s\n" "$fetch_chromium"
 printf "  runner  : %s\n" "$fetch_runner"
-echo; echo "── Working memory (all profiles, NUC-21)"
-mem_profile_dirs=()
-for d in "$HOME"/.hermes/profiles/*/memories; do
-  [ -d "$d" ] && mem_profile_dirs+=("$d")
-done
-if [ "${#mem_profile_dirs[@]}" -eq 0 ]; then
-  echo "  no profile memory directories found"
-else
-  for d in "${mem_profile_dirs[@]}"; do
-    profile=$(basename "$(dirname "$d")")
-    mem_file="$d/MEMORY.md"
-    if [ -s "$mem_file" ]; then
-      e=$(grep -c '^§$' "$mem_file" 2>/dev/null); entries=$(( e + 1 ))
-      printf "  %-10s entries: %s   bytes: %s\n" "$profile" "$entries" "$(wc -c < "$mem_file" | tr -d ' ')"
-    else
-      printf "  %-10s store empty (no runs recorded yet)\n" "$profile"
-    fi
-  done
-fi
 echo; echo "── Vault clone"
 if [ -d "$HOME/vault/.git" ]; then
   echo "  $(git -C "$HOME/vault" log -1 --format='last pull: %h %cd' --date=relative 2>/dev/null)"

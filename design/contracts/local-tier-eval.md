@@ -12,7 +12,7 @@ checks report that as "not loaded or never fired", which is the correct answer.
 | Unit | `local-tier-eval.service` / `.timer` |
 | Owner | **trajan** (`design/agents/trajan.toml`) |
 | Surface | platform — deterministic harness around on-box Ollama models; no OpenRouter egress |
-| Runner | `bin/local_tier_eval.sh` (`hermes` at `~/.local/bin/hermes`, per-task timeout 6min) |
+| Runner | `bin/local_tier_eval.sh` (`hermes -p base0` at `~/.local/bin/hermes` — alias `local` on base0; per-task timeout 6min) |
 | Cadence | six times daily at 02:17, 08:17, 11:17, 14:17, 17:17, 20:17; `Persistent=false` |
 | Alerted | yes — `OnFailure=agent-alert@%n.service` (wired 2026-09-01, D2) |
 | Remediation owner | Dave — a failed capability row is a model-choice decision, not a fix |

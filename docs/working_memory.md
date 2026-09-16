@@ -1,3 +1,7 @@
+**Retired 2026-09-16 (T6.1).** The stores this design describes were deleted with the Hermes
+persona profiles; the per-run record is the workflow receipt. Kept as the design record —
+`design/archive/hermes-profiles-2026-09-14.md` is the retirement record.
+
 # Agent working memory (NUC-21)
 
 ## Decision (AC1)

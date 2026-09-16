@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """BD Pipeline Stall Radar — deterministic kernel (NUC-24 / local tier).
 
-Fully deterministic: NO model inference, NO API egress ($0). Replaces the
-Hermes-wrapped claudius run for this standing job with exact rules over the
-Notion Client Pipeline.
+Fully deterministic: NO model inference, NO API egress ($0). Replaced the
+model-driven claudius run for this standing job (2026-07-20) with exact rules
+over the Notion Client Pipeline.
 
 Why no model: the 2026-07-20 pilot ran the parked-vs-stalled judgment through
 the on-box qwen3:8b and it was unreliable — it hallucinated "counterparty-owned"
@@ -46,7 +46,7 @@ IN_SCOPE_STAGES = {"Prospect"}  # the rest are being worked; see module docstrin
 STALL_DAYS = 7    # strictly greater-than
 AGING_FLOOR = 60  # silent longer than this => likely cold, tagged (still flagged)
 PRIORITIES_PATH = "04_operations/current_priorities.md"
-MEM_FILE = os.path.expanduser("~/.hermes/profiles/claudius/memories/MEMORY.md")
+DEFAULT_STATE_FILE = "~/agent-workforce/var/bd-stall-radar/flagged.jsonl"
 DEDUP_WINDOW_DAYS = 3
 
 # Tokens that never identify a company on their own. A name is matched on its
@@ -234,45 +234,51 @@ def suppression(deal, phrases, today):
     return None
 
 
-# ── memory dedup ──────────────────────────────────────────────────────────
+# ── run-state dedup ───────────────────────────────────────────────────────
+# One JSON line per run: {"date": "YYYY-MM-DD", "run": "<iso ts>", "stalls": [names]}.
+def state_path():
+    return os.path.expanduser(os.environ.get("BD_STALL_RADAR_STATE") or DEFAULT_STATE_FILE)
+
+
+def _state_rows(path):
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        for raw in fh:
+            if not raw.strip():
+                continue
+            try:
+                row = json.loads(raw)
+                yield dt.date.fromisoformat(row["date"]), list(row["stalls"])
+            except (ValueError, KeyError, TypeError) as e:
+                print(f"[warn] skipping malformed state row: {e}", file=sys.stderr)
+
+
 def recently_flagged(today):
-    if not os.path.exists(MEM_FILE):
+    path = state_path()
+    if not os.path.exists(path):
         return set()
     flagged = set()
-    with open(MEM_FILE, encoding="utf-8", errors="replace") as fh:
-        text = fh.read()
-    for entry in text.split("\n§\n"):
-        m = re.search(r"\[run:(\d{4}-\d{2}-\d{2})", entry)
-        if not m or "bd-stall-radar" not in entry:
-            continue
-        try:
-            when = dt.date.fromisoformat(m.group(1))
-        except ValueError:
-            continue
-        if (today - when).days > DEDUP_WINDOW_DAYS:
-            continue
-        sm = re.search(r"stalls_found=([^;]*)", entry)
-        if sm:
-            for tok in sm.group(1).split(","):
-                name = tok.split(":")[0].strip()
-                if name and name.lower() not in ("none", ""):
-                    flagged.add(name)
+    for when, stalls in _state_rows(path):
+        if (today - when).days <= DEDUP_WINDOW_DAYS:
+            flagged.update(n for n in stalls if n)
     return flagged
 
 
-def append_memory(line):
+def state_row(stalls, today):
+    return {"date": today.isoformat(), "run": dt.datetime.now().astimezone().isoformat(),
+            "stalls": [s["client"] for s in stalls]}
+
+
+def record_run(stalls, today):
+    path = state_path()
     try:
         import fcntl
-        with open(MEM_FILE + ".lock", "w") as lf:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path + ".lock", "w") as lf:
             fcntl.flock(lf, fcntl.LOCK_EX)
-            existing = ""
-            if os.path.exists(MEM_FILE) and os.path.getsize(MEM_FILE):
-                with open(MEM_FILE, encoding="utf-8", errors="replace") as fh:
-                    existing = fh.read()
-            with open(MEM_FILE, "w", encoding="utf-8") as fh:
-                fh.write(f"{existing}\n§\n{line}" if existing else line)
-    except Exception as e:  # fail-soft: memory is best-effort, never blocks a run
-        print(f"[warn] memory append failed: {e}", file=sys.stderr)
+            with open(path, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(state_row(stalls, today)) + "\n")
+    except Exception as e:  # fail-soft: state is best-effort, never blocks a run
+        print(f"[warn] state append failed: {e}", file=sys.stderr)
 
 
 # ── proposal ──────────────────────────────────────────────────────────────
@@ -342,15 +348,6 @@ def build_proposal(stalls, today, n_deals):
     return "\n".join(lines) + "\n"
 
 
-def memory_line(stalls, today, proposal_name):
-    found = ",".join(f"{s['client']}:{'never' if s['never'] else s['days']}"
-                     for s in stalls) or "none"
-    prop = proposal_name or "none: no genuine stalls"
-    return (f"[run:{today.isoformat()}] task=bd-stall-radar; stalls_found={found}; "
-            f"proposal={prop}; runtime=deterministic-kernel($0,no-LLM); "
-            f"gaps=suppression-relies-on-priorities-naming+field-hygiene")
-
-
 # ── orchestration ─────────────────────────────────────────────────────────
 def classify(today):
     token = os.environ.get("NOTION_API_TOKEN")
@@ -408,7 +405,7 @@ def main():
     if not stalls:
         print("DECLINE: no genuine new stalls, no proposal written")
         if not args.dry_run:
-            append_memory(memory_line([], today, None))
+            record_run([], today)
         return 0
 
     name = f"{today.isoformat()}_bd-stall-radar.md"
@@ -421,7 +418,7 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
     with open(os.path.join(out_dir, name), "w", encoding="utf-8") as fh:
         fh.write(proposal)
-    append_memory(memory_line(stalls, today, name))
+    record_run(stalls, today)
     print(f"=> wrote _inbox/agents/{name} ({len(stalls)} flagged)")
     return 0
 

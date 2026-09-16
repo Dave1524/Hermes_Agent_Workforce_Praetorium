@@ -18,7 +18,7 @@ assert() {
 }
 
 # ── Sandbox: scratch $HOME + a stub PATH so the script never touches real
-# systemd units, qmd index/daemon, tailscale, or the real ~/.hermes/.env ──
+# systemd units, qmd index/daemon, tailscale, or the real brave-mcp.env ──
 sandbox() {
   local home; home=$(mktemp -d)
   local stubs; stubs=$(mktemp -d)
@@ -86,7 +86,7 @@ echo "/dev/sda1        20G    5G   15G  25% /"
 EOF
 
   chmod +x "$stubs"/*
-  mkdir -p "$home/.hermes" "$home/agent-workforce/logs"
+  mkdir -p "$home/.config/agent-workforce" "$home/agent-workforce/logs"
 
   echo "$home:$stubs"
 }
@@ -99,9 +99,9 @@ run_scenario() {
   echo "$rc:$out"
 }
 
-echo "--- scenario 1: BRAVE_API_KEY set (via ~/.hermes/.env) ---"
+echo "--- scenario 1: BRAVE_API_KEY set via brave-mcp.env, the file the daemon unit loads (::status-brave-key-from-brave-mcp-env) ---"
 IFS=: read -r h1 s1 <<<"$(sandbox)"
-echo "BRAVE_API_KEY=test-key-not-real" > "$h1/.hermes/.env"
+echo "BRAVE_API_KEY=test-key-not-real" > "$h1/.config/agent-workforce/brave-mcp.env"
 IFS=: read -r rc1 out1 <<<"$(run_scenario "$h1" "$s1")"
 assert "exits 0" "[ '$rc1' = 0 ]"
 assert "prints Brave section" "grep -q -- '── Research MCP (Brave)' '$out1'"
@@ -112,7 +112,7 @@ assert "prints brave endpoint line (down in sandbox)" "grep -q -- 'endpoint : do
 
 echo "--- scenario 2: BRAVE_API_KEY absent ---"
 IFS=: read -r h2 s2 <<<"$(sandbox)"
-: > "$h2/.hermes/.env"
+: > "$h2/.config/agent-workforce/brave-mcp.env"
 IFS=: read -r rc2 out2 <<<"$(run_scenario "$h2" "$s2")"
 assert "exits 0" "[ '$rc2' = 0 ]"
 assert "prints Brave section" "grep -q -- '── Research MCP (Brave)' '$out2'"

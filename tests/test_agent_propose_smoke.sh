@@ -28,9 +28,8 @@ assert "a found pattern is never reported as a failure" "yes | grep -q y"
 sandbox() {
   local home; home=$(mktemp -d)
   mkdir -p "$home/.config/agent-workforce" "$home/agent-workforce/logs" "$home/agent-worktrees"
-  # Fake profile config so the runner reads the PROFILE model (NUC-23), not LLM_MODEL_BUSINESS.
-  mkdir -p "$home/.hermes/profiles/claudius"
-  printf 'model:\n  name: test/model-x\n' > "$home/.hermes/profiles/claudius/config.yaml"
+  # No ~/.hermes in the sandbox on purpose (T6.1): the runner must neither read a profile
+  # config for the model nor create an episodic store; scenario 1 asserts the path stays absent.
 
   local mock_hermes="$home/mock_hermes.sh"
   cat > "$mock_hermes" <<EOF
@@ -57,15 +56,12 @@ exit "\${MOCK_EXIT_CODE:-0}"
 EOF
   chmod +x "$mock_hermes"
 
-  # NUC-27: network-free stub for key_usage()'s read-only GET /api/v1/key. Emulates
-  # the OpenRouter response shape so the run exercises the real parse + delta math
-  # with NO network call (this smoke test is offline by contract). Prepended to PATH
-  # in run_scenario so the runner's `curl` resolves here.
   mkdir -p "$home/mockbin"
-  # Offline stub for BOTH probes the runner may make: the NUC-27 /key spend GET and the
-  # NUC-31 qmd /health GET. Branch on the URL: a /health request exits MOCK_QMD_HEALTH_RC
-  # (0=up, nonzero=down) so scenarios can drive the health gate; everything else returns
-  # the OpenRouter /key JSON. No network either way.
+  # Offline stub for the one probe the runner still makes, the NUC-31 qmd /health GET
+  # (prepended to PATH in run_scenario): a /health request exits MOCK_QMD_HEALTH_RC (0=up,
+  # nonzero=down) so scenarios can drive the health gate. Any other URL is a regression —
+  # the OpenRouter /key spend probe was retired at T6.1 — so it is named on stderr and
+  # scenario 1 asserts it never happened.
   cat > "$home/mockbin/curl" <<'CURL'
 #!/usr/bin/env bash
 for a in "$@"; do
@@ -73,7 +69,8 @@ for a in "$@"; do
     *"/health"*) exit "${MOCK_QMD_HEALTH_RC:-0}" ;;
   esac
 done
-printf '%s' '{"data":{"usage":1.5,"limit":25,"limit_remaining":23.5}}'
+echo "curl stub: unexpected URL: $*" >&2
+exit 0
 CURL
   chmod +x "$home/mockbin/curl"
 
@@ -127,27 +124,31 @@ run_scenario() {
   echo "$rc"
 }
 
-echo "--- scenario 1: success, no proposal ---"
+echo "--- scenario 1: success, no proposal (::propose-no-hermes-model) (::propose-cost-delta-unknown) ---"
 h1=$(sandbox)
 rc=$(run_scenario "$h1" 0 0)
 assert "exits 0" "[ '$rc' = 0 ]"
 assert "logs no-proposal" "grep -q 'OK: run completed, agent produced no proposal' '$h1/agent-workforce/logs/agent_propose.log'"
 assert "cost.log outcome=NOPROPOSAL (NUC-23 vocab)" "grep -q 'outcome=NOPROPOSAL' '$h1/agent-workforce/logs/cost.log'"
-assert "cost.log model=test/model-x (profile model, NUC-23 fix)" "grep -q 'model=test/model-x' '$h1/agent-workforce/logs/cost.log'"
+assert "cost.log model=unknown (T6.1: no hermes profile resolves it; the receipt carries the measured model)" "grep -q ' model=unknown ' '$h1/agent-workforce/logs/cost.log'"
 assert "cost.log NOT model=test-model (not LLM_MODEL_BUSINESS)" "! grep -q 'model=test-model' '$h1/agent-workforce/logs/cost.log'"
+assert "nothing under ~/.hermes was read or created" "[ ! -e '$h1/.hermes' ]"
 assert "cost.log profile=claudius" "grep -q 'profile=claudius' '$h1/agent-workforce/logs/cost.log'"
-assert "cost.log schema=3 (NUC-27 real-spend record)" "grep -q 'schema=3' '$h1/agent-workforce/logs/cost.log'"
-assert "cost.log cost_src=openrouter-key-api (NUC-27)" "grep -q 'cost_src=openrouter-key-api' '$h1/agent-workforce/logs/cost.log'"
-assert "cost.log usage_before parsed from /key probe (NUC-27)" "grep -q 'usage_before=1.5' '$h1/agent-workforce/logs/cost.log'"
-assert "cost.log cost_usd_delta = after-before (NUC-27)" "grep -q 'cost_usd_delta=0.000000' '$h1/agent-workforce/logs/cost.log'"
+assert "cost.log schema=3 (record shape unchanged)" "grep -q 'schema=3' '$h1/agent-workforce/logs/cost.log'"
+assert "cost.log cost_src=openrouter-key-api (key kept, value unknown)" "grep -q 'cost_src=openrouter-key-api' '$h1/agent-workforce/logs/cost.log'"
+assert "cost.log usage_before=unknown (T6.1: the shared-key probe is retired)" "grep -q 'usage_before=unknown' '$h1/agent-workforce/logs/cost.log'"
+assert "cost.log usage_after=unknown" "grep -q 'usage_after=unknown' '$h1/agent-workforce/logs/cost.log'"
+assert "cost.log cost_usd_delta=unknown, never a frozen zero" "grep -q 'cost_usd_delta=unknown' '$h1/agent-workforce/logs/cost.log'"
+assert "no 'cost: usage_before=' probe line in the run log" "! grep -q 'cost: usage_before=' '$h1/agent-workforce/logs/agent_propose.log'"
+assert "the curl stub saw no /key request" "! grep -q 'unexpected URL' '$h1/stdout.log' '$h1/agent-workforce/logs/agent_propose.log'"
 assert "cost.log proposal=none" "grep -q 'proposal=none' '$h1/agent-workforce/logs/cost.log'"
 # The graft Claude Code hooks (user scope) write their index and session telemetry into the
 # session's cwd — the inbox worktree — unless GRAFT_DIR points elsewhere; the first resumed run
 # on 2026-09-15 was discarded by the write boundary for exactly that.
 assert "runtime sees GRAFT_DIR outside the inbox worktree" "grep -qE '^GRAFT_DIR=/' '$h1/graft_env.log' && ! grep -q 'GRAFT_DIR=$h1/agent-worktrees' '$h1/graft_env.log'"
 assert "runtime sees every graft kill switch on" "grep -q 'GRAFT_NO_SEED=1 GRAFT_NO_REFRESH=1 GRAFT_NO_GITIGNORE=1 GRAFT_NO_IGNORE=1' '$h1/graft_env.log'"
-assert "cost.log memory=no-store (NUC-21 glue ran)" "grep -q 'memory=no-store' '$h1/agent-workforce/logs/cost.log'"
-assert "logs no-store when profile memory dir absent" "grep -q 'MEMORY: no per-profile store' '$h1/agent-workforce/logs/agent_propose.log'"
+assert "cost.log memory=na (T6.1: the episodic store is retired)" "grep -q 'memory=na' '$h1/agent-workforce/logs/cost.log'"
+assert "no MEMORY: line in the run log" "! grep -q 'MEMORY:' '$h1/agent-workforce/logs/agent_propose.log'"
 assert "no phantom --max-turns flag passed to runtime (NUC-16: hermes -z has none)" "! grep -q -- '--max-turns' '$h1/hermes_argv.log'"
 assert "cost.log skills=unknown (T3.3: sandbox has no transcript)" "grep -q 'skills=unknown' '$h1/agent-workforce/logs/cost.log'"
 assert "cost.log skills_offered=unknown" "grep -q 'skills_offered=unknown' '$h1/agent-workforce/logs/cost.log'"
@@ -188,15 +189,15 @@ assert "metrics change classified NOPROPOSAL, not PROPOSAL" "grep -q 'outcome=NO
 assert "NOT outcome=PROPOSAL" "! grep -q 'outcome=PROPOSAL' '$h5/agent-workforce/logs/cost.log'"
 assert "logs no-proposal (metrics not swept as proposal)" "grep -q 'OK: run completed, agent produced no proposal' '$h5/agent-workforce/logs/agent_propose.log'"
 
-echo "--- scenario 6: runner memory fallback when the agent didn't self-record (NUC-21) ---"
+echo "--- scenario 6: no episodic store, even when one is offered (::propose-no-episodic-store) ---"
 h6=$(sandbox)
-mkdir -p "$h6/.hermes/profiles/claudius/memories"   # store dir exists, mock writes no memory
-rc=$(run_scenario "$h6" 0 0)
+mkdir -p "$h6/.hermes/profiles/claudius/memories" "$h6/ra"   # a store dir exists; the runner must not write it
+rc=$(RA_MEMORY_DIR="$h6/ra" run_scenario "$h6" 0 0)
 assert "exits 0" "[ '$rc' = 0 ]"
-assert "cost.log memory=fallback (runner backstop wrote it)" "grep -q 'memory=fallback' '$h6/agent-workforce/logs/cost.log'"
-assert "runner logged fallback write" "grep -q 'wrote runner fallback entry' '$h6/agent-workforce/logs/agent_propose.log'"
-assert "MEMORY.md created with an entry" "[ -s '$h6/.hermes/profiles/claudius/memories/MEMORY.md' ]"
-assert "fallback entry carries a run tag" "grep -q '\[run:' '$h6/.hermes/profiles/claudius/memories/MEMORY.md'"
+assert "cost.log memory=na (T6.1)" "grep -q 'memory=na' '$h6/agent-workforce/logs/cost.log'"
+assert "no MEMORY.md under the offered profile store" "[ ! -e '$h6/.hermes/profiles/claudius/memories/MEMORY.md' ]"
+assert "RA_MEMORY_DIR is not honoured" "[ -z \"\$(ls -A '$h6/ra')\" ]"
+assert "no runner fallback entry logged" "! grep -q 'fallback entry' '$h6/agent-workforce/logs/agent_propose.log'"
 
 echo "--- scenario 7: preflight BLOCKED — secrets.env missing (NUC-37) ---"
 h7=$(sandbox); rm -f "$h7/.config/agent-workforce/secrets.env"

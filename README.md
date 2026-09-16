@@ -36,7 +36,7 @@ Gate: bash syntax + shellcheck error-level + test suite.
 
 ## Quick links
 
-- `CLAUDE.md` – project context for Claude/Hermes agents
+- `CLAUDE.md` – project context for Claude agents
 - `docs/runbook.md` – operational runbook
 - `docs/data_boundary.md` – de-identification and scope rules
 - `docs/inbox_workflow.md` – proposal and approval flow

@@ -62,11 +62,6 @@ fleet_or_die() {  # scope, kind -> prints units, or refuses
   run_or_note uptime
 
   section "MCP servers"
-  if command -v hermes >/dev/null 2>&1; then
-    run_or_note hermes mcp list
-  else
-    echo "hermes not on PATH"
-  fi
   qmd_ep=down
   if command -v curl >/dev/null 2>&1 && curl -sf --max-time 2 http://127.0.0.1:8765/health >/dev/null 2>&1; then
     qmd_ep=up

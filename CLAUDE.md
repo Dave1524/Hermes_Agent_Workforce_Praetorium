@@ -8,42 +8,38 @@ the vault holds *what they know*.
 
 ## Roster
 
-**This section owns the Hermes profiles and their job wiring. It does not own the live Buzz
-fleet, and never did.** Two rosters exist on this box for two different runtimes that share only
-the persona charters: the **Hermes profiles** below, which back the unattended systemd timer
-fleet in this repo, and the **`buzz-agent@*` units**, the interactive chat surface, which the
-machine-level `~/CLAUDE.md` owns. Until 2026-09-05 both files described "the fleet" without
-saying which one, so a reader landing on either took it for the whole roster — and this one was
-short by an agent, having never mentioned aurelian. It still does not list him, because he is not
-a Hermes profile; that is now the correct answer rather than an omission.
+**This section owns the personas and their job wiring. It does not own the live Buzz fleet,
+and never did.** Two rosters exist on this box for two different runtimes that share only the
+persona charters: the personas below, which own the unattended systemd timer fleet in this
+repo, and the **`buzz-agent@*` units**, the interactive chat surface, which the machine-level
+`~/CLAUDE.md` owns. Until 2026-09-05 both files described "the fleet" without saying which
+one, so a reader landing on either took it for the whole roster — and this one was short by an
+agent, having never mentioned aurelian. He has a manifest (`design/agents/aurelian.toml`) and
+owns no scheduled work; that is the correct answer rather than an omission. Until 2026-09-14
+(T6.1) this section was a table of **Hermes profiles**; those are deleted, and the roster is
+the manifests.
 
 Neither list is authoritative for *membership*. A roster in prose is a snapshot, and this is
 machine state with a live reader:
 
 ```
 systemctl --user list-units 'buzz-agent@*' --all    # the chat fleet — five units on 2026-09-05
-ls ~/.hermes/profiles/                              # the Hermes profiles below
+ls design/agents/                                   # the personas — one manifest each
+ls ~/.hermes/profiles/                              # base0, leantest, default (+ augustus until D4)
 ```
 
 - Box name: **Praetorium**. Keep the Roman-emperor convention for any additional agent profiles.
-- Four Hermes profiles under `~/.hermes/profiles/`, each with its own `SOUL.md` (role charter
-  + guardrails), `config.yaml` (model/MCP/skills), isolated memory, and skills allowlist (NUC-42):
-
-  | Persona | Role | Model | Tier | Scheduled jobs |
-  |---|---|---|---|---|
-  | **Marcus** | Chief of Staff / orchestrator | `deepseek/deepseek-v4-flash` | B | none — interactive only (was "+ kanban owner"; S3 retired 2026-09-02, D7) |
-  | **Claudius** | Head of Research | `anthropic/claude-sonnet-5` | A (ZDR-pinned) | bd-stall-radar, weekly-pre-assembly, overnight-morning-report |
-  | **Augustus** | Editor-in-Chief | `openai/gpt-5.5` | A (**unpinned — open gap**) | augustus-content + content-change-dispatch |
-  | **Trajan** | Head of Engineering | `deepseek/deepseek-v4-flash` | B | none |
-
-  Plus `base0` / `leantest` — `qwen3-64k` on Ollama, Tier 0 (zero egress), used by `local-tier-eval`.
-- **Most scheduled work no longer runs on these personas.** The 2026-07-30 migration moved standing
-  research, raw ingest, knowledge digest, BD follow-up drafts, daily plan, EOD summary and M1 signal
-  scan onto headless Claude Code (`AGENT_PROFILE=claude-opus|claude-sonnet`). Read the runbook's Job
-  wiring table, not the persona list, to answer "what runs tonight".
-- **Augustus has no ZDR provider pin.** He reads Tier-A vault context on `openai/gpt-5.5` with
-  `provider_routing` unset — the fix is `only: ["azure"]` in his `config.yaml`. Tracked as an open
-  gap in the vault's `data_boundary.md`; still unset as of 2026-07-31.
+- **A persona is `design/agents/<name>.toml`** — marcus, claudius, augustus, trajan, aurelian: the
+  single normative statement of what each owns and may do (`design/agent-model.md`). The model
+  a scheduled job runs on is the `--model` in its `bin/run_*_cc.sh`; the model a Buzz agent runs
+  on is its unit's env. Read the runbook's Job wiring table, not a persona list, to answer
+  "what runs tonight".
+- **Hermes remains on this box for two things only:** the `hermes` CLI as the Discord delivery
+  leg (`bin/deliver.sh`, until the Discord cutover) and the profiles `base0` / `leantest` —
+  `qwen3-64k` on Ollama, Tier 0 (zero egress) — for `local-tier-eval`. The four persona profiles
+  (`SOUL.md`, `config.yaml`, episodic store, skills allowlist) were deleted 2026-09-14 (T6.1;
+  record: `design/archive/hermes-profiles-2026-09-14.md`), augustus's pending **D4** — pin
+  `only: ["azure"]` or delete. `tests/test_hermes_residue.sh` is the gate.
 - **Vespasianus / `trading_researcher` was never built** — treat that roster row as lapsed, not
   pending. PolyScalper research is not staffed on the box.
 - Per-profile Discord identities were never built: `discord-bot.service` is staged in

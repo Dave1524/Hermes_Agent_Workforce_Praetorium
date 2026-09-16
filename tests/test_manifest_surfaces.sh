@@ -226,4 +226,18 @@ offenders=$(surface_disagreements "$AGENTS") || offenders="checker exited $? (${
 assert "every surface block agrees with the live entries naming it (${offenders:-all agree})" \
   "[ -z \"\$offenders\" ]"
 
+# T6.1: the kanban surface is retired (D7) and so are the hermes profiles it governed. A
+# governed_by path, a skills count or a board name in a retired block is a profile fact kept
+# alive past its subject; the measured counts live in design/archive/hermes-profiles-2026-09-14.md.
+kanban_facts=$(python3 - "$AGENTS" <<'PY'
+import pathlib, sys, tomllib
+for p in sorted(pathlib.Path(sys.argv[1]).glob("*.toml")):
+    block = tomllib.loads(p.read_text()).get("surfaces", {}).get("kanban", {})
+    for key in sorted(set(block) & {"governed_by", "skills", "board"}):
+        print(f"{p.name}: [surfaces.kanban] carries {key}")
+PY
+)
+assert "no [surfaces.kanban] block carries governed_by, skills or board (${kanban_facts:-none do})" \
+  "[ -z \"\$kanban_facts\" ]"  # (::kanban-block-carries-no-profile-fact)
+
 exit $fail

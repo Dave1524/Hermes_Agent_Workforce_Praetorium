@@ -9,7 +9,10 @@ priorities text, and that is what is pinned. The cases are the ones measured liv
 """
 import datetime as dt
 import importlib.util
+import json
+import os
 import pathlib
+import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 _spec = importlib.util.spec_from_file_location(
@@ -107,9 +110,68 @@ check("a never-contacted finding states the fact and carries no day count",
       "**A never** — FACT: Stage Prospect, never contacted." in prop and "Noned" not in prop)
 check("the Task prose no longer claims active-stage scope",
       "active-stage" not in prop and "Stage-Prospect" in prop)
-mem = k.memory_line(stalls, TODAY, "x.md")
-check("memory line records never-contacted rows so the dedup window sees them",
-      "A never:never" in mem and "warm:22" in mem)
+row = k.state_row(stalls, TODAY)
+check("state row records never-contacted rows so the dedup window sees them",
+      row["stalls"] == ["warm", "old", "A never", "B never"] and row["date"] == "2026-09-11")
+
+print("--- dedup: repo-owned JSONL state, never ~/.hermes (T6.1) ---")
+
+
+def with_state(rows, fn):
+    home = tempfile.mkdtemp()
+    state = pathlib.Path(home) / "var" / "bd-stall-radar" / "flagged.jsonl"
+    if rows is not None:
+        state.parent.mkdir(parents=True)
+        state.write_text("".join(r + "\n" for r in rows), encoding="utf-8")
+    old = {k_: os.environ.get(k_) for k_ in ("BD_STALL_RADAR_STATE", "HOME")}
+    os.environ["BD_STALL_RADAR_STATE"] = str(state)
+    os.environ["HOME"] = home
+    try:
+        return fn(state, pathlib.Path(home))
+    finally:
+        for k_, v in old.items():
+            if v is None:
+                os.environ.pop(k_, None)
+            else:
+                os.environ[k_] = v
+
+
+def _row(date, stalls):
+    return json.dumps({"date": date, "run": date + "T05:00:00+02:00", "stalls": stalls})
+
+
+# (::radar-dedup-reads-state)
+got = with_state([_row("2026-09-10", ["Acme", "Beta"])], lambda s, h: k.recently_flagged(TODAY))
+check("a run recorded yesterday suppresses its names", got == {"Acme", "Beta"})
+
+# (::radar-dedup-window)
+got = with_state([_row("2026-09-08", ["Old"]), _row("2026-09-07", ["Older"]), "not json",
+                  _row("2026-09-09", ["Recent"])],
+                 lambda s, h: k.recently_flagged(TODAY))
+check("3 days ago is inside the window, 4 is outside, a malformed row is skipped",
+      got == {"Old", "Recent"})
+
+# (::radar-dedup-absent-is-empty)
+got = with_state(None, lambda s, h: (k.recently_flagged(TODAY), s.exists()))
+check("an absent state file yields no dedup and creates nothing", got == (set(), False))
+
+
+def _append_then_read(state, home):
+    k.record_run(stalls, TODAY)
+    lines = state.read_text(encoding="utf-8").splitlines()
+    return lines, k.recently_flagged(TODAY), home
+
+
+# (::radar-dedup-appends-one-line)
+lines, seen, home = with_state(None, _append_then_read)
+check("a run appends exactly one JSON line, creating the directory",
+      len(lines) == 1 and json.loads(lines[0])["stalls"] == ["warm", "old", "A never", "B never"])
+check("the line it wrote is what the next run reads back",
+      seen == {"warm", "old", "A never", "B never"})
+# (::radar-dedup-never-touches-hermes)
+check("nothing under ~/.hermes is read or created", not (home / ".hermes").exists())
+lines2, _, _ = with_state([_row("2026-09-10", ["X"])], _append_then_read)
+check("an existing file gains one line, keeps the rest", len(lines2) == 2 and "X" in lines2[0])
 
 print()
 if failures:

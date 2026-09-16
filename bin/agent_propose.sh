@@ -9,13 +9,13 @@
 # scoped worktree; any other diff aborts the run and resets the worktree.
 # Metrics (NUC-23): each run appends a structured key=value record to cost.log
 # and refreshes the scorecard digest (both fail-soft).
-# Working memory (NUC-21): the run records one episodic entry to the profile's
-# MEMORY.md (agent self-records; runner writes a fail-soft backstop if it didn't).
+# Working memory (NUC-21) was a per-profile MEMORY.md the runner backstopped; retired
+# at T6.1 (2026-09-16) — the receipt (T5.2) is the per-run record, memory=na on every row.
 #
 # NUC-36: AGENT_RUN_MODE=proposal|ops (default proposal).
-#   proposal — inbox worktree, write-boundary, commit/push, memory fallback.
+#   proposal — inbox worktree, write-boundary, commit/push.
 #   ops      — lock/preflight/cost/scorecard only; no inbox checkout, no
-#              write-boundary, no proposal commit, no memory fallback. For
+#              write-boundary, no proposal commit. For
 #              overnight reports and other non-proposal LLM jobs folded off
 #              Hermes cron onto this guarded runner.
 set -euo pipefail
@@ -49,32 +49,10 @@ run_task="standing"
 run_proposal="none"
 run_outcome="NOPROPOSAL"
 mem_status="na"
-# NUC-27 real spend: shared-key cumulative USD spend snapshotted before the run.
+# T6.1 (2026-09-16): the shared OpenRouter key probe is retired. The Hermes runtime was its
+# only spender and its delta read 0.000000 on 344 of 353 rows; usage is measured per run in
+# the receipt (T5.2). cost.log keeps the keys with `unknown`.
 usage_before="unknown"
-
-key_usage() {
-  # NUC-27: real per-run spend tracking. Read-only GET of the shared OpenRouter
-  # key's cumulative spend ('usage', USD) via /key — auth pattern reused from
-  # bin/llm_smoke_test.sh. The whole fleet shares ONE key under a single ~$25 cap,
-  # so (usage_after - usage_before) is this run's real cost. Fail-soft BY CONTRACT:
-  # any network / HTTP / parse / missing-key error echoes 'unknown' and returns 0 —
-  # a budget probe must NEVER crash or block a run. Key read from the already-sourced
-  # env (secrets.env); never logged.
-  local base resp usage
-  base="${LLM_BASE_URL:-https://openrouter.ai/api/v1}"
-  [ -n "${OPENROUTER_API_KEY:-}" ] || { echo "unknown"; return 0; }
-  resp=$(curl -sS --max-time 15 "$base/key" \
-           -H "Authorization: Bearer $OPENROUTER_API_KEY" 2>/dev/null) \
-    || { echo "unknown"; return 0; }
-  usage=$(printf '%s' "$resp" | python3 -c 'import json,sys
-try:
-    u=json.load(sys.stdin)["data"].get("usage")
-    print(u if isinstance(u,(int,float)) else "unknown")
-except Exception:
-    print("unknown")' 2>/dev/null) || usage="unknown"
-  [ -n "$usage" ] || usage="unknown"
-  echo "$usage"
-}
 
 new_session_id() {
   # T3.3: one Claude Code session id per ATTEMPT, so the transcript log_cost reads is the
@@ -127,23 +105,15 @@ log_cost() {
   # Structured, append-only, key=value (NUC-23). model is the PROFILE's real
   # config.yaml model.name — NOT LLM_MODEL_BUSINESS (which was stale, echoing
   # sonnet-5 while the profile runs haiku-4.5).
-  # NUC-27: cost is now REAL, not a flat 'unknown'. usage_before (snapshotted just
-  # before the retry loop) and usage_after (read here) are the shared key's
-  # cumulative OpenRouter spend in USD; cost_usd_delta = after - before = this run's
-  # real cost. Either bound may be 'unknown' when the budget probe fails — the delta
-  # is then 'unknown' too and the run still logs cleanly. tokens stay 'unknown':
-  # hermes token accounting is broken on OpenAI-compatible endpoints (#4404/#20741).
+  # usage_before / usage_after / cost_usd_delta are `unknown` on every row since T6.1:
+  # the shared-key probe (NUC-27) measured a spend nothing on this runtime makes. The
+  # keys stay so every reader (scorecard.sh, run_record.sh) keeps parsing; the receipt
+  # (T5.2) carries measured usage. tokens stay 'unknown' for the same reason.
   # Written on FAIL/VIOLATION too so failure loops stay visible.
   local outcome=$1
   local elapsed=$(( $(date +%s) - run_started ))
   local usage_after delta
-  # NUC-37: on a BLOCKED early-exit usage_before was never snapshotted (still
-  # 'unknown'), so the delta is 'unknown' regardless — skip the live OpenRouter GET.
-  if [ "${usage_before:-unknown}" = unknown ]; then
-    usage_after=unknown
-  else
-    usage_after=$(key_usage)
-  fi
+  usage_after=unknown
   delta=$(python3 -c 'import sys
 a,b=sys.argv[1],sys.argv[2]
 try:
@@ -193,8 +163,8 @@ block_exit() {
   # NUC-37: a preflight gate failed -> this run is BLOCKED, not "nothing to propose".
   # Record it (visible in cost.log + the scorecard) then exit 0 — blocked is not a
   # crash; the timer simply retries next cycle. log_cost/refresh_scorecard are
-  # fail-soft. On the earliest gate (before secrets are sourced) key_usage() short-
-  # circuits to 'unknown' with no network call and the record carries profile=unknown.
+  # fail-soft. On the earliest gate (before secrets are sourced) the record carries
+  # profile=unknown.
   log "BLOCKED: $1"
   log_cost BLOCKED
   write_receipt BLOCKED --reason "$1"
@@ -271,27 +241,16 @@ export AGENT_ATTEMPT_LOG="${AGENT_ATTEMPT_LOG:-$LOG_DIR/last-attempt/$run_task.l
 # cost. Per attempt like the log above; a hermes runtime writes nothing here and the receipt
 # says `unavailable`, never a number from cost.log's shared-key delta.
 export AGENT_USAGE_JSON="${AGENT_USAGE_JSON:-$LOG_DIR/last-attempt/$run_task.usage.json}"
-# W1 (2026-09-02): the episodic store keys on the OWNING PERSONA; the cost record keys on
-# the RUNTIME. They were one variable, and that is why six jobs logged memory=no-store on
-# every run for months — AGENT_PROFILE has been model-named (claude-opus / claude-sonnet)
-# since the 2026-07-30 migration, and ~/.hermes/profiles/claude-opus/ has never existed.
-# Do NOT merge them back: `profile=` in cost.log is what makes a model regression visible,
-# and bin/run_record.sh:37 reads it back as the runtime.
-# The fallback is the runtime name on purpose — it reproduces today's behaviour rather than
-# inventing a store. A job keeps logging no-store until its env sets AGENT_OWNER.
+# W1 (2026-09-02): the owner is the OWNING PERSONA (design/agents/<owner>.toml); the cost
+# record keys on the RUNTIME. They were one variable once, and AGENT_PROFILE has been
+# model-named (claude-opus / claude-sonnet) since the 2026-07-30 migration. Do NOT merge
+# them back: `profile=` in cost.log is what makes a model regression visible, and
+# bin/run_record.sh:37 reads it back as the runtime. The fallback is the runtime name.
 run_owner="${AGENT_OWNER:-$run_profile}"
-# Deliberately still keyed on the RUNTIME: this resolves the model from a hermes profile
-# config, and a headless Claude Code job takes its model from its runner's --model flag,
-# not from any hermes config. Keying this on the owner would resolve claudius's OpenRouter
-# model for a job running Opus 5 — a confidently wrong answer in place of an honest unknown.
-profile_cfg="$HOME/.hermes/profiles/$run_profile/config.yaml"
-if [ -r "$profile_cfg" ]; then
-  # Every profile on the box (marcus/trajan/augustus/claudius) keys its model as
-  # `default:` under `model:`, not `name:` — this parser looked for `name:` only and
-  # silently resolved model=unknown on every one of them. Accept either key.
-  run_model=$(awk '/^model:/{m=1;next} /^[^[:space:]]/{m=0} m && /^[[:space:]]+(name|default):/{sub(/#.*/,"");sub(/^[[:space:]]+(name|default):[[:space:]]*/,"");gsub(/[[:space:]]/,"");print;exit}' "$profile_cfg")
-fi
-run_model="${run_model:-unknown}"
+# model= is `unknown` since T6.1 (2026-09-16): it was resolved from a hermes profile config,
+# which no live job runs — augustus-content rows logged openai/gpt-5.5 from a profile the
+# buzz-agent runtime never used. The receipt (T5.2) carries the measured model.
+run_model=unknown
 log "mode: AGENT_RUN_MODE=$run_mode task=$run_task profile=$run_profile owner=$run_owner"
 
 # ── NUC-31: preflight MCP tool-health gate (advisory by default) ──
@@ -334,14 +293,9 @@ if [ "$BRAVE_HEALTH_POLICY" != off ] && ! brave_healthy; then
   fi
 fi
 
-# ── NUC-21 working memory: snapshot the episodic store BEFORE the run so we can
-#    tell afterward whether the agent recorded its own entry (fail-soft glue).
-#    NUC-36 ops mode skips memory entirely (mem_status stays na). ──
-MEM_DIR="${RA_MEMORY_DIR:-$HOME/.hermes/profiles/$run_owner/memories}"
-MEM_FILE="$MEM_DIR/MEMORY.md"
-mem_before="absent"
+# The NUC-21 episodic store (~/.hermes/profiles/<owner>/memories) is retired (T6.1);
+# mem_status stays na on every run.
 if [ "$run_mode" = proposal ]; then
-  [ -f "$MEM_FILE" ] && mem_before="$(cksum "$MEM_FILE" 2>/dev/null || echo absent)"
   git -C "$WORKTREE" checkout -q agents/inbox
   git -C "$WORKTREE" pull -q --ff-only origin agents/inbox 2>/dev/null || true
 fi
@@ -398,11 +352,6 @@ run_ended_on_provider_error() {
 export RUN_DATE="${RUN_DATE:-$(date +%Y-%m-%d)}"
 export TODAY="${TODAY:-$(date '+%A, %-d %B %Y')}"
 log "date: RUN_DATE=$RUN_DATE"
-# NUC-27: snapshot the shared key's cumulative spend BEFORE any inference so the
-# post-run delta in log_cost() captures exactly this run's cost (fail-soft:
-# 'unknown' on any probe error — never blocks the run).
-usage_before=$(key_usage)
-log "cost: usage_before=$usage_before (shared OpenRouter key, USD)"
 while [ "$attempt" -lt "$max_attempts" ]; do
   attempt=$((attempt + 1))
   rc=0
@@ -499,36 +448,6 @@ if [ -n "$violations" ]; then
   write_receipt VIOLATION
   refresh_scorecard
   exit 1
-fi
-
-# ── NUC-21 working memory: record/verify the episodic entry (fail-soft) ──
-# A proposal is a DATED markdown directly under _inbox/agents/; the metrics digest
-# (_inbox/agents/_metrics/, owned by scorecard.sh) must NOT count as one.
-proposal_file="$(git -C "$WORKTREE" status --porcelain -- _inbox/agents/ | awk '{print $2}' | grep -E '^_inbox/agents/[0-9]{4}-[0-9]{2}-[0-9]{2}_.*\.md$' | head -1 || true)"
-mem_after="absent"; [ -f "$MEM_FILE" ] && mem_after="$(cksum "$MEM_FILE" 2>/dev/null || echo absent)"
-if [ ! -d "$MEM_DIR" ]; then
-  mem_status="no-store"
-  log "MEMORY: no per-profile store at $MEM_DIR — skipping episodic record"
-elif [ "$mem_after" != "$mem_before" ]; then
-  mem_status="recorded"
-  log "MEMORY: agent recorded its own episodic entry"
-else
-  entry="[run:$(date -Is)] task=$run_task $run_owner scheduled run; proposal=${proposal_file:-none}; note=runner auto-record (agent emitted no memory entry this run); findings/decisions/gaps=see agent_run.log / proposal"
-  if (
-        exec 8>"$MEM_FILE.lock" 2>/dev/null || exit 1
-        flock -w 10 8 || exit 1
-        if [ -s "$MEM_FILE" ]; then
-          printf '%s\n§\n%s' "$(cat "$MEM_FILE")" "$entry" > "$MEM_FILE.tmp.$$" && mv -f "$MEM_FILE.tmp.$$" "$MEM_FILE"
-        else
-          printf '%s' "$entry" > "$MEM_FILE"
-        fi
-     ); then
-    mem_status="fallback"
-    log "MEMORY: agent did not record — wrote runner fallback entry (proposal=${proposal_file:-none})"
-  else
-    mem_status="record-failed"
-    log "MEMORY: fallback record failed (lock/write) — store untouched, continuing"
-  fi
 fi
 
 # ── Commit + push proposal (or end cleanly if the agent chose not to propose) ──

@@ -46,7 +46,7 @@ for Dave alone.
 |---|---|---|
 | Notion Client Pipeline `e5b6fe9a-f0d9-45b9-9320-d4f20c1f1e0e`, read by the kernel | live read at run time | the kernel fails loudly rather than reporting zero deals — but **a query that returns an empty set is not distinguishable from a quiet pipeline** in the summary line alone, which is what `deal-count-was-not-zero` is for |
 | `04_operations/current_priorities.md` via qmd, for suppression | the mirror's own state | **proceeds, degraded, and says so**: the kernel prints `[warn] current_priorities.md empty via qmd — suppression degraded` and flags deals Dave has already parked. A warning, not a refusal |
-| `~/.hermes/profiles/claudius/memories/MEMORY.md`, for the 3-day dedup window | whatever is on disk | absent means no dedup: the same stall is flagged three nights running |
+| `~/agent-workforce/var/bd-stall-radar/flagged.jsonl` (`BD_STALL_RADAR_STATE`), for the 3-day dedup window | whatever is on disk | absent means no dedup: the same stall is flagged three nights running |
 | `~/vault` mirror as a whole | **unguarded on this job** — `bin/run_bd_stall_radar_cc.sh` runs no `vault_sync_guard.sh check`, unlike `run_raw_ingest_cc.sh:26` and `run_bd_followup_drafts_cc.sh:26` | proceeds silently; `mirror-was-not-dirty` stands in for the missing pre-flight |
 | `profiles/bd_stall_radar_task.md` (deployed copy) | must be readable | wrapper exits 1 with the path named — `-r`, not `-f`: an unreadable file feeds `cat(1)` the identical empty prompt |
 | `skills/claudius/.claude-plugin/plugin.json` (deployed) | must be readable | wrapper exits 1; a `--plugin-dir` that does not exist is silent — exit 0, no diagnostic, no skills |
@@ -107,9 +107,10 @@ exist because all three of those produce the same clean, quiet, correct-looking 
   overwrite Dave's own pipeline edits and there is no audit trail on the far side.
 - Appends this attempt's output to `~/agent-workforce/logs/agent_run.log`, keeps the attempt
   itself at `logs/last-attempt/bd-stall-radar.log`, and a record to `cost.log`.
-- Writes one episodic line to `~/.hermes/profiles/claudius/memories/MEMORY.md` — the same file
-  the kernel reads for its dedup window, so this job's memory is load-bearing rather than
-  decorative.
+- Appends one JSON line to `~/agent-workforce/var/bd-stall-radar/flagged.jsonl` — the same file
+  the kernel reads for its dedup window, so this run state is load-bearing rather than
+  decorative (repo-owned since T6.1, 2026-09-16; the Hermes episodic store it replaced is
+  retired).
 - Touches `/home/dave/logs/run-markers/bd-stall-radar.service`.
 - Takes `${AGENT_PROPOSE_LOCK:-/tmp/agent_propose.lock}`, the fleet-wide propose lock — and
   must give it back before 09:37.

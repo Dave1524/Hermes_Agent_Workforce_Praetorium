@@ -4,9 +4,8 @@
 #
 # WHAT WAS AND WAS NOT ALREADY COVERED. tests/test_ops_view.sh looks like coverage and is
 # not: it STUBS praetorium-status.sh with a one-line marker to prove ops-view.sh embeds
-# *something*. tests/test_working_memory_status.sh does run the real script, but asserts one
-# section (NUC-21 working memory) and nothing else — so that section is deliberately not
-# re-asserted here.
+# *something*. tests/test_working_memory_status.sh ran the real script for one section (NUC-21
+# working memory); both went with T6.1 (2026-09-16), and this file asserts the section's absence.
 #
 # THE HIGHEST-VALUE THING THIS FILE PINS is the user-services block. Brief 5 replaced a
 # two-unit whitelist with a `systemctl --user --failed` query and proved both branches BY
@@ -455,14 +454,14 @@ echo "--- praetorium-status: it reports that a key is set without ever printing 
 # assertions prove the value reached curl's argv (so the probe is real) and never reached the
 # report (so the report is safe to paste into Notion via ops-view.sh --publish).
 root=$(make_fixture "$FIXTURE_TSV")
-mkdir -p "$root/home/.hermes" "$root/home/.config/agent-workforce"
-printf 'BRAVE_API_KEY=BSA-FIXTURE-BRAVE-SECRET\n' > "$root/home/.hermes/.env"
+mkdir -p "$root/home/.config/agent-workforce"
+printf 'BRAVE_API_KEY=BSA-FIXTURE-BRAVE-SECRET\n' > "$root/home/.config/agent-workforce/brave-mcp.env"
 printf 'OPENROUTER_API_KEY="sk-or-FIXTURE-OPENROUTER-SECRET"\n' > "$root/home/.config/agent-workforce/secrets.env"
 rc=$(run_status "$root")
 assert 'the fixture really carries both secrets (the absence proofs below need a subject)' \
-  "grep -q 'BSA-FIXTURE-BRAVE-SECRET' '$root/home/.hermes/.env' \
+  "grep -q 'BSA-FIXTURE-BRAVE-SECRET' '$root/home/.config/agent-workforce/brave-mcp.env' \
    && grep -q 'sk-or-FIXTURE-OPENROUTER-SECRET' '$root/home/.config/agent-workforce/secrets.env'"
-assert 'Brave reports key: set' \
+assert 'Brave reports key: set — read from brave-mcp.env, the file the daemon unit loads (::status-brave-key-from-brave-mcp-env)' \
   "section_of '$root' 'Research MCP (Brave)' | grep -q 'key      : set'"
 assert 'the OpenRouter key was genuinely read and handed to curl' \
   "grep -q 'sk-or-FIXTURE-OPENROUTER-SECRET' '$root/stub/curl.log'"
@@ -492,24 +491,10 @@ root=$(make_fixture "$FIXTURE_TSV")
 rc=$(run_status "$root")
 assert 'a failing one reports unreachable, not a blank' \
   "section_of '$root' 'qmd MCP daemon (agent transport, NUC-16)' | grep -qF '(unreachable)'"
-assert 'with no claudius profile on disk the qmd wiring is unknown, not assumed healthy' \
-  "section_of '$root' 'qmd MCP daemon (agent transport, NUC-16)' | grep -q 'claudius qmd = unknown'"
-
-echo "--- praetorium-status: a cold-spawn qmd profile is named as the NUC-16 regression ---"
-root=$(make_fixture "$FIXTURE_TSV")
-mkdir -p "$root/home/.hermes/profiles/claudius"
-printf 'mcp:\n  qmd:\n    command: qmd\n    args: [mcp]\n  other:\n    url: x\n' \
-  > "$root/home/.hermes/profiles/claudius/config.yaml"
-rc=$(run_status "$root")
-assert 'a command: entry under qmd is called out as the regression it is' \
-  "section_of '$root' 'qmd MCP daemon (agent transport, NUC-16)' | grep -qF 'cold-spawn (stdio) — NUC-16 regression'"
-root=$(make_fixture "$FIXTURE_TSV")
-mkdir -p "$root/home/.hermes/profiles/claudius"
-printf 'mcp:\n  qmd:\n    url: http://127.0.0.1:8765/mcp\n' \
-  > "$root/home/.hermes/profiles/claudius/config.yaml"
-rc=$(run_status "$root")
-assert 'and a url: entry reads as the wired daemon — the control for the line above' \
-  "section_of '$root' 'qmd MCP daemon (agent transport, NUC-16)' | grep -qF 'claudius qmd = daemon (http)'"
+assert 'no hermes profile probe: the claudius qmd line is gone with the profiles (::status-no-profile-probe)' \
+  "! grep -q 'claudius qmd' '$root/out.log'"
+assert 'no Working memory section: the episodic stores are retired (::status-no-working-memory-section)' \
+  "! grep -q 'Working memory' '$root/out.log'"
 
 echo "--- praetorium-status: a broken qmd CLI degrades to the build hint, not to silence ---"
 root=$(make_fixture "$FIXTURE_TSV")

@@ -87,9 +87,6 @@ Prefer:
   night's. `UNKNOWN` means the age could not be read: report it as unverified, not as fresh.
 - MCP: curl `http://127.0.0.1:8765/health`; `ss -ltn | grep 8766`
 
-Do **not** treat `~/.hermes/cron/jobs.json` as the primary schedule source — fleet
-scheduling is systemd (NUC-36). Mention residual Hermes cron only if still present.
-
 ### 3. Diff the two
 Compare:
 - **Inbox files**: new filenames since pre-snapshot (mtime newer than pre-snapshot stamp)

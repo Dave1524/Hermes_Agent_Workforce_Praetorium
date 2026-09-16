@@ -85,8 +85,8 @@ whether that is the alerting Dave wants is a policy question, not a defect.
 - Commits the proposal and pushes to the box-safe repo's `agents/inbox` branch.
 - Writes a run record to `~/agent-workforce/logs/agent_run.log`, this attempt's own output
   to `~/agent-workforce/logs/last-attempt/knowledge-digest.log` (truncated per attempt,
-  kept after the run so `ExecStartPost` can read it), and a cost line to `cost.log`; writes `memory=no-store` because `AGENT_PROFILE` is `claude-opus`, a model
-  name with no `~/.hermes/profiles/` store (registry §6.6).
+  kept after the run so `ExecStartPost` can read it), and a cost line to `cost.log`.
+- No episodic store (retired T6.1, 2026-09-14); the per-run record is the receipt.
 - Touches `/home/dave/logs/run-markers/knowledge-digest.service`.
 - Takes `${AGENT_PROPOSE_LOCK:-/tmp/agent_propose.lock}`.
 - Delivery receipt appended by `bin/deliver.sh`.

@@ -1,5 +1,9 @@
 # Contract: memory-consolidation
 
+**Retired 2026-09-16 (T6.1).** Its input, the Hermes episodic store, is retired — the
+contract's own retirement condition. Units archived at `systemd/archive/`; the script and
+suite are deleted. Kept as history; nothing reads this file.
+
 Read on 2026-09-11 from `systemd/memory-consolidation.{service,timer}` and
 `bin/consolidate_memory.sh`. A light contract (T4.4). Written while the fleet was paused
 (`~/OUTBOX/fleet-pause-2026-09-11.md`), so the timer read `LastTriggerUSec` empty that day; the

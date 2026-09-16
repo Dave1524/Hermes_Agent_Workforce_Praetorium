@@ -96,8 +96,7 @@ Mechanism A doing its job, and the contradiction is the finding).
 - Commits the proposal and pushes it to the box-safe repo's `agents/inbox` branch.
 - Appends this attempt's output to `~/agent-workforce/logs/agent_run.log`, keeps the attempt
   itself at `logs/last-attempt/raw-ingest.log`, and a record to `cost.log`.
-- Writes one episodic line to `~/.hermes/profiles/claudius/memories/MEMORY.md` — the store
-  exists, so this job records `memory=fallback`, not `no-store`.
+- No episodic store (retired T6.1, 2026-09-14); the per-run record is the receipt.
 - Touches `/home/dave/logs/run-markers/raw-ingest.service`.
 - Takes `${AGENT_PROPOSE_LOCK:-/tmp/agent_propose.lock}`, the fleet-wide propose lock.
 - Delivery receipt appended by `bin/deliver.sh` to `~/logs/delivery-receipts.jsonl`.
