@@ -30,4 +30,37 @@ PY
 
 echo "--- tests/test_workflow_requires.py ---"
 assert "the requires suite is green" 'python3 tests/test_workflow_requires.py'
+
+echo "--- executor pre-flights (::workflow-requires-preflight) ---"
+# The two executors call the CLI before the run and honour exit 1. agent_propose.sh's half
+# is driven end-to-end by tests/test_agent_propose_smoke.sh scenario 40; local_tier_eval.sh
+# is driven here with a stub for the CLI, an empty out dir and its own lock, so Ollama and
+# hermes are never reached — the stub's verdict is the only thing on trial.
+assert "agent_propose.sh calls workflow_requires.py check on the unit systemd is running" \
+  'grep -q "WORKFLOW_REQUIRES:-\$BIN_DIR/workflow_requires.py}\" check \"\$requires_unit\"" bin/agent_propose.sh'
+assert "and a refusal is a BLOCKED exit" \
+  'grep -A6 "workflow_requires.py}\" check" bin/agent_propose.sh | grep -q "block_exit"'
+assert "local_tier_eval.sh calls workflow_requires.py check local-tier-eval" \
+  'grep -q "WORKFLOW_REQUIRES:-\$REPO_BIN/workflow_requires.py}\" check local-tier-eval" bin/local_tier_eval.sh'
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+cat > "$tmp/down.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "$*" >> "${0%/*}/argv.log"
+echo "requires ollama.service: inactive"
+exit 1
+EOF
+chmod +x "$tmp/down.sh"
+rc=0
+out=$(LOCAL_EVAL_OUT="$tmp/out" AGENT_PROPOSE_LOCK="$tmp/lock" WORKFLOW_REQUIRES="$tmp/down.sh" \
+  HERMES_BIN=/bin/false bash bin/local_tier_eval.sh 2>&1) || rc=$?
+assert "local_tier_eval.sh: a requirement down skips with exit 0" "[ '$rc' = 0 ]"
+assert "  it asked about local-tier-eval" "grep -qx 'check local-tier-eval' '$tmp/argv.log'"
+assert "  the CLI's line and the skip are in the log" \
+  "printf '%s' \"\$out\" | grep -q 'requires ollama.service: inactive' && printf '%s' \"\$out\" | grep -q 'a requirement is down — skipping'"
+assert "  and no scorecard was written" "! ls '$tmp'/out/*/scorecard.md >/dev/null 2>&1"
+# Unknown is not a refusal, and that is the CLI's exit 0 (asserted above); the runner skips
+# on the exit status alone, never on the words. main reads the live bus, so it is not run.
+assert "local_tier_eval.sh: the skip is conditioned on the CLI's exit status only" \
+  'grep -q "if \[ \"\$requires_rc\" -ne 0 \]; then" bin/local_tier_eval.sh && ! grep -q "requires_out.*inactive\|requires_out.*failed" bin/local_tier_eval.sh'
 exit $fail

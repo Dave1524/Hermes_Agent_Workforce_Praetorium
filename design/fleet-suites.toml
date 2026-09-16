@@ -423,6 +423,7 @@ asserts = [
   "workflow-requires-unit-file",     # a same-scope requirement appears in the unit file's Wants=/Requires=/BindsTo=, and a hard dependency there is mirrored in requires; cross-manager is exempt
   "workflow-requires-buzz-handoff",  # a runner that hands off through run_content_via_buzz.sh requires buzz-agent@<owner>
   "workflow-requires-check",         # check exits 1 naming the first requirement that is down, 0 on active, no entry or an unreachable bus (unknown is not a refusal)
+  "workflow-requires-preflight",     # agent_propose.sh checks the unit systemd is running and BLOCKs on exit 1 (smoke scenario 40 drives it); local_tier_eval.sh checks local-tier-eval and skips with exit 0, on the exit status alone, before main reads the bus
 ]
 why_no_workflow = """
 It tests the one resolver behind every row's requires and every executor's pre-flight. A

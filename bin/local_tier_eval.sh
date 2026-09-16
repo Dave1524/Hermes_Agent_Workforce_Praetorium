@@ -182,4 +182,15 @@ if ! flock -n 9; then
   log "another agent job holds $LOCK — skipping this eval run"
   exit 0
 fi
+# T5.3f: the requires pre-flight (bin/workflow_requires.py, the manifest's `requires` for this
+# unit). Against a down Ollama the run is six timeouts and a scorecard of zeros in
+# history.psv; skipping is the honest record and the timer's next fire is the retry.
+# Unknown is not a refusal. WORKFLOW_REQUIRES overrides the CLI for fixtures.
+requires_rc=0
+requires_out=$("${WORKFLOW_REQUIRES:-$REPO_BIN/workflow_requires.py}" check local-tier-eval 2>&1) || requires_rc=$?
+[ -z "$requires_out" ] || log "$requires_out"
+if [ "$requires_rc" -ne 0 ]; then
+  log "a requirement is down — skipping this eval run"
+  exit 0
+fi
 main
