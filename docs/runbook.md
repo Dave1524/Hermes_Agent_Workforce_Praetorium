@@ -19,7 +19,7 @@ Scheduled **proposal** agent jobs share `bin/agent_propose.sh` (lock, preflight,
 
 **NUC-35 — change-triggered content dispatch.** `content-change-dispatch.timer` polls every 15 min and runs `bin/content_change_dispatch.sh`: a deterministic, **model-free** tick that reads the Notion "Picked" content-board IDs (`notion_rest.py board --status Picked --json`), diffs them against `~/agent-workforce/var/content_picked.state`, and dispatches the **existing** Augustus draft run (`bin/agent_propose.sh`, reusing `augustus-content.env` via `AGENT_JOB_OVERRIDES`) **only when a Picked ID appears that is not already in the state file**. A quiet tick spends nothing — no `agent_propose.sh` call, so no `cost.log` line and no `agent_run.log` entry — it just refreshes the state file and exits 0. This cuts Picked→Drafted latency from the ~24h nightly cadence to ~15 min at zero steady-state cost. Fail-soft by contract: on any Notion API/parse error the script logs to `logs/content_change_dispatch.log` and exits 0 **without touching the state file**, so a transient outage never drops a pending row or corrupts state; the state is only advanced after a clean board read (empty diff) or after a dispatched run returns 0. The nightly `augustus-content.timer` stays as the backstop — a 01:30 poll tick that overlaps the 01:30 nightly run SKIPs safely on `agent_propose.sh`'s flock (`/tmp/agent_propose.lock`, "previous run still active"), so there is no double-draft and no new flag is needed.
 
-| Job | Timer (Europe/Amsterdam) | Unit pair | Override env (runtime path) | Task profile | Hermes profile |
+| Job | Timer (Europe/Amsterdam) | Unit pair | Override env (runtime path) | Task profile | Runtime |
 |---|---|---|---|---|---|
 | Standing research (Opus 5, NUC research pipeline brief 2026-07-30) | `agent-proposal.timer` Mon–Fri 04:30 | `agent-proposal.{service,timer}` | `~/.config/agent-workforce/standing_research.env` | `profiles/standing_research_cc_task.md` | *(headless Claude Code)* |
 | Raw source ingestion (Mechanism B) | **Tue–Sat 03:00** | `raw-ingest.{service,timer}` | `~/.config/agent-workforce/raw_ingest.env` | `profiles/raw_ingest_cc_task.md` | *(headless Claude Code)* |
@@ -42,42 +42,16 @@ and `profiles/overnight_morning_report_task.md` — both archived to `profiles/a
 and attributed both to `claudius`, when `design/agents/marcus.toml` declares both. Following the old
 rows installed a job pointing at an archived profile under an owner that does not own it.
 
-### W1 handoff — `AGENT_OWNER` must be added to each live override env (Dave's action)
+### `AGENT_OWNER` — the persona that owns a job
 
-`~/.config/agent-workforce/` is mode-600 and outside this repo; an agent cannot read or write it.
-Until these lines are added, **the six jobs below keep logging `memory=no-store` exactly as they do
-today** — the code change alone does not fix them, because `AGENT_OWNER` falls back to the runtime
-name on purpose rather than inventing a store.
-
-Add one line to each file. Nothing else changes; do not edit `AGENT_PROFILE`, which still names the
-runtime and still keys `cost.log`'s `profile=` column.
-
-| Add to | Line to add | Store it selects |
-|---|---|---|
-| `~/.config/agent-workforce/standing_research.env` | `AGENT_OWNER=claudius` | `~/.hermes/profiles/claudius/memories` |
-| `~/.config/agent-workforce/raw_ingest.env` | `AGENT_OWNER=claudius` | `~/.hermes/profiles/claudius/memories` |
-| `~/.config/agent-workforce/m1_signal_scan.env` | `AGENT_OWNER=claudius` | `~/.hermes/profiles/claudius/memories` |
-| `~/.config/agent-workforce/knowledge_digest.env` | `AGENT_OWNER=claudius` | `~/.hermes/profiles/claudius/memories` |
-| `~/.config/agent-workforce/bd_followup_drafts.env` | `AGENT_OWNER=claudius` | `~/.hermes/profiles/claudius/memories` |
-| `~/.config/agent-workforce/weekly_pre_assembly.env` | `AGENT_OWNER=marcus` | `~/.hermes/profiles/marcus/memories` |
-| `~/.config/agent-workforce/daily_plan.env` | `AGENT_OWNER=marcus` | *(ops mode — stays `memory=na`, see below)* |
-| `~/.config/agent-workforce/eod_summary.env` | `AGENT_OWNER=marcus` | *(ops mode — stays `memory=na`)* |
-| `~/.config/agent-workforce/overnight_morning_report.env` | `AGENT_OWNER=marcus` | *(ops mode — stays `memory=na`)* |
-
-The four store directories already exist; nothing needs creating. `bin/consolidate_memory.sh:149`
-discovers `*/memories` under `~/.hermes/profiles/` dynamically, so a store that starts filling is
-pruned nightly with no further wiring.
-
-**The last three rows will not change their `memory=` value, and that is correct.**
-`AGENT_RUN_MODE=ops` skips the memory path entirely by design (NUC-36,
-`bin/agent_propose.sh:236,368-372`), so they log `na`, never `no-store`. Set `AGENT_OWNER` on them
-anyway so the record is uniform and the value is right the day ops mode is revisited — but do not
-read a persisting `na` as the handoff having failed.
-
-Verify after applying: the next run of any of the first six logs
-`mode: … owner=<persona>` in `agent_run.log` and `memory=recorded` or `memory=fallback` in
-`cost.log`. `bd-followup-drafts` and `bd-stall-radar` were `dormant` until T2.4 (2026-09-09);
-both timers are now enabled (Sun–Thu 23:00 / 23:30).
+`AGENT_OWNER` in each live override env names the owning persona (`design/agents/<owner>.toml`)
+and is the `owner=` field of the run log; `AGENT_PROFILE` still names the runtime and keys
+`cost.log`'s `profile=` column (W1, 2026-09-02). Until T6.1 (2026-09-16) `AGENT_OWNER` also
+selected a Hermes episodic store under `~/.hermes/profiles/<owner>/memories`; that store is
+retired and every run logs `memory=na` — the per-run record is the receipt
+(`~/agent-workforce/var/workflow-receipts/`). `~/.config/agent-workforce/` is mode-600 and
+outside this repo; an agent cannot read or write it, so a missing `AGENT_OWNER` line is
+Dave's to add.
 
 **Research pipeline brief (2026-07-30).** The standing research run was hard-down for ten
 days on hermes/claudius via OpenRouter (HTTP 402 "Insufficient credits" landing in the
@@ -182,7 +156,6 @@ Supporting daemons (not override-driven):
 | `qmd-mcp.service` (+ `qmd-mcp.service.d/gpu.conf`) | Vault MCP on `:8765`; GPU drop-in sets `QMD_LLAMA_GPU=vulkan` |
 | `qmd-refresh.timer` | Index refresh every 30m; the pull leg is `bin/vault_sync_guard.sh sync` (NUC-45) |
 | `brave-mcp.service` | Brave search MCP on `:8766` |
-| `memory-consolidation.timer` | Nightly MEMORY.md trim, all agent profiles |
 | `scorecard.timer` | Weekly scorecard publish |
 | `agent-workforce-auto-sync.timer` | Shell auto-sync of this git repo (no LLM) |
 | `overnight-pre-snapshot.timer` | Model-free pre-run state capture → `~/logs/overnight/` (NUC-36) |
@@ -629,8 +602,7 @@ Because git rewrites `FETCH_HEAD` even when a fetch fails, the guard keeps its o
 | Job-override runtime envs | `~/.config/agent-workforce/{augustus-content,bd_stall_radar,weekly_pre_assembly}.env` | **not secrets**, but recreate from templates if lost |
 | qmd config | `~/.config/qmd/index.yml` | `backup_config.sh` tarball |
 | Secrets template | `~/.config/agent-workforce/.env.example` + README | `backup_config.sh` tarball |
-| Hermes profiles | `~/.hermes/profiles/` (SOUL.md, config.yaml — no .env) | add on first profile change |
-| Working memory | `~/.hermes/profiles/<profile>/memories/MEMORY.md` (all profiles) | runtime state — NOT backed up; regenerated by agent runs, consolidated nightly (NUC-21) |
+| Hermes profiles kept | `~/.hermes/profiles/{base0,leantest}` (local-tier-eval) — `config.yaml` only; the persona profiles were deleted 2026-09-14 (T6.1, `design/archive/hermes-profiles-2026-09-14.md`) | add on first profile change |
 | Brave MCP key | `~/.config/agent-workforce/brave-mcp.env` (mode 600) | **NEVER backed up** — re-derive from `secrets.env` `BRAVE_API_KEY` |
 | Secrets values | `secrets.env`, deploy key | **NEVER backed up** — re-issued at providers (see `~/.config/agent-workforce/README.md`) |
 | Vault content | GitHub `Dave1524/obsidian-ai-os-boxsafe` | already remote; clone is disposable |
@@ -644,7 +616,8 @@ Run `~/agent-workforce/bin/backup_config.sh`, then pull the tarball to the Mac:
 1. Install Ubuntu Server LTS headless; create user `dave`; enable SSH (NUC-02/03 pattern).
 2. Join Tailscale (`tailscale up`), confirm Mac SSH; UFW default-deny + 22/tcp (Tailscale-only net).
 3. `sudo apt install git curl xz-utils nodejs npm && sudo npm i -g @tobilu/qmd`.
-4. Install Hermes: `curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --skip-browser`.
+4. Install Hermes: `curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --skip-browser`
+   (needed only for `local-tier-eval` and the Discord delivery leg of `bin/deliver.sh`).
    - **Fetch backend (NUC-22):** the `--skip-browser` above is why the browser was never
      bootstrapped. Install local headless Chromium once (credential-free): `npx --yes
      agent-browser@latest install` (as `dave`) then `sudo npx --yes playwright install-deps chromium`.
@@ -666,7 +639,8 @@ Run `~/agent-workforce/bin/backup_config.sh`, then pull the tarball to the Mac:
    Install job-override envs from `profiles/*.env.example` (mode 600) — see § Job wiring.
 7. `~/agent-workforce/bin/finish_boxsafe_clone.sh` (clone, index, exclusion gates, enable services).
    - Enable the added units (NUC-21/22/23): `sudo systemctl enable --now brave-mcp.service
-     memory-consolidation.timer scorecard.timer`. Leave `agent-proposal.timer` per its spend gate.
+     scorecard.timer` (`memory-consolidation.timer` was retired at T6.1, 2026-09-16). Leave
+     `agent-proposal.timer` per its spend gate.
    - Job timers (`augustus-content.timer`, etc.) enable only when the matching override env exists.
 8. Verify: `~/agent-workforce/bin/praetorium-status.sh` — all green; run `llm_smoke_test.sh`.
 
@@ -685,18 +659,10 @@ The `claudius` profile reaches three services, all via warm localhost transports
 - **Brave search:** `url: http://127.0.0.1:8766/mcp` → `brave-mcp.service` (NUC-21), key in
   `brave-mcp.env`. Persistent HTTP replaces the per-run npx stdio cold-spawn that lost the
   `hermes -z` background-discovery race. Status → "Research MCP (Brave)" (service + endpoint).
-- **Web fetch:** built-in Hermes `browser` toolset, local headless Chromium via agent-browser
-  (credential-free — no Browserbase key), pinned in the profile `config.yaml` `browser:` block
-  (NUC-22). Health: `praetorium-status.sh` → "Fetch backend (browser)" shows `chromium: installed`.
-  Deeper spend-free check — **source `~/.hermes/.env` first** (a bare python invocation does NOT load
-  it, so `AGENT_BROWSER_EXECUTABLE_PATH` is unset and the check returns `False`):
-  `set -a; . ~/.hermes/.env; set +a; ~/.hermes/hermes-agent/venv/bin/python -c 'from tools.browser_tool
-  import check_browser_requirements as c; print(c())'` → `True`. Egress rules: `docs/data_boundary.md`.
-
-Test fetch (spends OpenRouter): `cd ~/agent-worktrees/inbox && ~/.local/bin/hermes -z "Fetch
-<public-url> and give the H1 + first paragraph; if the body can't be retrieved reply exactly
-'FETCH BLOCKED: <reason>' and invent nothing." -p claudius` — a real page body proves fetch;
-the FETCH BLOCKED line proves graceful degradation (no fabrication).
+- **Web fetch:** retired with the Hermes runtime (T6.1, 2026-09-16); the CC runners use their
+  own fetch. The local headless Chromium (agent-browser, NUC-22) stays installed for it;
+  health: `praetorium-status.sh` → "Fetch backend (browser)" shows `chromium: installed`.
+  Egress rules: `docs/data_boundary.md`.
 
 **Captured evidence (2026-07-08, AC4/AC5):** an ad-hoc run — `hermes -z "Use brave_web_search to find
 the ECB homepage URL, then use the browser fetch tool to load it and report the H1 + first sentence;
@@ -707,12 +673,12 @@ Christine Lagarde tells Les Echos… external supply shock…") — a rendered p
 snippet. No fabrication; the honesty/degradation instruction was in force (no block needed). This is
 the previously-Cloudflare/JS-blocked source class (NUC-15) now completing.
 
-## Agent working memory (NUC-21)
+## Agent working memory (NUC-21) — retired
 
-Each agent profile keeps bounded episodic memory of its own prior runs — see **`docs/working_memory.md`**
-for the store decision, entry schema, consolidation policy, and the two-run continuity recipe.
-Consolidation runs nightly for every profile (`memory-consolidation.timer`, 03:30). Status:
-`praetorium-status.sh` → "Working memory" (entry count + bytes per profile).
+Each Hermes profile kept bounded episodic memory of its own prior runs (`docs/working_memory.md`
+records the design). The stores, their nightly consolidation (`memory-consolidation.timer`) and
+the status section that counted them were retired at T6.1 (2026-09-16); the per-run record is
+the workflow receipt. History: `design/archive/hermes-profiles-2026-09-14.md`.
 
 ## Agent-run metrics & scorecard (NUC-23)
 
@@ -726,12 +692,13 @@ cost_usd_delta=<usd|unknown> cost_src=openrouter-key-api memory=recorded|fallbac
 skills=<csv|none|unknown> skills_offered=<csv|none|unknown> skills_src=transcript|none
 ```
 
-- `model` is the **profile's** real model (`~/.hermes/profiles/<profile>/config.yaml` `model.name`),
-  not `LLM_MODEL_BUSINESS` (which was stale, echoing sonnet-5 while the profile runs haiku-4.5).
-- `tokens` is best-effort `unknown` — hermes accounting is broken on OpenAI-compatible endpoints
-  (#4404/#20741). `usage_before`/`usage_after` are the shared OpenRouter key's cumulative spend
-  read before and after the run (NUC-27), so `cost_usd_delta` is this run's real cost; either
-  probe failing makes all three `unknown`. **The OpenRouter dashboard is the spend source of truth.**
+- `model` is `unknown` since T6.1 (2026-09-16): it was read from the Hermes profile's
+  `config.yaml`, and no live job has run on one since 2026-08-13. The measured model is in the
+  receipt (`bin/propose_receipt.py`, T5.2).
+- `tokens`, `usage_before`, `usage_after` and `cost_usd_delta` are `unknown` since T6.1: the
+  shared-key spend probe (NUC-27) read `~/.hermes/.env` and is retired; receipts carry measured
+  usage. The keys stay so every reader keeps parsing. **The OpenRouter dashboard is the spend
+  source of truth.**
 - `skills`, `skills_offered`, `skills_src` (T3.3, 2026-09-11) are the pointer skills this run
   was offered and opened, read from its Claude Code transcript by `bin/skill_telemetry.py`.
   `agent_propose.sh` mints one `AGENT_SESSION_ID` per attempt, the nine Claude runners pass it as
