@@ -293,6 +293,25 @@ if [ "$BRAVE_HEALTH_POLICY" != off ] && ! brave_healthy; then
   fi
 fi
 
+# T5.3f: the requires pre-flight. The unit systemd is running is the manifest entry whose
+# `requires` applies — the identity bin/propose_receipt.py::unit_name resolves — and the
+# verdict is bin/workflow_requires.py's: exit 1 names the first requirement known down and
+# this run is BLOCKED like any other failed gate; unknown is not a refusal. A hand run with
+# no unit skips it out loud. WORKFLOW_REQUIRES overrides the CLI for fixtures.
+requires_unit="${AGENT_RECEIPT_UNIT:-${DELIVERY_JOB:-}}"; requires_unit="${requires_unit%.service}"
+if [ -z "$requires_unit" ]; then
+  log "requires pre-flight skipped: no unit (AGENT_RECEIPT_UNIT and DELIVERY_JOB unset)"
+else
+  requires_rc=0
+  requires_out=$("${WORKFLOW_REQUIRES:-$BIN_DIR/workflow_requires.py}" check "$requires_unit" 2>&1) || requires_rc=$?
+  while IFS= read -r requires_line; do
+    [ -n "$requires_line" ] && log "$requires_line"
+  done <<<"$requires_out"
+  if [ "$requires_rc" -ne 0 ]; then
+    block_exit "${requires_out##*$'\n'}"
+  fi
+fi
+
 # The NUC-21 episodic store (~/.hermes/profiles/<owner>/memories) is retired (T6.1);
 # mem_status stays na on every run.
 if [ "$run_mode" = proposal ]; then

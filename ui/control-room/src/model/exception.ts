@@ -1,6 +1,6 @@
 import type { ExceptionRow } from "@/api/schemas/exceptions";
 
-export const EXCEPTION_KINDS = ["failed", "stale-input", "missing-artifact", "missed-cadence", "overdue-next-action", "unconsumed-output"] as const;
+export const EXCEPTION_KINDS = ["failed", "stale-input", "missing-artifact", "missed-cadence", "overdue-next-action", "unconsumed-output", "dependency-down"] as const;
 
 export interface ExceptionView {
   kind: string;

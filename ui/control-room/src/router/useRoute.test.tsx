@@ -13,6 +13,8 @@ describe("matchRoute", () => {
     ["/app/incidents", { name: "incidents" }],
     ["/app/usage", { name: "usage" }],
     ["/app/activity", { name: "activity" }],
+    ["/app/agents", { name: "agents" }],
+    ["/app/agents/marcus", { name: "agent", id: "marcus" }],
   ])("%s", (path, expected) => {
     expect(matchRoute(path)).toEqual({ ...expected, unknown: false });
   });
@@ -38,6 +40,8 @@ describe("routeHref", () => {
     [{ name: "incidents" as const }, "/app/incidents"],
     [{ name: "usage" as const }, "/app/usage"],
     [{ name: "activity" as const }, "/app/activity"],
+    [{ name: "agents" as const }, "/app/agents"],
+    [{ name: "agent" as const, id: "marcus" }, "/app/agents/marcus"],
   ])("%o -> %s", (route, href) => {
     expect(routeHref(route)).toBe(href);
   });

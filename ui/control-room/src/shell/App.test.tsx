@@ -15,6 +15,7 @@ describe("App shell", () => {
     mockFetch({ "/api/v1/health": health, "/api/v1/overview": overview, "/api/v1/exceptions": exceptions });
     renderInShell(<App />);
     expect(screen.getByRole("link", { name: "Workflows" })).toHaveAttribute("href", "/app/workflows");
+    expect(screen.getByRole("link", { name: "Agents" })).toHaveAttribute("href", "/app/agents");
     expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("aria-current", "page");
     await waitFor(() => expect(screen.getByTestId("health-status")).toHaveTextContent("ok"));
     await waitFor(() => expect(screen.getByTestId("generated-at")).toHaveTextContent(/Generated/));

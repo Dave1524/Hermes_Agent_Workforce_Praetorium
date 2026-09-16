@@ -75,6 +75,7 @@ runner   = "bin/agent_propose.sh -> bin/run_content_via_buzz.sh"
 route    = "content"
 contract = "design/contracts/augustus-content.md"
 status   = "standing"
+requires = ["buzz-agent@augustus", "user/buzz-notion-broker"]   # T5.3f: the runner hands the task to his live session and polls twenty minutes; Notion only through the broker (bin/notion_rest.py)
 suite    = ["tests/test_run_content_via_buzz.sh", "tests/test_content_skill_extract.sh"]
 skills   = ["linkedin-content-engine"]
 skills_mechanism = "heading-extraction"
@@ -95,6 +96,7 @@ runner   = "bin/content_change_dispatch.sh"
 route    = "content"
 contract = "design/contracts/augustus-content.md"          # same contract, change-triggered
 status   = "standing"
+requires = ["buzz-agent@augustus", "user/buzz-notion-broker"]   # same list as augustus-content: one workflow, one dependency set (tests/test_workflow_requires.sh::workflow-requires-fold-agrees)
 suite    = ["tests/test_content_change_dispatch.sh",
            "tests/test_content_dispatch_state_hold.sh"]
 skills   = ["linkedin-content-engine"]

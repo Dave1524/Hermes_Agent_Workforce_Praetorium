@@ -52,7 +52,8 @@ def _row(item: dict[str, Any]) -> str:
         ("links", _links(links)),
     )
     tds = "".join(_td(name, html) for name, html in cells)
-    return f'<tr data-workflow="{esc(item["id"])}" data-health="{esc(item.get("health") or "unknown")}" data-owner="{esc(item.get("owner") or "")}">{tds}</tr>'
+    return (f'<tr data-workflow="{esc(item["id"])}" data-health="{esc(item.get("health") or "unknown")}" '
+            f'data-owner="{esc(item.get("owner") or "")}" data-role="{esc(item["role"])}">{tds}</tr>')
 
 
 def _td(name: str, html: str, **attrs: str) -> str:

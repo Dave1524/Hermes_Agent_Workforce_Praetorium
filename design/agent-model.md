@@ -303,6 +303,17 @@ kind        = "service"           # "timer" (default) or "service". A `service` 
                                   # existing entries is not a default.
 route       = "research"          # key in bin/buzz_routes.env, or omitted
 contract    = "design/contracts/knowledge-digest.md"
+requires    = ["buzz-agent@augustus", "user/buzz-notion-broker"]  # optional (T5.3f): the units
+                                  # this workflow cannot run without. A bare name is a manifest
+                                  # unit (scope from its entry); `system/<u>` or `user/<u>` is a
+                                  # repo unit file or a key of bin/workflow_requires.py
+                                  # EXTERNAL_UNITS. Resolved statically, checked live at
+                                  # pre-flight — see "Workflow role, requires and guards".
+guards      = "Without it …"      # optional, platform entries ONLY (T5.3f): one sentence saying
+                                  # what stops working when this job is off. Declared, never
+                                  # computed — the dependent is Dave, not a unit.
+what        = "…"                 # platform entries: one plain sentence, what it does and for
+                                  # whom, asserted by tests/test_workflow_coverage.py.
 status      = "standing"          # REQUIRED on every entry — see the table below (R15)
 expires     = "2026-09-03 23:00"  # campaign only: the last absolute OnCalendar date
 alerted     = true                # platform jobs: is OnFailure present ON THE LIVE UNIT
@@ -411,6 +422,59 @@ Three rules follow:
    correct rather than a backlog — a deterministic job's promise is liveness and an
    artifact, which a suite asserts, not output quality, which is what a contract grades.
    `tests/test_workflow_coverage.sh` therefore never reads the field.
+
+### Workflow `role`, `requires` and `guards` (T5.3f, 2026-09-16)
+
+**`role` is derived, never declared.** `bin/control_room_state.py` `role_of(surface)` maps
+`scheduled` and `buzz_dispatch` to `agent-workflow`, `platform` to `system-workflow` and
+`interactive` to `agent-runtime`; any other surface raises rather than guessing. The three
+roles are the Control Room's vocabulary: the Workflows page is two sections (agent, system)
+and never lists a runtime, the Agents view is the five runtimes, and `/api/v1/workflows` omits
+`agent-runtime` rows unless asked with `?role=all` (the `?lifecycle=all` convention). The read
+model itself keeps every row — incidents, the SSR portfolio and `/api/v1/agents` read the
+same registry, and a filter there would silently change all three.
+
+**`requires` is the one field for hard runtime dependencies**, and it resolves statically so
+the suite runs on a hosted runner with no bus. Rules, each asserted by
+`tests/test_workflow_requires.sh`:
+
+- A bare name must be a manifest unit and takes that entry's scope; a unit outside the
+  manifests is written `system/<unit>` or `user/<unit>` and must be a repo unit file under
+  `systemd/` or `systemd/user/`, or a key of `EXTERNAL_UNITS` in `bin/workflow_requires.py`
+  (`system/ollama.service` — the Ollama package unit no repo file describes). The map is
+  printed by name on every run; it is not a place to hide a dependency.
+- Every entry of one `logical_workflow` declares the same list — `augustus-content` and
+  `content-change-dispatch` are two triggers on one workflow with one dependency set.
+- An entry whose `runner` hands off through `run_content_via_buzz.sh` requires
+  `buzz-agent@<owner>`: the runner polls the live session for twenty minutes, and without
+  the unit that is a timeout dressed as a decline.
+- A same-scope requirement appears in the entry's unit file as `Wants=`, `Requires=` or
+  `BindsTo=`, and every hard `Requires=`/`BindsTo=` in a repo unit file is mirrored back.
+  Cross-manager requirements (a system service needing a `--user` unit) are exempt, because
+  systemd cannot express them — that is exactly why the pre-flight exists.
+
+**`satisfied` is tri-state.** `bin/workflow_requires.py check <unit>` asks systemd for each
+requirement's `ActiveState`: `active`/`activating`/`reloading` satisfy, any other known
+state refuses (exit 1, `requires <unit>: <state>`), and a bus that answers nothing is
+`unknown` — the run proceeds and the Control Room row reads `satisfied: null`. Unknown is
+never a refusal; a default of `false` would make every requirement read as down on the
+fixture bus and `dependency-down` fire on a lie. `bin/agent_propose.sh` runs the check after
+its lock and vault pre-flights and exits through `block_exit` (a BLOCKED receipt, exit 0);
+`bin/local_tier_eval.sh` logs and exits 0 in parity with its collision path. The Control
+Room classifies an enabled workflow with a requirement known to be down as
+`dependency-down`, one row naming every down unit; a paused workflow raises none.
+
+**`guards` is declared, platform-only, one sentence** — "what stops working when this is
+off" — with the evidence in the entry's `notes`. It cannot be computed because the dependent
+is Dave, so it is rendered instead: a chip on the row and the workflow page, and an amber
+notice in the Pause and Stop dialogs (a notice, never a client-side refusal — nothing
+broker-controllable is required by anything today). The five load-bearing entries carry it:
+`workflow-incidents`, `fleet-turn-check`, `agent-drift-check`, `qmd-refresh`,
+`workflow-receipt-sweep`; `agent-workforce-auto-sync` does not, its contract already calls
+it "purpose and hazard in one line". `tests/test_workflow_coverage.py` refuses `guards` on a
+non-platform entry (`guards-platform-only`) and a `guards` or standing platform `what` that
+is not one sentence — non-empty, ends with a period, no newline, no second sentence
+(`one-sentence`).
 
 Note for whoever writes the checker: **do not read liveness from `NextElapseUSecRealtime`.**
 It is empty for every `OnUnitActiveSec` timer (monotonic, not realtime), and

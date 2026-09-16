@@ -16,6 +16,7 @@ describe("Usage", () => {
     expect(screen.getByTestId("stat-tokens")).toHaveTextContent("1 of 2 agents measured");
     expect(screen.getByTestId("stat-cost")).toHaveTextContent("1.68 USD");
     expect(screen.getAllByTestId("agent-row")).toHaveLength(2);
+    expect(screen.getByRole("link", { name: "trajan" })).toHaveAttribute("href", "/app/agents/trajan");
     expect(screen.getAllByText("unavailable").length).toBeGreaterThanOrEqual(2);
     await waitFor(() => expect(screen.getByRole("link", { name: "Raw ingest" })).toBeInTheDocument());
   });

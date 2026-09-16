@@ -44,7 +44,8 @@ status = "standing"
 suite    = ["tests/test_fleet_turn_check.sh"]
 skills   = []
 trigger = "hourly (+2min jitter)"
-what = "proves an agent can COMPLETE a turn — the gate every other fleet signal missed for 4 days"
+what = "Proves every hour that each chat agent can still finish a turn, the one signal that saw the four-day outage."
+guards = "Without it an agent that cannot complete a turn looks alive on every other fleet signal."
 alerted = true
 in_repo = true                   # backported from /etc 2026-09-02 (brief 2). The UNIT came
                                  # here then; the SCRIPT arrived 2026-09-03 as
@@ -65,6 +66,11 @@ loss produced a past misdiagnosis. It does NOT run the script: gate 2 spends a r
 turn, and the script pins PATH at line 23, so a stubbed systemctl on PATH is defeated by
 construction. That pin is a testability finding, not a defect to fix here — it exists so a
 systemd unit with a minimal environment resolves its binaries.
+
+`guards` evidence: relay presence, unit state and the journal all read healthy for four days
+(2026-08) while no agent could finish a turn; this check is the only signal that spends a
+real turn, so it is the only one that can see that class. It declares no `requires` —
+detecting the runtimes down is its job, not a precondition of it.
 """
 
 [[workflows]]
@@ -75,7 +81,7 @@ status = "standing"
 suite    = ["tests/test_fleet_eval.sh"]
 skills   = []
 trigger = "daily 07:07 (+90s jitter)"
-what = "delivery conformance + vault grounding regression"
+what = "Checks every morning that the agents still deliver in the agreed shape and ground their answers in the vault."
 alerted = false                  # DELIBERATE, not a gap — see notes
 in_repo = true
 notes = """
@@ -96,7 +102,8 @@ status = "standing"
 suite    = ["tests/test_local_tier_eval_score.sh"]
 skills   = []
 trigger = "02,08,11,14,17,20:17 (no jitter)"
-what = "Ollama capability regression on the Arc iGPU"
+what = "Measures six times a day whether the local Ollama model on the Arc GPU still handles its mechanical tasks."
+requires = ["system/ollama.service"]   # T5.3f: every task runs on ollama_local (bin/local_tier_eval.sh); the unit file carries the matching Wants=
 alerted = true                   # wired 2026-09-01 (D2)
 in_repo = true
 
@@ -109,7 +116,7 @@ suite    = ["tests/test_agent_inbox_body_sync.sh",
            "tests/test_agent_inbox_branch_rows.sh"]
 skills   = []
 trigger = "every 30 min (+2min jitter)"
-what = "Notion <-> agent-inbox reconcile; auto-reject back"
+what = "Keeps the Notion agent inbox and the box's proposal inbox in step every half hour, carrying rejections back."
 alerted = true
 in_repo = true
 
@@ -121,7 +128,7 @@ status = "standing"
 suite    = ["tests/test_buzz_adapters.sh"]
 skills   = []
 trigger = "daily 06:20 (+3min jitter)"
-what = "approvals aging past 2 days"
+what = "Warns each morning when a proposal has waited more than two days for Dave's approval."
 route = "approvals"
 alerted = true
 in_repo = true
@@ -134,7 +141,7 @@ status = "standing"
 suite    = ["tests/test_scorecard.sh"]
 skills   = []
 trigger = "Mon 07:00 (+5min jitter)"
-what = "weekly agent-run rollup"
+what = "Rolls every agent run of the past week into one scorecard on Monday morning."
 route = "ops"
 alerted = true                   # wired 2026-09-01 (D2)
 in_repo = true
@@ -148,7 +155,8 @@ suite    = ["tests/test_receipt_sweep.sh"]
 skills   = []
 trigger = "daily 05:50"
 runner = "bin/receipt_sweep.py"
-what = "one receipt per finished timer invocation, from systemd's record — ships disabled (T5.2)"
+what = "Writes the receipt for every finished platform timer run from systemd's own record so the Control Room can see it."
+guards = "Without it every platform timer runs unreceipted and the Control Room cannot see whether it ran."
 route = "ops"
 alerted = true
 in_repo = true
@@ -156,6 +164,10 @@ notes = """
 T5.2 criterion 6. Platform rows have no receipt seam of their own, so the sweep writes theirs
 from `systemctl show`; a run-path receipt is never overwritten and a paused timer writes
 nothing. The timer is installed with daemon-reload only and enabled at Dave's resume.
+
+`guards` evidence: tests/test_receipt_coverage.sh names this sweep as the one producer for
+every standing platform row; with it off, those rows have no receipt seam at all and every
+exceptions rule that reads receipts is silent for them.
 """
 
 [[workflows]]
@@ -167,7 +179,8 @@ suite    = ["tests/test_workflow_incidents.sh", "tests/test_incident_state.sh", 
 skills   = []
 trigger = "every 5 min (+30s jitter); daily digest gate 07:00"
 runner = "bin/deliver_incidents.sh"
-what = "actionable workflow incidents → Buzz `incidents` stream, one alert per incident, recovery, daily digest — ships disabled (T5.3c)"
+what = "Turns each workflow incident that needs a hand into one Buzz alert, with a recovery note and a daily digest."
+guards = "Without it a failed run is a line in a receipt that reaches nobody."
 route = "incidents"
 alerted = true
 in_repo = true
@@ -176,6 +189,10 @@ T5.3c. Derives incidents from the Control Room read model (bin/workflow_incident
 one entry per key in var/incidents/state.json (bin/incident_state.py) and sends through
 bin/deliver.sh only. Ships disabled: the timer is installed with daemon-reload only, and the
 route's channel UUID is empty until Dave creates the channel — enabling either is his call.
+
+`guards` evidence: it is the only path from a receipt or a malformed file to a Buzz alert —
+agent-alert@ fires on a unit failure, not on a run that exited 0 with a failed check, and the
+Control Room is a screen Dave has to open. Resumed by Dave 2026-09-16, the first timer back.
 """
 
 [[workflows]]
@@ -186,10 +203,20 @@ status = "standing"
 suite    = ["tests/test_vault_sync_guard.sh"]
 skills   = []
 trigger = "every 30 min (+2min jitter), 5min after boot"
-what = "vault pull + re-index + embed; calls bin/vault_sync_guard.sh sync"
+what = "Pulls the vault mirror and re-indexes it so the agents search current notes."
+guards = "Without it the vault mirror goes stale and every job behind vault_sync_guard check is refused."
 alerted = true
 in_repo = true
-notes = "Its repeat alerts are the case bin/agent_alert.sh was written to throttle — 19 of the last 60 alert-log lines. The throttle went live 2026-09-01 (D2), so a repeat now writes a log record and suppresses the outbound notify."
+notes = """
+Its repeat alerts are the case bin/agent_alert.sh was written to throttle — 19 of the last 60
+alert-log lines. The throttle went live 2026-09-01 (D2), so a repeat now writes a log record
+and suppresses the outbound notify.
+
+`guards` evidence: bin/vault_sync_guard.sh `sync` runs only here, and its `check` is the
+pre-flight of praetorium-daily-plan and praetorium-eod-summary (CLAUDE.md § Daily rhythm
+jobs) — a mirror nothing refreshes is a loud refusal on both, by design, and a qmd index
+nothing re-embeds answers every agent from the past.
+"""
 
 [[workflows]]
 unit = "agent-workforce-auto-sync"
@@ -199,7 +226,7 @@ status = "standing"
 suite    = ["tests/test_auto_sync.sh"]
 skills   = []
 trigger = "every 15 min (+2min jitter)"
-what = "git add -A + commit + push of this repo"
+what = "Publishes edits made on the box to GitHub every 15 minutes so nothing on `main` stays local."
 alerted = true
 in_repo = true
 notes = "The one unit that execs from ~/dev/agent-workforce rather than the deployed copy (registry §7.8)."
@@ -213,7 +240,7 @@ suite    = []
 skills   = []
 suite_exempt = "script lives at /usr/local/bin/ttm-pool-drain (root-owned), not in this repo"
 trigger = "every 2 min, 2min after boot"
-what = "drains the xe driver's GPU page pool by READING the shrink file"
+what = "Hands the GPU memory the graphics driver hoards after each Ollama unload back to the kernel every two minutes."
 alerted = true                   # wired 2026-09-01 (D2)
 in_repo = true                   # adopted into systemd/ 2026-09-01 (D2)
 
@@ -225,7 +252,7 @@ status = "standing"
 suite    = ["tests/test_overnight_pre_snapshot.sh"]
 skills   = []
 trigger = "daily 04:25 (+2min jitter)"
-what = "pre-snapshot state capture ahead of the morning report"
+what = "Captures the box's state before dawn so the morning report can say what changed overnight."
 alerted = true
 in_repo = true
 notes = """
@@ -244,7 +271,7 @@ suite    = []
 skills   = []
 suite_exempt = "--user unit running ~/.local/bin/buzz-pr-watch, not in this repo"
 trigger = "daily 09:23 (+20min jitter) — USER scope, not system"
-what = "watches block/buzz#3816, announces on close"
+what = "Watches one upstream Buzz pull request (block/buzz#3816) daily and announces when it closes."
 alerted = false
 in_repo = true   # systemd/user/buzz-pr-watch.{service,timer}, backported 2026-09-02
 notes = "systemctl --user. Every other job here is system scope; do not debug it with sudo. It is `standing` because its cadence is recurring and open-ended, but it watches ONE pull request — when block/buzz#3816 closes it becomes a job with nothing to watch, and no status transition will announce that."
@@ -266,13 +293,15 @@ suite    = ["tests/test_deploy_drift.sh"]
 skills   = []
 trigger = "daily 05:40 (+3min jitter)"
 runner = "bin/check_deploy_drift.sh"
-what = "source-vs-deployed drift across four unit trees, both membership directions"
+what = "Compares the source repo with what is actually deployed and installed, in both directions, and alerts on any difference."
+guards = "Without it a hand-edited /etc or an undeployed bin/ edit is caught by nothing."
 alerted = true
 in_repo = true
 notes = """
 D8. The commit-time gate cannot see a hand-edited /etc, and bin/auto-sync pushes every 15
 minutes without calling verify.sh — so the timer is not optional, it is the only caller that
-covers that class.
+covers that class. That sentence is the `guards` evidence: the runtime tree fell six days
+behind once (NUC-44) with nothing to say so.
 
 Named `agent-*` so the reporting globs match it (bin/local_tier_eval.sh:51). A name outside
 'overnight-*' 'agent-*' 'augustus-*' 'bd-*' 'weekly-*' is invisible to every report here.
@@ -287,7 +316,7 @@ suite    = ["tests/test_buzz_acp_update.sh"]
 skills   = []
 trigger = "daily 07:35 (+5min jitter)"
 runner = "bin/buzz_acp_update.sh check"
-what = "is the installed Buzz CLI/ACP still current with upstream, and would the next release still run"
+what = "Checks daily whether the installed Buzz CLI and ACP are still current upstream and whether the next release would still run here."
 alerted = true
 in_repo = true
 notes = """

@@ -289,7 +289,13 @@ the shape first, the tree written to it, the enforcement last. The same run reco
 (`logical-workflow-reconciled`): `content-change-dispatch` folds into `augustus-content` as
 its second trigger, a unit declared twice is a duplicate no field explains, a fold key that
 names no standing entry is dangling, and every trigger of one workflow must name one
-contract. The fold is declared in the manifest, never inferred from a name.
+contract. The fold is declared in the manifest, never inferred from a name. Since T5.3f
+(2026-09-16) the fold also carries `requires`: every trigger of one workflow declares the
+same dependency list (`tests/test_workflow_requires.sh::workflow-requires-fold-agrees`),
+because a dependency that one trigger checks and the other does not is a pre-flight with a
+hole in it. The Control Room's `role` — `agent-workflow`, `system-workflow`,
+`agent-runtime` — is derived from `surface` and is not a contract field (`agent-model.md`
+§4).
 
 `standing-research` is the one contract whose stem is not its unit — the unit is the generic
 `agent-proposal`, and the entry carries `rule1_exempt` rather than the file carrying a

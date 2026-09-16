@@ -55,10 +55,10 @@ export default function Usage() {
                 {agents.map((a) => (
                   <tr key={a.agent} className="hover:bg-surface-3 transition-colors" data-testid="agent-row">
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-2.5">
+                      <RouteLink to={{ name: "agent", id: a.agent }} className="flex items-center gap-2.5 hover:text-accent">
                         <AgentAvatar name={a.agent} />
                         <span className="text-text font-medium">{a.agent}</span>
-                      </div>
+                      </RouteLink>
                     </td>
                     <td className="px-4 py-3 text-right font-mono text-xs text-text-2">{a.runs ?? "—"}</td>
                     {a.usage.status === "measured" ? (

@@ -35,6 +35,7 @@ export default function WorkflowControls({ detail, onChanged }: Props) {
   };
   const close = () => setOpen(null);
   const dialogProps = { workflowId: row.id, workflowName: row.name, onClose: close, onChanged: changed };
+  const dependencyProps = { requiredBy: row.requiredBy, guards: row.guards };
 
   return (
     <Panel title="Controls">
@@ -77,11 +78,11 @@ export default function WorkflowControls({ detail, onChanged }: Props) {
           <ProposalsList workflowId={row.id} tick={proposalsTick} />
         </div>
       </div>
-      {open === "pause" && <PauseDialog {...dialogProps} />}
+      {open === "pause" && <PauseDialog {...dialogProps} {...dependencyProps} />}
       {open === "resume" && <ResumeDialog {...dialogProps} />}
       {open === "run_now" && <RunNowDialog {...dialogProps} />}
       {open === "retry" && <RetryDialog {...dialogProps} retryOf={detail.lastRun?.id ?? null} disabledReason={detail.actions.find((a) => a.id === "retry")?.reason ?? null} />}
-      {open === "stop" && <StopDialog {...dialogProps} />}
+      {open === "stop" && <StopDialog {...dialogProps} {...dependencyProps} />}
       {open === "schedule" && <ScheduleDialog {...dialogProps} timers={detail.triggers} />}
       {open === "retire" && <RetireDialog {...dialogProps} />}
     </Panel>

@@ -89,6 +89,15 @@ Two properties of these entries are easy to misread:
   the registry must be able to see; it does not retire the calibration pin. If a second
   entry ever appears under his name carrying a `route`, a non-shared `runner` or an
   `OnCalendar`, the pin is being retired and that is a decision, not a manifest edit.
+- **They are the `agent-runtime` role (T5.3f, 2026-09-16).** Role is derived from
+  `surface` (`agent-model.md` §4): these five are runtimes, not workflows, so the Control
+  Room's Workflows page never lists them and its Agents view (`/app/agents`,
+  `/api/v1/agents`) is where they live — runtime state and `since`, last turn, turns and
+  usage over seven days, owned workflows by role, and which workflows require them.
+  `/api/v1/workflows` omits them unless asked with `?role=all`; the SSR `/portfolio` still
+  lists all 31 with a `data-role` per row. A workflow that hands work to a live session
+  names its runtime in `requires` (`augustus-content` requires `buzz-agent@augustus` and
+  `user/buzz-notion-broker`), and the runner refuses the run at pre-flight while it is down.
 
 ## 2. Scheduled persona workflows (as recorded 2026-09-01)
 
@@ -152,19 +161,25 @@ retirement, `design/open-decisions.md` W19 the residue it left.
 
 ## 3. Scheduled platform jobs (deterministic, as recorded 2026-09-01)
 
-| Unit | Trigger | What | Route |
+| Unit | Trigger | What (the manifest `what`, one sentence since T5.3f) | Route |
 |---|---|---|---|
-| fleet-turn-check | hourly | fleet can complete a real turn | — |
-| fleet-eval | daily 07:07 | delivery conformance + vault grounding regression | — |
-| local-tier-eval | recurring (~6h) | Ollama capability regression | — |
-| memory-consolidation | daily 03:30 | working-memory prune, all profiles | — |
-| agent-inbox-sync | 30 min | Notion↔agent-inbox reconcile | — |
-| inbox-backlog-alert | daily 06:22 | approvals aging >2d | approvals |
-| scorecard | Mon 07:01 | weekly agent-run rollup | ops |
-| qmd-refresh | 30 min | vault pull + re-index + embed | — |
-| agent-workforce-auto-sync | 15 min | git auto-commit/push of source repo | — |
-| ttm-pool-drain | 2 min | GPU page-pool drain | — |
-| buzz-pr-watch (user) | daily | watch block/buzz#3816, announce on close | — |
+| fleet-turn-check | hourly | Proves every hour that each chat agent can still finish a turn, the one signal that saw the four-day outage. | — |
+| fleet-eval | daily 07:07 | Checks every morning that the agents still deliver in the agreed shape and ground their answers in the vault. | — |
+| local-tier-eval | recurring (~6h) | Measures six times a day whether the local Ollama model on the Arc GPU still handles its mechanical tasks. | — |
+| memory-consolidation | daily 03:30 | retired with the hermes profiles (T6.1) | — |
+| agent-inbox-sync | 30 min | Keeps the Notion agent inbox and the box's proposal inbox in step every half hour, carrying rejections back. | — |
+| inbox-backlog-alert | daily 06:22 | Warns each morning when a proposal has waited more than two days for Dave's approval. | approvals |
+| scorecard | Mon 07:01 | Rolls every agent run of the past week into one scorecard on Monday morning. | ops |
+| qmd-refresh | 30 min | Pulls the vault mirror and re-indexes it so the agents search current notes. | — |
+| agent-workforce-auto-sync | 15 min | Publishes edits made on the box to GitHub every 15 minutes so nothing on `main` stays local. | — |
+| ttm-pool-drain | 2 min | Hands the GPU memory the graphics driver hoards after each Ollama unload back to the kernel every two minutes. | — |
+| buzz-pr-watch (user) | daily | Watches one upstream Buzz pull request (block/buzz#3816) daily and announces when it closes. | — |
+
+The `What` column quotes `design/agents/trajan.toml`; the manifest owns the sentence and
+`tests/test_workflow_coverage.py` (`one-sentence`) keeps every standing platform `what` to
+one. The rows added after this table was written — `overnight-pre-snapshot`,
+`workflow-receipt-sweep`, `workflow-incidents`, `agent-drift-check`, `agent-buzz-acp-update`
+— carry theirs in the manifest only.
 
 **ADDITION 2026-09-01 (D2).** `overnight-pre-snapshot` (daily 04:25 +2min) is live and
 belongs in this table; it was named above only in a §4 row about an archived prompt file.

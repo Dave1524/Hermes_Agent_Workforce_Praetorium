@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { activeWorkflow, failedRun, overview, pausedWorkflow, unavailableWorkflow } from "@/api/fixtures.test-helpers";
+import { activeWorkflow, failedRun, overview, pausedWorkflow, runtimeWorkflow, unavailableWorkflow } from "@/api/fixtures.test-helpers";
 import { mockFetch } from "@/api/mockFetch.test-helpers";
 import { renderInShell } from "@/shell/render.test-helpers";
 import WorkflowDetail from "./WorkflowDetail";
@@ -42,6 +42,31 @@ describe("WorkflowDetail", () => {
     expect(within(screen.getByTestId("lineage")).getAllByText("Unknown")).toHaveLength(6);
     expect(screen.getByText("No benefit ledger entry for this workflow.")).toBeInTheDocument();
     expect(document.querySelector("[data-health='unknown']")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["raw-ingest", pausedWorkflow, "down", "false"],
+    ["agent-inbox-sync", activeWorkflow, "satisfied", "true"],
+    ["weekly-pre-assembly", unavailableWorkflow, "unknown", "unknown"],
+  ])("%s renders its requires chip as %s and the panel rows", async (id, workflow, status, satisfied) => {
+    mockFetch({ [`/api/v1/workflows/${id}`]: envelope(workflow), [`/api/v1/workflows/${id}/runs`]: envelope([]) });
+    renderInShell(<WorkflowDetail workflowId={id} />);
+    await waitFor(() => expect(screen.getByRole("heading", { name: workflow.name })).toBeInTheDocument());
+    expect(screen.getByTestId("requires-chip")).toHaveAttribute("data-requires", status);
+    expect(screen.getAllByTestId("requirement")[0]).toHaveAttribute("data-satisfied", satisfied);
+    expect(screen.getByText("Nothing requires this workflow.")).toBeInTheDocument();
+  });
+
+  it("shows the guards chip and lists dependents on a runtime row", async () => {
+    mockFetch({ "/api/v1/workflows/buzz-agent%40marcus": envelope(runtimeWorkflow), "/api/v1/workflows/buzz-agent%40marcus/runs": envelope([]) });
+    renderInShell(<WorkflowDetail workflowId="buzz-agent@marcus" />);
+    await waitFor(() => expect(screen.getByRole("heading", { name: "buzz-agent@marcus" })).toBeInTheDocument());
+    expect(screen.queryByTestId("requires-chip")).toBeNull();
+    expect(screen.getByTestId("dependent")).toHaveAttribute("data-enabled", "true");
+    expect(within(screen.getByTestId("dependent")).getByRole("link", { name: "agent-inbox-sync" })).toHaveAttribute("href", "/app/workflows/agent-inbox-sync");
+    mockFetch({ "/api/v1/workflows/weekly-pre-assembly": envelope(unavailableWorkflow), "/api/v1/workflows/weekly-pre-assembly/runs": envelope([]) });
+    renderInShell(<WorkflowDetail workflowId="weekly-pre-assembly" />);
+    await waitFor(() => expect(screen.getByTestId("guards-chip")).toHaveAttribute("title", "Without it the weekly pre-read is never assembled."));
   });
 
   it("shows a 404 as an error notice", async () => {

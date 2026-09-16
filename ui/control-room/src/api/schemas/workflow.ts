@@ -3,6 +3,7 @@ import { artifactSchema, runSummarySchema } from "./run";
 import { costSnakeSchema, usageSnakeSchema } from "./measurement";
 import { benefitSchema } from "./benefit";
 import { envelope } from "./envelope";
+import { dependentSchema, requirementSchema } from "./requires";
 
 export const timerSchema = z.object({
   name: z.string().nullish(),
@@ -106,6 +107,11 @@ export const workflowSchema = z.object({
   purpose: z.string().nullish(),
   lifecycle: z.string().nullish(),
   health: z.string().nullish(),
+  surface: z.string().nullish(),
+  role: z.string().nullish(),
+  requires: z.array(requirementSchema).default([]),
+  requiredBy: z.array(dependentSchema).default([]),
+  guards: z.string().nullish(),
   manifestPaths: z.array(z.string()).default([]),
   contract: contractSchema.nullish(),
   contractStatus: z.string().nullish(),

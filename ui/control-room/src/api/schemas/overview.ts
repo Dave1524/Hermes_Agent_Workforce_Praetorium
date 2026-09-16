@@ -14,6 +14,13 @@ export const reliabilitySchema = z.object({
   days: z.array(reliabilityDaySchema).default([]),
 });
 
+export const agentSummarySchema = z.object({
+  total: z.number().nullish(),
+  up: z.number().nullish(),
+  down: z.number().nullish(),
+  unknown: z.number().nullish(),
+});
+
 export const overviewSummarySchema = z.object({
   workflows: z.number().nullish(),
   healthy: z.number().nullish(),
@@ -24,6 +31,7 @@ export const overviewSummarySchema = z.object({
   paused: z.number().nullish(),
   unknown: z.number().nullish(),
   incompleteRuns: z.number().nullish(),
+  agents: agentSummarySchema.nullish(),
 });
 
 export const overviewResponseSchema = z.object({
@@ -37,5 +45,6 @@ export const overviewResponseSchema = z.object({
 });
 
 export type OverviewResponse = z.infer<typeof overviewResponseSchema>;
+export type AgentSummary = z.infer<typeof agentSummarySchema>;
 export type Reliability = z.infer<typeof reliabilitySchema>;
 export type ReliabilityDay = z.infer<typeof reliabilityDaySchema>;

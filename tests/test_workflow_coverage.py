@@ -506,6 +506,46 @@ if entries and skills_checked < len(entries):
     problem("skills-join-counted",
             f"checked {skills_checked} of {len(entries)} entries — the join skipped some")
 
+# --- guards (T5.3f) -----------------------------------------------------------------------
+# `guards` is the one sentence a system workflow says about what its absence costs, and it
+# sits only on surface = "platform" entries: an agent workflow's absence is its contract's
+# beneficiary going without, already said by the contract. The screen renders the field
+# verbatim, so it is one plain sentence — non-empty, ending in a period, no newline, no
+# second sentence — and a standing platform entry's `what` is held to the same shape,
+# because the Workflows page prints it as the row's purpose where an agent row prints its
+# contract's, and a manifest shorthand ("vault pull + re-index + embed") is not a purpose.
+
+
+def one_sentence(value):
+    return isinstance(value, str) and value.strip() == value and bool(value) \
+        and value.endswith(".") and "\n" not in value and value.count(". ") == 0
+
+
+def sentence_fields(w):
+    fields = ["guards"] if "guards" in w else []
+    if w.get("surface") == "platform" and w.get("status") == "standing":
+        fields.append("what")
+    return fields
+
+
+guards_checked = 0
+guards_declared = 0
+for owner, w in entries:
+    guards_checked += 1
+    unit = w.get("unit")
+    if "guards" in w and w.get("surface") != "platform":
+        problem("guards-platform-only",
+                f"{unit} ({owner}): guards on a surface = {w.get('surface')!r} entry — only "
+                "a platform workflow says what its absence costs; an agent workflow's "
+                "contract already does")
+    if "guards" in w:
+        guards_declared += 1
+    for field in sentence_fields(w):
+        if not one_sentence(w.get(field)):
+            problem("one-sentence",
+                    f"{unit} ({owner}): {field} is not one plain sentence ending in a period "
+                    f"on one line: {w.get(field)!r}")
+
 # design/fleet-suites.toml's own SCHEMA is asserted by tests/test_fleet_guards.sh (path)
 # exists, owner is in the enum, asserts non-empty). Consumed here, not re-validated. The
 # `asserts` JOIN below is a different claim from that schema and lives here deliberately —
@@ -710,6 +750,7 @@ print(f"  runner join: checked {runner_checked} of {len(entries)} entries, "
       f"{len(model_alias)} model-alias(es)")
 print(f"  skills join: checked {skills_checked} of {len(entries)} entries, "
       f"{skills_he} heading-extraction, {skills_offered} with a non-empty offer")
+print(f"  guards: checked {guards_checked} of {len(entries)} entries, {guards_declared} declared")
 
 print("  exempt from needing a suite — named, never merely skipped:")
 for unit, reason in exempt:

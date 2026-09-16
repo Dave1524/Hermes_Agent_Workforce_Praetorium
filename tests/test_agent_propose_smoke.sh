@@ -650,4 +650,37 @@ assert "exits 0" "[ '$rc' = 0 ]"
 assert "receipt at <root>/knowledge-digest/inv-smoke.json" "[ -s '$h39/receipts/knowledge-digest/inv-smoke.json' ]"
 assert "the receipt validates and carries one terminal outcome" "receipt_validates '$h39/receipts/knowledge-digest/inv-smoke.json' '$REPO_ROOT/bin/workflow_receipt.py'"
 assert "the log names the receipt path" "grep -q 'receipt: $h39/receipts/knowledge-digest/inv-smoke.json' '$h39/agent-workforce/logs/agent_propose.log'"
+
+# ── T5.3f: the requires pre-flight ─────────────────────────────────────────────────────────
+# WORKFLOW_REQUIRES points the pre-flight at a stub, as CONTRACT_EXEC does for the receipt:
+# the CLI's own verdicts are tests/test_workflow_requires.sh's; this proves what the runner
+# does with exit 1 (BLOCKED, receipted, exit 0, nothing launched) and with exit 0 (nothing).
+make_requires_stub() {  # make_requires_stub <home> <rc> <line>
+  cat > "$1/stub_requires.sh" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "$1/requires_argv.log"
+echo "$3"
+exit $2
+EOF
+  chmod +x "$1/stub_requires.sh"
+  echo "$1/stub_requires.sh"
+}
+echo "--- scenario 40: a requirement known down is BLOCKED before the runtime launches (::propose-requires-preflight) ---"
+h40=$(sandbox); stub40=$(make_requires_stub "$h40" 1 'requires buzz-agent@augustus: inactive')
+rc=$(WORKFLOW_REQUIRES="$stub40" run_receipt_scenario "$h40" 0)
+assert "exits 0" "[ '$rc' = 0 ]"
+assert "the pre-flight was asked about the unit systemd is running" "grep -qx 'check knowledge-digest' '$h40/requires_argv.log'"
+assert "logs BLOCKED with the CLI's last line" "grep -q 'BLOCKED: requires buzz-agent@augustus: inactive' '$h40/agent-workforce/logs/agent_propose.log'"
+assert "cost.log outcome=BLOCKED" "grep -q 'outcome=BLOCKED' '$h40/agent-workforce/logs/cost.log'"
+assert "the receipt is --failed BLOCKED: requires …" "stub_has '$h40' --failed 'BLOCKED: requires buzz-agent@augustus: inactive'"
+assert "exactly one receipt call" "[ \"\$(stub_calls '$h40')\" = 1 ]"
+assert "the runtime was never launched" "[ ! -s '$h40/hermes_argv.log' ]"
+h40b=$(sandbox); stub40b=$(make_requires_stub "$h40b" 0 'requires buzz-agent@augustus: unknown')
+rc=$(WORKFLOW_REQUIRES="$stub40b" run_receipt_scenario "$h40b" 0)
+assert "exit 0 from the pre-flight is not a refusal: the run proceeds" "[ '$rc' = 0 ] && grep -q 'outcome=NOPROPOSAL' '$h40b/agent-workforce/logs/cost.log'"
+assert "and its lines are in the log" "grep -q 'requires buzz-agent@augustus: unknown' '$h40b/agent-workforce/logs/agent_propose.log'"
+assert "no BLOCKED record" "! grep -q 'outcome=BLOCKED' '$h40b/agent-workforce/logs/cost.log'"
+h40c=$(sandbox); stub40c=$(make_requires_stub "$h40c" 1 'requires x: inactive')
+rc=$(DELIVERY_JOB= AGENT_RECEIPT_UNIT= WORKFLOW_REQUIRES="$stub40c" run_scenario "$h40c" 0 0)
+assert "no unit known: the pre-flight is skipped out loud, never asked" "[ '$rc' = 0 ] && [ ! -e '$h40c/requires_argv.log' ] && grep -q 'requires pre-flight skipped: no unit' '$h40c/agent-workforce/logs/agent_propose.log'"
 exit $fail

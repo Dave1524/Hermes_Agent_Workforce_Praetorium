@@ -1,4 +1,4 @@
-import { activeWorkflow, pausedWorkflow, unavailableWorkflow } from "@/api/fixtures.test-helpers";
+import { activeWorkflow, pausedWorkflow, runtimeWorkflow, unavailableWorkflow } from "@/api/fixtures.test-helpers";
 import { toWorkflowRow } from "./workflowRow";
 
 describe("toWorkflowRow", () => {
@@ -18,6 +18,13 @@ describe("toWorkflowRow", () => {
       lifecycle: "active",
     });
     expect(row.usage).toEqual({ status: "measured", value: { input: 1200, output: 300, cache: 0, total: 1500 } });
+    expect(row).toMatchObject({ role: "agent-workflow", surface: "scheduled", guards: null, requiredBy: [] });
+    expect(row.requires.map((r) => [r.unit, r.satisfied])).toEqual([["buzz-agent@marcus", true], ["buzz-notion-broker", true]]);
+  });
+  it("carries role, requires, requiredBy and guards", () => {
+    expect(toWorkflowRow(pausedWorkflow).requires).toEqual([{ unit: "ollama.service", scope: "system", workflow: null, agent: null, state: "inactive", satisfied: false }]);
+    expect(toWorkflowRow(unavailableWorkflow)).toMatchObject({ role: "system-workflow", guards: "Without it the weekly pre-read is never assembled.", requires: [{ satisfied: null, state: "unknown" }] });
+    expect(toWorkflowRow(runtimeWorkflow)).toMatchObject({ role: "agent-runtime", requiredBy: [{ workflow: "agent-inbox-sync", enabled: true }] });
   });
   it("maps a paused failed workflow with an estimated next run", () => {
     const row = toWorkflowRow(pausedWorkflow);

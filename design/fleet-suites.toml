@@ -85,6 +85,8 @@ asserts = [
   "skills-mechanism",       # T3.2: skills_mechanism is only "heading-extraction", over a profile that extracts owner-tree pointers
   "skills-join",            # T3.2: sorted(skills) equals the offer the entry's mechanism delivers to the run
   "skills-join-counted",    # T3.2: the join reports entries checked = manifest count, and heading-extraction count > 0
+  "guards-platform-only",   # T5.3f: guards sits only on surface = "platform" entries — an agent workflow's contract already says what its absence costs
+  "one-sentence",           # T5.3f: every guards and every standing platform what is one plain sentence: non-empty, ends in a period, one line, no second sentence
 ]
 why_no_workflow = """
 It grades the registry, not a job. Nothing execs it and nothing ever should — its subject is
@@ -314,6 +316,10 @@ asserts = [
   "incidents-api-silence",      # artifact and decline receipts derive no run incident
   "incidents-api-dedup-key",    # malformed receipts are keyed by path, stable when a third arrives
   "incidents-api-state-merge",  # the notifier's state file merges read-only: notified/first-seen carried, resolved entries listed as such
+  "control-room-role",          # T5.3f: role is derived from surface by control_room_state.role_of, one function, and a surface without a role raises; every trigger's surface equals its row's
+  "control-room-agents",        # T5.3f: /api/v1/agents is one row per persona manifest with runtime, lastTurn, turns7d, usage7d/cost7d from interaction receipts only, ownedWorkflows; summary.agents buckets sum to total
+  "control-room-requires",      # T5.3f: requires rows are tri-state from the bus (satisfied null on no bus, false on inactive), guards is the entry's sentence or null, requiredBy names each dependent with enabled = not paused
+  "control-room-dependency-down", # T5.3f: a requirement known down is a dependency-down row on the dependent while it is not paused; unknown yields none
 ]
 why_no_workflow = """
 It tests the portfolio projection and HTTP trust boundary. Assigning it to one rendered
@@ -338,6 +344,8 @@ asserts = [
   "control-room-html-headers",        # CSP default-src 'self', X-Frame-Options DENY, Cache-Control no-store on every HTML response; HEAD has no body
   "control-room-control-stub-501",    # the two POST stubs validate then answer 501; every other write is 405; GET on control paths is 405
   "control-room-serve-tailscale-only",# the launcher binds the tailscale ip -4 address and refuses to start without one
+  "control-room-agents",              # T5.3f: five agents from the manifests, four active and aurelian unknown on the fixture bus; summary.agents and summary.workflows; runtimes leave the default list and ?role=all restores them
+  "control-room-requires",            # T5.3f: augustus-content's two requirements and local-tier-eval's ollama read satisfied on the fixture bus; buzz-agent@augustus is requiredBy the paused augustus-content with enabled = false; guards sits on the five platform rows only
 ]
 why_no_workflow = """
 It tests the screen every workflow is rendered on and the hosting boundary that keeps it
@@ -401,6 +409,28 @@ It tests the screen's write path and its trust boundary. The screen is an operat
 not a manifest workflow; the POST it handles is forwarded for whichever workflow was clicked.
 """
 
+# T5.3f. `requires` is a manifest field with two readers — the screen's row and the executor
+# pre-flights in bin/agent_propose.sh and bin/local_tier_eval.sh — and one resolver,
+# bin/workflow_requires.py. The suite asserts the static half (every declaration resolves,
+# a fold agrees, the unit files mirror it, a Buzz hand-off requires its runtime) over the
+# live tree and over mutated copies, and drives `check` with a fake systemctl on PATH. It
+# grades every workflow's declaration, so no one row can own it.
+[[suite]]
+path    = "tests/test_workflow_requires.sh"
+owner   = "fleet"
+asserts = [
+  "workflow-requires-resolves",      # every live requires entry resolves statically: a bare name is a manifest unit, a scoped name is a repo unit file or an EXTERNAL_UNITS key, anything else is named
+  "workflow-requires-fold-agrees",   # the entries of one logical workflow declare identical requires
+  "workflow-requires-unit-file",     # a same-scope requirement appears in the unit file's Wants=/Requires=/BindsTo=, and a hard dependency there is mirrored in requires; cross-manager is exempt
+  "workflow-requires-buzz-handoff",  # a runner that hands off through run_content_via_buzz.sh requires buzz-agent@<owner>
+  "workflow-requires-check",         # check exits 1 naming the first requirement that is down, 0 on active, no entry or an unreachable bus (unknown is not a refusal)
+  "workflow-requires-preflight",     # agent_propose.sh checks the unit systemd is running and BLOCKs on exit 1 (smoke scenario 40 drives it); local_tier_eval.sh checks local-tier-eval and skips with exit 0, on the exit status alone, before main reads the bus
+]
+why_no_workflow = """
+It tests the one resolver behind every row's requires and every executor's pre-flight. A
+row of the manifest owning it would credit that row with the rule that judges all of them.
+"""
+
 [[suite]]
 path    = "tests/test_control_room_exceptions.sh"
 owner   = "fleet"
@@ -410,6 +440,7 @@ asserts = [
   "exceptions-paused-suppression",    # paused suppresses missed-cadence and missing-artifact(b); paused + failed is still failed, flagged paused
   "exceptions-unknown-is-not-exception", # no receipt, absent consumption and a null due_at each yield no row
   "exceptions-missed-cadence",        # an active timer that fired with no receipt after it is missed; a receipt after the trigger is not
+  "exceptions-dependency-down",       # T5.3f: one row naming every requirement whose satisfied is false, last in KINDS order; true, null, no field and paused yield none
 ]
 why_no_workflow = """
 The classifier is a pure rule table over every workflow's receipts and control state. A row
