@@ -149,6 +149,17 @@ ls ~/.hermes/profiles/                              # base0, leantest, default (
   `bin/control_room_build_ui.sh` and stamped by `BUILD.json`, which
   `tests/test_control_room_spa.sh` recomputes — edit the source without rebuilding and the
   gate is red. The server-rendered pages remain as the no-JS fallback.
+  Since T5.3f (2026-09-16) every row carries a **role** derived from its `surface` —
+  `agent-workflow`, `system-workflow`, `agent-runtime` — the Workflows page is two sections
+  and never lists a runtime, and the five `buzz-agent@*` units are the **Agents** view
+  (`/app/agents`, `/api/v1/agents`; read-only, no start/stop). A manifest entry's `requires`
+  names the units it cannot run without (`bin/workflow_requires.py`; grammar in
+  `design/agent-model.md` §4): the row shows each one's live state with a tri-state
+  `satisfied`, an enabled workflow with one known down is a `dependency-down` exception, and
+  `bin/agent_propose.sh` / `bin/local_tier_eval.sh` refuse the run at pre-flight — unknown
+  (bus unreachable) is never a refusal. `guards` is a declared one-sentence field on platform
+  entries only, rendered as a chip and an amber dialog notice, never a refusal. The broker
+  and its root-owned files are untouched by T5.3f.
 - `control-room-broker.socket` + `control-room-broker@.service` — the **control broker**
   (T5.3a, 2026-09-14) behind the screen's pause / resume / run now / retry / stop: a root-owned
   unix socket (`/run/control-room-broker.sock`, `root:control-room 0660`) that only

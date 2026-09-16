@@ -274,6 +274,39 @@ the unit is compared against `/etc/systemd/system/` like every other. `design/` 
 no deploy — the service reads the checkout — but a `bin/` change is inert until `bin/deploy`
 **and** a restart.
 
+### Roles, the Agents view, `requires` and `guards` (T5.3f)
+
+Every workflow row carries a **role** derived from its manifest `surface`
+(`bin/control_room_state.py` `role_of`): `agent-workflow` (scheduled, buzz_dispatch),
+`system-workflow` (platform) or `agent-runtime` (the five `buzz-agent@*` units). The
+Workflows page is two sections, Agent workflows and System workflows, and never lists a
+runtime; `/api/v1/workflows` omits runtimes unless asked with `?role=all`, and the Overview
+tiles count workflows without them. The runtimes are the **Agents** view — `/app/agents` and
+`/app/agents/<name>`, from `/api/v1/agents` and `/api/v1/agents/<name>` — one card per
+manifest: runtime state and `since` from `systemctl --user show`, last turn, turns and usage
+over seven days from the interaction receipts, owned workflows by role, and the workflows that
+require it. **Read-only:** starting or stopping a runtime is not a Control Room action, and
+the SSR `/portfolio` still lists all 31 rows with a `data-role` each.
+
+`requires` on a manifest entry names the units a workflow cannot run without
+(`agent-model.md` §4 has the grammar and the audit rules). The row shows each requirement's
+live `ActiveState` and a tri-state `satisfied` — `true`, `false`, or `null` when the bus
+answered nothing — and a chip: green when all are satisfied, red naming the first that is
+down, grey `unknown`. The workflow page adds a Requires / Required by panel with links. An
+**enabled** workflow with a requirement known to be down is a `dependency-down` exception
+(one row naming every down unit); paused workflows raise none, and unknown is never a
+refusal. The executors check the same thing before running:
+`bin/workflow_requires.py check <unit>` in `bin/agent_propose.sh` (a BLOCKED receipt, exit 0)
+and `bin/local_tier_eval.sh` (log and exit 0). `bin/workflow_requires.py audit` is the static
+half, run by `tests/test_workflow_requires.sh` with no live `systemctl`.
+
+`guards` is a declared one-sentence field on platform entries only — what stops working when
+the job is off — rendered as a chip and as an amber notice in the Pause and Stop dialogs. A
+notice, not a refusal: the broker is unchanged by T5.3f, and so are
+`/etc/control-room/allowlist.json`, `/usr/local/lib/control-room/control_broker.py` and the
+socket. Landing T5.3f is `bin/deploy` and `sudo systemctl restart control-room.service`;
+no root install, no allowlist re-render, no timer or runtime touched.
+
 ### Frontend build (T5.3e)
 
 The app's source is `ui/control-room/` (React + Vite + TypeScript, its own `README.md`); what
