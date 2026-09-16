@@ -320,6 +320,7 @@ asserts = [
   "control-room-agents",        # T5.3f: /api/v1/agents is one row per persona manifest with runtime, lastTurn, turns7d, usage7d/cost7d from interaction receipts only, ownedWorkflows; summary.agents buckets sum to total
   "control-room-requires",      # T5.3f: requires rows are tri-state from the bus (satisfied null on no bus, false on inactive), guards is the entry's sentence or null, requiredBy names each dependent with enabled = not paused
   "control-room-dependency-down", # T5.3f: a requirement known down is a dependency-down row on the dependent while it is not paused; unknown yields none
+  "control-room-runtime-control", # T5.3g: an agent-runtime row's control carries start/stop/restart from one function; a failed always-on service is paused (startable); /api/v1/agents items carry control and runtime.unitFileState
 ]
 why_no_workflow = """
 It tests the portfolio projection and HTTP trust boundary. Assigning it to one rendered
@@ -385,7 +386,8 @@ asserts = [
   "broker-resume-preview-before-apply", # resume applies only with a fresh preview token bound to the state fingerprint; the preview states the Persistent catch-up
   "broker-peer-gate",                   # SO_PEERCRED uid and the remote-not-local rule in screen mode; a pipe is a cli actor
   "broker-concurrency-lock",            # two concurrent pauses serialise to one applied and one state_conflict, never two disables
-  "broker-allowlist-render",            # the rendered allowlist over the real checkout: every standing timer once, exclusions reasoned, retry for the five declared contracts, deterministic bytes, check exits 1 on a diff
+  "broker-allowlist-render",            # the rendered allowlist over the real checkout: every standing timer once, exclusions reasoned, retry for the five declared contracts, deterministic bytes, check exits 1 on a diff; T5.3g: every standing kind = service entry with its template under runtimes
+  "broker-runtime-actions",             # T5.3g: start/stop/restart on a runtimes entry — confirm (and a reason for stop/restart), live-state conflicts, session-scoped `--user --machine` verbs only, never status/ExecStart, a Restart= loop inside the settle window is a note, workflow verbs on a runtime are unknown_action
 ]
 why_no_workflow = """
 It tests the root-side broker every allowlisted workflow is controlled through. Crediting one
@@ -403,6 +405,7 @@ asserts = [
   "control-post-forwards-and-reconciles", # POST preview then apply over the real broker on a unix socket; control.state comes from the re-read, not the click
   "control-actions-js-flow",            # actions.js carries preview, preview_token, confirm on resume and stop, trigger_required, retry_of, and the re-fetch
   "control-acceptance-script-lints",    # the hand-run acceptance script parses, is shellcheck-clean, and never applies a resume or enables anything
+  "control-runtime-post",               # T5.3g: POST start on a runtime over the real broker socket — confirmation_required first, then applied, control.actions from the re-read, links.agent through the seam
 ]
 why_no_workflow = """
 It tests the screen's write path and its trust boundary. The screen is an operator surface,

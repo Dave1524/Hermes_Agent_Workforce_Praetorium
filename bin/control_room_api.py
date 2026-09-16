@@ -46,6 +46,7 @@ from control_room_view_workflow import render_run, render_workflow  # noqa: E402
 from control_room_views import not_found  # noqa: E402
 from control_room_state import (  # noqa: E402
     ACTION_IDS,
+    RUNTIME_ACTION_IDS,
     ACTIVE_STATES,
     control_for,
     fold_cadence,
@@ -385,6 +386,7 @@ class ControlRoomReadModel:
                 "startedAt": started,
                 "endedAt": ended,
                 "exitStatus": int(service["ExecMainStatus"]) if service.get("ExecMainStatus", "").isdigit() else None,
+                "unitFileState": service.get("UnitFileState") or "unknown",
                 "raw": {"startedAt": started_raw, "endedAt": ended_raw},
             },
             "timer": None if kind != "timer" else {
@@ -526,7 +528,7 @@ class ControlRoomReadModel:
                 "cadence": cadence,
                 "lastValidArtifact": last_valid,
                 "artifactFreshness": freshness(last_valid["ageSeconds"] if last_valid else None, cadence),
-                "control": control_for(logical_id, triggers, cadence, self.control_reader),
+                "control": control_for(logical_id, triggers, cadence, self.control_reader, role_of(surface)),
                 "links": links_for(logical_id, contract),
                 "benefit": benefit,
                 "eligibleRuns": benefit["eligibleRuns"],
@@ -799,14 +801,17 @@ class ControlRoomReadModel:
 
     def _runtime_of(self, row: dict[str, Any] | None) -> dict[str, Any]:
         """The agent's runtime from its `interactive` row: systemd's ActiveState as printed, `unknown`
-        when the bus answered nothing; `since` is the start when active, else the last exit."""
+        when the bus answered nothing; `since` is the start when active, else the last exit;
+        `unitFileState` is the boot policy, shown and never changed from the screen (T5.3g)."""
         if row is None:
-            return {"unit": None, "scope": None, "state": "unknown", "since": None}
+            return {"unit": None, "scope": None, "state": "unknown", "since": None, "unitFileState": None}
         trigger = row["triggers"][0]
         service = trigger["systemd"]["service"]
-        state = service["activeState"] if trigger["systemd"]["status"] == "available" else "unknown"
+        available = trigger["systemd"]["status"] == "available"
+        state = service["activeState"] if available else "unknown"
         since = service["startedAt"] if state in ACTIVE_STATES else service["endedAt"]
-        return {"unit": trigger["unit"], "scope": trigger["scope"], "state": state, "since": since}
+        return {"unit": trigger["unit"], "scope": trigger["scope"], "state": state, "since": since,
+                "unitFileState": service["unitFileState"] if available else "unknown"}
 
     def _agent_items(self, workflows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         receipts, _, _ = self.receipts()
@@ -821,6 +826,7 @@ class ControlRoomReadModel:
             items.append({
                 **persona,
                 "runtime": self._runtime_of(runtime_row),
+                "control": runtime_row["control"] if runtime_row else None,
                 "health": runtime_row["health"] if runtime_row else "unknown",
                 "lastTurn": self._run_summary(turns[0]) if turns else None,
                 "turns7d": len(recent),
@@ -946,7 +952,8 @@ class ControlRoomHandler(BaseHTTPRequestHandler):
     COMMON_HEADERS = (("Cache-Control", "no-store"), ("X-Content-Type-Options", "nosniff"), ("Referrer-Policy", "no-referrer"))
     HTML_HEADERS = (("Content-Security-Policy", CSP), ("X-Frame-Options", "DENY"), *COMMON_HEADERS)
     STUBS = {
-        "actions": ("action", ACTION_IDS, "control broker not wired (T5.3a)"),
+        "actions": ("action", ACTION_IDS + tuple(a for a in RUNTIME_ACTION_IDS if a not in ACTION_IDS),
+                    "control broker not wired (T5.3a)"),
         "proposals": ("kind", ("schedule", "retire"), "PR generator not wired (T5.3b)"),
     }
 

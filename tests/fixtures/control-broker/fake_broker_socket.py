@@ -66,7 +66,7 @@ def sandbox(receipts: pathlib.Path, now: str | None = None, root: pathlib.Path |
     env = {"PATH": f"{root / 'bin'}{os.pathsep}{os.environ.get('PATH', '')}", "HOME": str(root)}
     argv = [sys.executable, str(BROKER), "--allowlist", str(HERE / "allowlist.json"), "--receipts", str(receipts),
             "--system-stamp-dir", str(root / "stamps"), "--user-stamp-dir", str(root / "ustamps"),
-            "--lock", str(root / "lock"), "--peer-uids", str(os.getuid())]
+            "--lock", str(root / "lock"), "--peer-uids", str(os.getuid()), "--start-settle", "0"]
     if now:
         argv += ["--now", now]
     return env, argv + ["--serve"]

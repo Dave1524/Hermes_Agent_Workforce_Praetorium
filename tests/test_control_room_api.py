@@ -270,8 +270,13 @@ class ControlRoomApiTest(unittest.TestCase):
         self.assertEqual([item["name"] for item in items], ["augustus", "aurelian", "marcus", "trajan"])
         by_name = {item["name"]: item for item in items}
         aurelian = by_name["aurelian"]
-        self.assertEqual(aurelian["runtime"], {"unit": "buzz-agent@aurelian", "scope": "user", "state": "unknown", "since": None})
+        self.assertEqual(aurelian["runtime"], {"unit": "buzz-agent@aurelian", "scope": "user", "state": "unknown",
+                                               "since": None, "unitFileState": "unknown"})
         self.assertEqual(aurelian["health"], "unknown")
+        self.assertEqual([a["id"] for a in aurelian["control"]["actions"]], ["start", "stop", "restart"])
+        self.assertTrue(all(a["enabled"] is False and a["reason"] == "systemd state unavailable"
+                            for a in aurelian["control"]["actions"]), aurelian["control"]["actions"])
+        self.assertEqual(aurelian["control"]["state"], "unknown")
         self.assertIsNone(aurelian["lastTurn"])
         self.assertEqual(aurelian["turns7d"], 0)
         self.assertEqual(aurelian["usage7d"]["status"], "unavailable")
@@ -280,7 +285,9 @@ class ControlRoomApiTest(unittest.TestCase):
         self.assertIsNone(aurelian["cost7d"]["amount"])
         self.assertEqual(aurelian["ownedWorkflows"], [])
         self.assertEqual(aurelian["requiredBy"], [{"workflow": "augustus-content", "enabled": True}])
-        self.assertEqual(by_name["marcus"]["runtime"], {"unit": None, "scope": None, "state": "unknown", "since": None})
+        self.assertEqual(by_name["marcus"]["runtime"], {"unit": None, "scope": None, "state": "unknown", "since": None,
+                                                        "unitFileState": None})
+        self.assertIsNone(by_name["marcus"]["control"])
         self.assertEqual(by_name["marcus"]["ownedWorkflows"], [{"id": "daily-plan", "role": "agent-workflow"}])
         self.assertEqual(by_name["augustus"]["ownedWorkflows"], [{"id": "augustus-content", "role": "agent-workflow"}])
         self.assertEqual(by_name["trajan"]["ownedWorkflows"], [{"id": "drift-check", "role": "system-workflow"}])
@@ -308,12 +315,18 @@ class ControlRoomApiTest(unittest.TestCase):
         model = api.ControlRoomReadModel(
             api.SourcePaths(self.repo, self.runtime, self.receipts),
             systemd=FakeSystemd(user_units={"buzz-agent@aurelian.service": {
-                "ActiveState": "active", "SubState": "running", "ExecMainStartTimestamp": "Thu 2026-09-11 06:00:00 UTC"}}),
+                "ActiveState": "active", "SubState": "running", "UnitFileState": "enabled",
+                "ExecMainStartTimestamp": "Thu 2026-09-11 06:00:00 UTC"}}),
             clock=lambda: self.now,
         )
         aurelian = next(item for item in model.agents()["items"] if item["name"] == "aurelian")
         self.assertEqual(aurelian["runtime"]["state"], "active")
         self.assertEqual(aurelian["runtime"]["since"], "2026-09-11T06:00:00Z")
+        self.assertEqual(aurelian["runtime"]["unitFileState"], "enabled")
+        actions = {a["id"]: a for a in aurelian["control"]["actions"]}
+        self.assertEqual((actions["start"]["enabled"], actions["stop"]["enabled"], actions["restart"]["enabled"]),
+                         (False, True, True))
+        self.assertEqual(actions["start"]["reason"], "runtime is active, not paused")
         self.assertEqual(model.overview()["summary"]["agents"], {"total": 4, "up": 1, "down": 0, "unknown": 3})
         down = api.ControlRoomReadModel(
             api.SourcePaths(self.repo, self.runtime, self.receipts),
@@ -324,6 +337,22 @@ class ControlRoomApiTest(unittest.TestCase):
         aurelian = next(item for item in down.agents()["items"] if item["name"] == "aurelian")
         self.assertEqual((aurelian["runtime"]["state"], aurelian["runtime"]["since"]), ("failed", "2026-09-11T06:30:00Z"))
         self.assertEqual(down.overview()["summary"]["agents"], {"total": 4, "up": 0, "down": 1, "unknown": 3})
+        self.assertEqual(aurelian["control"]["state"], "paused", "a failed always-on service is startable")
+        actions = {a["id"]: a for a in aurelian["control"]["actions"]}
+        self.assertEqual((actions["start"]["enabled"], actions["stop"]["enabled"], actions["restart"]["enabled"]),
+                         (True, False, False))
+        self.assertEqual(actions["stop"]["reason"], "runtime is paused, not active")
+
+    def test_runtime_row_control_is_the_runtime_vocabulary(self):  # (::control-room-runtime-control)
+        row, _ = self.model.workflow_detail("buzz-agent@aurelian")
+        self.assertEqual([a["id"] for a in row["control"]["actions"]], ["start", "stop", "restart"])
+        self.assertEqual(row["control"]["source"], "unavailable")
+        daily, _ = self.model.workflow_detail("daily-plan")
+        self.assertEqual([a["id"] for a in daily["control"]["actions"]], ["pause", "resume", "run_now", "retry", "stop"])
+        self.assertEqual(state.control_actions("paused", "systemd", "agent-runtime")[0],
+                         {"id": "start", "enabled": True, "reason": None})
+        self.assertEqual(state.control_actions("active", "systemd", "system-workflow")[0]["id"], "pause")
+        self.assertEqual(state.RUNTIME_ACTION_IDS, ("start", "stop", "restart"))
 
     def test_contract_exempt_is_a_declaration_not_a_degraded_source(self):
         item, status = self.model.workflow_detail("spent-kickoff")

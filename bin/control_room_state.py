@@ -5,8 +5,9 @@ control_room_api assembles; nothing here reads a file or a bus.
 
 `control` is the browser's contract (T5.3 brief § Seams b): state, source, next run (estimated
 from last trigger + cadence when systemd prints none), last trigger, persistence, lastAction
-(None until T5.3a's reader is passed in) and the five actions with a reason for each one that
-is disabled. Execution of any action is entirely outside this module.
+(None until T5.3a's reader is passed in) and the actions with a reason for each one that is
+disabled: the five workflow verbs for a workflow row, the three runtime verbs (T5.3g) for an
+agent-runtime row. Execution of any action is entirely outside this module.
 """
 from __future__ import annotations
 
@@ -23,8 +24,10 @@ DEV_PLAN_DOC = f"{REPO_GITHUB}/docs/dev-plan-2026-09.md"
 RETRY_REASON = "contract declares no idempotent operation (T5.3a defines the declaration)"
 ACTIVE_STATES = {"active", "activating", "reloading"}
 PAUSED_STATES = {"inactive", "deactivating"}
+SERVICE_PAUSED_STATES = PAUSED_STATES | {"failed"}
 CONTROL_STATES = ("paused", "active", "running", "unknown")
 ACTION_IDS = ("pause", "resume", "run_now", "retry", "stop")
+RUNTIME_ACTION_IDS = ("start", "stop", "restart")
 ROLES = ("agent-workflow", "system-workflow", "agent-runtime")
 ROLE_OF_SURFACE = {
     "scheduled": "agent-workflow",
@@ -49,15 +52,19 @@ def service_running(systemd: dict[str, Any]) -> bool:
 
 
 def trigger_state(systemd: dict[str, Any]) -> str:
+    """An always-on service that failed is paused, not unknown: it is startable, and the raw
+    ActiveState still travels on the runtime chip."""
     if systemd["kind"] == "timer":
         if service_running(systemd):
             return "running"
         active = (systemd["timer"] or {}).get("activeState", "unknown")
+        paused = PAUSED_STATES
     else:
         active = systemd["service"]["activeState"]
+        paused = SERVICE_PAUSED_STATES
     if active in ACTIVE_STATES:
         return "active"
-    if active in PAUSED_STATES:
+    if active in paused:
         return "paused"
     return "unknown"
 
@@ -90,9 +97,24 @@ def control_state(triggers: list[dict[str, Any]]) -> str:
     return "unknown"
 
 
-def control_actions(state: str, source: str) -> list[dict[str, Any]]:
-    def action(action_id: str, enabled: bool, reason: str) -> dict[str, Any]:
-        return {"id": action_id, "enabled": enabled, "reason": None if enabled else reason}
+def _action(action_id: str, enabled: bool, reason: str) -> dict[str, Any]:
+    return {"id": action_id, "enabled": enabled, "reason": None if enabled else reason}
+
+
+def runtime_actions(state: str, source: str) -> list[dict[str, Any]]:
+    if source != "systemd":
+        return [_action(action_id, False, "systemd state unavailable") for action_id in RUNTIME_ACTION_IDS]
+    return [
+        _action("start", state == "paused", f"runtime is {state}, not paused"),
+        _action("stop", state == "active", f"runtime is {state}, not active"),
+        _action("restart", state == "active", f"runtime is {state}, not active"),
+    ]
+
+
+def control_actions(state: str, source: str, role: str = "agent-workflow") -> list[dict[str, Any]]:
+    if role == "agent-runtime":
+        return runtime_actions(state, source)
+    action = _action
     return [
         action("pause", state in {"active", "running"}, f"workflow is {state}, not active"),
         action("resume", state == "paused", f"workflow is {state}, not paused"),
@@ -115,6 +137,7 @@ def control_for(
     triggers: list[dict[str, Any]],
     cadence: dict[str, Any],
     control_reader: Callable[[str], dict[str, Any] | None] | None = None,
+    role: str = "agent-workflow",
 ) -> dict[str, Any]:
     timers = [trigger["systemd"]["timer"] for trigger in triggers if trigger["systemd"]["timer"]]
     source = "systemd" if any(trigger["systemd"]["status"] == "available" for trigger in triggers) else "unavailable"
@@ -139,7 +162,7 @@ def control_for(
         "lastTriggerAt": last_trigger,
         "persistent": persistent,
         "lastAction": control_reader(logical_id) if control_reader else None,
-        "actions": control_actions(state, source),
+        "actions": control_actions(state, source, role),
     }
 
 
