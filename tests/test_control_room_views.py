@@ -17,6 +17,7 @@ import sys
 import tempfile
 import unittest
 import urllib.error
+import urllib.parse
 import urllib.request
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -103,6 +104,18 @@ class ThirtyOfThirtyOne(ServedCase):  # (::control-room-30-of-31)
             cell = re.search(r'<td[^>]*data-cell="artifact"[^>]*>(.*?)</td>', row, re.DOTALL)
             self.assertIsNotNone(cell, workflow_id)
             self.assertTrue(re.sub(r"<[^>]+>", "", cell.group(1)).strip(), workflow_id)
+
+
+class ContractsNeverDegradedByExemption(ServedCase):  # (::control-room-30-of-31)
+    def test_every_detail_reads_its_own_contract_status(self):
+        _, _, listing = get(self.base, "/api/v1/workflows?lifecycle=all")
+        for item in json.loads(listing)["items"]:
+            _, _, body = get(self.base, "/api/v1/workflows/" + urllib.parse.quote(item["id"]))
+            detail = json.loads(body)
+            self.assertEqual(detail["dataStatus"]["contracts"], "available", item["id"])
+            self.assertEqual(detail["dataStatus"]["errors"]["contracts"], [], item["id"])
+            expected = "exempt" if item["lifecycle"] == "spent" else "available"
+            self.assertEqual(detail["items"]["contractStatus"], expected, item["id"])
 
 
 class AgentsApi(ServedCase):  # (::control-room-agents)

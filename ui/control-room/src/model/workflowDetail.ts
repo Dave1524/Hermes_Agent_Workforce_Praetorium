@@ -45,6 +45,7 @@ export interface WorkflowDetail {
   contract: Contract | null;
   contractStatus: string | null;
   contractError: string | null;
+  contractExempt: string | null;
   triggers: TriggerView[];
   lineage: LineageView[];
   benefit: Benefit | null;
@@ -95,6 +96,7 @@ export const toWorkflowDetail = (w: Workflow): WorkflowDetail => ({
   contract: w.contract ?? null,
   contractStatus: w.contractStatus ?? null,
   contractError: w.contractError ?? null,
+  contractExempt: w.contractExempt ?? null,
   triggers: w.triggers.map(toTrigger),
   lineage: toLineage(w.lineage),
   benefit: toBenefit(w.benefit),

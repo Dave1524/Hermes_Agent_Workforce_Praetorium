@@ -125,7 +125,13 @@ export default function WorkflowDetail({ workflowId }: { workflowId: string }) {
           </Panel>
 
           <Panel title="Contract & links">
-            <Row label="Contract">{d.contractStatus ?? "—"}{d.contractError && <span className="text-red"> · {d.contractError}</span>}</Row>
+            <Row label="Contract">
+              <span data-testid="contract-status">
+                {d.contractStatus ?? "—"}
+                {d.contractError && <span className="text-red"> · {d.contractError}</span>}
+                {d.contractExempt && <span className="text-muted"> · {d.contractExempt}</span>}
+              </span>
+            </Row>
             <Row label="Local">{d.links?.contractLocal ?? "—"}</Row>
             <Row label="GitHub">{d.links?.contractGithub ? <a href={d.links.contractGithub} target="_blank" rel="noreferrer noopener" className="text-accent hover:underline">open</a> : "—"}</Row>
             <Row label="Dev plan">{d.links?.devPlanDoc ? <a href={d.links.devPlanDoc} target="_blank" rel="noreferrer noopener" className="text-accent hover:underline">{d.links.devPlanTracker ?? "doc"}</a> : (d.links?.devPlanTracker ?? "—")}</Row>

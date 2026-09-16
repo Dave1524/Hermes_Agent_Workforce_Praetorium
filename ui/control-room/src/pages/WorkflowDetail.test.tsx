@@ -69,6 +69,14 @@ describe("WorkflowDetail", () => {
     await waitFor(() => expect(screen.getByTestId("guards-chip")).toHaveAttribute("title", "Without it the weekly pre-read is never assembled."));
   });
 
+  it("renders a contract exemption as a declaration, not an error", async () => {
+    const spent = { ...unavailableWorkflow, id: "nekovri-subsidy-kickoff", name: "NeKoVri kickoff", lifecycle: "spent", contractStatus: "exempt", contractError: null, contractExempt: "spent: its one date fired 2026-08-03" };
+    mockFetch({ "/api/v1/workflows/nekovri-subsidy-kickoff": envelope(spent), "/api/v1/workflows/nekovri-subsidy-kickoff/runs": envelope([]) });
+    renderInShell(<WorkflowDetail workflowId="nekovri-subsidy-kickoff" />);
+    await waitFor(() => expect(screen.getByTestId("contract-status")).toHaveTextContent("exempt · spent: its one date fired 2026-08-03"));
+    expect(screen.getByTestId("contract-status").querySelector(".text-red")).toBeNull();
+  });
+
   it("shows a 404 as an error notice", async () => {
     mockFetch({ "/api/v1/workflows/nope": { status: 404, body: { error: "workflow not found" } } });
     renderInShell(<WorkflowDetail workflowId="nope" />);

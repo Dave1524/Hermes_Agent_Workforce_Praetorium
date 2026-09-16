@@ -116,6 +116,7 @@ export const workflowSchema = z.object({
   contract: contractSchema.nullish(),
   contractStatus: z.string().nullish(),
   contractError: z.string().nullish(),
+  contractExempt: z.string().nullish(),
   triggers: z.array(triggerSchema).default([]),
   lastRun: runSummarySchema.nullish(),
   latestOutput: artifactSchema.nullish(),

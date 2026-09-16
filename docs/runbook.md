@@ -259,7 +259,13 @@ does not ship it), timer files under `systemd/`, `systemctl show` in both scopes
 `~/agent-workforce/var/workflow-receipts/` and `design/benefit-ledger.toml`. Missing data renders
 `Unknown` or `unavailable`, never 0. **Receipts are `unavailable` until T5.2's first run** writes
 one; until then every workflow's health comes from systemd alone and the Exceptions queue says
-so in its empty state.
+so in its empty state. Every envelope carries a `dataStatus` per source (`available` /
+`degraded` / `unavailable`) with the errors behind it; the list's covers every row, while a
+workflow page's is narrowed to that workflow (its contract, its units, its receipts) — source-wide
+failures such as a manifest that does not parse stay on every page. A spent entry's
+`contract_exempt` is `contractStatus: exempt` with the reason, never a degraded contracts source:
+until 2026-09-16 the two spent NeKoVri entries read `contract not declared` and put "contracts
+degraded" on all 31 workflow pages.
 
 **What it never writes:** anything of its own. Every HTTP write method is 405 except the two
 control endpoints (`POST /api/v1/control/{actions,proposals}`), which validate the request and

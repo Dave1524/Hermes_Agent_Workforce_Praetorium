@@ -268,6 +268,18 @@ class ControlRoomReadModel:
                 rows.append(row)
         return rows, errors
 
+    def _contract_of(self, group: list[dict[str, Any]]) -> tuple[dict[str, Any] | None, str, str | None, str | None]:
+        """A spent entry's `contract_exempt` names why nothing is promised (T4.4); that is a
+        declaration the coverage suite accepts, not a missing contract."""
+        paths = sorted({str(entry.get("contract")) for entry in group if entry.get("contract")})
+        exempt = next((str(entry["contract_exempt"]) for entry in group if entry.get("contract_exempt")), None)
+        if not paths and exempt:
+            return None, "exempt", None, exempt
+        contract, error = self._contract(paths[0] if len(paths) == 1 else None)
+        if len(paths) > 1:
+            error = f"logical workflow declares multiple contracts: {paths}"
+        return contract, "available" if contract else "unavailable", error, None
+
     def _contract(self, relative: Any) -> tuple[dict[str, Any] | None, str | None]:
         if not isinstance(relative, str) or not relative.strip():
             return None, "contract not declared"
@@ -443,10 +455,7 @@ class ControlRoomReadModel:
         contract_errors: list[str] = []
         for logical_id, group in sorted(grouped.items()):
             owner_set = sorted({str(entry["owner"]) for entry in group})
-            contract_paths = sorted({str(entry.get("contract")) for entry in group if entry.get("contract")})
-            contract, contract_error = self._contract(contract_paths[0] if len(contract_paths) == 1 else None)
-            if len(contract_paths) > 1:
-                contract_error = f"logical workflow declares multiple contracts: {contract_paths}"
+            contract, contract_status, contract_error, contract_exempt = self._contract_of(group)
             if contract_error:
                 contract_errors.append(f"{logical_id}: {contract_error}")
             triggers: list[dict[str, Any]] = []
@@ -505,8 +514,9 @@ class ControlRoomReadModel:
                 "health": health_of(latest, triggers),
                 "manifestPaths": sorted({str(entry["manifest"]) for entry in group}),
                 "contract": contract,
-                "contractStatus": "available" if contract else "unavailable",
+                "contractStatus": contract_status,
                 "contractError": contract_error,
+                "contractExempt": contract_exempt,
                 "triggers": triggers,
                 "lastRun": self._run_summary(latest) if latest else None,
                 "latestOutput": artifact,
@@ -615,7 +625,26 @@ class ControlRoomReadModel:
 
     def workflow_detail(self, workflow_id: str) -> tuple[dict[str, Any] | None, dict[str, Any]]:
         items, status = self.workflows(include_nonstanding=True)
-        return next((item for item in items if item["id"] == workflow_id), None), status
+        item = next((item for item in items if item["id"] == workflow_id), None)
+        return item, self._status_for(item, status) if item else status
+
+    @staticmethod
+    def _status_for(item: dict[str, Any], status: dict[str, Any]) -> dict[str, Any]:
+        """The list's status covers every row; a detail page describes one. Errors keyed by a
+        workflow or unit are narrowed to this item's; source-wide ones (a manifest that does not
+        parse, an unreadable receipts tree, the ledger) stay as they are."""
+        units = {str(trigger["unit"]) for trigger in item["triggers"]}
+        errors = dict(status["errors"])
+        errors["contracts"] = [e for e in errors["contracts"] if e.startswith(f"{item['id']}: ")]
+        errors["systemd"] = [e for e in errors["systemd"] if e.partition(": ")[0] in units]
+        errors["malformedReceipts"] = [m for m in errors["malformedReceipts"] if str(m["path"]).startswith(f"{item['id']}/")]
+        return {
+            **status,
+            "contracts": "available" if not errors["contracts"] else "degraded",
+            "systemd": "available" if not errors["systemd"] else "degraded",
+            "receipts": ControlRoomReadModel._receipt_status(errors["receipts"], errors["malformedReceipts"]),
+            "errors": errors,
+        }
 
     def list_runs(self, workflow_id: str | None = None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         receipts, malformed, source_errors = self.receipts()
