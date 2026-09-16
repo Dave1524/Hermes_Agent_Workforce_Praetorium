@@ -47,8 +47,7 @@ echo "Filesystem      Size  Used Avail Use% Mounted on"
 echo "/dev/sda1        20G    5G   15G  25% /"
 EOF
   chmod +x "$stubs"/*
-  mkdir -p "$home/.hermes" "$home/agent-workforce/logs"
-  : > "$home/.hermes/.env"
+  mkdir -p "$home/agent-workforce/logs"
   echo "$home:$stubs"
 }
 
