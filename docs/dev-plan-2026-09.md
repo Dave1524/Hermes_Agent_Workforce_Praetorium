@@ -560,6 +560,21 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   a refused action renders its refusal code; the SSR paths still answer; `BUILD.json` matches the
   source tree and, where Node is present, a rebuild is byte-identical to the committed output;
   `bash bin/verify.sh` green after land.
+  **DONE 2026-09-16, `03da64a` (PR #44, merged `f566716`).** `/` lands on `/app/`: seven views
+  over `/api/v1/*` (Overview, Workflows, workflow, run, Incidents, Usage, Activity), 26 vitest
+  files / 169 tests, typecheck clean, CSP unchanged with fonts self-hosted (JetBrains Mono moved
+  to the variable package because the static one ships `.woff` the allowlist does not serve). The
+  seven dialogs speak T5.3a/T5.3b verbatim: resume previews the implication before Apply, run
+  now / retry turn `trigger_required` into a picker, stop needs a reason and sends `confirm`,
+  schedule and retire open a PR only from the preview token with the pinned-only acknowledge
+  gate mirrored from `proposals.js`; every reply re-fetches the workflow and 400–504 render as
+  states. Nothing faked: no Ack/Approve/Reject, no DEMO pill, no literal counts. Build committed
+  under `bin/control_room_ui/app/` with fixed names and `BUILD.json`; `tests/test_control_room_spa.sh`
+  recomputes the stamp everywhere and, with Node, rebuilds byte-identical — proven twice on land:
+  CI (Node 22) and a fresh `npm ci` on `main` (Node 26) both reproduce stamp `065f0f0d…`.
+  Landed on the box the same morning: `bin/deploy`, `control-room.service` restarted 11:52 CEST,
+  live `/` → 302 `/app/`, shell with CSP/DENY/no-store, `..` 400, GET on control 405, overview
+  from real receipts (31 workflows, `reliability7d` measured over 7 days). No timer touched.
 - **T5.4** [Claude, M, T5.2] Proof on real runs: one full week with every declared check of
   every contract executed against real runs; the pass matrix recorded in the brief.
   Reviewed requirement — **passing assertions prove delivery, not value.** Add a consumption and
