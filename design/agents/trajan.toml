@@ -45,6 +45,7 @@ suite    = ["tests/test_fleet_turn_check.sh"]
 skills   = []
 trigger = "hourly (+2min jitter)"
 what = "proves an agent can COMPLETE a turn — the gate every other fleet signal missed for 4 days"
+guards = "Without it an agent that cannot complete a turn looks alive on every other fleet signal."
 alerted = true
 in_repo = true                   # backported from /etc 2026-09-02 (brief 2). The UNIT came
                                  # here then; the SCRIPT arrived 2026-09-03 as
@@ -65,6 +66,11 @@ loss produced a past misdiagnosis. It does NOT run the script: gate 2 spends a r
 turn, and the script pins PATH at line 23, so a stubbed systemctl on PATH is defeated by
 construction. That pin is a testability finding, not a defect to fix here — it exists so a
 systemd unit with a minimal environment resolves its binaries.
+
+`guards` evidence: relay presence, unit state and the journal all read healthy for four days
+(2026-08) while no agent could finish a turn; this check is the only signal that spends a
+real turn, so it is the only one that can see that class. It declares no `requires` —
+detecting the runtimes down is its job, not a precondition of it.
 """
 
 [[workflows]]
@@ -97,6 +103,7 @@ suite    = ["tests/test_local_tier_eval_score.sh"]
 skills   = []
 trigger = "02,08,11,14,17,20:17 (no jitter)"
 what = "Ollama capability regression on the Arc iGPU"
+requires = ["system/ollama.service"]   # T5.3f: every task runs on ollama_local (bin/local_tier_eval.sh); the unit file carries the matching Wants=
 alerted = true                   # wired 2026-09-01 (D2)
 in_repo = true
 
@@ -149,6 +156,7 @@ skills   = []
 trigger = "daily 05:50"
 runner = "bin/receipt_sweep.py"
 what = "one receipt per finished timer invocation, from systemd's record — ships disabled (T5.2)"
+guards = "Without it every platform timer runs unreceipted and the Control Room cannot see whether it ran."
 route = "ops"
 alerted = true
 in_repo = true
@@ -156,6 +164,10 @@ notes = """
 T5.2 criterion 6. Platform rows have no receipt seam of their own, so the sweep writes theirs
 from `systemctl show`; a run-path receipt is never overwritten and a paused timer writes
 nothing. The timer is installed with daemon-reload only and enabled at Dave's resume.
+
+`guards` evidence: tests/test_receipt_coverage.sh names this sweep as the one producer for
+every standing platform row; with it off, those rows have no receipt seam at all and every
+exceptions rule that reads receipts is silent for them.
 """
 
 [[workflows]]
@@ -168,6 +180,7 @@ skills   = []
 trigger = "every 5 min (+30s jitter); daily digest gate 07:00"
 runner = "bin/deliver_incidents.sh"
 what = "actionable workflow incidents → Buzz `incidents` stream, one alert per incident, recovery, daily digest — ships disabled (T5.3c)"
+guards = "Without it a failed run is a line in a receipt that reaches nobody."
 route = "incidents"
 alerted = true
 in_repo = true
@@ -176,6 +189,10 @@ T5.3c. Derives incidents from the Control Room read model (bin/workflow_incident
 one entry per key in var/incidents/state.json (bin/incident_state.py) and sends through
 bin/deliver.sh only. Ships disabled: the timer is installed with daemon-reload only, and the
 route's channel UUID is empty until Dave creates the channel — enabling either is his call.
+
+`guards` evidence: it is the only path from a receipt or a malformed file to a Buzz alert —
+agent-alert@ fires on a unit failure, not on a run that exited 0 with a failed check, and the
+Control Room is a screen Dave has to open. Resumed by Dave 2026-09-16, the first timer back.
 """
 
 [[workflows]]
@@ -187,9 +204,19 @@ suite    = ["tests/test_vault_sync_guard.sh"]
 skills   = []
 trigger = "every 30 min (+2min jitter), 5min after boot"
 what = "vault pull + re-index + embed; calls bin/vault_sync_guard.sh sync"
+guards = "Without it the vault mirror goes stale and every job behind vault_sync_guard check is refused."
 alerted = true
 in_repo = true
-notes = "Its repeat alerts are the case bin/agent_alert.sh was written to throttle — 19 of the last 60 alert-log lines. The throttle went live 2026-09-01 (D2), so a repeat now writes a log record and suppresses the outbound notify."
+notes = """
+Its repeat alerts are the case bin/agent_alert.sh was written to throttle — 19 of the last 60
+alert-log lines. The throttle went live 2026-09-01 (D2), so a repeat now writes a log record
+and suppresses the outbound notify.
+
+`guards` evidence: bin/vault_sync_guard.sh `sync` runs only here, and its `check` is the
+pre-flight of praetorium-daily-plan and praetorium-eod-summary (CLAUDE.md § Daily rhythm
+jobs) — a mirror nothing refreshes is a loud refusal on both, by design, and a qmd index
+nothing re-embeds answers every agent from the past.
+"""
 
 [[workflows]]
 unit = "agent-workforce-auto-sync"
@@ -267,12 +294,14 @@ skills   = []
 trigger = "daily 05:40 (+3min jitter)"
 runner = "bin/check_deploy_drift.sh"
 what = "source-vs-deployed drift across four unit trees, both membership directions"
+guards = "Without it a hand-edited /etc or an undeployed bin/ edit is caught by nothing."
 alerted = true
 in_repo = true
 notes = """
 D8. The commit-time gate cannot see a hand-edited /etc, and bin/auto-sync pushes every 15
 minutes without calling verify.sh — so the timer is not optional, it is the only caller that
-covers that class.
+covers that class. That sentence is the `guards` evidence: the runtime tree fell six days
+behind once (NUC-44) with nothing to say so.
 
 Named `agent-*` so the reporting globs match it (bin/local_tier_eval.sh:51). A name outside
 'overnight-*' 'agent-*' 'augustus-*' 'bd-*' 'weekly-*' is invisible to every report here.

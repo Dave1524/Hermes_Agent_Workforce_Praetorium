@@ -37,6 +37,7 @@ from control_room_exceptions import KINDS, classify  # noqa: E402
 from control_room_lineage import lineage  # noqa: E402
 import incident_state  # noqa: E402
 import workflow_incidents  # noqa: E402
+import workflow_requires  # noqa: E402
 from control_room_static import serve as serve_static, serve_app_asset, serve_app_shell  # noqa: E402
 from control_room_view_benefit import render_benefit  # noqa: E402
 from control_room_view_exceptions import render_exceptions  # noqa: E402
@@ -395,10 +396,40 @@ class ControlRoomReadModel:
             return {"status": "unavailable", **{field: None for field in fields}}
         return {"status": "measured", **{field: measurement.get(field) for field in fields}}
 
+    def _requires_for(self, group: list[dict[str, Any]], entries: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[str]]:
+        """One resolver for the screen and the executor pre-flights (bin/workflow_requires.py);
+        the fold's entries declare the same list, so the union is that list."""
+        requirements: dict[str, workflow_requires.Requirement] = {}
+        errors: list[str] = []
+        for entry in group:
+            try:
+                for requirement in workflow_requires.requirements_for(entry, entries, self.paths.repo):
+                    requirements.setdefault(requirement.key, requirement)
+            except ValueError as exc:
+                errors.append(f"{entry['unit']}: {exc}")
+        rows = []
+        for requirement in requirements.values():
+            state = workflow_requires.state_of(requirement, self.systemd.show)
+            rows.append({"unit": requirement.unit, "scope": requirement.scope, "workflow": requirement.workflow,
+                         "state": state, "satisfied": workflow_requires.satisfied(state)})
+        return rows, errors
+
+    @staticmethod
+    def _fill_required_by(items: list[dict[str, Any]]) -> None:
+        by_id = {item["id"]: item for item in items}
+        for item in items:
+            for requirement in item["requires"]:
+                target = by_id.get(requirement["workflow"] or "")
+                if target is not None:
+                    target["requiredBy"].append({"workflow": item["id"], "enabled": item["control"]["state"] != "paused"})
+        for item in items:
+            item["requiredBy"].sort(key=lambda dependent: dependent["workflow"])
+
     def workflows(self, include_nonstanding: bool = False) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-        entries, manifest_errors = self._manifests()
+        all_entries, manifest_errors = self._manifests()
         receipts, malformed, receipt_errors = self.receipts()
         ledger, ledger_errors = load_ledger(self.paths.repo, self.paths.ledger)
+        entries = all_entries
         if not include_nonstanding:
             entries = [entry for entry in entries if entry.get("status") == "standing"]
         receipt_by_workflow: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -454,6 +485,8 @@ class ControlRoomReadModel:
                 )
             cadence = fold_cadence(triggers)
             surface = triggers[0]["surface"]
+            requires, requires_errors = self._requires_for(group, all_entries)
+            manifest_errors.extend(requires_errors)
             last_valid = last_valid_artifact(workflow_receipts, self.clock())
             benefit = benefit_row({"id": logical_id, "contract": contract}, workflow_receipts,
                                   (ledger or {}).get(logical_id))
@@ -465,7 +498,9 @@ class ControlRoomReadModel:
                 "purpose": purpose,
                 "surface": surface,
                 "role": role_of(surface),
+                "requires": requires,
                 "requiredBy": [],
+                "guards": next((str(entry["guards"]) for entry in group if entry.get("guards")), None),
                 "lifecycle": group[0].get("status", "unknown"),
                 "health": health_of(latest, triggers),
                 "manifestPaths": sorted({str(entry["manifest"]) for entry in group}),
@@ -493,6 +528,7 @@ class ControlRoomReadModel:
                 self._apply_retry_policy(item)
             item["lineage"] = lineage(item, latest)
             items.append(item)
+        self._fill_required_by(items)
         status = {
             "manifests": "available" if not manifest_errors else "degraded",
             "contracts": "available" if not contract_errors else "degraded",

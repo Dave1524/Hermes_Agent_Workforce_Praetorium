@@ -130,6 +130,34 @@ class AgentsApi(ServedCase):  # (::control-room-agents)
         self.assertEqual(len(json.loads(everything)["items"]), LOGICAL_WORKFLOWS)
 
 
+class RequiresRows(ServedCase):  # (::control-room-requires)
+    GUARDED = ["agent-drift-check", "fleet-turn-check", "qmd-refresh", "workflow-incidents", "workflow-receipt-sweep"]
+
+    def test_requires_read_the_fixture_bus_and_required_by_carries_the_paused_dependent(self):
+        _, _, body = get(self.base, "/api/v1/workflows?role=all")
+        rows = {item["id"]: item for item in json.loads(body)["items"]}
+        content = rows["augustus-content"]["requires"]
+        self.assertEqual([(r["unit"], r["scope"], r["workflow"], r["satisfied"]) for r in content],
+                         [("buzz-agent@augustus", "user", "buzz-agent@augustus", True), ("buzz-notion-broker", "user", None, True)])
+        self.assertEqual([(r["unit"], r["scope"], r["satisfied"]) for r in rows["local-tier-eval"]["requires"]],
+                         [("ollama.service", "system", True)])
+        self.assertEqual(rows["augustus-content"]["control"]["state"], "paused")
+        self.assertEqual(rows["buzz-agent@augustus"]["requiredBy"], [{"workflow": "augustus-content", "enabled": False}])
+        self.assertEqual(sum(1 for row in rows.values() if row["requiredBy"]), 1)
+        _, _, agent = get(self.base, "/api/v1/agents/augustus")
+        self.assertEqual(json.loads(agent)["items"]["requiredBy"], [{"workflow": "augustus-content", "enabled": False}])
+
+    def test_guards_sit_on_the_five_platform_rows_only(self):
+        _, _, body = get(self.base, "/api/v1/workflows?role=all")
+        rows = {item["id"]: item for item in json.loads(body)["items"]}
+        guarded = sorted(id_ for id_, row in rows.items() if row["guards"])
+        self.assertEqual(guarded, self.GUARDED)
+        for id_ in guarded:
+            self.assertEqual(rows[id_]["role"], "system-workflow", id_)
+            self.assertRegex(rows[id_]["guards"], r"^[^\n]+\.$")
+        self.assertIsNone(rows["agent-workforce-auto-sync"]["guards"])
+
+
 class ExceptionsDefault(ServedCase):  # (::control-room-exceptions-default)
     def test_root_redirects_to_the_app_shell(self):
         status, headers = get_no_redirect(self.base, "/")

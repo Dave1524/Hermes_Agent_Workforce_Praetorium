@@ -290,6 +290,22 @@ fx_join=$(skills_fixture join claudius knowledge-digest 's/^skills *= \[.*\]/ski
 fx_mechanism=$(skills_fixture mechanism trajan fleet-turn-check 's/^skills *= \[\]/skills = []\nskills_mechanism = "heading-extraction"/')
 fx_unreachable=$(skills_fixture unreachable trajan fleet-turn-check 's/^skills *= \[\]/skills = ["systematic-debugging"]/')
 
+# T5.3f: the same shape for guards. Each result is `<entries checked>:<guards-*/one-sentence ids>`.
+guards_fixture() {  # guards_fixture <name> <manifest> <unit> <sed-expr>
+  local name=$1 manifest=$2 unit=$3 expr=$4
+  local dir="$fx/guards-$name"
+  mkdir -p "$dir"
+  cp -r design tests bin systemd skills profiles "$dir"/
+  sed -i "/^unit *= *\"$unit\"/,/^\[\[workflows\]\]/{$expr}" "$dir/design/agents/$manifest.toml"
+  python3 "$dir/tests/test_workflow_coverage.py" >"$dir/report" 2>/dev/null
+  printf '%s:%s\n' \
+    "$(sed -n 's/^  guards: checked \([0-9]\{1,\}\) of .*/\1/p' "$dir/report")" \
+    "$(sed -n 's/^PROBLEM\t\(guards-[a-z-]*\|one-sentence\)\t.*/\1/p' "$dir/report" | sort -u | paste -sd,)"
+}
+fx_guards_agent=$(guards_fixture agent claudius knowledge-digest 's/^skills *= \[/guards = "Without it nothing."\nskills = [/')
+fx_guards_two=$(guards_fixture two trajan fleet-turn-check 's/^guards *= .*/guards = "Two sentences. Not one."/')
+fx_guards_open=$(guards_fixture open trajan fleet-turn-check 's/^guards *= .*/guards = "No period at the end"/')
+
 # One assertion per rule, each named as design/fleet-suites.toml declares it.
 #
 # THE TRAILING TOKEN IS THE JOIN ANCHOR, not decoration (W9). `check <id>` names the id to
@@ -357,5 +373,15 @@ assert 'fixture (c): heading-extraction on an entry with no profile is skills-me
   "[ \"\$fx_mechanism\" = \"\$live_entries:skills-mechanism\" ]"
 assert 'fixture (d): a trajan entry declaring systematic-debugging is skills-join — an unreachable tree cannot be declared as delivered' \
   "[ \"\$fx_unreachable\" = \"\$live_entries:skills-join\" ]"
+check guards-platform-only \
+  'guards sits only on surface = "platform" entries'  # (::guards-platform-only)
+check one-sentence \
+  'every guards is one plain sentence: non-empty, ending in a period, on one line'  # (::one-sentence)
+assert 'fixture (e): guards on a scheduled entry is guards-platform-only, and only that' \
+  "[ \"\$fx_guards_agent\" = \"\$live_entries:guards-platform-only\" ]"
+assert 'fixture (f): a two-sentence guards is one-sentence, and only that' \
+  "[ \"\$fx_guards_two\" = \"\$live_entries:one-sentence\" ]"
+assert 'fixture (g): a guards with no period is one-sentence, and only that' \
+  "[ \"\$fx_guards_open\" = \"\$live_entries:one-sentence\" ]"
 
 exit $fail

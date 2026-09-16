@@ -116,9 +116,13 @@ class ControlRoomApiTest(unittest.TestCase):
         (self.repo / "design" / "agents" / "augustus.toml").write_text(
             'name="augustus"\n[[workflows]]\nunit="augustus-content"\nlogical_workflow="augustus-content"\n'
             'surface="buzz_dispatch"\ntrigger="daily"\nstatus="standing"\ncontract="design/contracts/augustus-content.md"\n'
+            'requires=["buzz-agent@aurelian", "user/buzz-notion-broker"]\n'
             '[[workflows]]\nunit="content-change-dispatch"\nlogical_workflow="augustus-content"\n'
             'surface="buzz_dispatch"\ntrigger="every 15 min"\nstatus="standing"\ncontract="design/contracts/augustus-content.md"\n'
+            'requires=["buzz-agent@aurelian", "user/buzz-notion-broker"]\n'
         )
+        (self.repo / "systemd" / "user").mkdir(parents=True)
+        (self.repo / "systemd" / "user" / "buzz-notion-broker.service").write_text("[Unit]\nDescription=fixture broker\n")
         (self.repo / "design" / "agents" / "aurelian.toml").write_text(
             'name="aurelian"\n[[workflows]]\nunit="buzz-agent@aurelian"\nsurface="interactive"\nscope="user"\n'
             'kind="service"\ntrigger="event-driven"\nstatus="standing"\n'
@@ -127,6 +131,8 @@ class ControlRoomApiTest(unittest.TestCase):
             'name="trajan"\n[[workflows]]\nunit="drift-check"\nsurface="platform"\n'
             'trigger="daily"\nstatus="standing"\ncontract="design/contracts/drift-check.md"\n'
             'what="Compares source against the deployed tree for Dave."\n'
+            'requires=["system/ollama.service"]\n'
+            'guards="Without it a hand edit under /etc is caught by nothing."\n'
         )
         (self.repo / "design" / "contracts" / "daily-plan.md").write_text(CONTRACT.format(unit="daily-plan", owner="marcus"))
         (self.repo / "design" / "contracts" / "drift-check.md").write_text(CONTRACT.format(unit="drift-check", owner="trajan"))
@@ -216,6 +222,36 @@ class ControlRoomApiTest(unittest.TestCase):
         only_runtimes = [item["id"] for item in self.model.list_workflows({"role": ["agent-runtime"]})["items"]]
         self.assertEqual(only_runtimes, ["buzz-agent@aurelian"])
 
+    def test_requires_rows_are_tri_state_from_the_bus(self):  # (::control-room-requires)
+        items = {item["id"]: item for item in self.model.list_workflows({"role": ["all"]})["items"]}
+        self.assertEqual(items["augustus-content"]["requires"], [
+            {"unit": "buzz-agent@aurelian", "scope": "user", "workflow": "buzz-agent@aurelian", "state": "unknown", "satisfied": None},
+            {"unit": "buzz-notion-broker", "scope": "user", "workflow": None, "state": "unknown", "satisfied": None},
+        ])
+        self.assertEqual(items["drift-check"]["requires"],
+                         [{"unit": "ollama.service", "scope": "system", "workflow": None, "state": "inactive", "satisfied": False}])
+        self.assertEqual(items["daily-plan"]["requires"], [])
+        self.assertEqual(items["drift-check"]["guards"], "Without it a hand edit under /etc is caught by nothing.")
+        self.assertIsNone(items["daily-plan"]["guards"])
+        up = FakeSystemd(user_units={"buzz-agent@aurelian.service": {"ActiveState": "active", "SubState": "running"}})
+        model = api.ControlRoomReadModel(api.SourcePaths(self.repo, self.runtime, self.receipts), systemd=up, clock=lambda: self.now)
+        rows = {item["id"]: item for item in model.list_workflows({"role": ["all"]})["items"]}
+        self.assertEqual([(r["unit"], r["state"], r["satisfied"]) for r in rows["augustus-content"]["requires"]],
+                         [("buzz-agent@aurelian", "active", True), ("buzz-notion-broker", "inactive", False)])
+
+    def test_required_by_carries_the_dependent_and_whether_it_is_enabled(self):  # (::control-room-requires)
+        items = {item["id"]: item for item in self.model.list_workflows({"role": ["all"]})["items"]}
+        self.assertEqual(items["buzz-agent@aurelian"]["requiredBy"], [{"workflow": "augustus-content", "enabled": True}])
+        self.assertEqual(items["augustus-content"]["requiredBy"], [])
+        self.assertEqual(items["drift-check"]["requiredBy"], [])
+        paused = api.ControlRoomReadModel(api.SourcePaths(self.repo, self.runtime, self.receipts),
+                                          systemd=FakeSystemd(paused=True), clock=lambda: self.now)
+        rows = {item["id"]: item for item in paused.list_workflows({"role": ["all"]})["items"]}
+        self.assertEqual(rows["augustus-content"]["control"]["state"], "paused")
+        self.assertEqual(rows["buzz-agent@aurelian"]["requiredBy"], [{"workflow": "augustus-content", "enabled": False}])
+        agent, _ = self.model.agent_detail("aurelian")
+        self.assertEqual(agent["requiredBy"], [{"workflow": "augustus-content", "enabled": True}])
+
     def test_agents_are_one_per_persona_manifest(self):  # (::control-room-agents)
         items = self.model.agents()["items"]
         self.assertEqual([item["name"] for item in items], ["augustus", "aurelian", "marcus", "trajan"])
@@ -230,7 +266,7 @@ class ControlRoomApiTest(unittest.TestCase):
         self.assertEqual(aurelian["cost7d"]["status"], "unavailable")
         self.assertIsNone(aurelian["cost7d"]["amount"])
         self.assertEqual(aurelian["ownedWorkflows"], [])
-        self.assertEqual(aurelian["requiredBy"], [])
+        self.assertEqual(aurelian["requiredBy"], [{"workflow": "augustus-content", "enabled": True}])
         self.assertEqual(by_name["marcus"]["runtime"], {"unit": None, "scope": None, "state": "unknown", "since": None})
         self.assertEqual(by_name["marcus"]["ownedWorkflows"], [{"id": "daily-plan", "role": "agent-workflow"}])
         self.assertEqual(by_name["augustus"]["ownedWorkflows"], [{"id": "augustus-content", "role": "agent-workflow"}])
