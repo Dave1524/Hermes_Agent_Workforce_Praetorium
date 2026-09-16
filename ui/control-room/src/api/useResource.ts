@@ -19,9 +19,10 @@ const toApiError = (e: unknown): ApiError =>
 export const useResource = <T extends z.ZodType>(
   path: string,
   schema: T,
-  options: { autoRefreshMs?: number } = {},
+  options: { autoRefreshMs?: number; tick?: number } = {},
 ): Resource<z.infer<T>> => {
   const autoRefreshMs = options.autoRefreshMs ?? 0;
+  const tick = options.tick ?? 0;
   const [status, setStatus] = useState<ResourceStatus>("loading");
   const [data, setData] = useState<z.infer<T> | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
@@ -48,7 +49,7 @@ export const useResource = <T extends z.ZodType>(
     return () => {
       generation.current++;
     };
-  }, [refresh]);
+  }, [refresh, tick]);
 
   useEffect(() => {
     if (autoRefreshMs <= 0) return;

@@ -69,3 +69,20 @@ describe("useResource", () => {
     expect(fetchMock.mock.calls[1]![0]).toBe("/b");
   });
 });
+
+describe("useResource tick", () => {
+  const fetchMock = vi.fn<typeof fetch>();
+  beforeEach(() => {
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(jsonResponse(200, { n: 1 }));
+    vi.stubGlobal("fetch", fetchMock);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("refetches when the tick changes", async () => {
+    const { rerender } = renderHook(({ tick }) => useResource("/x", schema, { tick }), { initialProps: { tick: 0 } });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    rerender({ tick: 1 });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  });
+});
