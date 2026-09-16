@@ -13,6 +13,14 @@ contract = "design/contracts/knowledge-digest.md"
 status   = "standing"
 
 [[workflows]]
+unit     = "agent-proposal"
+surface  = "scheduled"
+trigger  = "Mon..Fri 04:30 (+5min jitter)"
+model    = "claude-opus-5"
+contract = "design/contracts/standing-research.md"
+status   = "standing"
+
+[[workflows]]
 unit     = "env-probe"
 surface  = "scheduled"
 trigger  = "fixture"

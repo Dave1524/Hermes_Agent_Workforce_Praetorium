@@ -264,12 +264,16 @@ class CodexNotifyTest(unittest.TestCase):
         self.assertIn("rollout not found", got["terminal"]["reason"])
 
     def test_heartbeat_writes_nothing(self):
-        # (::interaction-heartbeat-no-receipt) — input-messages[0] equal to the heartbeat file
-        payload = json.loads(self.payload)
-        payload["input-messages"] = [(FIX / "heartbeat.prompt").read_text()]
-        done = self.box.codex_notify(json.dumps(payload))
-        self.assertEqual(done.returncode, 0, done.stderr)
-        self.assertEqual(self.box.receipt_files(), [])
+        # (::interaction-heartbeat-no-receipt) — input-messages[0] is the heartbeat file, either
+        # bare or as codex-acp really sends it: the <base> layer, a blank line, then the prompt
+        heartbeat = (FIX / "heartbeat.prompt").read_text()
+        for form in (heartbeat, "<base>\nYou are an agent operating inside Buzz.\n</base>\n\n" + heartbeat):
+            with self.subTest(form=form[:6]):
+                payload = json.loads(self.payload)
+                payload["input-messages"] = [form]
+                done = self.box.codex_notify(json.dumps(payload))
+                self.assertEqual(done.returncode, 0, done.stderr)
+                self.assertEqual(self.box.receipt_files(), [])
 
     def test_never_fails(self):
         # (::codex-notify-never-fails)

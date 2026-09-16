@@ -514,6 +514,7 @@ asserts = [
   "exec-failed-flag",                # --failed REASON forces `failed`, reason first; the checks still run
   "exec-decline-flag",               # --decline REASON is the decline branch without a ^DECLINE: line
   "exec-run-id-flag",                # --run-id ID overrides INVOCATION_ID and the sweep's systemd lookup
+  "exec-claims-labelled-producer-form",  # standing-research check 5 accepts the label as the producer emits it (bold, colon inside or out)
 ]
 why_no_workflow = """
 It tests the executor every contracted workflow will call, against the live knowledge-digest

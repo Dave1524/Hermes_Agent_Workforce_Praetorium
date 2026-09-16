@@ -62,6 +62,24 @@ not replace weekly-pre-assembly, which is the activity pre-read.
 
 none
 """
+RESEARCH = """# Standing research {date}
+
+## Task
+Weekly scan.
+
+## Key findings (fact vs inference labeled)
+**Rates moved** — {fact} the index closed up ([source](https://example.test/a)). {inference} the move is transient.
+
+## Contradictions
+none found this run
+
+## Proposed vault change (target canonical file + exact content)
+target: vault
+- 05_knowledge/note.md: append one line.
+
+## Confidence & gaps
+medium
+"""
 GUARD_OK = "vault_sync_guard[check]: OK: mirror clean and current\n"
 DECLINE = "DECLINE: no 05_knowledge/ or 11_entities/ changes in the last 7 days\n"
 
@@ -117,8 +135,8 @@ class Sandbox:
         os.utime(path, (stamp, stamp))
         return path
 
-    def write_artifact(self, body=None, fresh=True, stray=False):
-        rel = f"_inbox/agents/{self.run_date}_knowledge-digest.md"
+    def write_artifact(self, body=None, fresh=True, stray=False, rel=None):
+        rel = rel or f"_inbox/agents/{self.run_date}_knowledge-digest.md"
         path = self.inbox / rel
         text = body if body is not None else DIGEST.format(date=self.run_date)
         # The marker grows by one byte per write: every write gets the same forced mtime, and
@@ -430,6 +448,21 @@ class ContractExecTest(unittest.TestCase):
         self.box.write_attempt_log("probe\n", unit="logical-child")
         done, written = self.box.run("logical-child", "run", "--artifact", "file:///child")
         self.assertEqual(written["next_action"], {"actor": None, "action": None})
+
+    def research_run(self, fact, inference):
+        rel = f"_inbox/agents/{self.box.run_date}_standing-research.md"
+        self.box.write_attempt_log("research written\n", unit="agent-proposal")
+        self.box.write_artifact(RESEARCH.format(date=self.box.run_date, fact=fact, inference=inference),
+                                rel=rel)
+        return self.box.run("agent-proposal", "run", "--artifact", f"file://{self.box.inbox}/{rel}")
+
+    def test_claims_labelled_in_producer_form(self):  # (::exec-claims-labelled-producer-form)
+        for fact, inference in (("FACT:", "INFERENCE:"), ("**FACT**", "**INFERENCE:**"), ("**FACT:**", "**INFERENCE**")):
+            done, written = self.research_run(fact, inference)
+            self.assertEqual(by_id(written)["claims-are-labelled"]["status"], "passed", (fact, written))
+        done, written = self.research_run("", "")
+        self.assertEqual(by_id(written)["claims-are-labelled"]["status"], "failed")
+        self.assertEqual(written["terminal"]["outcome"], "failed")
 
     def test_failed_flag(self):  # (::exec-failed-flag)
         done, written = self.healthy_run()
