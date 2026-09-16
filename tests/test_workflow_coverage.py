@@ -357,11 +357,11 @@ if entries and contract_checked < len(entries):
             f"checked {contract_checked} of {len(entries)} entries — the join skipped some")
 
 # --- standing reconciliation (T4.5) ---------------------------------------------------
-# 32 entries are 31 workflows: a logical_workflow field folds a second trigger into the
-# entry it triggers (content-change-dispatch -> augustus-content). The fold is declared,
-# never inferred, so the only unexplained duplicate left is a unit name declared twice —
-# and a fold is honest only if its key is a declared unit and every trigger of one
-# workflow names one contract.
+# 32 entries are 31 workflows (MEASURED 2026-09-16, T6.1): a logical_workflow field folds a
+# second trigger into the entry it triggers (content-change-dispatch -> augustus-content).
+# The fold is declared, never inferred, so the only unexplained duplicate left is a unit
+# name declared twice — and a fold is honest only if its key is a declared unit and every
+# trigger of one workflow names one contract.
 unit_counts = {}
 for _, w in entries:
     unit_counts[w.get("unit")] = unit_counts.get(w.get("unit"), 0) + 1

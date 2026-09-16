@@ -120,23 +120,6 @@ alerted = true                   # wired 2026-09-01 (D2)
 in_repo = true
 
 [[workflows]]
-unit = "memory-consolidation"
-contract = "design/contracts/memory-consolidation.md"
-surface = "platform"
-status = "standing"
-suite    = ["tests/test_consolidate_memory.sh"]
-skills   = []
-trigger = "daily 03:30 (+5min jitter)"
-what = "working-memory prune across hermes profiles"
-alerted = true                   # wired 2026-09-01 (D2)
-in_repo = true
-notes = """
-Prunes four PERSONA stores that nothing writes anymore — every scheduled job resolves a
-model-named AGENT_PROFILE and logs memory=no-store. Dead limb until registry §6.6's rename
-lands. Retire the timer or repoint MEM_DIR; do not do both.
-"""
-
-[[workflows]]
 unit = "agent-inbox-sync"
 contract = "design/contracts/agent-inbox-sync.md"
 surface = "platform"

@@ -10,8 +10,8 @@ bin/interaction_receipt.py, from the Claude Code Stop hook (claude-agent-acp) or
 `notify` (codex-acp). A row the chain leaves with zero producers, or two, is the finding.
 The producible workflow_ids — what each producer would write as `workflow_id` — must equal
 the logical set the Control Room lists, so no row can be visible on the screen and
-unreceiptable. The tallies are MEASURED 2026-09-15, pinned the way
-tests/test_control_room_views.py pins its 32/31. Anchors are the `::` comments;
+unreceiptable. The tallies are MEASURED 2026-09-16 (T6.1 retired memory-consolidation),
+pinned the way tests/test_control_room_views.py pins its 32/31. Anchors are the `::` comments;
 tests/test_receipt_coverage.sh is the gate entry point.
 """
 
@@ -32,8 +32,8 @@ EXEC_START = re.compile(r"^ExecStart=(\S+)", re.MULTILINE)
 
 SELF_RECEIPTING = {"agent_propose.sh": "scheduled", "content_change_dispatch.sh": "dispatch",
                    "receipt_sweep.py": "sweep-self"}
-EXPECTED_TALLY = {"scheduled": 11, "dispatch": 1, "sweep": 15, "sweep-self": 1, "interaction": 5}
-LOGICAL_WORKFLOWS = 32
+EXPECTED_TALLY = {"scheduled": 11, "dispatch": 1, "sweep": 14, "sweep-self": 1, "interaction": 5}
+LOGICAL_WORKFLOWS = 31
 
 
 def load(name):
