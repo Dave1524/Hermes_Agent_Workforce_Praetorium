@@ -13,6 +13,7 @@ import { Panel, Row } from "@/components/Panel";
 import { ErrorNotice, Loading } from "@/components/ResourceState";
 import RouteLink from "@/components/RouteLink";
 import When from "@/components/When";
+import WorkflowControls from "@/components/WorkflowControls";
 import type { Benefit } from "@/model/benefit";
 import { toRun } from "@/model/run";
 import { formatCadence, formatDuration, formatUtc } from "@/model/time";
@@ -63,6 +64,10 @@ export default function WorkflowDetail({ workflowId }: { workflowId: string }) {
           <Card label="Valid artifact rate">{pct(d.benefit?.validArtifactRate ?? null)}</Card>
           <Card label="Tokens (last run)">{formatUsage(row.usage)}</Card>
           <Card label="Cost (last run)">{formatCost(row.cost)}</Card>
+        </div>
+
+        <div className="mb-5">
+          <WorkflowControls detail={d} onChanged={workflow.refresh} />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">

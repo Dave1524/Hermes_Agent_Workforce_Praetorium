@@ -53,13 +53,24 @@ export const controlReceiptSchema = z
   })
   .catchall(z.unknown());
 
+// bin/control_broker.py preview_implication: catchUp is true | false | null (unknown), never assumed.
+export const implicationSchema = z
+  .object({
+    persistent: z.boolean().nullish(),
+    catchUp: z.boolean().nullish(),
+    lastTriggerAt: z.string().nullish(),
+    missedElapseAt: z.string().nullish(),
+    nextElapseAt: z.string().nullish(),
+    approximate: z.boolean().nullish(),
+    message: z.string().nullish(),
+  })
+  .catchall(z.unknown());
+export type Implication = z.infer<typeof implicationSchema>;
+
 export const controlPreviewSchema = z
   .object({
     preview_token: z.string().nullish(),
-    implication: z
-      .object({ message: z.string().nullish(), catch_up_fired: z.boolean().nullish() })
-      .catchall(z.unknown())
-      .nullish(),
+    implication: implicationSchema.nullish(),
   })
   .catchall(z.unknown());
 

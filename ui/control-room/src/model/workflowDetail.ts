@@ -55,6 +55,7 @@ export interface WorkflowDetail {
   lastValidArtifactAt: string | null;
   controlSource: string | null;
   lastTriggerAt: string | null;
+  lastAction: unknown;
 }
 
 const toTrigger = (t: Trigger): TriggerView => ({
@@ -112,4 +113,5 @@ export const toWorkflowDetail = (w: Workflow): WorkflowDetail => ({
   lastValidArtifactAt: w.lastValidArtifact?.endedAt ?? null,
   controlSource: w.control?.source ?? null,
   lastTriggerAt: w.control?.lastTriggerAt ?? null,
+  lastAction: w.control?.lastAction ?? null,
 });

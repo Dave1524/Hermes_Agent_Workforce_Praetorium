@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { activeWorkflow, failedRun, overview, pausedWorkflow, unavailableWorkflow } from "@/api/fixtures.test-helpers";
 import { mockFetch } from "@/api/mockFetch.test-helpers";
 import { renderInShell } from "@/shell/render.test-helpers";
@@ -48,5 +48,72 @@ describe("WorkflowDetail", () => {
     mockFetch({ "/api/v1/workflows/nope": { status: 404, body: { error: "workflow not found" } } });
     renderInShell(<WorkflowDetail workflowId="nope" />);
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("404: workflow not found"));
+  });
+});
+
+describe("WorkflowDetail controls", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const proposalsList = { stage: "list", items: [{ proposal_id: "p-7", kind: "schedule", stage: "submitted", reason: "earlier", completed_at: "2026-09-13T10:00:00Z", pr: { url: "https://github.com/x/y/pull/7", number: 7 } }] };
+
+  it("renders one button per action from the API, disabled ones carrying the reason", async () => {
+    mockFetch({ "/api/v1/workflows/raw-ingest": envelope(pausedWorkflow), "/api/v1/workflows/raw-ingest/runs": envelope([failedRun]), "/api/v1/control/proposals": proposalsList });
+    renderInShell(<WorkflowDetail workflowId="raw-ingest" />);
+    const controls = await screen.findByTestId("controls");
+    expect(within(controls).getByRole("button", { name: "Pause" })).toBeDisabled();
+    expect(within(controls).getByRole("button", { name: "Pause" })).toHaveAttribute("title", "already paused");
+    expect(within(controls).getByRole("button", { name: "Resume" })).toBeEnabled();
+    expect(within(controls).getByRole("button", { name: "Run now" })).toBeEnabled();
+    expect(within(controls).getByRole("button", { name: "Retry" })).toBeEnabled();
+    expect(within(controls).getByRole("button", { name: "Stop" })).toBeDisabled();
+    expect(within(controls).queryByRole("button", { name: /ack|approve|reject/i })).toBeNull();
+  });
+
+  it("renders no buttons when the API offers no actions", async () => {
+    mockFetch({ "/api/v1/workflows/weekly-pre-assembly": envelope(unavailableWorkflow), "/api/v1/workflows/weekly-pre-assembly/runs": envelope([]), "/api/v1/control/proposals": { stage: "list", items: [] } });
+    renderInShell(<WorkflowDetail workflowId="weekly-pre-assembly" />);
+    const controls = await screen.findByTestId("controls");
+    expect(within(controls).queryAllByRole("button", { name: /pause|resume|run now|retry|stop/i })).toHaveLength(0);
+    expect(within(controls).getByText(/no control actions/i)).toBeInTheDocument();
+  });
+
+  it("lists existing proposals and offers Change schedule and Retire", async () => {
+    const { calls } = mockFetch({ "/api/v1/workflows/raw-ingest": envelope(pausedWorkflow), "/api/v1/workflows/raw-ingest/runs": envelope([failedRun]), "/api/v1/control/proposals": proposalsList });
+    renderInShell(<WorkflowDetail workflowId="raw-ingest" />);
+    await screen.findByRole("link", { name: /#7/ });
+    expect(screen.getByRole("link", { name: /#7/ })).toHaveAttribute("href", "https://github.com/x/y/pull/7");
+    const listCall = calls.find((c) => c.path === "/api/v1/control/proposals");
+    expect(JSON.parse(String(listCall!.init?.body))).toEqual({ workflow_id: "raw-ingest", kind: "schedule", stage: "list" });
+    fireEvent.click(screen.getByRole("button", { name: /more/i }));
+    expect(screen.getByRole("menuitem", { name: /change schedule/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /retire/i })).toBeInTheDocument();
+  });
+
+  it("an applied action re-fetches the workflow, redraws the control state and shows the receipt", async () => {
+    const previewed = { receipt: { receipt_id: "rcpt-8", result: "previewed", action: "resume", stage: "preview" }, control: pausedWorkflow.control, preview: { preview_token: "rcpt-8", implication: { catchUp: false } } };
+    const applied = { receipt: { receipt_id: "rcpt-9", result: "applied", action: "resume", stage: "apply", before: { state: "paused" }, after: { state: "active" }, next_scheduled_run: "2026-09-16T03:00:00Z" }, control: { ...pausedWorkflow.control, state: "active" } };
+    const resumed = { ...pausedWorkflow, control: { ...pausedWorkflow.control, state: "active", lastAction: applied.receipt } };
+    const { calls } = mockFetch({
+      "/api/v1/workflows/raw-ingest": [envelope(pausedWorkflow), envelope(resumed)],
+      "/api/v1/workflows/raw-ingest/runs": envelope([failedRun]),
+      "/api/v1/control/proposals": { stage: "list", items: [] },
+      "/api/v1/control/actions": [previewed, applied],
+    });
+    renderInShell(<WorkflowDetail workflowId="raw-ingest" />);
+    const controls = await screen.findByTestId("controls");
+    expect(within(controls).getByText(/no control action recorded/i)).toBeInTheDocument();
+    fireEvent.click(within(controls).getByRole("button", { name: "Resume" }));
+    const dialog = await screen.findByRole("dialog", { name: /resume/i });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Preview" }));
+    await within(dialog).findByTestId("implication");
+    fireEvent.click(within(dialog).getByRole("button", { name: /apply with this preview/i }));
+    await waitFor(() => expect(document.querySelector("[data-control='active']")).toBeInTheDocument());
+    expect(calls.filter((c) => c.path === "/api/v1/workflows/raw-ingest")).toHaveLength(2);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    const receipt = within(controls).getByTestId("receipt");
+    expect(receipt).toHaveAttribute("data-result", "applied");
+    expect(receipt).toHaveTextContent("rcpt-9");
+    expect(receipt).toHaveTextContent(/paused → active/);
   });
 });
