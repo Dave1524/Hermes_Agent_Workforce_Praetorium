@@ -1,136 +1,112 @@
-import React, { useState } from "react";
-import { WORKFLOWS } from "../data";
-import type { Health, Lifecycle } from "../data";
-import HealthBadge from "../components/HealthBadge";
+import { useMemo, useState } from "react";
+import { workflowListResponseSchema } from "@/api/schemas/workflow";
+import ControlStateBadge from "@/components/ControlStateBadge";
+import DataStatusStrip from "@/components/DataStatusStrip";
+import HealthBadge from "@/components/HealthBadge";
+import { CostCell, UsageCell } from "@/components/MeasurementCell";
+import OutcomeBadge from "@/components/OutcomeBadge";
+import { ErrorNotice, Loading } from "@/components/ResourceState";
+import RouteLink from "@/components/RouteLink";
+import When from "@/components/When";
+import { CONTROL_STATES } from "@/model/controlState";
+import { HEALTHS } from "@/model/health";
+import { formatCadence } from "@/model/time";
+import { type WorkflowRow, toWorkflowRow } from "@/model/workflowRow";
+import { usePageResource } from "@/shell/usePageResource";
 
-interface Props {
-  onNavigate: (page: string, workflowId?: string) => void;
+const ALL = "all";
+
+interface Filters {
+  health: string;
+  owner: string;
+  control: string;
+  search: string;
 }
 
-const AGENTS = ["All", "Marcus", "Claudius", "Augustus", "Trajan", "Aurelian"];
-const LIFECYCLES = ["All", "active", "paused", "retired"];
-const HEALTHS: (Health | "all")[] = ["all", "healthy", "running", "incomplete", "attention", "failed", "paused"];
+const matches = (row: WorkflowRow, f: Filters): boolean =>
+  (f.health === ALL || row.health === f.health) &&
+  (f.owner === ALL || row.owner === f.owner) &&
+  (f.control === ALL || row.controlState === f.control) &&
+  (f.search === "" || `${row.name} ${row.id}`.toLowerCase().includes(f.search.toLowerCase()));
 
-export default function Workflows({ onNavigate }: Props) {
-  const [filterHealth, setFilterHealth] = useState<string>("all");
-  const [filterAgent, setFilterAgent] = useState("All");
-  const [filterLifecycle, setFilterLifecycle] = useState("All");
-  const [expandedTriggers, setExpandedTriggers] = useState<string[]>([]);
-  const [search, setSearch] = useState("");
+export default function Workflows() {
+  const workflows = usePageResource("/api/v1/workflows", workflowListResponseSchema);
+  const [filters, setFilters] = useState<Filters>({ health: ALL, owner: ALL, control: ALL, search: "" });
+  const rows = useMemo(() => (workflows.data?.items ?? []).map(toWorkflowRow), [workflows.data]);
+  const owners = useMemo(() => [...new Set(rows.flatMap((r) => (r.owner ? [r.owner] : [])))].sort(), [rows]);
 
-  const filtered = WORKFLOWS.filter((w) => {
-    if (filterHealth !== "all" && w.health !== filterHealth) return false;
-    if (filterAgent !== "All" && w.agent !== filterAgent) return false;
-    if (filterLifecycle !== "All" && w.lifecycle !== filterLifecycle) return false;
-    if (search && !w.name.toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  });
-
-  const toggleTriggers = (id: string) => {
-    setExpandedTriggers((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
-  };
+  if (workflows.status === "error" && workflows.error) return <ErrorNotice what="the workflows" error={workflows.error} onRetry={workflows.refresh} />;
+  if (!workflows.data) return <Loading what="the workflows" />;
+  const filtered = rows.filter((r) => matches(r, filters));
+  const set = (patch: Partial<Filters>) => setFilters((f) => ({ ...f, ...patch }));
 
   return (
-    <div className="p-6 max-w-[1200px] mx-auto">
-      {/* Filters */}
-      <div className="flex items-center gap-3 mb-5 flex-wrap">
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Filter workflows…"
-          className="bg-surface border border-border rounded px-3 py-1.5 text-sm text-text placeholder:text-muted focus:outline-none focus:border-border-2 w-48"
-        />
-        <FilterSelect label="Health" value={filterHealth} onChange={setFilterHealth} options={HEALTHS.map((h) => ({ value: h, label: h === "all" ? "All health" : h }))} />
-        <FilterSelect label="Agent" value={filterAgent} onChange={setFilterAgent} options={AGENTS.map((a) => ({ value: a, label: a }))} />
-        <FilterSelect label="Lifecycle" value={filterLifecycle} onChange={setFilterLifecycle} options={LIFECYCLES.map((l) => ({ value: l, label: l === "All" ? "All lifecycle" : l }))} />
-        <span className="text-xs text-muted ml-auto">{filtered.length} workflows</span>
-      </div>
+    <>
+      <DataStatusStrip status={workflows.data.dataStatus} />
+      <div className="p-6 max-w-[1200px] mx-auto">
+        <div className="flex items-center gap-3 mb-5 flex-wrap">
+          <input
+            value={filters.search}
+            onChange={(e) => set({ search: e.target.value })}
+            placeholder="Filter workflows…"
+            aria-label="Filter workflows"
+            className="bg-surface border border-border rounded px-3 py-1.5 text-sm text-text placeholder:text-muted focus:outline-none focus:border-border-2 w-48"
+          />
+          <FilterSelect label="Health" value={filters.health} onChange={(health) => set({ health })} options={[ALL, ...HEALTHS]} allLabel="All health" />
+          <FilterSelect label="Owner" value={filters.owner} onChange={(owner) => set({ owner })} options={[ALL, ...owners]} allLabel="All owners" />
+          <FilterSelect label="Control" value={filters.control} onChange={(control) => set({ control })} options={[ALL, ...CONTROL_STATES]} allLabel="All control states" />
+          <span className="text-xs text-muted ml-auto font-mono" data-testid="workflow-count">
+            {filtered.length} of {rows.length} workflows
+          </span>
+        </div>
 
-      {/* Table */}
-      <div className="bg-surface border border-border rounded-md overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-xs text-muted">
-              <th className="text-left px-4 py-2.5 font-medium w-8"></th>
-              <th className="text-left px-4 py-2.5 font-medium">Workflow</th>
-              <th className="text-left px-4 py-2.5 font-medium">Agent</th>
-              <th className="text-left px-4 py-2.5 font-medium hidden lg:table-cell">Purpose</th>
-              <th className="text-left px-4 py-2.5 font-medium">Health</th>
-              <th className="text-left px-4 py-2.5 font-medium hidden xl:table-cell">Last run</th>
-              <th className="text-left px-4 py-2.5 font-medium hidden xl:table-cell">Next run</th>
-              <th className="text-left px-4 py-2.5 font-medium hidden xl:table-cell">Latest output</th>
-              <th className="text-right px-4 py-2.5 font-medium">Reliability</th>
-              <th className="text-right px-4 py-2.5 font-medium hidden lg:table-cell">Tokens</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {filtered.map((wf) => (
-              <React.Fragment key={wf.id}>
-                <tr
-                  className="hover:bg-surface-3 transition-colors cursor-pointer"
-                  onClick={() => onNavigate("workflow-detail", wf.id)}
-                >
+        <div className="bg-surface border border-border rounded-md overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-xs text-muted">
+                <th className="text-left px-4 py-2.5 font-medium">Workflow</th>
+                <th className="text-left px-4 py-2.5 font-medium">Owner</th>
+                <th className="text-left px-4 py-2.5 font-medium">Health</th>
+                <th className="text-left px-4 py-2.5 font-medium">Control</th>
+                <th className="text-left px-4 py-2.5 font-medium hidden lg:table-cell">Last run</th>
+                <th className="text-left px-4 py-2.5 font-medium hidden xl:table-cell">Next run</th>
+                <th className="text-left px-4 py-2.5 font-medium hidden xl:table-cell">Cadence</th>
+                <th className="text-right px-4 py-2.5 font-medium hidden lg:table-cell">Tokens</th>
+                <th className="text-right px-4 py-2.5 font-medium hidden lg:table-cell">Cost</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {filtered.map((row) => (
+                <tr key={row.id} className="hover:bg-surface-3 transition-colors">
                   <td className="px-4 py-3">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); toggleTriggers(wf.id); }}
-                      className="text-muted text-xs hover:text-text-2 transition-colors"
-                      aria-label="Toggle triggers"
-                    >
-                      {expandedTriggers.includes(wf.id) ? "▾" : "▸"}
-                    </button>
+                    <RouteLink to={{ name: "workflow", id: row.id }} className="font-medium text-text hover:text-accent">{row.name}</RouteLink>
+                    <div className="text-[10px] font-mono text-muted">{row.id}</div>
                   </td>
-                  <td className="px-4 py-3">
-                    <span className="font-medium text-text">{wf.name}</span>
+                  <td className="px-4 py-3 text-text-2">{row.owner ?? <span className="text-muted">—</span>}</td>
+                  <td className="px-4 py-3"><HealthBadge health={row.health} /></td>
+                  <td className="px-4 py-3"><ControlStateBadge state={row.controlState} /></td>
+                  <td className="px-4 py-3 hidden lg:table-cell">
+                    <div className="flex items-center gap-2">
+                      <When iso={row.lastRunAt} />
+                      {row.lastOutcome !== "unknown" && <OutcomeBadge outcome={row.lastOutcome} />}
+                    </div>
                   </td>
-                  <td className="px-4 py-3 text-text-2">{wf.agent}</td>
-                  <td className="px-4 py-3 text-text-2 text-xs max-w-[220px] truncate hidden lg:table-cell">{wf.purpose}</td>
-                  <td className="px-4 py-3"><HealthBadge health={wf.health} /></td>
-                  <td className="px-4 py-3 text-muted font-mono text-xs hidden xl:table-cell">{wf.lastRun}</td>
-                  <td className="px-4 py-3 text-muted font-mono text-xs hidden xl:table-cell">{wf.nextRun}</td>
-                  <td className="px-4 py-3 text-text-2 text-xs max-w-[140px] truncate hidden xl:table-cell">{wf.latestOutput}</td>
-                  <td className="px-4 py-3 text-right">
-                    <ReliabilityBar pct={wf.reliability7d} />
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono text-xs text-text-2 hidden lg:table-cell">{wf.tokens}</td>
+                  <td className="px-4 py-3 hidden xl:table-cell"><When iso={row.nextRunAt} estimated={row.nextRunEstimated} /></td>
+                  <td className="px-4 py-3 font-mono text-xs text-text-2 hidden xl:table-cell" title={row.cadenceSpec ?? undefined}>{formatCadence(row.cadenceSeconds) ?? "—"}</td>
+                  <td className="px-4 py-3 text-right hidden lg:table-cell"><UsageCell usage={row.usage} /></td>
+                  <td className="px-4 py-3 text-right hidden lg:table-cell"><CostCell cost={row.cost} /></td>
                 </tr>
-                {expandedTriggers.includes(wf.id) && (
-                  <tr key={`${wf.id}-triggers`} className="bg-surface-2">
-                    <td />
-                    <td colSpan={9} className="px-4 py-3">
-                      <div className="text-xs text-text-2 space-y-1.5">
-                        <p className="text-muted font-medium uppercase tracking-wider text-[10px] mb-2">Triggers & schedules</p>
-                        <div className="flex items-center gap-3 font-mono">
-                          <span className="text-accent">①</span>
-                          <span>{wf.trigger}</span>
-                          <span className="text-muted">·</span>
-                          <span>Timezone: Europe/London</span>
-                          <span className="text-muted">·</span>
-                          <span>Catch-up: disabled</span>
-                        </div>
-                        <div className="flex items-center gap-3 font-mono mt-1">
-                          <span className="text-muted">Eligibility:</span>
-                          <span>No eligibility constraints</span>
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </React.Fragment>
-            ))}
-          </tbody>
-        </table>
-        {filtered.length === 0 && (
-          <div className="p-8 text-center text-text-2 text-sm">No workflows match the current filters.</div>
-        )}
+              ))}
+            </tbody>
+          </table>
+          {filtered.length === 0 && <div className="p-8 text-center text-text-2 text-sm">No workflows match the current filters.</div>}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
-function FilterSelect({ label, value, onChange, options }: {
-  label: string; value: string; onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-}) {
+function FilterSelect({ label, value, onChange, options, allLabel }: { label: string; value: string; onChange: (v: string) => void; options: readonly string[]; allLabel: string }) {
   return (
     <select
       value={value}
@@ -139,20 +115,8 @@ function FilterSelect({ label, value, onChange, options }: {
       aria-label={label}
     >
       {options.map((o) => (
-        <option key={o.value} value={o.value} className="bg-surface-2">{o.label}</option>
+        <option key={o} value={o} className="bg-surface-2">{o === ALL ? allLabel : o}</option>
       ))}
     </select>
-  );
-}
-
-function ReliabilityBar({ pct }: { pct: number }) {
-  const color = pct >= 90 ? "bg-green" : pct >= 75 ? "bg-amber" : "bg-red";
-  return (
-    <div className="flex items-center justify-end gap-2">
-      <div className="w-16 h-1.5 bg-surface-3 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
-      </div>
-      <span className="text-xs font-mono text-text-2 w-9 text-right">{pct}%</span>
-    </div>
   );
 }
