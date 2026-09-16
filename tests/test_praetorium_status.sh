@@ -4,9 +4,8 @@
 #
 # WHAT WAS AND WAS NOT ALREADY COVERED. tests/test_ops_view.sh looks like coverage and is
 # not: it STUBS praetorium-status.sh with a one-line marker to prove ops-view.sh embeds
-# *something*. tests/test_working_memory_status.sh does run the real script, but asserts one
-# section (NUC-21 working memory) and nothing else — so that section is deliberately not
-# re-asserted here.
+# *something*. tests/test_working_memory_status.sh ran the real script for one section (NUC-21
+# working memory); both went with T6.1 (2026-09-16), and this file asserts the section's absence.
 #
 # THE HIGHEST-VALUE THING THIS FILE PINS is the user-services block. Brief 5 replaced a
 # two-unit whitelist with a `systemctl --user --failed` query and proved both branches BY
