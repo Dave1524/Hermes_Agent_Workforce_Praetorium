@@ -155,6 +155,19 @@ class LastActionFromReceipts(unittest.TestCase):  # (::control-last-action-from-
         self.assertIn("bad.json", stderr.getvalue())
         self.assertEqual(stderr.getvalue().count("bad.json"), 1)
 
+    def test_same_second_tie_goes_to_the_receipt_written_last(self):
+        first = json.loads((FIXTURE / "receipts" / "knowledge-digest" / "20260913T193000Z-resume-447a45.json").read_text())
+        with tempfile.TemporaryDirectory() as temp:
+            folder = pathlib.Path(temp) / "buzz-agent@marcus"
+            folder.mkdir()
+            for suffix, reason in (("ffffff", "clicked first"), ("000000", "clicked last")):
+                receipt = {**first, "receipt_id": f"20260913T193000Z-start-{suffix}", "action": "start", "reason": reason}
+                path = folder / f"{receipt['receipt_id']}.json"
+                path.write_text(json.dumps(receipt))
+                os.utime(path, ns=(1_000_000_000, 1_000_000_000 + (1 if suffix == "000000" else 0)))
+            last = control.ControlReceipts(pathlib.Path(temp)).last_action("buzz-agent@marcus")
+        self.assertEqual((last["receiptId"], last["reason"]), ("20260913T193000Z-start-000000", "clicked last"))
+
     def test_missing_root_and_no_receipts(self):
         self.assertIsNone(control.ControlReceipts(FIXTURE / "receipts").last_action("scorecard"))
         self.assertIsNone(control.ControlReceipts(pathlib.Path("/nonexistent/receipts")).last_action("knowledge-digest"))

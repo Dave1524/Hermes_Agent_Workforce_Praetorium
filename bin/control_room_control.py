@@ -148,19 +148,29 @@ class BrokerClient:
             chunks.append(chunk)
 
 
+# completed_at is whole seconds, so an unconfirmed click and its confirmed retry can share one;
+# the file written last is the newer receipt.
+def _written_at(path: pathlib.Path) -> int:
+    try:
+        return path.stat().st_mtime_ns
+    except OSError:
+        return 0
+
+
 class ControlReceipts:
     def __init__(self, root: pathlib.Path | str) -> None:
         self.root = pathlib.Path(root)
 
     def last_action(self, logical_id: str) -> dict[str, Any] | None:
-        newest = None
+        newest: tuple[tuple[str, int], pathlib.Path, dict[str, Any]] | None = None
         for path in self._paths(logical_id):
             receipt = self._load(path)
             if receipt is None or receipt.get("result") == "previewed":
                 continue
-            if newest is None or str(receipt.get("completed_at")) > str(newest[1].get("completed_at")):
-                newest = (path, receipt)
-        return self._seam(*newest) if newest else None
+            order = (str(receipt.get("completed_at")), _written_at(path))
+            if newest is None or order > newest[0]:
+                newest = (order, path, receipt)
+        return self._seam(newest[1], newest[2]) if newest else None
 
     def _paths(self, logical_id: str) -> list[pathlib.Path]:
         try:
