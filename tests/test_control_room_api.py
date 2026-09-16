@@ -344,6 +344,34 @@ class ControlRoomApiTest(unittest.TestCase):
         self.assertEqual(daily["lastValidArtifact"]["kind"], "artifact")
         self.assertEqual(daily["lastValidArtifact"]["ageSeconds"], 3540)
 
+    def test_reliability_7d_counts_eligible_and_valid_per_utc_day(self):  # (::control-room-overview-reliability)
+        self.write_receipt(run="run-a", outcome="artifact")
+        self.write_receipt(run="run-b", outcome="failed")
+        self.write_receipt(run="run-c", outcome="skipped")
+        self.write_receipt(run="run-d", outcome="decline")
+        stale = self.receipts / "daily-plan" / "run-d.json"
+        stale.write_text(stale.read_text().replace("2026-09-11T07:0", "2026-09-09T07:0"))
+        series = self.model.overview()["reliability7d"]
+        self.assertEqual(series["status"], "measured")
+        days = series["days"]
+        self.assertEqual([d["day"] for d in days], [f"2026-09-{n:02d}" for n in range(5, 12)])
+        by_day = {d["day"]: d for d in days}
+        self.assertEqual(by_day["2026-09-11"], {"day": "2026-09-11", "eligible": 2, "valid": 1})
+        self.assertEqual(by_day["2026-09-09"], {"day": "2026-09-09", "eligible": 1, "valid": 0})
+        self.assertEqual(by_day["2026-09-10"], {"day": "2026-09-10", "eligible": 0, "valid": 0})
+        for day in days:
+            self.assertGreaterEqual(day["eligible"], day["valid"], day)
+
+    def test_reliability_7d_is_unavailable_without_receipts(self):  # (::control-room-overview-reliability)
+        model = api.ControlRoomReadModel(
+            api.SourcePaths(self.repo, self.runtime, self.runtime / "no-such-dir"),
+            systemd=FakeSystemd(),
+            clock=lambda: self.now,
+        )
+        overview = model.overview()
+        self.assertEqual(overview["dataStatus"]["receipts"], "unavailable")
+        self.assertEqual(overview["reliability7d"], {"status": "unavailable", "days": []})
+
     def test_http_routes_are_read_only_and_fail_closed(self):
         server = api.make_server("127.0.0.1", 0, self.model)
         thread = threading.Thread(target=server.serve_forever, daemon=True)

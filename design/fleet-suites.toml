@@ -309,6 +309,7 @@ owner   = "fleet"
 asserts = [
   "control-room-api",           # logical reconciliation, truthful unavailable states and read-only HTTP boundary
   "control-room-control-state", # per-trigger paused/active/running/unknown from systemd, ISO-UTC stamps, control block, links
+  "control-room-overview-reliability", # overview.reliability7d: seven UTC days, eligible >= valid, skipped uncounted, an empty day is 0, no receipts is unavailable (T5.3e)
   "incidents-api-failed",       # a failed check is one failed-assertion incident keyed by workflow, timer paused or not (T5.3c)
   "incidents-api-silence",      # artifact and decline receipts derive no run incident
   "incidents-api-dedup-key",    # malformed receipts are keyed by path, stable when a third arrives
@@ -323,8 +324,8 @@ workflow would credit that workflow with a suite that primarily tests every othe
 path    = "tests/test_control_room_views.sh"
 owner   = "fleet"
 asserts = [
-  "control-room-30-of-31",            # 31 standing entries render as exactly 30 Portfolio rows, augustus-content once with two trigger chips
-  "control-room-exceptions-default",  # / is 302 to /exceptions; the queue lists raw-ingest first as failed
+  "control-room-30-of-31",            # the standing entries render as exactly one Portfolio row per logical workflow — the two constants in tests/test_control_room_views.py, never a number here — augustus-content once with two trigger chips
+  "control-room-exceptions-default",  # / is 302 to /app/; the SPA shell's Overview reads /api/v1/exceptions; the SSR queue still lists raw-ingest first as failed
   "control-room-failed-check-named",  # the failed assertion id is in the queue row and on the workflow page's Runs
   "control-room-paused-owned",        # 12 paused trigger chips, 11 paused rows, none in missed-cadence/missing-artifact; paused is not failed
   "control-room-stale-while-paused",  # knowledge-digest is paused AND its artifact cell is stale with the Notion link
@@ -332,7 +333,8 @@ asserts = [
   "control-room-notion-link",         # artifact links open in Notion with target=_blank rel=noopener
   "control-room-lineage",             # six data-stage items on the workflow page; a stage without a source renders Unknown
   "control-room-usage-truthful",      # the usage strip sums only measured receipts; claudius reads unavailable
-  "control-room-static-fails-closed", # /static/ serves css/js/svg from one directory and 404s everything else, including escapes
+  "control-room-static-fails-closed", # /static/ serves css/js/svg and /app/assets/ serves css/js/svg/woff2, each from one flat directory; everything else 404s, including escapes and index.html
+  "control-room-spa-shell",           # /app and every client route serve the committed index.html with the full HTML headers; HEAD empty; .. refused; the shell references only /app/assets/, no inline script or style, no http; a missing shell is a JSON 404 (T5.3e)
   "control-room-html-headers",        # CSP default-src 'self', X-Frame-Options DENY, Cache-Control no-store on every HTML response; HEAD has no body
   "control-room-control-stub-501",    # the two POST stubs validate then answer 501; every other write is 405; GET on control paths is 405
   "control-room-serve-tailscale-only",# the launcher binds the tailscale ip -4 address and refuses to start without one
@@ -341,6 +343,21 @@ why_no_workflow = """
 It tests the screen every workflow is rendered on and the hosting boundary that keeps it
 private. The screen is an operator surface, not a manifest workflow: it runs always-on from
 control-room.service, produces no artifact of its own and owes no cadence.
+"""
+
+# T5.3e — the SPA build committed under bin/control_room_ui/app/. Its source is ui/control-room/,
+# which bin/deploy never ships; what keeps the committed bytes equal to the source is a hash of
+# every tracked source file stamped into BUILD.json and recomputed by the gate on any machine,
+# with a real rebuild-and-diff where Node is present (CI, and the box when node_modules exist).
+[[suite]]
+path    = "tests/test_control_room_spa.sh"
+owner   = "fleet"
+asserts = [
+  "control-room-spa-build",  # BUILD.json's source_sha256 equals bin/control_room_ui_stamp.sh over ui/control-room; index.html hygiene; with Node: typecheck, vitest, and a rebuild byte-identical to the committed output
+]
+why_no_workflow = """
+It tests the screen's build artefact, not a workflow. The SPA renders every workflow and owes
+no cadence of its own; the stamp is what makes a source edit without a rebuild red without Node.
 """
 
 # T5.3a — the live controls behind that screen. The broker is root-side and allowlisted; the
