@@ -97,13 +97,18 @@ export default function WorkflowDetail({ workflowId }: { workflowId: string }) {
           </Panel>
 
           <Panel title="Lineage">
-            {d.lineage.length === 0 && <p className="text-xs text-muted">No lineage recorded.</p>}
-            {d.lineage.map((s) => (
-              <Row key={s.stage} label={s.stage}>
-                {s.value.length === 0 ? "—" : s.value.join(", ")}
-                {s.source && <span className="text-muted"> · {s.source}</span>}
-              </Row>
-            ))}
+            <p className="text-xs text-muted mb-2">Each stage names where its value came from; a stage with nothing behind it is Unknown, never a guess.</p>
+            <ol className="space-y-1" data-testid="lineage">
+              {d.lineage.map((s, i) => (
+                <li key={s.stage} className="flex gap-3 text-xs py-1 border-b border-border last:border-0">
+                  <span className="font-mono text-muted w-24 shrink-0">{i + 1}. {s.stage.replace("_", " ")}</span>
+                  <span className="flex-1 min-w-0 text-text-2 break-words">
+                    {s.value.length === 0 ? <span className="text-muted">Unknown</span> : s.value.map((v) => <span key={v} className="block">{v}</span>)}
+                  </span>
+                  <span className="font-mono text-muted shrink-0">{s.source ?? ""}</span>
+                </li>
+              ))}
+            </ol>
           </Panel>
 
           <Panel title="Contract & links">

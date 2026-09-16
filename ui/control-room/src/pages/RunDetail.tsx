@@ -92,7 +92,17 @@ export default function RunDetail({ runId }: { runId: string }) {
 
           <Panel title="Receipt">
             <Row label="Receipt">{run.receiptPath ?? "—"}</Row>
-            <Row label="Parent run">{run.parentRunId ? <RouteLink to={{ name: "run", id: run.parentRunId }} className="text-accent hover:underline">{run.parentRunId}</RouteLink> : "—"}</Row>
+          </Panel>
+
+          <Panel title="Agent handoff">
+            {run.parentRunId === null && run.handoff === null ? (
+              <p className="text-xs text-muted" data-testid="handoff">Unknown — no handoff telemetry (T5.3d).</p>
+            ) : (
+              <div data-testid="handoff">
+                <Row label="Parent run">{run.parentRunId ? <RouteLink to={{ name: "run", id: run.parentRunId }} className="text-accent hover:underline">{run.parentRunId}</RouteLink> : "—"}</Row>
+                {run.handoff !== null && <pre className="mt-2 text-[11px] font-mono text-text-2 bg-surface-2 border border-border rounded p-3 overflow-x-auto whitespace-pre-wrap">{JSON.stringify(run.handoff, null, 2)}</pre>}
+              </div>
+            )}
           </Panel>
         </div>
       </div>

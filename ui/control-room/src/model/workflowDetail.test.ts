@@ -8,7 +8,9 @@ describe("toWorkflowDetail", () => {
     expect(d.purpose).toBe("Mirror the agent inbox into Notion");
     expect(d.contract?.artifact).toBe("notion row");
     expect(d.triggers[0]).toMatchObject({ unit: "agent-inbox-sync.timer", timerState: "active", nextRunAt: "2026-09-14T07:15:00Z", spec: "*:0/15" });
-    expect(d.lineage.map((s) => s.stage)).toEqual(["trigger", "runner", "artifact"]);
+    expect(d.lineage.map((s) => s.stage)).toEqual(["source", "selection", "trigger", "agent", "output", "human_action", "runner", "artifact"]);
+    expect(d.lineage[2]).toEqual({ stage: "trigger", value: ["agent-inbox-sync.timer"], source: "unit" });
+    expect(d.lineage[0]).toEqual({ stage: "source", value: [], source: null });
     expect(d.benefit?.decision).toBe("Keep");
     expect(d.links?.contractGithub).toContain("github.com");
     expect(d.actions.find((a) => a.id === "pause")).toEqual({ id: "pause", enabled: true, reason: null });
@@ -25,5 +27,7 @@ describe("toWorkflowDetail", () => {
     expect(d.benefit).toBeNull();
     expect(d.actions).toEqual([]);
     expect(d.lastRun).toBeNull();
+    expect(d.lineage).toHaveLength(6);
+    expect(d.lineage.every((s) => s.value.length === 0 && s.source === null)).toBe(true);
   });
 });

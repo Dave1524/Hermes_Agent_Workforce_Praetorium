@@ -28,6 +28,11 @@ export default function Incidents() {
     <>
       <DataStatusStrip status={resource.data.dataStatus} />
       <div className="p-6 max-w-[1000px] mx-auto">
+        <div className="bg-surface border border-border rounded-md p-4 mb-5 text-xs text-text-2">
+          <span className="text-text font-medium">Buzz notification rules:</span> immediate notification only when Dave must act; repeated observations are
+          deduplicated; one daily digest carries every unresolved incident; a recovery message closes it. Acknowledge and resolve are CLI-side
+          (`workflow_incidents.py declare|resolve`); this screen reads.
+        </div>
         <div className="flex gap-0 border-b border-border mb-5" role="tablist">
           {TABS.map((t) => (
             <button

@@ -38,6 +38,7 @@ export interface Run {
   cost: Measurement<Cost>;
   nextAction: NextAction | null;
   parentRunId: string | null;
+  handoff: unknown;
   receiptPath: string | null;
 }
 
@@ -58,5 +59,6 @@ export const toRun = (r: RunSummary): Run => ({
   cost: costFromSnake(r.cost),
   nextAction: r.nextAction ? { actor: r.nextAction.actor ?? null, action: r.nextAction.action ?? null, dueAt: r.nextAction.due_at ?? null } : null,
   parentRunId: r.parentRunId ?? null,
+  handoff: r.handoff ?? null,
   receiptPath: r.receiptPath ?? null,
 });

@@ -22,6 +22,7 @@ export interface WorkflowRow {
   cost: Measurement<Cost>;
   artifactFreshness: string | null;
   receiptCount: number | null;
+  validArtifactRate: number | null;
 }
 
 export const toWorkflowRow = (w: Workflow): WorkflowRow => ({
@@ -42,4 +43,5 @@ export const toWorkflowRow = (w: Workflow): WorkflowRow => ({
   cost: costFromSnake(w.cost),
   artifactFreshness: w.artifactFreshness ?? null,
   receiptCount: w.receiptCount ?? null,
+  validArtifactRate: w.validArtifactRate ?? null,
 });

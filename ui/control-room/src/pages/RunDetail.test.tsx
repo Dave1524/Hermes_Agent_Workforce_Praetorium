@@ -19,6 +19,7 @@ describe("RunDetail", () => {
     expect(screen.getByText("$0.42")).toBeInTheDocument();
     expect(screen.getByText("2m 30s")).toBeInTheDocument();
     expect(screen.getByTestId("assertions")).toHaveTextContent(/pass\s*row-written/);
+    expect(screen.getByTestId("handoff")).toHaveTextContent("Unknown — no handoff telemetry (T5.3d).");
   });
 
   it("renders a failed run with unavailable usage and the failed assertion", async () => {
@@ -27,6 +28,13 @@ describe("RunDetail", () => {
     await waitFor(() => expect(document.querySelector("[data-outcome='failed']")).toBeInTheDocument());
     expect(screen.getAllByText("unavailable")).toHaveLength(2);
     expect(screen.getByTestId("assertions")).toHaveTextContent(/fail\s*proposal-or-decline\s*— neither a proposal nor DECLINE:/);
+  });
+
+  it("renders the handoff block when the run carries a parent", async () => {
+    mockFetch({ "/api/v1/runs/child": envelope({ ...measuredRun, id: "child", parentRunId: "run-0914", handoff: { from: "marcus", to: "trajan" } }) });
+    renderInShell(<RunDetail runId="child" />);
+    await waitFor(() => expect(screen.getByTestId("handoff")).toHaveTextContent("run-0914"));
+    expect(screen.getByTestId("handoff")).toHaveTextContent("trajan");
   });
 
   it("shows a 404 as an error notice", async () => {

@@ -114,6 +114,7 @@ export default function Usage() {
                     <th className="text-left px-4 py-2.5 font-medium">Owner</th>
                     <th className="text-right px-4 py-2.5 font-medium">Tokens</th>
                     <th className="text-right px-4 py-2.5 font-medium">Cost</th>
+                    <th className="text-right px-4 py-2.5 font-medium">Valid artifact rate</th>
                     <th className="text-right px-4 py-2.5 font-medium">Receipts</th>
                   </tr>
                 </thead>
@@ -124,6 +125,7 @@ export default function Usage() {
                       <td className="px-4 py-2.5 text-text-2">{r.owner ?? "—"}</td>
                       <td className="px-4 py-2.5 text-right"><UsageCell usage={r.usage} /></td>
                       <td className="px-4 py-2.5 text-right"><CostCell cost={r.cost} /></td>
+                      <td className="px-4 py-2.5 text-right font-mono text-xs text-text-2">{r.validArtifactRate === null ? "—" : `${Math.round(r.validArtifactRate * 100)}%`}</td>
                       <td className="px-4 py-2.5 text-right font-mono text-xs text-muted">{r.receiptCount ?? "—"}</td>
                     </tr>
                   ))}

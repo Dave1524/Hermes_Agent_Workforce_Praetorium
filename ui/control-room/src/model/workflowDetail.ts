@@ -73,6 +73,19 @@ const toTrigger = (t: Trigger): TriggerView => ({
 
 const lineageValue = (v: string | string[] | null | undefined): string[] => (Array.isArray(v) ? v : v ? [v] : []);
 
+// bin/control_room_lineage.py STAGES; a stage the API did not send renders Unknown, never a guess.
+export const LINEAGE_STAGES = ["source", "selection", "trigger", "agent", "output", "human_action"] as const;
+
+const toLineage = (stages: Workflow["lineage"]): LineageView[] => {
+  const byStage = new Map(stages.map((s) => [s.stage, s]));
+  const known = LINEAGE_STAGES.map((stage) => {
+    const s = byStage.get(stage);
+    return { stage, value: lineageValue(s?.value), source: s?.source ?? null };
+  });
+  const extra = stages.filter((s) => !(LINEAGE_STAGES as readonly string[]).includes(s.stage)).map((s) => ({ stage: s.stage, value: lineageValue(s.value), source: s.source ?? null }));
+  return [...known, ...extra];
+};
+
 export const toWorkflowDetail = (w: Workflow): WorkflowDetail => ({
   row: toWorkflowRow(w),
   purpose: w.purpose ?? null,
@@ -82,7 +95,7 @@ export const toWorkflowDetail = (w: Workflow): WorkflowDetail => ({
   contractStatus: w.contractStatus ?? null,
   contractError: w.contractError ?? null,
   triggers: w.triggers.map(toTrigger),
-  lineage: w.lineage.map((s) => ({ stage: s.stage, value: lineageValue(s.value), source: s.source ?? null })),
+  lineage: toLineage(w.lineage),
   benefit: toBenefit(w.benefit),
   links: w.links
     ? {

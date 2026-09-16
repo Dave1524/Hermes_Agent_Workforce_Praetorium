@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { activeWorkflow, failedRun, overview, pausedWorkflow, unavailableWorkflow } from "@/api/fixtures.test-helpers";
 import { mockFetch } from "@/api/mockFetch.test-helpers";
 import { renderInShell } from "@/shell/render.test-helpers";
@@ -38,6 +38,8 @@ describe("WorkflowDetail", () => {
     renderInShell(<WorkflowDetail workflowId="weekly-pre-assembly" />);
     await waitFor(() => expect(screen.getByRole("heading", { name: "Weekly pre-assembly" })).toBeInTheDocument());
     expect(screen.getByText("No triggers wired to this workflow.")).toBeInTheDocument();
+    expect(screen.getByTestId("lineage").querySelectorAll("li")).toHaveLength(6);
+    expect(within(screen.getByTestId("lineage")).getAllByText("Unknown")).toHaveLength(6);
     expect(screen.getByText("No benefit ledger entry for this workflow.")).toBeInTheDocument();
     expect(document.querySelector("[data-health='unknown']")).toBeInTheDocument();
   });
