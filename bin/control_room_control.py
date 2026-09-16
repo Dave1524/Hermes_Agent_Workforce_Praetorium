@@ -26,7 +26,9 @@ from typing import Any, Callable
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from control_broker import validate_receipt  # noqa: E402
-from control_room_state import ACTION_IDS  # noqa: E402
+from control_room_state import ACTION_IDS, RUNTIME_ACTION_IDS  # noqa: E402
+
+CONTROL_ACTION_IDS = ACTION_IDS + tuple(action for action in RUNTIME_ACTION_IDS if action not in ACTION_IDS)
 
 DEFAULT_SOCKET = "/run/control-room-broker.sock"
 DEFAULT_RECEIPTS = "/var/lib/control-room/receipts"
@@ -146,19 +148,29 @@ class BrokerClient:
             chunks.append(chunk)
 
 
+# completed_at is whole seconds, so an unconfirmed click and its confirmed retry can share one;
+# the file written last is the newer receipt.
+def _written_at(path: pathlib.Path) -> int:
+    try:
+        return path.stat().st_mtime_ns
+    except OSError:
+        return 0
+
+
 class ControlReceipts:
     def __init__(self, root: pathlib.Path | str) -> None:
         self.root = pathlib.Path(root)
 
     def last_action(self, logical_id: str) -> dict[str, Any] | None:
-        newest = None
+        newest: tuple[tuple[str, int], pathlib.Path, dict[str, Any]] | None = None
         for path in self._paths(logical_id):
             receipt = self._load(path)
             if receipt is None or receipt.get("result") == "previewed":
                 continue
-            if newest is None or str(receipt.get("completed_at")) > str(newest[1].get("completed_at")):
-                newest = (path, receipt)
-        return self._seam(*newest) if newest else None
+            order = (str(receipt.get("completed_at")), _written_at(path))
+            if newest is None or order > newest[0]:
+                newest = (order, path, receipt)
+        return self._seam(newest[1], newest[2]) if newest else None
 
     def _paths(self, logical_id: str) -> list[pathlib.Path]:
         try:
@@ -187,11 +199,13 @@ class ControlReceipts:
             "reason": receipt.get("reason"),
             "at": receipt.get("completed_at"),
             "result": receipt.get("result"),
+            "refusal": (receipt.get("refusal") or {}).get("code"),
+            "note": receipt.get("note"),
             "before": (receipt.get("before") or {}).get("state"),
             "after": (receipt.get("after") or {}).get("state"),
             "receiptId": receipt.get("receipt_id"),
             "links": {"receipt": str(path), "run": links.get("run"), "previewReceipt": links.get("preview_receipt"),
-                      "workflow": links.get("workflow")},
+                      "workflow": links.get("workflow"), "agent": links.get("agent")},
         }
 
 
@@ -207,8 +221,8 @@ class ControlRoomControl:
 
 
 def validate_shape(body: dict[str, Any]) -> str | None:
-    if body.get("action") not in ACTION_IDS:
-        return f"action must be one of {', '.join(ACTION_IDS)}"
+    if body.get("action") not in CONTROL_ACTION_IDS:
+        return f"action must be one of {', '.join(CONTROL_ACTION_IDS)}"
     if not isinstance(body.get("workflow_id"), str) or not body["workflow_id"]:
         return "workflow_id must be a non-empty string"
     return None

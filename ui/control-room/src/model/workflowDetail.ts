@@ -1,4 +1,4 @@
-import type { Contract, Trigger, Workflow } from "@/api/schemas/workflow";
+import type { Contract, LastAction, Trigger, Workflow } from "@/api/schemas/workflow";
 import { type Benefit, toBenefit } from "./benefit";
 import { type Run, toRun } from "./run";
 import { type WorkflowRow, toWorkflowRow } from "./workflowRow";
@@ -29,6 +29,9 @@ export interface ActionView {
   reason: string | null;
 }
 
+export const toActions = (control: Workflow["control"] | null | undefined): ActionView[] =>
+  (control?.actions ?? []).map((a) => ({ id: a.id, enabled: a.enabled, reason: a.reason ?? null }));
+
 export interface LinksView {
   contractLocal: string | null;
   contractGithub: string | null;
@@ -56,7 +59,7 @@ export interface WorkflowDetail {
   lastValidArtifactAt: string | null;
   controlSource: string | null;
   lastTriggerAt: string | null;
-  lastAction: unknown;
+  lastAction: LastAction | null;
 }
 
 const toTrigger = (t: Trigger): TriggerView => ({
@@ -109,7 +112,7 @@ export const toWorkflowDetail = (w: Workflow): WorkflowDetail => ({
         taskIds: w.links.taskIds,
       }
     : null,
-  actions: (w.control?.actions ?? []).map((a) => ({ id: a.id, enabled: a.enabled, reason: a.reason ?? null })),
+  actions: toActions(w.control),
   lastRun: w.lastRun ? toRun(w.lastRun) : null,
   incompleteRuns: w.incompleteRuns.map(toRun),
   lastValidArtifactAt: w.lastValidArtifact?.endedAt ?? null,

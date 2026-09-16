@@ -306,7 +306,17 @@ export const agentUp: Agent = {
   title: "Chief of staff",
   harness: "claude-agent-acp",
   manifest: "design/agents/marcus.toml",
-  runtime: { unit: "buzz-agent@marcus", scope: "user", state: "active", since: "2026-09-13T21:04:35Z" },
+  runtime: { unit: "buzz-agent@marcus", scope: "user", state: "active", since: "2026-09-13T21:04:35Z", unitFileState: "enabled" },
+  control: {
+    state: "active",
+    source: "systemd",
+    lastAction: null,
+    actions: [
+      { id: "start", enabled: false, reason: "runtime is active, not paused" },
+      { id: "stop", enabled: true, reason: null },
+      { id: "restart", enabled: true, reason: null },
+    ],
+  },
   health: "healthy",
   lastTurn: interactionTurn,
   turns7d: 3,
@@ -321,12 +331,45 @@ export const agentDown: Agent = {
   title: "Cold verification",
   harness: "claude-agent-acp",
   manifest: "design/agents/aurelian.toml",
-  runtime: { unit: "buzz-agent@aurelian", scope: "user", state: "unknown", since: null },
+  runtime: { unit: "buzz-agent@aurelian", scope: "user", state: "unknown", since: null, unitFileState: "unknown" },
+  control: {
+    state: "unknown",
+    source: "unavailable",
+    lastAction: null,
+    actions: [
+      { id: "start", enabled: false, reason: "systemd state unavailable" },
+      { id: "stop", enabled: false, reason: "systemd state unavailable" },
+      { id: "restart", enabled: false, reason: "systemd state unavailable" },
+    ],
+  },
   health: "unknown",
   lastTurn: null,
   turns7d: 0,
   usage7d: unavailableUsage.usage,
   cost7d: unavailableUsage.cost,
+  ownedWorkflows: [],
+  requiredBy: [],
+};
+
+// The fleet-off case (MEASURED 2026-09-16 on the box): inactive, disabled at boot, Start offered.
+export const agentPaused: Agent = {
+  ...agentUp,
+  name: "trajan",
+  title: "Platform steward",
+  runtime: { unit: "buzz-agent@trajan", scope: "user", state: "inactive", since: "2026-09-14T22:10:00Z", unitFileState: "disabled" },
+  control: {
+    state: "paused",
+    source: "systemd",
+    lastAction: null,
+    actions: [
+      { id: "start", enabled: true, reason: null },
+      { id: "stop", enabled: false, reason: "runtime is paused, not active" },
+      { id: "restart", enabled: false, reason: "runtime is paused, not active" },
+    ],
+  },
+  health: "unknown",
+  lastTurn: null,
+  turns7d: 0,
   ownedWorkflows: [],
   requiredBy: [],
 };

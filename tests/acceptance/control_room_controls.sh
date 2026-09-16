@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# Hand-run acceptance for the T5.3a workflow controls (Dave, once, at land). Runs ON the box and
-# changes no workflow state: every positive case is a preview or a refusal. Not under tests/*.sh,
-# so bin/verify.sh never runs it; tests/test_control_room_control.sh only lints it.
+# Hand-run acceptance for the T5.3a workflow controls and the T5.3g runtime controls (Dave, once,
+# at land). Runs ON the box and changes no workflow or runtime state: every positive case is a
+# preview or a refusal. Not under tests/*.sh, so bin/verify.sh never runs it;
+# tests/test_control_room_control.sh only lints it.
 #
 #   tests/acceptance/control_room_controls.sh [--screen http://100.86.82.16:8787]
 #
-# Steps 1-4 assert (PASS/FAIL); step 5 prints what to do on the screen from the Mac and asserts
-# nothing. The script greps itself first: it must never carry a resume apply or an enable.
+# Steps 1-4b assert (PASS/FAIL); step 5 prints what to do on the screen from the Mac and asserts
+# nothing. The script greps itself first: it must never carry a resume apply, an enable, or a
+# confirmed action — a confirmed start would bring a runtime up.
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
 
@@ -34,14 +36,14 @@ check() { # check <description> <command...>: PASS when the command exits 0
 # --- self-check: this script previews and refuses, never applies ------------------------------
 # The forbidden strings are assembled from halves so the literals never appear in this file and
 # a plain grep (tests/test_control_room_control.py) finds nothing either.
-forbidden=("--stage ap""ply" "enable --n""ow" 'stage":"ap''ply"')
+forbidden=("--stage ap""ply" "enable --n""ow" 'stage":"ap''ply"' "--con""firm" '"confirm":''true')
 for pattern in "${forbidden[@]}"; do
   if grep -q -F -- "$pattern" "$0"; then
     echo "FAIL: this script carries '$pattern' — refusing to run" >&2
     exit 1
   fi
 done
-pass "self-check: no apply, no enable in this script"
+pass "self-check: no apply, no enable, no confirm in this script"
 
 broker() { # broker <act args...>: the root copy through sudo, JSON on stdout
   sudo /usr/bin/python3 "$LIB" act "$@" 2>/dev/null
@@ -127,8 +129,8 @@ else flunk "its receipt is not the newest under _refused/"; fi
 
 out=$(broker stop knowledge-digest --reason x)
 if [ "$(field "$out" 'd["refusal"]["code"]')" = confirmation_required ]; then
-  pass "stop knowledge-digest without --confirm -> confirmation_required"
-else flunk "stop knowledge-digest without --confirm -> $(field "$out" 'd["refusal"]')"; fi
+  pass "stop knowledge-digest unconfirmed -> confirmation_required"
+else flunk "stop knowledge-digest unconfirmed -> $(field "$out" 'd["refusal"]')"; fi
 
 # raw-ingest declares no Retry row. Never use a declared workflow here: the CLI bypasses the
 # screen's failed-last-run rule and would start it.
@@ -136,6 +138,35 @@ out=$(broker retry raw-ingest --reason acceptance)
 if [ "$(field "$out" 'd["refusal"]["code"]')" = not_idempotent ]; then
   pass "retry raw-ingest -> not_idempotent"
 else flunk "retry raw-ingest -> $(field "$out" 'd["refusal"]')"; fi
+
+echo "== 4b. runtime verbs through the root copy (T5.3g) — refused before any state check"
+# Every runtime verb needs confirm, and the confirm flag is forbidden in this file (self-check
+# above), so these three refuse whatever the live state of the unit is. No agent starts, stops
+# or restarts here.
+for verb in start stop restart; do
+  out=$(broker "$verb" buzz-agent@marcus --reason acceptance)
+  if [ "$(field "$out" 'd["refusal"]["code"]')" = confirmation_required ]; then
+    pass "$verb buzz-agent@marcus (unconfirmed) -> confirmation_required"
+  else flunk "$verb buzz-agent@marcus (unconfirmed) -> $(field "$out" 'd["result"]') / $(field "$out" 'd["refusal"]')"; fi
+  if [ "$(field "$out" 'any(set(c["argv"]) & {"start", "stop", "restart"} for c in d["receipt"]["commands"])')" = False ]; then
+    pass "  and its receipt shows no mutating command"
+  else flunk "  but its receipt carries a mutating command"; fi
+done
+runtime_receipt=$(newest_receipt "$RECEIPTS/buzz-agent@marcus")
+if [ -n "$runtime_receipt" ] && [ "$(basename "$runtime_receipt" .json)" = "$(field "$out" 'd["receipt"]["receipt_id"]')" ]; then
+  pass "its receipt is under $RECEIPTS/buzz-agent@marcus/"
+else flunk "its receipt is not the newest under $RECEIPTS/buzz-agent@marcus/"; fi
+if [ "$(field "$out" 'd["receipt"]["links"]["agent"]')" = /agents/marcus ]; then
+  pass "its receipt links to /agents/marcus"
+else flunk "its receipt links.agent = $(field "$out" 'd["receipt"]["links"]["agent"]')"; fi
+if [ "$(field "$out" 'any("status" in c["argv"] or any(p.startswith("--property=") and ("ExecStart" in p or "Environment" in p) for p in c["argv"]) for c in d["receipt"]["commands"])')" = False ]; then
+  pass "its receipt's commands never ran status or read ExecStart/Environment"
+else flunk "its receipt's commands ran status or read ExecStart/Environment"; fi
+
+out=$(broker pause buzz-agent@marcus --reason acceptance)
+if [ "$(field "$out" 'd["refusal"]["code"]')" = unknown_action ]; then
+  pass "pause buzz-agent@marcus -> unknown_action (workflow verb on a runtime)"
+else flunk "pause buzz-agent@marcus -> $(field "$out" 'd["refusal"]')"; fi
 
 echo "== 5. screen (from the Mac; no assertion)"
 cat <<EOF
@@ -145,6 +176,15 @@ cat <<EOF
   confirmation_required).
   Click Resume -> the preview dialog states the catch-up implication -> Cancel.
   Nothing resumed; the fleet is still off.
+
+  Open $SCREEN/app/agents/marcus.
+  Expect the verbs the live state allows: with the unit active, 'Stop agent now' and 'Restart
+  agent now' enabled and 'Start agent now' disabled with 'runtime is active, not paused' as
+  tooltip; with it inactive, the reverse ('runtime is paused, not active'). boot: <unit file
+  state> beside the chip; last action = step 4b's refused restart (confirmation_required).
+  Click the one enabled verb -> the dialog states the boot policy (and, for Start, the
+  double-hosting risk and check-loaded.sh; for Stop/Restart, the dependents) -> Cancel.
+  Nothing started, stopped or restarted.
 EOF
 
 if [ "$fail" -eq 0 ]; then echo "ALL PASS"; else echo "SOME FAIL"; fi

@@ -35,15 +35,18 @@ const failed = (e: unknown): ControlState => {
   return { phase: "failed", status: 0, response: null, message: e instanceof Error ? e.message : String(e) };
 };
 
-// The stop rule is the broker's (reason_required); refusing before the POST just saves a round trip.
+const REASON_REQUIRED = new Set(["stop", "restart"]);
+const CONFIRMED = new Set(["stop", "start", "restart"]);
+
+// The reason rule is the broker's (reason_required); refusing before the POST just saves a round trip.
 const guard = (request: ControlSend): ControlState | null => {
-  if (request.action === "stop" && !(request.reason ?? "").trim()) {
-    return { phase: "refused", status: 0, response: null, refusal: { code: "reason_required", message: "stop needs a non-empty reason" } };
+  if (REASON_REQUIRED.has(request.action) && !(request.reason ?? "").trim()) {
+    return { phase: "refused", status: 0, response: null, refusal: { code: "reason_required", message: `${request.action} needs a non-empty reason` } };
   }
   return null;
 };
 
-const withConfirm = (request: ControlSend): ControlSend => (request.action === "stop" ? { ...request, confirm: true } : request);
+const withConfirm = (request: ControlSend): ControlSend => (CONFIRMED.has(request.action) ? { ...request, confirm: true } : request);
 
 export const useControlAction = (workflowId: string): ControlActionApi => {
   const [state, setState] = useState<ControlState>(IDLE);

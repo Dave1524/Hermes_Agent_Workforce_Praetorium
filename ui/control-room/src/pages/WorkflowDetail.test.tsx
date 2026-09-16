@@ -64,6 +64,9 @@ describe("WorkflowDetail", () => {
     expect(screen.queryByTestId("requires-chip")).toBeNull();
     expect(screen.getByTestId("dependent")).toHaveAttribute("data-enabled", "true");
     expect(within(screen.getByTestId("dependent")).getByRole("link", { name: "agent-inbox-sync" })).toHaveAttribute("href", "/app/workflows/agent-inbox-sync");
+    expect(screen.queryByTestId("controls")).toBeNull();
+    expect(screen.queryByRole("button", { name: /pause|resume|run now|retry|stop/i })).toBeNull();
+    expect(within(screen.getByTestId("runtime-controls-pointer")).getByRole("link", { name: "the marcus agent page" })).toHaveAttribute("href", "/app/agents/marcus");
     mockFetch({ "/api/v1/workflows/weekly-pre-assembly": envelope(unavailableWorkflow), "/api/v1/workflows/weekly-pre-assembly/runs": envelope([]) });
     renderInShell(<WorkflowDetail workflowId="weekly-pre-assembly" />);
     await waitFor(() => expect(screen.getByTestId("guards-chip")).toHaveAttribute("title", "Without it the weekly pre-read is never assembled."));
@@ -125,7 +128,8 @@ describe("WorkflowDetail controls", () => {
   it("an applied action re-fetches the workflow, redraws the control state and shows the receipt", async () => {
     const previewed = { receipt: { receipt_id: "rcpt-8", result: "previewed", action: "resume", stage: "preview" }, control: pausedWorkflow.control, preview: { preview_token: "rcpt-8", implication: { catchUp: false } } };
     const applied = { receipt: { receipt_id: "rcpt-9", result: "applied", action: "resume", stage: "apply", before: { state: "paused" }, after: { state: "active" }, next_scheduled_run: "2026-09-16T03:00:00Z" }, control: { ...pausedWorkflow.control, state: "active" } };
-    const resumed = { ...pausedWorkflow, control: { ...pausedWorkflow.control, state: "active", lastAction: applied.receipt } };
+    const lastAction = { action: "resume", actor: "dave via control-room from 100.125.209.101", reason: "", at: "2026-09-16T03:00:00Z", result: "applied", refusal: null, note: null, before: "paused", after: "active", receiptId: "rcpt-9", links: { receipt: "/var/lib/control-room/receipts/raw-ingest/rcpt-9.json", run: null, previewReceipt: "rcpt-8", workflow: "/workflows/raw-ingest" } };
+    const resumed = { ...pausedWorkflow, control: { ...pausedWorkflow.control, state: "active", lastAction } };
     const { calls } = mockFetch({
       "/api/v1/workflows/raw-ingest": [envelope(pausedWorkflow), envelope(resumed)],
       "/api/v1/workflows/raw-ingest/runs": envelope([failedRun]),
@@ -144,9 +148,9 @@ describe("WorkflowDetail controls", () => {
     expect(calls.filter((c) => c.path === "/api/v1/workflows/raw-ingest")).toHaveLength(2);
     fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("dialog")).toBeNull();
-    const receipt = within(controls).getByTestId("receipt");
-    expect(receipt).toHaveAttribute("data-result", "applied");
-    expect(receipt).toHaveTextContent("rcpt-9");
-    expect(receipt).toHaveTextContent(/paused → active/);
+    const last = within(controls).getByTestId("last-action");
+    expect(last).toHaveAttribute("data-result", "applied");
+    expect(last).toHaveTextContent("rcpt-9");
+    expect(last).toHaveTextContent(/paused → active/);
   });
 });

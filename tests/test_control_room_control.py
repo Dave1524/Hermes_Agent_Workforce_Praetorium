@@ -139,9 +139,11 @@ class LastActionFromReceipts(unittest.TestCase):  # (::control-last-action-from-
         with redirect_stderr(stderr):
             last = control.ControlReceipts(FIXTURE / "receipts").last_action("knowledge-digest")
         self.assertIsNotNone(last)
-        self.assertEqual(set(last), {"action", "actor", "reason", "at", "result", "before", "after", "receiptId", "links"})
+        self.assertEqual(set(last), {"action", "actor", "reason", "at", "result", "refusal", "note", "before", "after", "receiptId", "links"})
         self.assertEqual(last["receiptId"], "20260913T193000Z-resume-447a45")
         self.assertEqual(last["result"], "refused")
+        self.assertEqual(last["refusal"], json.loads((FIXTURE / "receipts" / "knowledge-digest" / "20260913T193000Z-resume-447a45.json").read_text())["refusal"]["code"])
+        self.assertIsNone(last["note"])
         self.assertEqual(last["action"], "resume")
         self.assertEqual(last["at"], "2026-09-13T19:30:00Z")
         self.assertIsInstance(last["actor"], str)
@@ -154,6 +156,19 @@ class LastActionFromReceipts(unittest.TestCase):  # (::control-last-action-from-
         self.assertIn("run", last["links"])
         self.assertIn("bad.json", stderr.getvalue())
         self.assertEqual(stderr.getvalue().count("bad.json"), 1)
+
+    def test_same_second_tie_goes_to_the_receipt_written_last(self):
+        first = json.loads((FIXTURE / "receipts" / "knowledge-digest" / "20260913T193000Z-resume-447a45.json").read_text())
+        with tempfile.TemporaryDirectory() as temp:
+            folder = pathlib.Path(temp) / "buzz-agent@marcus"
+            folder.mkdir()
+            for suffix, reason in (("ffffff", "clicked first"), ("000000", "clicked last")):
+                receipt = {**first, "receipt_id": f"20260913T193000Z-start-{suffix}", "action": "start", "reason": reason}
+                path = folder / f"{receipt['receipt_id']}.json"
+                path.write_text(json.dumps(receipt))
+                os.utime(path, ns=(1_000_000_000, 1_000_000_000 + (1 if suffix == "000000" else 0)))
+            last = control.ControlReceipts(pathlib.Path(temp)).last_action("buzz-agent@marcus")
+        self.assertEqual((last["receiptId"], last["reason"]), ("20260913T193000Z-start-000000", "clicked last"))
 
     def test_missing_root_and_no_receipts(self):
         self.assertIsNone(control.ControlReceipts(FIXTURE / "receipts").last_action("scorecard"))
@@ -360,6 +375,37 @@ class PostForwardsAndReconciles(unittest.TestCase):  # (::control-post-forwards-
         self.assertEqual(after["control"]["state"], "running")
         self.assertEqual(sorted(p.parent.name for p in self.broker.receipts.rglob("*.json")),
                          ["knowledge-digest", "knowledge-digest"])
+
+    def test_runtime_start_reconciles_from_the_re_read(self):  # (::control-runtime-post)
+        self.assertIsNone(control.validate_shape({"action": "start", "workflow_id": "buzz-agent@marcus"}))
+        self.assertIsNone(control.validate_shape({"action": "restart", "workflow_id": "buzz-agent@marcus"}))
+        self.assertIn("action must be one of", control.validate_shape({"action": "enable", "workflow_id": "buzz-agent@marcus"}))
+        before, _ = self.served.model.workflow_detail("buzz-agent@marcus")
+        self.assertEqual(before["control"]["state"], "paused")
+        self.assertEqual([a["id"] for a in before["control"]["actions"]], ["start", "stop", "restart"])
+        status, body = post(self.served.base, {"workflow_id": "buzz-agent@marcus", "action": "start"})
+        self.assertEqual(status, 400, body)
+        self.assertEqual(body["receipt"]["refusal"]["code"], "confirmation_required")
+        self.assertEqual(body["control"]["state"], "paused")
+        status, body = post(self.served.base, {"workflow_id": "buzz-agent@marcus", "action": "start", "confirm": True})
+        self.assertEqual(status, 200, body)
+        self.assertEqual(body["receipt"]["result"], "applied")
+        self.assertEqual(body["receipt"]["actor"]["kind"], "screen")
+        self.assertEqual(body["control"]["state"], "active")
+        actions = {a["id"]: a for a in body["control"]["actions"]}
+        self.assertEqual((actions["start"]["enabled"], actions["stop"]["enabled"], actions["restart"]["enabled"]),
+                         (False, True, True))
+        self.assertEqual(body["control"]["lastAction"]["receiptId"], body["receipt"]["receipt_id"])
+        self.assertEqual(body["control"]["lastAction"]["links"]["agent"], "/agents/marcus")
+        agent, _ = self.served.model.agent_detail("marcus")
+        self.assertEqual(agent["control"]["state"], "active")
+        self.assertEqual(agent["runtime"]["state"], "active")
+        self.assertEqual(agent["control"]["lastAction"]["action"], "start")
+        self.assertEqual(sorted(p.parent.name for p in self.broker.receipts.rglob("*.json")),
+                         ["buzz-agent@marcus", "buzz-agent@marcus"])
+        status, body = post(self.served.base, {"workflow_id": "buzz-agent@marcus", "action": "pause", "reason": "x"})
+        self.assertEqual(status, 400, body)
+        self.assertEqual(body["receipt"]["refusal"]["code"], "unknown_action")
 
     def test_refusals_travel_with_their_receipt(self):
         status, body = post(self.served.base, {"workflow_id": "nope", "action": "pause", "reason": "x"})

@@ -152,16 +152,23 @@ ls ~/.hermes/profiles/                              # base0, leantest, default (
   Since T5.3f (2026-09-16) every row carries a **role** derived from its `surface` —
   `agent-workflow`, `system-workflow`, `agent-runtime` — the Workflows page is two sections
   and never lists a runtime, and the five `buzz-agent@*` units are the **Agents** view
-  (`/app/agents`, `/api/v1/agents`; read-only, no start/stop). A manifest entry's `requires`
+  (`/app/agents`, `/api/v1/agents`). A manifest entry's `requires`
   names the units it cannot run without (`bin/workflow_requires.py`; grammar in
   `design/agent-model.md` §4): the row shows each one's live state with a tri-state
   `satisfied`, an enabled workflow with one known down is a `dependency-down` exception, and
   `bin/agent_propose.sh` / `bin/local_tier_eval.sh` refuse the run at pre-flight — unknown
   (bus unreachable) is never a refusal. `guards` is a declared one-sentence field on platform
-  entries only, rendered as a chip and an amber dialog notice, never a refusal. The broker
-  and its root-owned files are untouched by T5.3f.
+  entries only, rendered as a chip and an amber dialog notice, never a refusal.
+  Since T5.3g (2026-09-16) the agent page carries **Start / Stop / Restart agent now** — the
+  session verbs on the user unit through the same broker, allowlisted under a `runtimes`
+  table, receipted under `receipts/buzz-agent@<name>/`; the unit file's enable state is shown
+  as `boot: …` and never changed from the screen. The broker reads a fixed property list and
+  never runs `systemctl status` or reads `ExecStart`/`Environment` (the agent's private key
+  is in the process argv). Required-by is a notice, not a refusal. Runbook § Control Room
+  controls § Runtime controls.
 - `control-room-broker.socket` + `control-room-broker@.service` — the **control broker**
-  (T5.3a, 2026-09-14) behind the screen's pause / resume / run now / retry / stop: a root-owned
+  (T5.3a, 2026-09-14) behind the screen's pause / resume / run now / retry / stop and, since
+  T5.3g, the runtimes' start / stop / restart: a root-owned
   unix socket (`/run/control-room-broker.sock`, `root:control-room 0660`) that only
   `control-room.service` can reach, executing the **root-owned copy**
   `/usr/local/lib/control-room/control_broker.py` of `bin/control_broker.py` against the

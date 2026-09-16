@@ -50,6 +50,7 @@ export default function AgentCard({ agent, link = true }: { agent: AgentView; li
             {link ? <RouteLink to={{ name: "agent", id: agent.name }} className="text-base font-semibold text-text hover:text-accent">{agent.name}</RouteLink> : <h2 className="text-base font-semibold text-text">{agent.name}</h2>}
             <HealthBadge health={agent.health} />
             <RuntimeChip runtime={agent.runtime} />
+            {agent.runtime.unitFileState && <span className="text-[10px] font-mono text-muted" data-testid="boot-policy-chip">boot: {agent.runtime.unitFileState}</span>}
           </div>
           {agent.title && <p className="text-xs text-text-2 mt-0.5">{agent.title}</p>}
           <p className="text-[10px] font-mono text-muted mt-0.5">{agent.harness ?? "harness unknown"}{agent.runtime.unit && ` · ${agent.runtime.unit}`}</p>

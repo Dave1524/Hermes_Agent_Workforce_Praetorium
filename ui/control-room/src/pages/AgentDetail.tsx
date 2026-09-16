@@ -1,6 +1,7 @@
 import { agentDetailResponseSchema } from "@/api/schemas/agent";
 import { runListResponseSchema } from "@/api/schemas/run";
 import AgentCard from "@/components/AgentCard";
+import AgentControls from "@/components/AgentControls";
 import DataStatusStrip from "@/components/DataStatusStrip";
 import { Panel, Row } from "@/components/Panel";
 import { ErrorNotice, Loading } from "@/components/ResourceState";
@@ -27,6 +28,7 @@ export default function AgentDetail({ name }: { name: string }) {
           <span aria-hidden>←</span> Agents
         </RouteLink>
         <AgentCard agent={a} link={false} />
+        <AgentControls agent={a} onChanged={agent.refresh} />
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           <Panel title="Recent turns">
             {turns.status === "error" && turns.error && <ErrorNotice what="the turns" error={turns.error} onRetry={turns.refresh} />}
@@ -37,9 +39,10 @@ export default function AgentDetail({ name }: { name: string }) {
             <Row label="Unit">{a.runtime.unit ? <RouteLink to={{ name: "workflow", id: a.runtime.unit }} className="text-accent hover:underline">{a.runtime.unit}</RouteLink> : "—"}</Row>
             <Row label="Scope">{a.runtime.scope ?? "—"}</Row>
             <Row label="State">{a.runtime.state}</Row>
+            <Row label="Boot">{a.runtime.unitFileState ?? "—"}</Row>
             <Row label="Harness">{a.harness ?? "—"}</Row>
             <Row label="Manifest">{a.manifest ?? "—"}</Row>
-            <p className="text-xs text-muted mt-3">Read-only: starting or stopping a runtime is not a Control Room action.</p>
+            <p className="text-xs text-muted mt-3">Start, stop and restart act on the session; the boot policy is read from the unit file and never changed here.</p>
           </Panel>
         </div>
       </div>

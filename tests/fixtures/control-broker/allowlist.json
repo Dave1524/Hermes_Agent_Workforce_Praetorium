@@ -1,16 +1,37 @@
 {
   "excluded": [
     {
-      "owner": "marcus",
-      "reason": "kind = service (always-on, not a timer workflow)",
-      "unit": "buzz-agent@marcus"
-    },
-    {
       "owner": "trajan",
       "reason": "status = spent",
       "unit": "nekovri-subsidy-kickoff"
     }
   ],
+  "runtimes": {
+    "buzz-agent@augustus": {
+      "owner": "augustus",
+      "scope": "user",
+      "template": "buzz-agent@.service",
+      "unit": "buzz-agent@augustus"
+    },
+    "buzz-agent@flaky": {
+      "owner": "trajan",
+      "scope": "user",
+      "template": "buzz-agent@.service",
+      "unit": "buzz-agent@flaky"
+    },
+    "buzz-agent@marcus": {
+      "owner": "marcus",
+      "scope": "user",
+      "template": "buzz-agent@.service",
+      "unit": "buzz-agent@marcus"
+    },
+    "buzz-agent@slow": {
+      "owner": "claudius",
+      "scope": "user",
+      "template": "buzz-agent@.service",
+      "unit": "buzz-agent@slow"
+    }
+  },
   "schema": 1,
   "workflows": {
     "augustus-content": {
@@ -19,8 +40,14 @@
       "retry": false,
       "retry_reason": "contract declares no idempotent operation",
       "triggers": [
-        {"scope": "system", "unit": "augustus-content"},
-        {"scope": "system", "unit": "content-change-dispatch"}
+        {
+          "scope": "system",
+          "unit": "augustus-content"
+        },
+        {
+          "scope": "system",
+          "unit": "content-change-dispatch"
+        }
       ]
     },
     "buzz-pr-watch": {
@@ -29,7 +56,10 @@
       "retry": false,
       "retry_reason": "contract declares no idempotent operation",
       "triggers": [
-        {"scope": "user", "unit": "buzz-pr-watch"}
+        {
+          "scope": "user",
+          "unit": "buzz-pr-watch"
+        }
       ]
     },
     "knowledge-digest": {
@@ -38,7 +68,10 @@
       "retry": false,
       "retry_reason": "contract declares no idempotent operation",
       "triggers": [
-        {"scope": "system", "unit": "knowledge-digest"}
+        {
+          "scope": "system",
+          "unit": "knowledge-digest"
+        }
       ]
     },
     "local-tier-eval": {
@@ -47,7 +80,10 @@
       "retry": false,
       "retry_reason": "contract declares no idempotent operation",
       "triggers": [
-        {"scope": "system", "unit": "local-tier-eval"}
+        {
+          "scope": "system",
+          "unit": "local-tier-eval"
+        }
       ]
     },
     "masked-job": {
@@ -56,7 +92,10 @@
       "retry": false,
       "retry_reason": "contract not declared",
       "triggers": [
-        {"scope": "system", "unit": "masked-job"}
+        {
+          "scope": "system",
+          "unit": "masked-job"
+        }
       ]
     },
     "scorecard": {
@@ -65,7 +104,10 @@
       "retry": true,
       "retry_reason": "idempotent: deterministic over cost.log, unchanged week is not rewritten",
       "triggers": [
-        {"scope": "system", "unit": "scorecard"}
+        {
+          "scope": "system",
+          "unit": "scorecard"
+        }
       ]
     }
   }

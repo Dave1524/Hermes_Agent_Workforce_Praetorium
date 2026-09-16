@@ -1,12 +1,12 @@
 import { type DependentView, enabledDependents } from "@/model/requires";
 
 interface Props {
-  action: "pause" | "stop";
+  action: "pause" | "stop" | "restart";
   requiredBy: DependentView[];
   guards: string | null;
 }
 
-const VERB: Record<Props["action"], string> = { pause: "Pausing", stop: "Stopping" };
+const VERB: Record<Props["action"], string> = { pause: "Pausing", stop: "Stopping", restart: "Restarting" };
 
 // A notice, never a refusal: the broker decides, this only says what depends on the unit.
 export default function DependencyNotice({ action, requiredBy, guards }: Props) {
