@@ -252,6 +252,17 @@ class ControlRoomApiTest(unittest.TestCase):
         agent, _ = self.model.agent_detail("aurelian")
         self.assertEqual(agent["requiredBy"], [{"workflow": "augustus-content", "enabled": True}])
 
+    def test_dependency_down_is_an_exception_only_while_the_dependent_runs(self):  # (::control-room-dependency-down)
+        rows = [row for row in self.model.exceptions()["items"] if row["kind"] == "dependency-down"]
+        self.assertEqual([(row["workflowId"], row["issue"]) for row in rows],
+                         [("drift-check", "requires ollama.service (system): inactive")])
+        self.assertFalse(rows[0]["paused"])
+        paused = api.ControlRoomReadModel(api.SourcePaths(self.repo, self.runtime, self.receipts),
+                                          systemd=FakeSystemd(paused=True), clock=lambda: self.now)
+        self.assertEqual([row for row in paused.exceptions()["items"] if row["kind"] == "dependency-down"], [])
+        self.assertNotIn("augustus-content", {row["workflowId"] for row in rows},
+                         "an unreachable bus is unknown, and unknown is not an exception")
+
     def test_agents_are_one_per_persona_manifest(self):  # (::control-room-agents)
         items = self.model.agents()["items"]
         self.assertEqual([item["name"] for item in items], ["augustus", "aurelian", "marcus", "trajan"])

@@ -17,7 +17,8 @@ from typing import Any
 
 from workflow_receipt import iso_utc, parse_time
 
-KINDS = ("failed", "stale-input", "missing-artifact", "missed-cadence", "overdue-next-action", "unconsumed-output")
+KINDS = ("failed", "stale-input", "missing-artifact", "missed-cadence", "overdue-next-action", "unconsumed-output",
+         "dependency-down")
 UNCONSUMED_GRACE_SECONDS = 7 * 86400
 MISSED_GRACE_SECONDS = 900
 NEXT_RUN_SLACK_SECONDS = 3600
@@ -33,12 +34,13 @@ REQUIRED_ACTION = {
     "missed-cadence": "Check the timer and the service journal: the scheduled run left no receipt.",
     "overdue-next-action": "Do the owed next action or move its due date.",
     "unconsumed-output": "Open, approve, send or mark the output useful, or retire the workflow.",
+    "dependency-down": "Start the required unit or resume its workflow; until then every run is refused at pre-flight.",
 }
 
 
 def classify(workflow_item: dict[str, Any], receipts: list[dict[str, Any]], now: dt.datetime) -> list[dict[str, Any]]:
     context = _Context(workflow_item, receipts, now)
-    rows = [row for rule in (_failed_or_stale, _missing_artifact, _missed_cadence, _overdue, _unconsumed)
+    rows = [row for rule in (_failed_or_stale, _missing_artifact, _missed_cadence, _overdue, _unconsumed, _dependency_down)
             for row in rule(context)]
     return sorted(rows, key=lambda row: (KINDS.index(row["kind"]), row["since"] or ""))
 
@@ -171,3 +173,15 @@ def _unconsumed(ctx: _Context) -> list[dict[str, Any]]:
         return []
     issue = f"artifact from {last_valid.get('endedAt')} not opened, approved, sent or marked useful after {int(age // 86400)} days"
     return [ctx.row("unconsumed-output", issue, since=last_valid.get("endedAt"), receipt=receipt)]
+
+
+def _dependency_down(ctx: _Context) -> list[dict[str, Any]]:
+    """`requires` rows are tri-state (bin/workflow_requires.py); only a requirement known down
+    is owed an action, and a paused workflow is not running into it."""
+    if ctx.paused:
+        return []
+    down = [r for r in ctx.item.get("requires") or [] if isinstance(r, dict) and r.get("satisfied") is False]
+    if not down:
+        return []
+    issue = "requires " + "; ".join(f"{r.get('unit')} ({r.get('scope')}): {r.get('state')}" for r in down)
+    return [ctx.row("dependency-down", issue, since=None)]

@@ -35,7 +35,12 @@ def receipt(run, outcome, ended_seconds_ago, *, reason=None, assertions=(), next
     return body
 
 
-def item(receipts=(), *, state="active", next_run=None, last_trigger=None, artifact_declared=True):
+def requirement(unit, satisfied, *, scope="user", workflow=None):
+    state = {True: "active", False: "inactive", None: "unknown"}[satisfied]
+    return {"unit": unit, "scope": scope, "workflow": workflow, "state": state, "satisfied": satisfied}
+
+
+def item(receipts=(), *, state="active", next_run=None, last_trigger=None, artifact_declared=True, requires=()):
     receipts = list(receipts)
     artifacts = [r for r in receipts if r["terminal"]["outcome"] == "artifact"]
     eligible = [r for r in receipts if r["terminal"]["outcome"] != "skipped"]
@@ -52,6 +57,7 @@ def item(receipts=(), *, state="active", next_run=None, last_trigger=None, artif
         "lastValidArtifact": last_valid,
         "eligibleRuns": len(eligible),
         "validArtifactRate": (len(artifacts) / len(eligible)) if eligible else None,
+        "requires": list(requires),
     }
 
 
@@ -74,6 +80,7 @@ class ExceptionsKindTable(unittest.TestCase):  # (::exceptions-kind-table)
                                                  next_action={"actor": "Dave", "action": "review", "due_at": stamp(-DAY)})]),
             "unconsumed-output": item([receipt("r1", "artifact", 8 * DAY,
                                                consumption={"opened": False, "approved": False, "sent": False, "marked_useful": False})]),
+            "dependency-down": item([OLD_ARTIFACT], requires=[requirement("buzz-agent@augustus", False, workflow="buzz-agent@augustus")]),
         }
         self.assertEqual(tuple(cases), exceptions.KINDS)
         for kind, workflow in cases.items():
@@ -99,6 +106,7 @@ class ExceptionsKindTable(unittest.TestCase):  # (::exceptions-kind-table)
                                             next_action={"actor": "Dave", "action": "review", "due_at": stamp(-DAY)})],
             "unconsumed-output": [receipt("r1", "artifact", 8 * DAY,
                                           consumption={"opened": False, "approved": False, "sent": False, "marked_useful": False})],
+            "dependency-down": [OLD_ARTIFACT],
         }[kind]
 
     def test_failed_row_names_the_failed_assertion(self):
@@ -219,6 +227,42 @@ class ExceptionsMissedCadence(unittest.TestCase):  # (::exceptions-missed-cadenc
         self.assertEqual(exceptions.classify(workflow, [OLD_ARTIFACT], NOW), [])
 
 
+class ExceptionsDependencyDown(unittest.TestCase):  # (::exceptions-dependency-down)
+    def test_a_requirement_known_down_is_one_row_naming_every_down_unit(self):
+        workflow = item([OLD_ARTIFACT], requires=[requirement("buzz-agent@augustus", False, workflow="buzz-agent@augustus"),
+                                                  requirement("buzz-notion-broker", True),
+                                                  requirement("ollama.service", False, scope="system")])
+        rows = exceptions.classify(workflow, [OLD_ARTIFACT], NOW)
+        self.assertEqual(kinds(rows), ["dependency-down"])
+        row = rows[0]
+        self.assertIn("buzz-agent@augustus (user): inactive", row["issue"])
+        self.assertIn("ollama.service (system): inactive", row["issue"])
+        self.assertNotIn("buzz-notion-broker", row["issue"])
+        self.assertIn("pre-flight", row["requiredAction"])
+        self.assertIsNone(row["since"])
+        self.assertFalse(row["paused"])
+        self.assertEqual(row["evidence"], {"runId": None, "artifactUri": None})
+
+    def test_unknown_and_satisfied_are_not_exceptions(self):
+        for satisfied in (True, None):
+            workflow = item([OLD_ARTIFACT], requires=[requirement("buzz-agent@augustus", satisfied)])
+            self.assertEqual(exceptions.classify(workflow, [OLD_ARTIFACT], NOW), [], satisfied)
+        self.assertEqual(exceptions.classify(item([OLD_ARTIFACT]), [OLD_ARTIFACT], NOW), [])
+        no_field = item([OLD_ARTIFACT])
+        del no_field["requires"]
+        self.assertEqual(exceptions.classify(no_field, [OLD_ARTIFACT], NOW), [])
+
+    def test_paused_suppresses_it(self):
+        workflow = item([OLD_ARTIFACT], state="paused", requires=[requirement("buzz-agent@augustus", False)])
+        self.assertEqual(exceptions.classify(workflow, [OLD_ARTIFACT], NOW), [])
+
+    def test_it_sorts_after_every_other_kind(self):
+        self.assertEqual(exceptions.KINDS[-1], "dependency-down")
+        receipts = [receipt("r1", "failed", 3600, reason="checks failed", assertions=[FAILED_CHECK]), OLD_ARTIFACT]
+        workflow = item(receipts, requires=[requirement("buzz-agent@augustus", False)])
+        self.assertEqual(kinds(exceptions.classify(workflow, receipts, NOW)), ["failed", "dependency-down"])
+
+
 class ExceptionsEnvelope(unittest.TestCase):
     def test_fixture_queue_is_ordered_by_kind_then_since(self):
         env = build_model().exceptions()
@@ -232,6 +276,7 @@ class ExceptionsEnvelope(unittest.TestCase):
         self.assertEqual(by_kind["missed-cadence"]["workflowId"], "fleet-turn-check")
         self.assertEqual(by_kind["overdue-next-action"]["workflowId"], "overnight-morning-report")
         self.assertEqual(by_kind["unconsumed-output"]["workflowId"], "bd-followup-drafts")
+        self.assertNotIn("dependency-down", by_kind, "the fixture bus runs the broker and ollama, and augustus-content is paused")
         paused_ids = {w["id"] for w in build_model().workflows()[0] if w["control"]["state"] == "paused"}
         self.assertNotIn("knowledge-digest", {row["workflowId"] for row in rows})
         for row in rows:

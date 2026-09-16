@@ -319,6 +319,7 @@ asserts = [
   "control-room-role",          # T5.3f: role is derived from surface by control_room_state.role_of, one function, and a surface without a role raises; every trigger's surface equals its row's
   "control-room-agents",        # T5.3f: /api/v1/agents is one row per persona manifest with runtime, lastTurn, turns7d, usage7d/cost7d from interaction receipts only, ownedWorkflows; summary.agents buckets sum to total
   "control-room-requires",      # T5.3f: requires rows are tri-state from the bus (satisfied null on no bus, false on inactive), guards is the entry's sentence or null, requiredBy names each dependent with enabled = not paused
+  "control-room-dependency-down", # T5.3f: a requirement known down is a dependency-down row on the dependent while it is not paused; unknown yields none
 ]
 why_no_workflow = """
 It tests the portfolio projection and HTTP trust boundary. Assigning it to one rendered
@@ -439,6 +440,7 @@ asserts = [
   "exceptions-paused-suppression",    # paused suppresses missed-cadence and missing-artifact(b); paused + failed is still failed, flagged paused
   "exceptions-unknown-is-not-exception", # no receipt, absent consumption and a null due_at each yield no row
   "exceptions-missed-cadence",        # an active timer that fired with no receipt after it is missed; a receipt after the trigger is not
+  "exceptions-dependency-down",       # T5.3f: one row naming every requirement whose satisfied is false, last in KINDS order; true, null, no field and paused yield none
 ]
 why_no_workflow = """
 The classifier is a pure rule table over every workflow's receipts and control state. A row
