@@ -291,8 +291,9 @@ tiles count workflows without them. The runtimes are the **Agents** view — `/a
 `/app/agents/<name>`, from `/api/v1/agents` and `/api/v1/agents/<name>` — one card per
 manifest: runtime state and `since` from `systemctl --user show`, last turn, turns and usage
 over seven days from the interaction receipts, owned workflows by role, and the workflows that
-require it. **Read-only:** starting or stopping a runtime is not a Control Room action, and
-the SSR `/portfolio` still lists all 31 rows with a `data-role` each.
+require it. T5.3f shipped this view read-only; since T5.3g (2026-09-16) the agent page carries
+**Start / Stop / Restart agent now** — see Control Room controls § Runtime controls. The SSR
+`/portfolio` still lists all 31 rows with a `data-role` each.
 
 `requires` on a manifest entry names the units a workflow cannot run without
 (`agent-model.md` §4 has the grammar and the audit rules). The row shows each requirement's
@@ -308,10 +309,11 @@ half, run by `tests/test_workflow_requires.sh` with no live `systemctl`.
 
 `guards` is a declared one-sentence field on platform entries only — what stops working when
 the job is off — rendered as a chip and as an amber notice in the Pause and Stop dialogs. A
-notice, not a refusal: the broker is unchanged by T5.3f, and so are
+notice, not a refusal: the broker was unchanged by T5.3f, and so were
 `/etc/control-room/allowlist.json`, `/usr/local/lib/control-room/control_broker.py` and the
-socket. Landing T5.3f is `bin/deploy` and `sudo systemctl restart control-room.service`;
-no root install, no allowlist re-render, no timer or runtime touched.
+socket (T5.3g changed both root files; its land sequence is under Runtime controls). Landing
+T5.3f was `bin/deploy` and `sudo systemctl restart control-room.service`; no root install, no
+allowlist re-render, no timer or runtime touched.
 
 ### Frontend build (T5.3e)
 
@@ -359,7 +361,7 @@ Mac browser ──tailnet──▶ control-room.service (dave + group control-ro
                            │  reads /etc/control-room/allowlist.json         (root-owned, rendered from the repo)
                            │  writes /var/lib/control-room/receipts/…        (StateDirectory, root-owned, world-readable)
                            ▼
-                         systemctl [--user --machine=dave@.host] {show,disable --now,enable --now,start --no-block,stop --no-block}
+                         systemctl [--user --machine=dave@.host] {show,disable --now,enable --now,start --no-block,stop --no-block,restart --no-block}
 ```
 
 Policy lives in the broker, not the screen — the same rule `~/CLAUDE.md` records for the Notion
@@ -432,6 +434,80 @@ compared the same way: a `bin/control_broker.py` change is inert — and red —
 
 **Never:** widen the socket group, add dave to it, point `ExecStart` at `/home`, or add a sudoers
 line — each is the `--no-verify` of this design, the same escalation with the record removed.
+
+### Runtime controls (T5.3g)
+
+The same broker, socket, receipts tree and screen seam carry a second kind of entry: the
+**runtimes**, the `kind = "service"` manifest rows — the five `buzz-agent@<name>` user units.
+Their id on the wire is the read-model id (`workflow_id: "buzz-agent@marcus"`), so the receipts
+land under `/var/lib/control-room/receipts/buzz-agent@marcus/` and the page's *last action*
+reads them with the same reader. The allowlist gains a `runtimes` table (schema still 1; a file
+without the table is valid and knows no runtime, so a stale render refuses runtime requests as
+`unknown_workflow` rather than refusing everything; a malformed entry is `allowlist_invalid`):
+
+```json
+"runtimes": {"buzz-agent@marcus": {"owner": "marcus", "unit": "buzz-agent@marcus",
+                                   "scope": "user", "template": "buzz-agent@.service"}}
+```
+
+rendered from every standing `kind = "service"` entry whose template unit exists under
+`systemd/user/` (`status = spent` rows and units with no service file stay in `excluded`).
+
+**The verbs are the session verbs** — what `systemctl --user start|stop|restart` does — and the
+screen labels them *Start agent now* / *Stop agent now* / *Restart agent now*. The unit file's
+enable state is a fact the card shows as `boot: enabled|disabled` and nothing on the screen
+changes it: a Start on a disabled unit is session-only and does not survive a reboot, a Stop on
+an enabled one comes back at the next boot, and both dialogs say so. A workflow verb on a runtime
+(or a runtime verb on a workflow) is `unknown_action` naming the right vocabulary.
+
+| action | precondition (refusal) | systemctl (`--user --machine=dave@.host`) | extras |
+|---|---|---|---|
+| `start` | `confirm: true`; not active/activating, else `state_conflict` | `start --no-block <unit>.service`, then poll `show` ≤ 6 s | `note` when the unit is `failed` or `activating/auto-restart` inside the window, naming `NRestarts`, `journalctl --user -u <unit>` and `check-loaded.sh` |
+| `stop` | `confirm: true`; non-empty reason; active/activating, else `state_conflict` | `stop --no-block <unit>.service` + poll ≤ 15 s | as workflow stop |
+| `restart` | as stop | `restart --no-block <unit>.service`, then the start poll | as start |
+
+The settle window is `START_SETTLE_SECONDS` (`RestartSec=5` in the template + 1;
+`--start-settle` / `CONTROL_BROKER_START_SETTLE_SECONDS`, 0 in the suite). A runtime whose
+credential the relay refuses starts cleanly and dies into `Restart=on-failure`, so the receipt is
+`applied` with `after.state = active` (activating counts) and the note is the tell — read the
+journal before clicking again. `before`/`after` carry `{state, fingerprint, units: [{unit,
+scope, timer: null, service}]}` with the screen's four-value `state`, and `links.agent =
+/agents/<owner>`.
+
+**The broker reads `RUNTIME_PROPERTIES` and nothing else** — `ActiveState, SubState,
+UnitFileState, LoadState, Result, InvocationID, ExecMainStartTimestamp, ExecMainExitTimestamp,
+NRestarts`. It never runs `systemctl status` and never reads `ExecStart` or `Environment`: the
+launched process carries the agent's private key in its argv (`~/CLAUDE.md` § fleet MCP bridge),
+and a receipt is world-readable. `tests/test_control_broker.py` pins both on every runtime
+receipt and `tests/acceptance/control_room_controls.sh` step 4b on the live root copy.
+
+**Required-by is a notice, not a refusal.** Stopping `buzz-agent@augustus` while
+`augustus-content` is enabled is allowed; the dialog names the dependents in amber, and the
+dependent's next run is a one-second BLOCKED receipt plus a `dependency-down` exception (T5.3f).
+The broker stays ignorant of `requires`.
+
+**Double hosting** is the one risk the screen cannot see: if Buzz Desktop on the Mac is also
+hosting the identity, both reply to every mention and `check-loaded.sh` reports all-OK. The
+Start dialog says so; the verification after any Start or Restart is
+`~/.config/buzz-team/check-loaded.sh` from a shell.
+
+CLI form, refusal-only (no `--confirm` → `confirmation_required`, no state read):
+
+```bash
+sudo /usr/bin/python3 /usr/local/lib/control-room/control_broker.py act start buzz-agent@marcus
+```
+
+**Land sequence** — the T5.3a root install lines again, because both root files change:
+
+```bash
+bin/deploy
+sudo install -D -o root -g root -m 0755 bin/control_broker.py /usr/local/lib/control-room/control_broker.py
+python3 bin/control_broker_allowlist.py render > /tmp/allowlist.json \
+  && sudo install -D -o root -g root -m 0644 /tmp/allowlist.json /etc/control-room/allowlist.json \
+  && python3 bin/control_broker_allowlist.py check
+sudo systemctl restart control-room.service              # the broker is per-connection; nothing else restarts
+bash tests/acceptance/control_room_controls.sh            # refusals only; no agent starts
+```
 
 ## Control Room proposals (T5.3b)
 

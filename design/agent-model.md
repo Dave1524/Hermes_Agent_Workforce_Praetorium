@@ -432,7 +432,12 @@ roles are the Control Room's vocabulary: the Workflows page is two sections (age
 and never lists a runtime, the Agents view is the five runtimes, and `/api/v1/workflows` omits
 `agent-runtime` rows unless asked with `?role=all` (the `?lifecycle=all` convention). The read
 model itself keeps every row — incidents, the SSR portfolio and `/api/v1/agents` read the
-same registry, and a filter there would silently change all three.
+same registry, and a filter there would silently change all three. The role also picks the
+control vocabulary (`control_actions(state, source, role)`): a workflow row offers pause /
+resume / run_now / retry / stop, an `agent-runtime` row offers **start / stop / restart** —
+the session verbs on the user unit, since T5.3g (2026-09-16) — and the broker refuses a verb
+from the other vocabulary as `unknown_action`. The unit file's enable state travels as
+`runtime.unitFileState`, a fact the screen shows and never changes.
 
 **`requires` is the one field for hard runtime dependencies**, and it resolves statically so
 the suite runs on a hosted runner with no bus. Rules, each asserted by
@@ -467,8 +472,12 @@ Room classifies an enabled workflow with a requirement known to be down as
 **`guards` is declared, platform-only, one sentence** — "what stops working when this is
 off" — with the evidence in the entry's `notes`. It cannot be computed because the dependent
 is Dave, so it is rendered instead: a chip on the row and the workflow page, and an amber
-notice in the Pause and Stop dialogs (a notice, never a client-side refusal — nothing
-broker-controllable is required by anything today). The five load-bearing entries carry it:
+notice in the Pause and Stop dialogs (a notice, never a client-side refusal). Since T5.3g the
+runtimes *are* broker-controllable, and the same rule holds one level up: stopping
+`buzz-agent@augustus` while `augustus-content` is enabled is allowed, the Stop and Restart
+dialogs name the enabled dependents in amber, and the consequence is the dependent's next run
+becoming a one-second BLOCKED receipt and a `dependency-down` exception — visible and cheap,
+which is why the broker stays ignorant of `requires`. The five load-bearing entries carry it:
 `workflow-incidents`, `fleet-turn-check`, `agent-drift-check`, `qmd-refresh`,
 `workflow-receipt-sweep`; `agent-workforce-auto-sync` does not, its contract already calls
 it "purpose and hazard in one line". `tests/test_workflow_coverage.py` refuses `guards` on a

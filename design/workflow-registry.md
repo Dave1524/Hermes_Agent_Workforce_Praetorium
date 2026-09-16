@@ -78,6 +78,12 @@ vocabulary and the suite requirement with them. Each persona now carries exactly
 (`design/contracts/buzz-interactive.md`) because they run byte-identical code against five
 charters this repo cannot read; five files would be five copies of one set of obligations.
 
+Since T5.3g (2026-09-16) these five are also the broker's **runtimes**: the allowlist's
+`runtimes` table is rendered from the standing `kind = "service"` entries, and the Control
+Room's agent page starts, stops and restarts the unit — session verbs only; the enable state
+is shown, never changed. They take no workflow verb (no pause, no run_now) and no workflow
+takes theirs.
+
 Two properties of these entries are easy to misread:
 
 - **They are `kind = "service"`, not timers.** `Type=simple`, always on, no `OnCalendar`.

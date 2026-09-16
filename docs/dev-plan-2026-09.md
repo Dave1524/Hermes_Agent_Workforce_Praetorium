@@ -622,9 +622,10 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   runtime, broker or root-owned file touched.
 - **T5.3g** [Claude, M, T5.3f, T5.3a] **Runtime controls: Start / Stop / Restart an agent from the
   Agents view.** Added 2026-09-16 — T5.3f shipped the Agents view read-only and named this as the
-  separate decision; Dave made it the same day. The five `buzz-agent@<name>` user units are
-  `inactive/dead/disabled` (MEASURED 2026-09-16) and the only way to bring one up is a shell on the
-  box. Decisions, made once here: the actions are the session-scoped systemd verbs `start`, `stop`,
+  separate decision; Dave made it the same day. When it was decided the five `buzz-agent@<name>`
+  user units were `inactive/dead/disabled` (MEASURED 2026-09-16 15:30) and the only way to bring
+  one up was a shell on the box; by 19:09 the same day all five were `active/running/enabled` by
+  hand, which is the same gap from the other side. Decisions, made once here: the actions are the session-scoped systemd verbs `start`, `stop`,
   `restart` — labelled "Start agent now" / "Stop agent now" / "Restart agent now" — and boot policy
   (`UnitFileState`) is shown as a fact, never changed from the screen; `restart` is in because it
   is the fix for a `check-loaded.sh` STALE after a `.env`/`.prompt` edit; the runtime's wire id is

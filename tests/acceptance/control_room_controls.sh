@@ -178,11 +178,13 @@ cat <<EOF
   Nothing resumed; the fleet is still off.
 
   Open $SCREEN/app/agents/marcus.
-  Expect (with the unit inactive): 'Start agent now' enabled; 'Stop agent now' and 'Restart agent
-  now' disabled with 'runtime is paused, not active' as tooltip; boot: disabled beside the chip;
-  last action = step 4b's refused restart (confirmation_required).
-  Click Start agent now -> the dialog names the double-hosting risk and check-loaded.sh -> Cancel.
-  Nothing started; the first live Start is yours.
+  Expect the verbs the live state allows: with the unit active, 'Stop agent now' and 'Restart
+  agent now' enabled and 'Start agent now' disabled with 'runtime is active, not paused' as
+  tooltip; with it inactive, the reverse ('runtime is paused, not active'). boot: <unit file
+  state> beside the chip; last action = step 4b's refused restart (confirmation_required).
+  Click the one enabled verb -> the dialog states the boot policy (and, for Start, the
+  double-hosting risk and check-loaded.sh; for Stop/Restart, the dependents) -> Cancel.
+  Nothing started, stopped or restarted.
 EOF
 
 if [ "$fail" -eq 0 ]; then echo "ALL PASS"; else echo "SOME FAIL"; fi

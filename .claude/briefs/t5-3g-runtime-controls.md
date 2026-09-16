@@ -6,9 +6,11 @@ drift on exactly the `bin/` files this brief changes plus the two stale root cop
 after `bin/deploy`, the two `sudo install` lines and the one service restart).
 
 **Size:** M. **Standing constraint (Dave, 2026-09-14):** the scheduled fleet is OFF except what Dave
-has resumed from the screen. MEASURED 2026-09-16 15:30 CEST: all five `buzz-agent@*` are
-`inactive/dead/disabled` and `buzz-agent@.service` is `disabled` at the unit-file level — enumerate
-with `systemctl --user show buzz-agent@<name> -p ActiveState,UnitFileState`, never trust this line.
+has resumed from the screen. MEASURED 2026-09-16 19:09 CEST: all five `buzz-agent@*` are
+`active/running/enabled` — brought up by hand (`enable --now`, journal 18:57-19:0x CEST) while
+this brief was being built; at 15:30 the same day all five were `inactive/dead/disabled`.
+Enumerate with `systemctl --user show buzz-agent@<name> -p ActiveState,UnitFileState`, never
+trust this line.
 **No step in this brief starts, stops, restarts, enables or disables any `buzz-agent@*` unit or any
 workflow timer.** The one restart is `control-room.service`. The two root-owned files
 (`/usr/local/lib/control-room/control_broker.py`, `/etc/control-room/allowlist.json`) are
@@ -290,8 +292,10 @@ it in this session.
    → `sudo -n systemctl restart control-room.service` (the broker is per-connection; nothing else
    restarts) → `bash tests/acceptance/control_room_controls.sh` ALL PASS → `bin/check_deploy_drift.sh`
    clean. No timer, no runtime, no unit file touched.
-3. From the Mac, changing nothing: `/app/agents/marcus` shows Start enabled, Stop and Restart
-   disabled with their reason, `boot: disabled`; Start → dialog → **Cancel**. From the box:
+3. From the Mac, changing nothing: `/app/agents/marcus` shows the verbs the live state
+   allows — with the unit active (as measured 19:09): Stop and Restart enabled, Start disabled
+   with `runtime is active, not paused`, `boot: enabled`; Stop → dialog names the dependents
+   and the boot policy → **Cancel**. From the box:
    `sudo /usr/bin/python3 /usr/local/lib/control-room/control_broker.py act start buzz-agent@marcus`
    (no `--confirm`) → `confirmation_required`, receipt under `receipts/buzz-agent@marcus/`, and the
    agent page's last action shows it refused. **No agent started.**
