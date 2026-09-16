@@ -13,7 +13,10 @@ Mutations mirror what real systemd does to the properties the broker re-reads: e
 its service the way Persistent=true does; disable --now makes it inactive/dead/disabled;
 start makes a service active/running with a fresh InvocationID — or activating/<sub> when the
 unit carries `_start_substate` (a Type=oneshot run is activating/start-pre, start or start-post
-for its whole life and never reaches active/running); stop makes it inactive.
+for its whole life and never reaches active/running); stop makes it inactive; restart is stop
+then start with NRestarts reset, as a manual restart is. A unit carrying `_dies_after_start`
+comes up activating/auto-restart with NRestarts incremented — the Restart=on-failure loop a
+runtime whose credential the relay refuses falls into (T5.3g).
 """
 import datetime as dt
 import fcntl
@@ -89,6 +92,10 @@ def mutate(state, verb, unit):
     if verb == "stop" and unit.endswith(".service"):
         props.update(ActiveState="inactive", SubState="dead", Result="success", ExecMainExitTimestamp=NOW)
         return 0
+    if verb == "restart" and unit.endswith(".service"):
+        props.update(NRestarts="0")
+        start_service(state, unit)
+        return 0
     sys.stderr.write(f"fake systemctl: unsupported call: {verb} {unit}\n")
     return 2
 
@@ -97,6 +104,11 @@ def start_service(state, unit):
     counter = int(state.get("_invocation_counter", 0)) + 1
     state["_invocation_counter"] = counter
     props = state.setdefault(unit, {"LoadState": "loaded"})
+    if props.get("_dies_after_start"):
+        props.update(ActiveState="activating", SubState="auto-restart", Result="exit-code",
+                     InvocationID=f"{counter:032x}", ExecMainStartTimestamp=NOW, ExecMainExitTimestamp=NOW,
+                     NRestarts=str(int(props.get("NRestarts") or 0) + 1))
+        return
     substate = props.get("_start_substate", "running")
     active = "active" if substate == "running" else "activating"
     props.update(ActiveState=active, SubState=substate, Result="success", InvocationID=f"{counter:032x}",
@@ -116,7 +128,7 @@ def main(argv):
         if verb == "show" and rest:
             show(state, rest)
             return 0
-        if verb in ("enable", "disable", "start", "stop") and len(rest) == 1:
+        if verb in ("enable", "disable", "start", "stop", "restart") and len(rest) == 1:
             code = mutate(state, verb, rest[0])
             save(handle, state)
             return code

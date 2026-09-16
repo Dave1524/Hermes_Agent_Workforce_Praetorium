@@ -60,11 +60,13 @@ class Sandbox:
     def fail(self, unit: str) -> None:
         (self.root / "fail").write_text(unit)
 
-    def argv(self, now: str = NOW, allowlist: pathlib.Path | None = None, peer_uids: str | None = None) -> list[str]:
+    def argv(self, now: str = NOW, allowlist: pathlib.Path | None = None, peer_uids: str | None = None,
+             settle: int = 0) -> list[str]:
         return [sys.executable, str(BROKER), "--allowlist", str(allowlist or self.allowlist),
                 "--receipts", str(self.receipts), "--system-stamp-dir", str(self.stamps),
                 "--user-stamp-dir", str(self.ustamps), "--lock", str(self.root / "lock"),
-                "--peer-uids", peer_uids if peer_uids is not None else str(os.getuid()), "--now", now]
+                "--peer-uids", peer_uids if peer_uids is not None else str(os.getuid()), "--now", now,
+                "--start-settle", str(settle)]
 
     def env(self, **extra: str) -> dict[str, str]:
         env = {"PATH": f"{self.root / 'bin'}{os.pathsep}{os.environ.get('PATH', '')}", "HOME": str(self.root)}
@@ -72,9 +74,9 @@ class Sandbox:
         return env
 
     def call(self, request: dict | bytes, now: str = NOW, allowlist: pathlib.Path | None = None,
-             peer_uids: str | None = None, env: dict[str, str] | None = None) -> dict:
+             peer_uids: str | None = None, env: dict[str, str] | None = None, settle: int = 0) -> dict:
         body = request if isinstance(request, bytes) else (json.dumps(request) + "\n").encode()
-        completed = subprocess.run(self.argv(now, allowlist, peer_uids) + ["--serve"], input=body,
+        completed = subprocess.run(self.argv(now, allowlist, peer_uids, settle) + ["--serve"], input=body,
                                    capture_output=True, env=env or self.env(), check=False, timeout=60)
         assert completed.returncode == 0, completed.stderr.decode()
         return json.loads(completed.stdout.decode())
@@ -118,7 +120,8 @@ class Sandbox:
 
 
 def mutating(lines: list[str]) -> list[str]:
-    return [line for line in lines if any(f" {verb} " in line for verb in ("enable", "disable", "start", "stop"))]
+    verbs = ("enable", "disable", "start", "stop", "restart")
+    return [line for line in lines if any(f" {verb} " in line for verb in verbs)]
 
 
 def req(workflow_id: str, action: str, **fields) -> dict:
@@ -164,8 +167,9 @@ class AllowlistRefuses(BrokerCase):  # (::broker-allowlist-refuses)
         self.assertEqual(sorted(p.name for p in self.box.receipts.iterdir()), ["_refused"])
 
     def test_excluded_and_absent_workflows(self):
-        response = self.assertRefused(self.box.call(req("buzz-agent@marcus", "pause")), "bad_request", 400)
-        self.assertIn("grammar", response["refusal"]["message"])
+        response = self.assertRefused(self.box.call(req("buzz-agent@marcus", "pause")), "unknown_action", 400)
+        self.assertIn("not a runtime action", response["refusal"]["message"])
+        self.assertEqual(response["receipt"]["workflow_id"], "buzz-agent@marcus")
         response = self.assertRefused(self.box.call(req("nekovri-subsidy-kickoff", "pause")), "not_allowlisted", 403)
         self.assertIn("status = spent", response["refusal"]["message"])
         self.assertRefused(self.box.call(req("raw-ingest", "pause")), "unknown_workflow", 404)
@@ -373,6 +377,171 @@ class StopNeedsConfirmAndReason(BrokerCase):  # (::broker-stop-needs-confirm-and
         self.assertRefused(self.box.call(req("knowledge-digest", "stop", confirm=True, reason="x")), "state_conflict", 400)
 
 
+class RuntimeStartStopRestart(BrokerCase):  # (::broker-runtime-actions)
+    """T5.3g: the three runtime verbs on a `runtimes` entry, session-scoped, confirmed, receipted."""
+
+    USER = "systemctl --user --machine=dave@.host"
+
+    def runtime_receipt(self, response: dict, owner: str) -> dict:
+        receipt = response["receipt"]
+        self.assertEqual(broker.validate_receipt(receipt), [])
+        self.assertEqual(receipt["links"]["agent"], f"/agents/{owner}")
+        self.assertIsNone(receipt["links"]["run"])
+        self.assertIsNone(receipt["run_id"])
+        self.assertIsNone(receipt["next_scheduled_run"])
+        self.assertIsNone(receipt["trigger"])
+        units = receipt["after"]["units"]
+        self.assertEqual(len(units), 1)
+        self.assertIsNone(units[0]["timer"])
+        self.assertEqual(units[0]["scope"], "user")
+        return receipt
+
+    def test_start_needs_confirm_then_starts_the_service_in_user_scope(self):
+        self.assertRefused(self.box.call(req("buzz-agent@marcus", "start")), "confirmation_required", 400)
+        self.assertEqual(mutating(self.box.log()), [])
+        self.assertEqual(self.box.receipt_files()[0].parent.name, "buzz-agent@marcus")
+        response = self.box.call(req("buzz-agent@marcus", "start", confirm=True, reason=None))
+        self.assertEqual(response["result"], "applied", response)
+        self.assertEqual(response["http_status"], 200)
+        self.assertEqual(mutating(self.box.log()),
+                         [f"{self.USER} start --no-block buzz-agent@marcus.service --no-pager"])
+        for line in self.box.log():
+            self.assertTrue(line.startswith(self.USER + " "), line)
+            self.assertNotIn(" status ", line)
+            self.assertNotIn("ExecStart", line)
+            self.assertNotIn("Environment", line)
+        receipt = self.runtime_receipt(response, "marcus")
+        self.assertEqual(receipt["before"]["state"], "paused")
+        self.assertEqual(receipt["after"]["state"], "active")
+        service = receipt["after"]["units"][0]["service"]
+        self.assertEqual(service["activeState"], "active")
+        self.assertEqual(service["unitFileState"], "disabled")
+        self.assertEqual(service["nRestarts"], 0)
+        self.assertEqual(service["invocationId"], self.box.state()["buzz-agent@marcus.service"]["InvocationID"])
+        self.assertIsNone(receipt["note"])
+        self.assertIsNone(receipt["reason"])
+        self.assertNotEqual(receipt["before"]["fingerprint"], receipt["after"]["fingerprint"])
+
+    def test_start_on_an_active_runtime_is_a_state_conflict(self):
+        response = self.assertRefused(self.box.call(req("buzz-agent@augustus", "start", confirm=True)), "state_conflict", 400)
+        self.assertIn("already active", response["refusal"]["message"])
+        self.assertEqual(mutating(self.box.log()), [])
+
+    def test_stop_needs_confirm_and_reason_then_stops_and_polls(self):
+        self.assertRefused(self.box.call(req("buzz-agent@augustus", "stop")), "confirmation_required", 400)
+        self.assertRefused(self.box.call(req("buzz-agent@augustus", "stop", confirm=True, reason=" ")), "reason_required", 400)
+        self.assertEqual(mutating(self.box.log()), [])
+        response = self.box.call(req("buzz-agent@augustus", "stop", confirm=True, reason="rotate credential"))
+        self.assertEqual(response["result"], "applied", response)
+        self.assertEqual(mutating(self.box.log()),
+                         [f"{self.USER} stop --no-block buzz-agent@augustus.service --no-pager"])
+        receipt = self.runtime_receipt(response, "augustus")
+        self.assertEqual(receipt["before"]["state"], "active")
+        self.assertEqual(receipt["after"]["state"], "paused")
+        self.assertEqual(receipt["after"]["units"][0]["service"]["activeState"], "inactive")
+        self.assertEqual(receipt["reason"], "rotate credential")
+        self.assertIs(receipt["confirm"], True)
+        self.assertTrue(any("--property=ActiveState" in c["argv"] for c in receipt["commands"]))
+        self.assertRefused(self.box.call(req("buzz-agent@marcus", "stop", confirm=True, reason="x")), "state_conflict", 400)
+
+    def test_restart_is_gated_like_stop_and_runs_restart(self):
+        self.assertRefused(self.box.call(req("buzz-agent@augustus", "restart")), "confirmation_required", 400)
+        self.assertRefused(self.box.call(req("buzz-agent@augustus", "restart", confirm=True, reason="")), "reason_required", 400)
+        self.assertRefused(self.box.call(req("buzz-agent@marcus", "restart", confirm=True, reason="x")), "state_conflict", 400)
+        self.assertEqual(mutating(self.box.log()), [])
+        old = self.box.state()["buzz-agent@augustus.service"]["InvocationID"]
+        response = self.box.call(req("buzz-agent@augustus", "restart", confirm=True, reason="prompt edited"))
+        self.assertEqual(response["result"], "applied", response)
+        self.assertEqual(mutating(self.box.log()),
+                         [f"{self.USER} restart --no-block buzz-agent@augustus.service --no-pager"])
+        receipt = self.runtime_receipt(response, "augustus")
+        self.assertEqual(receipt["after"]["state"], "active")
+        self.assertNotEqual(receipt["after"]["units"][0]["service"]["invocationId"], old)
+        self.assertIsNone(receipt["note"])
+
+    def test_a_unit_that_dies_inside_the_settle_window_is_applied_with_a_note(self):
+        response = self.box.call(req("buzz-agent@flaky", "start", confirm=True), settle=1)
+        self.assertEqual(response["result"], "applied", response)
+        receipt = self.runtime_receipt(response, "trajan")
+        self.assertEqual(receipt["after"]["units"][0]["service"]["subState"], "auto-restart")
+        self.assertEqual(receipt["after"]["units"][0]["service"]["nRestarts"], 1)
+        self.assertEqual(receipt["after"]["state"], "active")
+        note = receipt["note"]
+        self.assertIn("NRestarts=1", note)
+        self.assertIn("journalctl --user -u buzz-agent@flaky", note)
+        self.assertIn("check-loaded.sh", note)
+
+    def test_workflow_verbs_on_a_runtime_and_runtime_verbs_on_a_workflow_are_unknown_action(self):
+        for action in ("pause", "resume", "run_now", "retry"):
+            response = self.assertRefused(self.box.call(req("buzz-agent@marcus", action, confirm=True)), "unknown_action", 400)
+            self.assertIn("start, stop, restart", response["refusal"]["message"])
+            self.assertEqual(response["receipt"]["workflow_id"], "buzz-agent@marcus")
+            self.assertEqual(response["receipt"]["action"], action)
+        for action in ("start", "restart"):
+            response = self.assertRefused(self.box.call(req("knowledge-digest", action, confirm=True)), "unknown_action", 400)
+            self.assertIn("run_now", response["refusal"]["message"])
+            self.assertEqual(response["receipt"]["workflow_id"], "knowledge-digest")
+        self.assertEqual(self.box.log(), [])
+        self.assertEqual(len(self.box.receipt_files()), 6)
+
+    def test_unknown_runtime_bad_grammar_masked_and_failed(self):
+        self.assertRefused(self.box.call(req("buzz-agent@nobody", "start", confirm=True)), "unknown_workflow", 404)
+        self.assertRefused(self.box.call(req("buzz-agent@marcus;x", "start", confirm=True)), "bad_request", 400)
+        self.assertRefused(self.box.call(req("buzz-agent@", "start", confirm=True)), "bad_request", 400)
+        self.assertRefused(self.box.call(req("@marcus", "start", confirm=True)), "bad_request", 400)
+        self.assertEqual(self.box.log(), [])
+        allowlist = json.loads(self.box.allowlist.read_text())
+        allowlist["runtimes"]["buzz-agent@masked"] = {"owner": "trajan", "unit": "buzz-agent@masked", "scope": "user",
+                                                      "template": "buzz-agent@.service"}
+        allowlist["runtimes"]["buzz-agent@ghost"] = {"owner": "trajan", "unit": "buzz-agent@ghost", "scope": "user",
+                                                     "template": "buzz-agent@.service"}
+        path = self.box.root / "allowlist-runtimes.json"
+        path.write_text(json.dumps(allowlist))
+        state = self.box.state()
+        state["buzz-agent@masked.service"] = {"LoadState": "masked", "ActiveState": "inactive", "SubState": "dead",
+                                              "UnitFileState": "masked", "NRestarts": "0"}
+        (self.box.root / "state.json").write_text(json.dumps(state))
+        self.assertRefused(self.box.call(req("buzz-agent@masked", "start", confirm=True), allowlist=path), "masked", 400)
+        self.assertRefused(self.box.call(req("buzz-agent@ghost", "start", confirm=True), allowlist=path), "unit_not_found", 400)
+        self.assertEqual(mutating(self.box.log()), [])
+        self.box.fail("buzz-agent@marcus.service")
+        failed = self.box.call(req("buzz-agent@marcus", "start", confirm=True))
+        self.assertEqual(failed["result"], "failed", failed)
+        self.assertEqual(failed["http_status"], 500)
+        self.assertEqual(failed["receipt"]["after"]["state"], "paused")
+        self.assertIn("fake failure", [c for c in failed["receipt"]["commands"] if "start" in c["argv"]][0]["stderr"])
+        self.assertEqual(broker.validate_receipt(failed["receipt"]), [])
+
+    def test_allowlist_without_runtimes_knows_no_runtime_and_a_malformed_entry_refuses(self):
+        allowlist = json.loads(self.box.allowlist.read_text())
+        del allowlist["runtimes"]
+        without = self.box.root / "allowlist-no-runtimes.json"
+        without.write_text(json.dumps(allowlist))
+        self.assertRefused(self.box.call(req("buzz-agent@marcus", "start", confirm=True), allowlist=without), "unknown_workflow", 404)
+        response = self.box.call(req("local-tier-eval", "pause"), allowlist=without)
+        self.assertEqual(response["result"], "applied", response)
+        allowlist["runtimes"] = {"buzz-agent@marcus": {"owner": "marcus", "unit": "buzz-agent@marcus", "scope": "galaxy"}}
+        bad = self.box.root / "allowlist-bad-runtime.json"
+        bad.write_text(json.dumps(allowlist))
+        self.assertRefused(self.box.call(req("buzz-agent@marcus", "start", confirm=True), allowlist=bad), "allowlist_invalid", 400)
+        allowlist["runtimes"] = {"Buzz_Agent@marcus": {"owner": "marcus", "unit": "Buzz_Agent@marcus", "scope": "user"}}
+        bad.write_text(json.dumps(allowlist))
+        self.assertRefused(self.box.call(req("buzz-agent@marcus", "start", confirm=True), allowlist=bad), "allowlist_invalid", 400)
+
+    def test_act_cli_takes_the_runtime_verbs(self):
+        code, response = self.box.act("start", "buzz-agent@marcus")
+        self.assertEqual(code, 1)
+        self.assertEqual(response["refusal"]["code"], "confirmation_required")
+        self.assertEqual(mutating(self.box.log()), [])
+        code, response = self.box.act("start", "buzz-agent@marcus", "--confirm")
+        self.assertEqual(code, 0, response)
+        self.assertEqual(response["result"], "applied")
+        code, response = self.box.act("restart", "buzz-agent@marcus", "--confirm", "--reason", "prompt edited")
+        self.assertEqual(code, 0, response)
+        self.assertEqual(response["receipt"]["action"], "restart")
+        self.assertEqual(response["receipt"]["actor"]["kind"], "cli")
+
+
 class ScopeAddressing(BrokerCase):  # (::broker-scope-addressing)
     def test_user_units_go_through_the_user_manager_and_system_units_do_not(self):
         self.box.stamp("buzz-pr-watch", "2026-09-13T09:23:00Z", scope="user")
@@ -536,16 +705,20 @@ class AllowlistRender(unittest.TestCase):  # (::broker-allowlist-render)
                          ["augustus-content", "content-change-dispatch"])
         self.assertEqual(rendered["workflows"]["buzz-pr-watch"]["triggers"][0]["scope"], "user")
         excluded = {row["unit"]: row for row in rendered["excluded"]}
-        services = [e for e in entries if e.get("kind") == "service"]
+        services = [e for e in entries if e.get("status") == "standing" and e.get("kind") == "service"]
         self.assertTrue(services)
+        self.assertEqual(set(rendered["runtimes"]), {e["unit"] for e in services})
         for entry in services:
-            self.assertEqual(excluded[entry["unit"]]["reason"], "kind = service (always-on, not a timer workflow)")
-            self.assertEqual(excluded[entry["unit"]]["owner"], entry["owner"])
+            self.assertNotIn(entry["unit"], excluded)
+            self.assertEqual(rendered["runtimes"][entry["unit"]], {
+                "owner": entry["owner"], "unit": entry["unit"], "scope": "user", "template": "buzz-agent@.service"})
+            self.assertRegex(entry["unit"], broker.RUNTIME_RE)
+            self.assertNotRegex(entry["unit"], broker.UNIT_RE)
         spent = [e for e in entries if e.get("status") == "spent"]
         self.assertEqual(len(spent), 2)
         for entry in spent:
             self.assertEqual(excluded[entry["unit"]]["reason"], "status = spent")
-        self.assertEqual(len(rendered["excluded"]), len(entries) - len(timers))
+        self.assertEqual(len(rendered["excluded"]), len(entries) - len(timers) - len(services))
         for name, workflow in rendered["workflows"].items():
             self.assertEqual(workflow["retry"], name in RETRY_DECLARED, name)
             self.assertIsInstance(workflow["retry_reason"], str, name)
@@ -554,6 +727,9 @@ class AllowlistRender(unittest.TestCase):  # (::broker-allowlist-render)
         self.assertEqual(allowlist.dumps(rendered), allowlist.dumps(allowlist.render(ROOT)))
         self.assertTrue(allowlist.dumps(rendered).endswith("}\n"))
         self.assertEqual(broker.Allowlist.load_data(rendered).lookup("scorecard")["retry"], True)
+        loaded = broker.Allowlist.load_data(rendered)
+        self.assertEqual(loaded.lookup("scorecard")["kind"], "workflow")
+        self.assertEqual(loaded.lookup(services[0]["unit"])["kind"], "runtime")
 
     def test_retry_declaration_parser(self):
         text = "## Identity\n\n| | |\n|---|---|\n| Unit | `x.service` |\n| **Retry** | `idempotent`: same-day skip |\n\n## Trigger\n"
@@ -577,7 +753,12 @@ class AllowlistRender(unittest.TestCase):  # (::broker-allowlist-render)
                 '[[workflows]]\nunit = "twin-a"\nstatus = "standing"\nlogical_workflow = "twin"\ncontract = "design/contracts/a.md"\n'
                 '[[workflows]]\nunit = "twin-b"\nstatus = "standing"\nlogical_workflow = "twin"\ncontract = "design/contracts/b.md"\n'
                 '[[workflows]]\nunit = "lonely"\nstatus = "standing"\n'
-                '[[workflows]]\nunit = "user-job"\nstatus = "standing"\nscope = "user"\ncontract = "design/contracts/user-job.md"\n')
+                '[[workflows]]\nunit = "user-job"\nstatus = "standing"\nscope = "user"\ncontract = "design/contracts/user-job.md"\n'
+                '[[workflows]]\nunit = "buzz-agent@ok"\nstatus = "standing"\nscope = "user"\nkind = "service"\n'
+                '[[workflows]]\nunit = "lone-daemon@x"\nstatus = "standing"\nscope = "user"\nkind = "service"\n'
+                '[[workflows]]\nunit = "Bad@Name"\nstatus = "standing"\nscope = "user"\nkind = "service"\n'
+                '[[workflows]]\nunit = "buzz-agent@spent"\nstatus = "spent"\nscope = "user"\nkind = "service"\n')
+            (repo / "systemd" / "user" / "buzz-agent@.service").write_text("")
             for unit in ("Bad_Name", "twin-a", "twin-b", "lonely"):
                 (repo / "systemd" / f"{unit}.timer").write_text("")
                 (repo / "systemd" / f"{unit}.service").write_text("")
@@ -589,6 +770,11 @@ class AllowlistRender(unittest.TestCase):  # (::broker-allowlist-render)
             excluded = {row["unit"]: row["reason"] for row in rendered["excluded"]}
             self.assertEqual(excluded["ghost-job"], "no timer/service file in systemd/")
             self.assertEqual(excluded["Bad_Name"], "unit name outside the broker's grammar")
+            self.assertEqual(excluded["lone-daemon@x"], "no service file in systemd/")
+            self.assertEqual(excluded["Bad@Name"], "unit name outside the broker's grammar")
+            self.assertEqual(excluded["buzz-agent@spent"], "status = spent")
+            self.assertEqual(rendered["runtimes"], {"buzz-agent@ok": {
+                "owner": "trajan", "unit": "buzz-agent@ok", "scope": "user", "template": "buzz-agent@.service"}})
             self.assertEqual(set(rendered["workflows"]), {"twin", "lonely", "user-job"})
             twin = rendered["workflows"]["twin"]
             self.assertIs(twin["retry"], False)

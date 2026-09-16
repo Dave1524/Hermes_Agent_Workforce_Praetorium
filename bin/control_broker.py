@@ -7,6 +7,12 @@ that allowlist and match UNIT_RE, reconciles state from `systemctl show` before 
 writes one audit receipt per request whatever the outcome. Self-contained on purpose: stdlib
 only, no sibling import — the copy under /usr/local/lib must never execute anything from the
 dave-writable bin/ tree.
+
+Two kinds of entry (T5.3g): a `workflows` row is a timer workflow and takes ACTIONS; a
+`runtimes` row is an always-on template instance such as buzz-agent@marcus and takes
+RUNTIME_ACTIONS — the session-scoped verbs only, never enable/disable. A runtime is read
+through RUNTIME_PROPERTIES and nothing else: never `status`, never ExecStart or Environment,
+because the launched process carries the agent's credential in its argv.
 """
 from __future__ import annotations
 
@@ -31,8 +37,11 @@ import time
 from typing import Any, Callable
 
 UNIT_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+RUNTIME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}@[a-z0-9][a-z0-9-]{0,63}$")
 TOKEN_RE = re.compile(r"^\d{8}T\d{6}Z-[a-z_]+-[0-9a-f]{6}$")
 ACTIONS = ("pause", "resume", "run_now", "retry", "stop")
+RUNTIME_ACTIONS = ("start", "stop", "restart")
+ALL_ACTIONS = ACTIONS + tuple(action for action in RUNTIME_ACTIONS if action not in ACTIONS)
 STAGES = ("preview", "apply")
 RESULTS = ("applied", "refused", "failed", "previewed")
 REFUSAL_CODES = (
@@ -48,6 +57,7 @@ MAX_BODY_BYTES = 8192
 MAX_FIELD_CHARS = 200
 PREVIEW_TTL_SECONDS = 600
 STOP_POLL_SECONDS = 15
+START_SETTLE_SECONDS = 6
 LOCK_WAIT_SECONDS = 30
 COMMAND_TIMEOUT_SECONDS = 20
 CHILD_ENV = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "LC_ALL": "C", "TZ": "UTC"}
@@ -56,6 +66,11 @@ TIMER_PROPERTIES = ("ActiveState,SubState,UnitFileState,LoadState,LastTriggerUSe
 SERVICE_PROPERTIES = ("ActiveState,SubState,LoadState,Result,InvocationID,"
                       "ExecMainStartTimestamp,ExecMainExitTimestamp")
 RUN_PROPERTIES = "InvocationID,ActiveState,ExecMainStartTimestamp"
+RUNTIME_PROPERTIES = ("ActiveState,SubState,UnitFileState,LoadState,Result,InvocationID,"
+                      "ExecMainStartTimestamp,ExecMainExitTimestamp,NRestarts")
+SETTLE_PROPERTIES = "ActiveState,SubState,NRestarts"
+RUNTIME_ACTIVE_STATES = {"active", "activating", "reloading"}
+RUNTIME_PAUSED_STATES = {"inactive", "failed", "deactivating"}
 MASKED_STATES = {"masked", "masked-runtime"}
 RUNNING_SUBSTATES = {"running", "start", "start-pre", "start-post"}
 RECEIPT_KEYS = (
@@ -90,6 +105,7 @@ class Config:
     user_stamp_dir: pathlib.Path
     lock: pathlib.Path
     now: dt.datetime | None = None
+    start_settle: int = START_SETTLE_SECONDS
 
     def clock(self) -> dt.datetime:
         return self.now or dt.datetime.now(dt.timezone.utc)
@@ -149,8 +165,9 @@ def peer_allowed(remote: Any, local: Any) -> tuple[bool, str]:
 
 # --- the allowlist --------------------------------------------------------------------
 class Allowlist:
-    def __init__(self, workflows: dict[str, dict[str, Any]], excluded: list[dict[str, Any]]) -> None:
-        self.workflows, self.excluded = workflows, excluded
+    def __init__(self, workflows: dict[str, dict[str, Any]], excluded: list[dict[str, Any]],
+                 runtimes: dict[str, dict[str, Any]] | None = None) -> None:
+        self.workflows, self.excluded, self.runtimes = workflows, excluded, runtimes or {}
 
     @classmethod
     def load(cls, path: pathlib.Path) -> "Allowlist":
@@ -170,7 +187,12 @@ class Allowlist:
             raise Refusal("allowlist_invalid", f"allowlist at {path} has no workflows/excluded tables")
         for workflow_id, entry in workflows.items():
             cls._check_entry(path, workflow_id, entry)
-        return cls(workflows, [row for row in excluded if isinstance(row, dict)])
+        runtimes = data.get("runtimes", {})
+        if not isinstance(runtimes, dict):
+            raise Refusal("allowlist_invalid", f"allowlist at {path}: runtimes is not a table")
+        for runtime_id, entry in runtimes.items():
+            cls._check_runtime_entry(path, runtime_id, entry)
+        return cls(workflows, [row for row in excluded if isinstance(row, dict)], runtimes)
 
     @staticmethod
     def _check_entry(path: pathlib.Path, workflow_id: Any, entry: Any) -> None:
@@ -186,10 +208,24 @@ class Allowlist:
                 raise Refusal("allowlist_invalid",
                               f"allowlist at {path}: {workflow_id} carries a unit outside the grammar")
 
+    @staticmethod
+    def _check_runtime_entry(path: pathlib.Path, runtime_id: Any, entry: Any) -> None:
+        if not isinstance(runtime_id, str) or not RUNTIME_RE.match(runtime_id):
+            raise Refusal("allowlist_invalid", f"allowlist at {path}: runtime id outside the runtime grammar")
+        unit = entry.get("unit") if isinstance(entry, dict) else None
+        scope = entry.get("scope") if isinstance(entry, dict) else None
+        owner = entry.get("owner") if isinstance(entry, dict) else None
+        if unit != runtime_id or scope not in ("system", "user") or not isinstance(owner, str):
+            raise Refusal("allowlist_invalid",
+                          f"allowlist at {path}: runtime {runtime_id} needs unit = id, scope and owner")
+
     def lookup(self, workflow_id: str) -> dict[str, Any]:
         entry = self.workflows.get(workflow_id)
         if entry is not None:
-            return {"id": workflow_id, **entry}
+            return {"id": workflow_id, "kind": "workflow", **entry}
+        runtime = self.runtimes.get(workflow_id)
+        if runtime is not None:
+            return {"id": workflow_id, "kind": "runtime", **runtime}
         for row in self.excluded:
             if row.get("unit") == workflow_id:
                 raise Refusal("not_allowlisted",
@@ -279,6 +315,17 @@ def _service_view(unit: str, values: dict[str, str]) -> dict[str, Any]:
     }
 
 
+def _runtime_view(unit: str, values: dict[str, str]) -> dict[str, Any]:
+    restarts = values.get("NRestarts") or ""
+    return {**_service_view(unit, values),
+            "unitFileState": values.get("UnitFileState") or "unknown",
+            "nRestarts": int(restarts) if restarts.isdigit() else None}
+
+
+def _views(unit: dict[str, Any]) -> list[dict[str, Any]]:
+    return [view for view in (unit["timer"], unit["service"]) if view is not None]
+
+
 def service_running(service: dict[str, Any]) -> bool:
     return service["activeState"] in {"active", "activating"} and service["subState"] in RUNNING_SUBSTATES
 
@@ -298,9 +345,18 @@ def state_of(units: list[dict[str, Any]]) -> str:
     return "unknown"
 
 
+def runtime_state_of(units: list[dict[str, Any]]) -> str:
+    active = units[0]["service"]["activeState"]
+    if active in RUNTIME_ACTIVE_STATES:
+        return "active"
+    if active in RUNTIME_PAUSED_STATES:
+        return "paused"
+    return "unknown"
+
+
 def fingerprint(units: list[dict[str, Any]]) -> str:
-    rows = sorted((view["name"], view["activeState"], view["subState"], view["unitFileState"])
-                  for unit in units for view in (unit["timer"], {**unit["service"], "unitFileState": ""}))
+    rows = sorted((view["name"], view["activeState"], view["subState"], view.get("unitFileState") or "")
+                  for unit in units for view in _views(unit))
     return hashlib.sha256(json.dumps(rows).encode("utf-8")).hexdigest()
 
 
@@ -315,19 +371,28 @@ def reconcile(workflow: dict[str, Any], runner: Runner) -> dict[str, Any]:
     return {"state": state_of(units), "fingerprint": fingerprint(units), "units": units}
 
 
+def reconcile_runtime(runtime: dict[str, Any], runner: Runner) -> dict[str, Any]:
+    unit, scope = runtime["unit"], runtime["scope"]
+    service = runner.show(scope, f"{unit}.service", RUNTIME_PROPERTIES)
+    units = [{"unit": unit, "scope": scope, "timer": None, "service": _runtime_view(unit, service)}]
+    return {"state": runtime_state_of(units), "fingerprint": fingerprint(units), "units": units}
+
+
 def check_loaded(before: dict[str, Any]) -> None:
     for unit in before["units"]:
-        for view in (unit["timer"], unit["service"]):
+        for view in _views(unit):
             if view["loadState"] == "not-found":
                 raise Refusal("unit_not_found", f"{view['name']} is allowlisted but systemd does not know it")
-        if unit["timer"]["unitFileState"] in MASKED_STATES or unit["timer"]["loadState"] in MASKED_STATES:
-            raise Refusal("masked", f"{unit['timer']['name']} is masked")
+        gate = unit["timer"] or unit["service"]
+        if gate.get("unitFileState") in MASKED_STATES or gate["loadState"] in MASKED_STATES:
+            raise Refusal("masked", f"{gate['name']} is masked")
 
 
 def next_scheduled(after: dict[str, Any] | None) -> str | None:
     if not after:
         return None
-    elapses = sorted(unit["timer"]["nextElapseAt"] for unit in after["units"] if unit["timer"]["nextElapseAt"])
+    timers = [unit["timer"] for unit in after["units"] if unit["timer"]]
+    elapses = sorted(timer["nextElapseAt"] for timer in timers if timer["nextElapseAt"])
     return elapses[0] if elapses else None
 
 
@@ -405,8 +470,8 @@ def validate_receipt(data: Any) -> list[str]:
         errors.append("schema is not 1")
     if data["result"] not in RESULTS:
         errors.append(f"result outside {RESULTS}")
-    if data["action"] is not None and data["action"] not in ACTIONS:
-        errors.append(f"action outside {ACTIONS}")
+    if data["action"] is not None and data["action"] not in ALL_ACTIONS:
+        errors.append(f"action outside {ALL_ACTIONS}")
     if data["stage"] is not None and data["stage"] not in STAGES:
         errors.append("stage outside preview/apply")
     refusal = data["refusal"]
@@ -500,9 +565,9 @@ def validate_request(request: Any) -> dict[str, Any]:
                               or any(not isinstance(actor.get(key), (str, type(None))) for key in ("remote", "local", "label"))):
         raise Refusal("bad_request", "actor must carry string-or-null remote, local and label")
     action = request["action"]
-    if action not in ACTIONS:
-        raise Refusal("unknown_action", f"action must be one of {', '.join(ACTIONS)}")
-    if not UNIT_RE.match(request["workflow_id"]):
+    if action not in ALL_ACTIONS:
+        raise Refusal("unknown_action", f"action must be one of {', '.join(ALL_ACTIONS)}")
+    if not UNIT_RE.match(request["workflow_id"]) and not RUNTIME_RE.match(request["workflow_id"]):
         raise Refusal("bad_request", "workflow_id is outside the unit grammar")
     trigger = request.get("trigger")
     if trigger is not None and not UNIT_RE.match(trigger):
@@ -526,6 +591,15 @@ def choose_trigger(workflow: dict[str, Any], request: dict[str, Any], candidates
     if not candidates:
         raise Refusal("state_conflict", none_message)
     raise Refusal("trigger_required", f"{workflow['id']} has several triggers; name one", sorted(candidates))
+
+
+def check_vocabulary(entry: dict[str, Any], action: str) -> None:
+    if entry["kind"] == "runtime" and action not in RUNTIME_ACTIONS:
+        raise Refusal("unknown_action",
+                      f"{action} is not a runtime action; runtimes take {', '.join(RUNTIME_ACTIONS)}")
+    if entry["kind"] == "workflow" and action not in ACTIONS:
+        raise Refusal("unknown_action",
+                      f"{action} is not a workflow action; workflows take {', '.join(ACTIONS)} (run_now starts a run)")
 
 
 # --- the plan ---------------------------------------------------------------------------
@@ -570,6 +644,26 @@ def _check_preconditions(action: str, request: dict[str, Any], before: dict[str,
             raise Refusal("reason_required", "stop needs a non-empty reason")
         if state != "running":
             raise Refusal("state_conflict", "no run in progress to stop")
+
+
+def plan_runtime(action: str, runtime: dict[str, Any]) -> tuple[str, str, str]:
+    """(scope, verb, unit) — the verb is the action itself, argv from the allowlist entry only."""
+    return runtime["scope"], action, f"{runtime['unit']}.service"
+
+
+def _check_runtime_preconditions(action: str, request: dict[str, Any], before: dict[str, Any]) -> None:
+    service = before["units"][0]["service"]
+    name, active = service["name"], service["activeState"]
+    if request.get("confirm") is not True:
+        raise Refusal("confirmation_required", f"{action} needs confirm: true")
+    if action in ("stop", "restart") and not (request.get("reason") or "").strip():
+        raise Refusal("reason_required", f"{action} needs a non-empty reason")
+    if action == "start" and active in RUNTIME_ACTIVE_STATES:
+        raise Refusal("state_conflict", f"{name} is already {active}")
+    if action in ("stop", "restart") and active == "deactivating":
+        raise Refusal("state_conflict", f"{name} is still stopping")
+    if action in ("stop", "restart") and active not in RUNTIME_ACTIVE_STATES:
+        raise Refusal("state_conflict", f"{name} is {active}; nothing to {action}")
 
 
 def _check_preview_token(request: dict[str, Any], before: dict[str, Any], cfg: Config, now: dt.datetime) -> dict[str, Any]:
@@ -641,12 +735,44 @@ def _execute(action: str, request: dict[str, Any], workflow: dict[str, Any], bef
         out["run_id"] = runner.show(scope, unit, RUN_PROPERTIES).get("InvocationID") or None
     if action == "stop":
         scope, _, unit = steps[0]
-        deadline = time.monotonic() + STOP_POLL_SECONDS
-        while runner.show(scope, unit, "ActiveState").get("ActiveState") in {"active", "deactivating", "activating"}:
-            if time.monotonic() >= deadline:
-                out["note"] = f"{unit} still deactivating after {STOP_POLL_SECONDS} s; TimeoutStopSec applies"
-                break
-            time.sleep(1)
+        _await_stop(runner, scope, unit, out)
+    out["result"] = "applied"
+
+
+def _await_stop(runner: Runner, scope: str, unit: str, out: dict[str, Any]) -> None:
+    deadline = time.monotonic() + STOP_POLL_SECONDS
+    while runner.show(scope, unit, "ActiveState").get("ActiveState") in {"active", "deactivating", "activating"}:
+        if time.monotonic() >= deadline:
+            out["note"] = f"{unit} still deactivating after {STOP_POLL_SECONDS} s; TimeoutStopSec applies"
+            break
+        time.sleep(1)
+
+
+def _await_settle(runner: Runner, scope: str, unit: str, seconds: int, out: dict[str, Any]) -> None:
+    """Watch the unit for RestartSec + 1: systemd accepted the verb either way, but a unit that
+    fails inside the window is in its Restart=on-failure loop and the receipt says so."""
+    journal = f"journalctl {'--user ' if scope == 'user' else ''}-u {unit}"
+    deadline = time.monotonic() + max(0, seconds)
+    while True:
+        values = runner.show(scope, unit, SETTLE_PROPERTIES)
+        active, sub = values.get("ActiveState"), values.get("SubState")
+        if active == "failed" or (active == "activating" and sub == "auto-restart"):
+            out["note"] = (f"{unit} is {active}/{sub} inside the {seconds} s settle window "
+                           f"(NRestarts={values.get('NRestarts') or '?'}); read `{journal}` and run "
+                           f"~/.config/buzz-team/check-loaded.sh")
+            return
+        if time.monotonic() >= deadline:
+            return
+        time.sleep(1)
+
+
+def _execute_runtime(action: str, runtime: dict[str, Any], runner: Runner, cfg: Config, out: dict[str, Any]) -> None:
+    scope, verb, unit = plan_runtime(action, runtime)
+    runner.mutate(scope, verb, unit)
+    if action == "stop":
+        _await_stop(runner, scope, unit, out)
+    else:
+        _await_settle(runner, scope, unit, cfg.start_settle, out)
     out["result"] = "applied"
 
 
@@ -660,7 +786,7 @@ def handle(request: Any, cfg: Config, clock: Callable[[], dt.datetime] | None = 
                            "implication": None, "run_id": None, "preview_receipt": None, "note": None,
                            "trigger": raw.get("trigger") if isinstance(raw.get("trigger"), str) else None}
     workflow: dict[str, Any] | None = None
-    action = raw.get("action") if raw.get("action") in ACTIONS else None
+    action = raw.get("action") if raw.get("action") in ALL_ACTIONS else None
     try:
         if isinstance(request, Refusal):
             raise request
@@ -670,17 +796,12 @@ def handle(request: Any, cfg: Config, clock: Callable[[], dt.datetime] | None = 
             if not allowed:
                 raise Refusal("peer_denied", why)
         workflow = Allowlist.load(cfg.allowlist).lookup(request["workflow_id"])
-        mutating = not (action == "resume" and request.get("stage") == "preview")
-        with (_Lock(cfg.lock) if mutating else _NoLock()):
-            out["before"] = reconcile(workflow, runner)
-            check_loaded(out["before"])
-            _check_preconditions(action, request, out["before"], workflow)
-            try:
-                _execute(action, request, workflow, out["before"], runner, cfg, requested_at, out)
-            except CommandFailed as exc:
-                out["result"], out["note"] = "failed", str(exc)
-            if out["result"] != "previewed":
-                out["after"] = reconcile(workflow, runner)
+        check_vocabulary(workflow, action)
+        if workflow["kind"] == "runtime":
+            out["trigger"] = None
+            _handle_runtime(action, request, workflow, runner, cfg, out)
+        else:
+            _handle_workflow(action, request, workflow, runner, cfg, requested_at, out)
     except Refusal as refusal:
         out["result"] = "refused"
         out["refusal"] = {"code": refusal.code, "message": refusal.message, "choices": refusal.choices}
@@ -690,6 +811,34 @@ def handle(request: Any, cfg: Config, clock: Callable[[], dt.datetime] | None = 
     receipt = _build_receipt(raw, action, workflow, actor or _default_actor(), requested_at, completed_at, runner, out)
     write_receipt(receipt, cfg.receipts)
     return _response(receipt, out)
+
+
+def _handle_workflow(action: str, request: dict[str, Any], workflow: dict[str, Any], runner: Runner,
+                     cfg: Config, requested_at: dt.datetime, out: dict[str, Any]) -> None:
+    mutating = not (action == "resume" and request.get("stage") == "preview")
+    with (_Lock(cfg.lock) if mutating else _NoLock()):
+        out["before"] = reconcile(workflow, runner)
+        check_loaded(out["before"])
+        _check_preconditions(action, request, out["before"], workflow)
+        try:
+            _execute(action, request, workflow, out["before"], runner, cfg, requested_at, out)
+        except CommandFailed as exc:
+            out["result"], out["note"] = "failed", str(exc)
+        if out["result"] != "previewed":
+            out["after"] = reconcile(workflow, runner)
+
+
+def _handle_runtime(action: str, request: dict[str, Any], runtime: dict[str, Any], runner: Runner,
+                    cfg: Config, out: dict[str, Any]) -> None:
+    with _Lock(cfg.lock):
+        out["before"] = reconcile_runtime(runtime, runner)
+        check_loaded(out["before"])
+        _check_runtime_preconditions(action, request, out["before"])
+        try:
+            _execute_runtime(action, runtime, runner, cfg, out)
+        except CommandFailed as exc:
+            out["result"], out["note"] = "failed", str(exc)
+        out["after"] = reconcile_runtime(runtime, runner)
 
 
 class _NoLock:
@@ -731,7 +880,8 @@ def _build_receipt(raw: dict[str, Any], action: str | None, workflow: dict[str, 
         "links": {"workflow": f"/workflows/{workflow_id}" if workflow_id else None,
                   "run": f"/runs/{run_id}" if run_id else None,
                   "preview_receipt": out["preview_receipt"],
-                  "retry_of": raw.get("retry_of") if action == "retry" and isinstance(raw.get("retry_of"), str) else None},
+                  "retry_of": raw.get("retry_of") if action == "retry" and isinstance(raw.get("retry_of"), str) else None,
+                  "agent": f"/agents/{workflow['owner']}" if workflow and workflow.get("kind") == "runtime" else None},
     }
 
 
@@ -815,7 +965,8 @@ def config_from(args: argparse.Namespace) -> Config:
         raise SystemExit(f"--now is not ISO 8601: {args.now}")
     return Config(allowlist=pathlib.Path(args.allowlist), receipts=pathlib.Path(args.receipts), peer_uids=uids,
                   user_manager=args.user_manager, system_stamp_dir=pathlib.Path(args.system_stamp_dir),
-                  user_stamp_dir=pathlib.Path(args.user_stamp_dir), lock=pathlib.Path(args.lock), now=now)
+                  user_stamp_dir=pathlib.Path(args.user_stamp_dir), lock=pathlib.Path(args.lock), now=now,
+                  start_settle=args.start_settle)
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -830,9 +981,12 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--user-stamp-dir", default=env("CONTROL_BROKER_USER_STAMP_DIR", "/home/dave/.local/share/systemd/timers"))
     parser.add_argument("--lock", default=env("CONTROL_BROKER_LOCK", "/run/control-room/lock"))
     parser.add_argument("--now", default=None, help="fixed clock, ISO 8601 (tests only)")
+    parser.add_argument("--start-settle", type=int,
+                        default=int(env("CONTROL_BROKER_START_SETTLE_SECONDS", str(START_SETTLE_SECONDS))),
+                        help="seconds to watch a started or restarted runtime for a Restart= loop")
     modes = parser.add_subparsers(dest="mode")
     act_parser = modes.add_parser("act", help="build one request from the command line and print the response")
-    act_parser.add_argument("action", choices=ACTIONS)
+    act_parser.add_argument("action", choices=ALL_ACTIONS)
     act_parser.add_argument("workflow_id")
     act_parser.add_argument("--reason", default=None)
     act_parser.add_argument("--stage", default=None, choices=STAGES)
