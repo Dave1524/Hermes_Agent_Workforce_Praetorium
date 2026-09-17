@@ -153,9 +153,9 @@ exist in the sibling contract and is the highest-value check here.
 4. **What was delivered is what this run wrote.** Compared by `artifact_sha256`
    (`bin/deliver.sh:158`) rather than assumed, which is what separates "the summary was
    written" from "Dave read tonight's summary" — and catches yesterday's file re-posted on a
-   night the agent produced nothing.
+   night the agent produced nothing. Decided at `sweep`, not `run`: delivery is `ExecStartPost`, which starts after `agent_propose.sh` has already written this run's receipt, so from inside the run the newest delivery receipt is always the previous run's (2026-09-17, first live receipts).
 
-   ```check id=delivered-this-runs-artifact
+   ```check id=delivered-this-runs-artifact when=sweep
    body="$(find "$HOME/logs/eod-summary" -maxdepth 1 -name 'eod-summary-*.md' \
              -newermt "@$AGENT_RUN_STARTED_AT" 2>/dev/null | sort | tail -1)"
    [ -n "$body" ] || { echo "n/a: no artifact this run"; exit 77; }

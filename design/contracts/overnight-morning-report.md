@@ -161,9 +161,9 @@ this job has already broken once.
 4. **What was delivered is what this run wrote.** By `artifact_sha256` (`bin/deliver.sh:158`),
    not by assumption. `deliver_report.sh` is fail-soft and always exits 0 so a transport hiccup
    cannot fire the `OnFailure` alert (stated in the unit at `:24-26`) — which means a delivery
-   that silently did not happen leaves no other trace.
+   that silently did not happen leaves no other trace. Decided at `sweep`, not `run`: delivery is `ExecStartPost`, which starts after `agent_propose.sh` has already written this run's receipt, so from inside the run the newest delivery receipt is always the previous run's (2026-09-17, first live receipts).
 
-   ```check id=delivered-this-runs-artifact
+   ```check id=delivered-this-runs-artifact when=sweep
    r="$(find "$HOME/logs/overnight" -maxdepth 1 -name 'morning-report-*.md' \
           -newermt "@$AGENT_RUN_STARTED_AT" 2>/dev/null | sort | tail -1)"
    [ -n "$r" ] || { echo "n/a: no artifact this run"; exit 77; }

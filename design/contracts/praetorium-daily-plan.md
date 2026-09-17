@@ -162,9 +162,9 @@ modes` references them, never the numbers.
    `artifact_sha256` (`bin/deliver.sh:158`), so the two ends can be compared rather than
    assumed. This is the check that separates "the report was written" from "Dave read it",
    and it catches a stale artifact re-delivered on a night the agent produced nothing —
-   which at the reading end is indistinguishable from a fresh one.
+   which at the reading end is indistinguishable from a fresh one. Decided at `sweep`, not `run`: delivery is `ExecStartPost`, which starts after `agent_propose.sh` has already written this run's receipt, so from inside the run the newest delivery receipt is always the previous run's (2026-09-17, first live receipts).
 
-   ```check id=delivered-this-runs-artifact
+   ```check id=delivered-this-runs-artifact when=sweep
    body="$(find "$HOME/logs/daily-plan" -maxdepth 1 -name 'daily-plan-*.md' \
              -newermt "@$AGENT_RUN_STARTED_AT" 2>/dev/null | sort | tail -1)"
    [ -n "$body" ] || { echo "n/a: no artifact this run"; exit 77; }
