@@ -16,6 +16,11 @@ describe("toRun", () => {
     expect(r.usage).toEqual({ status: "unavailable" });
     expect(r.nextAction).toBeNull();
   });
+  it("carries an operator closure and null when there is none", () => {
+    const closed = { at: "2026-09-17T10:30:00Z", by: "Dave", reason: "check defect fixed in 73dea03" };
+    expect(toRun({ ...failedRun, closed }).closed).toEqual(closed);
+    expect(toRun(failedRun).closed).toBeNull();
+  });
   it("tolerates a run with no id and no times", () => {
     const r = toRun({ ...skippedRun, id: null, startedAt: null, endedAt: null });
     expect(r.id).toBe("");

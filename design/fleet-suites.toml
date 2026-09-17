@@ -323,6 +323,7 @@ asserts = [
   "control-room-runtime-control", # T5.3g: an agent-runtime row's control carries start/stop/restart from one function; a failed always-on service is paused (startable); /api/v1/agents items carry control and runtime.unitFileState
   "control-room-stamp-not-a-fire", # a LastTriggerUSec at or before the timer's ActiveEnterTimestamp is the stamp read back on resume: firedAt and control.lastFiredAt are null, lastTriggerAt stays as systemd prints it
   "control-room-reader-properties", # every property the test fake answers is one SystemdReader.PROPERTIES requests from systemctl; a key the fake emits and the live reader never fetches is how ActiveEnterTimestamp passed the suite and was null in production (2026-09-17)
+  "control-room-closed-run",     # T7.5: a closed receipt is looked past by health, lastEligibleRun, eligibleRuns, the rate, exceptions, incidents and reliability7d; lastRun and the run detail carry the closure
   "control-room-last-eligible-run", # lastEligibleRun is the newest receipt that ran (skipped excluded); lastRun and health still show the skip, and it yields no missing-artifact row and no incident
 ]
 why_no_workflow = """
@@ -450,6 +451,7 @@ asserts = [
   "exceptions-stamp-not-a-fire",      # a null control.lastFiredAt (the stamp read back on resume) is never a missed cadence
   "exceptions-clean-decline",         # every eligible run a decline with no failed check is the contract honoured, not missing-artifact(b); a decline with a failed check still counts
   "exceptions-skipped-not-a-run",     # a skipped latest receipt is not a run: it yields no row and the run before it is the one judged
+  "exceptions-closed-run",       # T7.5: a closed failure yields neither a failed nor a missing-artifact row; an unclosed sibling still does
   "exceptions-dependency-down",       # T5.3f: one row naming every requirement whose satisfied is false, last in KINDS order; true, null, no field and paused yield none
 ]
 why_no_workflow = """
@@ -468,6 +470,19 @@ asserts = [
 why_no_workflow = """
 One judgement shared by the Control Room's missed-cadence row and workflow-incidents'
 incomplete-run. Owned by either row it would be the other's rule by proxy.
+"""
+
+[[suite]]
+path    = "tests/test_receipt_close.sh"
+owner   = "fleet"
+asserts = [
+  "receipt-close-schema",      # a `closed` block validates only with at/by/reason, only on a receipt with something failed, and the outcome stays as written
+  "receipt-close-not-judged",  # judged() is false for a closed receipt and for a skipped one; every reader asks it
+  "receipt-close-cli",         # bin/receipt_close.py rewrites the receipt in place with the closure and refuses a missing, already-closed or unfailed one untouched
+]
+why_no_workflow = """
+The operator's verdict on one run, written where the run is. Owned by a workflow it would
+be that workflow's opinion of its own receipt.
 """
 
 [[suite]]

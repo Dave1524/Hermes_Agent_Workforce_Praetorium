@@ -30,6 +30,15 @@ describe("RunDetail", () => {
     expect(screen.getByTestId("assertions")).toHaveTextContent(/fail\s*proposal-or-decline\s*— neither a proposal nor DECLINE:/);
   });
 
+  it("renders a closed failure as closed, with who and why", async () => {
+    const closed = { at: "2026-09-17T10:30:00Z", by: "Dave", reason: "check defect fixed in 73dea03" };
+    mockFetch({ "/api/v1/runs/run-0913": envelope({ ...failedRun, closed }) });
+    renderInShell(<RunDetail runId="run-0913" />);
+    await waitFor(() => expect(screen.getByTestId("closed-chip")).toBeInTheDocument());
+    expect(document.querySelector("[data-outcome='failed']")).toBeInTheDocument();
+    expect(screen.getByTestId("closed")).toHaveTextContent(/Closed .*by Dave — check defect fixed in 73dea03/);
+  });
+
   it("renders the handoff block when the run carries a parent", async () => {
     mockFetch({ "/api/v1/runs/child": envelope({ ...measuredRun, id: "child", parentRunId: "run-0914", handoff: { from: "marcus", to: "trajan" } }) });
     renderInShell(<RunDetail runId="child" />);

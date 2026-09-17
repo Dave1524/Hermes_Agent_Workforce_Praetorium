@@ -15,6 +15,12 @@ export interface RunAssertion {
   message: string | null;
 }
 
+export interface RunClosure {
+  at: string;
+  by: string;
+  reason: string;
+}
+
 export interface NextAction {
   actor: string | null;
   action: string | null;
@@ -40,6 +46,7 @@ export interface Run {
   parentRunId: string | null;
   handoff: unknown;
   receiptPath: string | null;
+  closed: RunClosure | null;
 }
 
 export const toRun = (r: RunSummary): Run => ({
@@ -61,4 +68,5 @@ export const toRun = (r: RunSummary): Run => ({
   parentRunId: r.parentRunId ?? null,
   handoff: r.handoff ?? null,
   receiptPath: r.receiptPath ?? null,
+  closed: r.closed ? { at: r.closed.at, by: r.closed.by, reason: r.closed.reason } : null,
 });

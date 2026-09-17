@@ -125,6 +125,10 @@ Two `sweep` checks; both read `not applicable` (77) while the timer is disabled.
 - **A skipped receipt is not a run.** A flock skip or a same-day dedup skip is the timer
   accounted for; the run judged is the workflow's `lastEligibleRun`, so a skip after a failed
   run neither masks nor resolves it.
+- **A closed receipt is a reviewed failure, not a run to judge.** `bin/receipt_close.py`
+  records who closed it and why on the receipt (T7.5); the incident it raised resolves on the
+  next sweep and the recovery cites the closure. The recorded outcome is unchanged, and a new
+  failed run is a new incident.
 - **`contract-unavailable` never alerts.** It is a manifest gap the coverage checker owns; it
   rides the digest only.
 - **The flood cap defers, it does not drop.** More than `INCIDENT_MAX_SENDS_PER_SWEEP` (10)

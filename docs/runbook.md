@@ -274,6 +274,25 @@ proposals) — and answer 501 only on a box where neither is wired. The service 
 `systemctl` verb but `show`, touches no timer, no receipt, no vault, no Notion; every change
 the screen can cause is a broker receipt or a pull request, never an edit.
 
+**Closing a reviewed failure (T7.5):** a `failed` receipt keeps its exception row, its
+incident and its Buzz alert until a later run replaces it as `lastEligibleRun` — for a
+Mon-Fri job whose check defect was fixed the same morning, that is a day of a red that means
+nothing. The operator's verdict is written on the receipt:
+
+```
+bin/receipt_close.py <workflow_id> <run_id> --by "Dave" --reason "<the defect and its fix>"
+```
+
+It adds a `closed` block (`at`, `by`, `reason`; `bin/workflow_receipt.py`) and changes nothing
+else — the recorded outcome and checks stay as written, visible on the run page with a
+`closed` chip. Every reader asks `workflow_receipt.judged` and looks past it: health,
+`lastEligibleRun`, the eligible count and valid-artifact rate, the exceptions queue, incidents
+and the 7-day reliability strip. The notifier's next tick resolves the incident and posts
+`[recovered]` citing the closure. Only a receipt with something failed can be closed, once;
+a closed run tells the next run nothing, so a new failure re-opens as a new run. Run ids are
+on the run page, in `/api/v1/runs?workflow=<id>`, or the file names under
+`~/agent-workforce/var/workflow-receipts/<workflow_id>/`.
+
 **Drift:** the screen's code ships with `bin/` (including the nested `bin/control_room_ui/`,
 which is why the bin half of `check_deploy_drift.sh` compares recursively since 2026-09-14);
 the unit is compared against `/etc/systemd/system/` like every other. `design/` changes need

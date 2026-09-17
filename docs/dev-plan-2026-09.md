@@ -813,6 +813,21 @@ losing artifacts today.
   it. Fixed the same hour with a test that the fake answers only properties the live reader
   requests. What remains on the screen is honest: agent-proposal's three eligible receipts
   are `failed` records of checks fixed that morning, and one artifact run clears both rows.
+- **T7.5** [Claude, S] **Done 2026-09-17.** Dave: "old alarms that are fixed should be closed
+  or removed." After T7.4 the queue still carried agent-proposal twice and the notifier had
+  posted a fresh alert for a 07:57Z receipt whose defect 73dea03 had fixed at 08:08 — and
+  nothing but tomorrow's run could clear it. A failed receipt now takes an operator's
+  closure: `bin/receipt_close.py <workflow> <run> --by --reason` writes a `closed` block
+  (`bin/workflow_receipt.py`; only on a receipt with something failed, once) and leaves the
+  outcome as recorded. One predicate, `workflow_receipt.judged`, is what every reader asks —
+  benefit's eligible runs, the exceptions context, `lastEligibleRun`, health, `reliability7d`
+  — so a closed run is looked past everywhere at once, the incident resolves on the next
+  sweep with a `[recovered]` that cites the closure, and the run page shows a `closed` chip
+  with who and why. Resolved incidents were already pruned after 14 days
+  (`INCIDENT_RESOLVED_RETENTION_DAYS`); nothing else needed removing. Gates:
+  `tests/test_receipt_close.sh` and the closed-run cases in the exceptions, API and notify
+  suites. Not built: a close verb on the screen — it is a write, so it belongs behind the
+  broker's allowlist, a root-file change for a verb used a few times a month.
 
 ## Execution order for Claude
 

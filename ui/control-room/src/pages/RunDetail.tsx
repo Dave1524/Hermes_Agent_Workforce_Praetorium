@@ -2,6 +2,7 @@ import { runDetailResponseSchema } from "@/api/schemas/run";
 import ArtifactLink from "@/components/ArtifactLink";
 import DataStatusStrip from "@/components/DataStatusStrip";
 import { CostCell, UsageCell } from "@/components/MeasurementCell";
+import ClosedChip from "@/components/ClosedChip";
 import OutcomeBadge from "@/components/OutcomeBadge";
 import { Panel, Row } from "@/components/Panel";
 import { ErrorNotice, Loading } from "@/components/ResourceState";
@@ -37,10 +38,16 @@ export default function RunDetail({ runId }: { runId: string }) {
           <div className="flex items-center gap-3 flex-wrap">
             <h2 className="text-lg font-semibold text-text font-mono">{run.id || runId}</h2>
             <OutcomeBadge outcome={run.outcome} />
+            <ClosedChip closed={run.closed} />
             {run.agent && <span className="text-xs text-text-2">{run.agent}</span>}
             {run.model && <span className="text-xs font-mono text-muted">{run.model}</span>}
           </div>
           {run.reason && <p className="text-sm text-text-2 mt-2">{run.reason}</p>}
+          {run.closed && (
+            <p className="text-sm text-text-2 mt-2" data-testid="closed">
+              Closed {formatUtc(run.closed.at) ?? run.closed.at} by {run.closed.by} — {run.closed.reason}
+            </p>
+          )}
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">

@@ -25,6 +25,12 @@ export const nextActionSchema = z
   })
   .catchall(z.unknown());
 
+export const closedSchema = z.object({
+  at: z.string(),
+  by: z.string(),
+  reason: z.string(),
+});
+
 export const runSummarySchema = z.object({
   id: z.string().nullish(),
   workflowId: z.string().nullish(),
@@ -44,6 +50,7 @@ export const runSummarySchema = z.object({
   parentRunId: z.string().nullish(),
   handoff: z.unknown().nullish(),
   receiptPath: z.string().nullish(),
+  closed: closedSchema.nullish(),
 });
 
 export const runDetailResponseSchema = envelope(runSummarySchema);
@@ -52,3 +59,4 @@ export const runListResponseSchema = envelope(z.array(runSummarySchema));
 export type RunSummary = z.infer<typeof runSummarySchema>;
 export type Artifact = z.infer<typeof artifactSchema>;
 export type Assertion = z.infer<typeof assertionSchema>;
+export type Closed = z.infer<typeof closedSchema>;

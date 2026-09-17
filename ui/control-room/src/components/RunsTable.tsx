@@ -1,3 +1,4 @@
+import ClosedChip from "@/components/ClosedChip";
 import { CostCell, UsageCell } from "@/components/MeasurementCell";
 import OutcomeBadge from "@/components/OutcomeBadge";
 import RouteLink from "@/components/RouteLink";
@@ -23,7 +24,7 @@ export default function RunsTable({ runs, empty = "No runs recorded." }: { runs:
         {runs.map((run) => (
           <tr key={run.id} className="hover:bg-surface-3 transition-colors">
             <td className="py-2 font-mono">{run.id ? <RouteLink to={{ name: "run", id: run.id }} className="text-accent hover:underline">{run.id}</RouteLink> : "—"}</td>
-            <td className="py-2"><OutcomeBadge outcome={run.outcome} /></td>
+            <td className="py-2"><span className="inline-flex items-center gap-1.5"><OutcomeBadge outcome={run.outcome} /><ClosedChip closed={run.closed} /></span></td>
             <td className="py-2"><When iso={run.endedAt} /></td>
             <td className="py-2 font-mono text-muted">{formatDuration(run.durationSeconds) ?? "—"}</td>
             <td className="py-2 text-right"><UsageCell usage={run.usage} /></td>

@@ -136,8 +136,11 @@ ls ~/.hermes/profiles/                              # base0, leantest, default (
   `bin/receipt_sweep.py` (every other standing timer, from systemd's record, under the
   shipped-disabled `workflow-receipt-sweep.timer`) and `bin/interaction_receipt.py` (each
   `buzz-agent@*` turn, from the Claude Code Stop hook or codex `notify`);
-  `tests/test_receipt_coverage.sh` proves every standing row has exactly one. Not to be
-  confused with the two other "receipt" files: `bin/delivery_receipt.py` (Buzz delivery,
+  `tests/test_receipt_coverage.sh` proves every standing row has exactly one. A failed
+  receipt whose defect is already fixed is **closed, not rewritten**: `bin/receipt_close.py`
+  adds a `closed` block (who, when, why) and every reader looks past it (T7.5; runbook
+  § Control Room "Closing a reviewed failure"). Not to be confused with the two other
+  "receipt" files: `bin/delivery_receipt.py` (Buzz delivery,
   JSONL) and `bin/run_record.sh` (`cost.log` records).
 - `control-room.service` — the **Control Room** (T5.3, 2026-09-14), serving
   `http://praetorium:8787/` from `bin/control_room_api.py` + `bin/control_room_ui/`. Reads only;
