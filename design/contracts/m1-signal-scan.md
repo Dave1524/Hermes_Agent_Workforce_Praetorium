@@ -137,12 +137,15 @@ Ids are the stable names; `## Known failure modes` references them, never the nu
    ```
 
 3. **Three signals, or a decline.** The floor is what separates a scan from a press review;
-   an artifact carrying two is neither.
+   an artifact carrying two is neither. A signal is counted by its so-what line, matched on
+   the words and not the punctuation around them: the profile's template quotes the whole
+   phrase, two runs wrote it bare, and the 2026-09-17 run wrote `"So what" for VP:` — the
+   same line, and a literal match counted zero of five.
 
    ```check id=three-signals-or-decline
    f="$AGENT_INBOX_DIR/${RUN_DATE}_m1-signal-scan.md"
    [ -f "$f" ] || { echo "n/a: no artifact this run"; exit 77; }
-   n="$(grep -ci 'so what for VP' "$f")"
+   n="$(grep -ciE 'so what[^a-z0-9]{0,3}for vp' "$f")"
    [ "$n" -ge 3 ] || echo "$n signal(s) carry a 'so what for VP' line; the floor is 3 and below it the run should have declined"
    [ "$n" -ge 3 ]
    ```
@@ -153,7 +156,7 @@ Ids are the stable names; `## Known failure modes` references them, never the nu
    ```check id=each-signal-cites-a-public-url
    f="$AGENT_INBOX_DIR/${RUN_DATE}_m1-signal-scan.md"
    [ -f "$f" ] || { echo "n/a: no artifact this run"; exit 77; }
-   n="$(grep -ci 'so what for VP' "$f")"
+   n="$(grep -ciE 'so what[^a-z0-9]{0,3}for vp' "$f")"
    [ "$n" -ge 1 ] || { echo "n/a: no signals to check"; exit 77; }
    u="$(grep -coE 'https?://' "$f")"
    [ "$u" -ge "$n" ] || echo "$n signal(s) but only $u line(s) carrying a URL"
@@ -166,7 +169,7 @@ Ids are the stable names; `## Known failure modes` references them, never the nu
    ```check id=each-signal-names-a-content-angle
    f="$AGENT_INBOX_DIR/${RUN_DATE}_m1-signal-scan.md"
    [ -f "$f" ] || { echo "n/a: no artifact this run"; exit 77; }
-   n="$(grep -ci 'so what for VP' "$f")"
+   n="$(grep -ciE 'so what[^a-z0-9]{0,3}for vp' "$f")"
    [ "$n" -ge 1 ] || { echo "n/a: no signals to check"; exit 77; }
    a="$(grep -ci 'content-angle' "$f")"
    [ "$a" -ge "$n" ] || echo "$n signal(s) but only $a content-angle line(s)"
