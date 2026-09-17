@@ -201,15 +201,19 @@ Ids are the stable names; `## Known failure modes` references them, never the nu
 8. **The delivery went out as kind 9.** `sweep`. The signals route is a chat channel; the
    three sibling research routes are 45001 forums, so a copied route block or a changed
    default publishes into this channel as a forum post — receipted `ok`, visible to nobody,
-   and indistinguishable from a healthy night in every log this box keeps.
+   and indistinguishable from a healthy night in every log this box keeps. Matched on the
+   receipt's `job` field, not on the name anywhere in the line — `workflow-incidents` posts
+   `[incident] …:m1-signal-scan` lines to the same file and the loose match read one of those
+   as this job's delivery (2026-09-17). `kind` is a string in the receipt
+   (`bin/delivery_receipt.py` coerces numbers only by key suffix, on purpose).
 
    ```check id=delivery-was-receipted when=sweep
    r="$HOME/logs/delivery-receipts.jsonl"
    [ -f "$r" ] || { echo "n/a: no delivery receipts on this box"; exit 77; }
-   line="$(grep -F m1-signal-scan "$r" | tail -1)"
+   line="$(grep -F '"job": "m1-signal-scan.service"' "$r" | tail -1)"
    [ -n "$line" ] || { echo "n/a: this job has never delivered"; exit 77; }
    ok=1
-   case "$line" in *'"kind": 9'*|*'"kind":9'*) ;; *) ok=0 ;; esac
+   case "$line" in *'"kind": "9"'*|*'"kind": 9'*) ;; *) ok=0 ;; esac
    [ "$ok" = 1 ] || echo "the last m1-signal-scan receipt is not kind 9 — the signals channel is chat, and a 45001 post there is shown to nobody: $line"
    [ "$ok" = 1 ]
    ```
