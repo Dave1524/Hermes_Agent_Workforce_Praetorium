@@ -173,6 +173,27 @@ check("nothing under ~/.hermes is read or created", not (home / ".hermes").exist
 lines2, _, _ = with_state([_row("2026-09-10", ["X"])], _append_then_read)
 check("an existing file gains one line, keeps the rest", len(lines2) == 2 and "X" in lines2[0])
 
+print("--- run summary: the kernel writes its own audit lines beside the state ---")
+# (::radar-summary-is-kernel-written)
+summary = k.summary_lines(list(range(88)), stalls + stalls, stalls, "some priorities", TODAY)
+check("the summary line carries the counts the contract checks read",
+      summary == ["bd-stall-radar (deterministic) 2026-09-11 — 88 deals, 8 Prospect&unworked, "
+                  "4 flagged (1 warm, 1 aging, 2 never contacted)"])
+check("empty priorities add the degraded warning, a second line",
+      k.summary_lines([], [], [], "", TODAY)[1:] ==
+      ["[warn] current_priorities.md empty via qmd — suppression degraded"])
+
+
+def _write_summary(state, home):
+    k.record_summary(summary)
+    f = state.parent / "last-run.log"
+    return f.exists(), f.read_text(encoding="utf-8") if f.exists() else ""
+
+
+exists, text = with_state(None, _write_summary)
+check("record_summary lands last-run.log beside flagged.jsonl, creating the directory",
+      exists and text == summary[0] + "\n")
+
 print()
 if failures:
     print(f"FAIL: {len(failures)} check(s) failed")

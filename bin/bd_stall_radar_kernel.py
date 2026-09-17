@@ -281,6 +281,37 @@ def record_run(stalls, today):
         print(f"[warn] state append failed: {e}", file=sys.stderr)
 
 
+# ── run summary ───────────────────────────────────────────────────────────
+# The audit lines the contract checks read (kernel-actually-ran, deal-count-was-not-zero,
+# priorities-suppression-was-live). Written by the kernel itself, beside the dedup state,
+# because the agent's final reply is the only other place they could appear and the agent
+# is free to paraphrase it.
+def summary_path():
+    return os.path.join(os.path.dirname(state_path()), "last-run.log")
+
+
+def summary_lines(deals, candidates, stalls, priorities, today):
+    warm, aging, never = _counts(stalls)
+    lines = [f"bd-stall-radar (deterministic) {today} — {len(deals)} deals, "
+             f"{len(candidates)} Prospect&unworked, {len(stalls)} flagged "
+             f"({warm} warm, {aging} aging, {never} never contacted)"]
+    if not priorities:
+        lines.append("[warn] current_priorities.md empty via qmd — suppression degraded")
+    return lines
+
+
+def record_summary(lines):
+    path = summary_path()
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write("".join(line + "\n" for line in lines))
+        os.replace(tmp, path)
+    except Exception as e:  # fail-soft, like the state append
+        print(f"[warn] summary write failed: {e}", file=sys.stderr)
+
+
 # ── proposal ──────────────────────────────────────────────────────────────
 def _counts(stalls):
     never = sum(1 for s in stalls if s["never"])
@@ -380,13 +411,11 @@ def main():
     today = dt.date.today()
 
     deals, candidates, stalls, priorities = classify(today)
-    warm, aging, never = _counts(stalls)
 
-    print(f"bd-stall-radar (deterministic) {today} — {len(deals)} deals, "
-          f"{len(candidates)} Prospect&unworked, {len(stalls)} flagged "
-          f"({warm} warm, {aging} aging, {never} never contacted)")
-    if not priorities:
-        print("[warn] current_priorities.md empty via qmd — suppression degraded")
+    summary = summary_lines(deals, candidates, stalls, priorities, today)
+    print("\n".join(summary))
+    if not args.dry_run:
+        record_summary(summary)
     for c in candidates:
         if c["suppress"]:
             tag = "SKIP"

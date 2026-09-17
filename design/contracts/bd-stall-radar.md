@@ -61,7 +61,14 @@ Everything this job reasons over is in-bubble by construction.
   the kernel, which announces it as `=> wrote _inbox/agents/<date>_bd-stall-radar.md (N flagged)`.
 - **Kernel summary line**, always, on stdout:
   `bd-stall-radar (deterministic) <today> — N deals, M Prospect&unworked, K flagged (W warm, A aging, U never contacted)`.
-  This line is the run's own audit trail and several checks below read it.
+  This line is the run's own audit trail. The kernel also writes it — with the
+  `suppression degraded` warning when that fired — to
+  `~/agent-workforce/var/bd-stall-radar/last-run.log`, and that file is what the checks below
+  read. They read the attempt log for it until 2026-09-17, which held only the agent's final
+  reply: the 09-09 run passed because the agent pasted the kernel's stdout into its answer,
+  and the 09-17 run failed `kernel-actually-ran` because it summarised the same output in
+  prose. The kernel writes its own evidence now, so the verdict no longer depends on how the
+  agent chose to phrase its reply.
 - **Delivery:** `ExecStartPost=bin/deliver_proposal.sh`, `DELIVERY_ROUTE=bd` → channel
   `97b5cf17-…`, **event kind 45001** (forum), notify `claudius`.
 - **The radar flags and stops.** It never writes Notion — not `Stage`, not `Last contact`, not
@@ -111,6 +118,9 @@ exist because all three of those produce the same clean, quiet, correct-looking 
   the kernel reads for its dedup window, so this run state is load-bearing rather than
   decorative (repo-owned since T6.1, 2026-09-16; the Hermes episodic store it replaced is
   retired).
+- Overwrites `~/agent-workforce/var/bd-stall-radar/last-run.log` with the kernel's summary
+  line (and the `suppression degraded` warning when it fired) — the evidence the three kernel
+  checks read (since 2026-09-17).
 - Touches `/home/dave/logs/run-markers/bd-stall-radar.service`.
 - Takes `${AGENT_PROPOSE_LOCK:-/tmp/agent_propose.lock}`, the fleet-wide propose lock — and
   must give it back before 09:37.
@@ -152,9 +162,12 @@ Ids are the stable names; `## Known failure modes` references them, never the nu
    looks right and obeys none of the thresholds.
 
    ```check id=kernel-actually-ran
-   [ -n "$(grep -F 'bd-stall-radar (deterministic)' "$AGENT_ATTEMPT_LOG")" ] \
-     || echo "the kernel's summary line is absent — nothing proves bd_stall_radar_kernel.py ran this night"
-   [ -n "$(grep -F 'bd-stall-radar (deterministic)' "$AGENT_ATTEMPT_LOG")" ]
+   s="$HOME/agent-workforce/var/bd-stall-radar/last-run.log"
+   fresh="$(find "$(dirname "$s")" -maxdepth 1 -name "$(basename "$s")" \
+              -newermt "@$AGENT_RUN_STARTED_AT" 2>/dev/null)"
+   [ -n "$fresh" ] && [ -n "$(grep -F 'bd-stall-radar (deterministic)' "$s")" ] \
+     || echo "the kernel's summary file is absent or older than this run — nothing proves bd_stall_radar_kernel.py ran this night"
+   [ -n "$fresh" ] && [ -n "$(grep -F 'bd-stall-radar (deterministic)' "$s")" ]
    ```
 
 4. **The deal count was not zero.** A Notion query that returns an empty set produces
@@ -163,7 +176,11 @@ Ids are the stable names; `## Known failure modes` references them, never the nu
    two apart, and without it the job can be silently dead for weeks.
 
    ```check id=deal-count-was-not-zero
-   line="$(grep -F 'bd-stall-radar (deterministic)' "$AGENT_ATTEMPT_LOG" | tail -1)"
+   s="$HOME/agent-workforce/var/bd-stall-radar/last-run.log"
+   fresh="$(find "$(dirname "$s")" -maxdepth 1 -name "$(basename "$s")" \
+              -newermt "@$AGENT_RUN_STARTED_AT" 2>/dev/null)"
+   line=""
+   [ -n "$fresh" ] && line="$(grep -F 'bd-stall-radar (deterministic)' "$s" | tail -1)"
    [ -n "$line" ] || { echo "n/a: no kernel summary line to read"; exit 77; }
    deals="$(echo "$line" | sed -n 's/.*[^0-9]\([0-9][0-9]*\) deals.*/\1/p')"
    [ -n "$deals" ] || { echo "the summary line carries no deal count: $line"; exit 1; }
@@ -176,9 +193,13 @@ Ids are the stable names; `## Known failure modes` references them, never the nu
    scrolls past in a 300-line journal.
 
    ```check id=priorities-suppression-was-live
-   [ -z "$(grep -F 'suppression degraded' "$AGENT_ATTEMPT_LOG")" ] \
+   s="$HOME/agent-workforce/var/bd-stall-radar/last-run.log"
+   fresh="$(find "$(dirname "$s")" -maxdepth 1 -name "$(basename "$s")" \
+              -newermt "@$AGENT_RUN_STARTED_AT" 2>/dev/null)"
+   [ -n "$fresh" ] || { echo "n/a: no kernel summary file for this run"; exit 77; }
+   [ -z "$(grep -F 'suppression degraded' "$s")" ] \
      || echo "the kernel ran with current_priorities.md empty via qmd — parked deals were not suppressed"
-   [ -z "$(grep -F 'suppression degraded' "$AGENT_ATTEMPT_LOG")" ]
+   [ -z "$(grep -F 'suppression degraded' "$s")" ]
    ```
 
 6. **No out-of-scope-stage deal was flagged.** `IN_SCOPE_STAGES` is `{"Prospect"}` since

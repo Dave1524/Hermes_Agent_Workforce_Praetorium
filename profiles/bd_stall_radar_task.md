@@ -30,7 +30,9 @@ nothing has changed, do not re-flag it identically — note "unchanged" or skip 
    (b) never contacted at all, OR no contact in >7 days, AND
    (c) current_priorities.md does not already show it as parked/counterparty-owned/within-window.
 3. For each genuine stall: note it in your run output (this becomes the Discord run
-   notification — no separate posting action needed). Do NOT update any Notion page
+   notification — no separate posting action needed). Open that output with the kernel's
+   `bd-stall-radar (deterministic) …` summary line, quoted verbatim, so the counts travel
+   with the notification. Do NOT update any Notion page
    field yourself (Last Contacted / Status / Blocked Reason) — flagging is your job,
    changing pipeline state is Dave's call from the Mac. Notion reads are direct and
    fine (inside the bubble); this task does not write Notion.
