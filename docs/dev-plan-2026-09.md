@@ -301,7 +301,9 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
 - **T3.3** [Claude, S, T3.2] Invocation telemetry: per run, which pointer skills were read,
   from run-log or transcript evidence, summarised by the scorecard. Gate: one week of runs
   yields a per-skill count.
-  **DONE (repo half) 2026-09-11, `db0012e`; NOT yet live-deployed.** Evidence is the run's
+  **DONE (repo half) 2026-09-11, `db0012e`; merged `8b720b9` (PR #37) and LIVE-DEPLOYED
+  2026-09-11 14:25 CEST** (`bin/deploy` from `main`, drift clean; folded into `main` from the
+  stale PR #39 on 2026-09-17). Evidence is the run's
   Claude Code transcript located by session id: `agent_propose.sh` mints `AGENT_SESSION_ID` per
   attempt, the nine Claude runners pass `--session-id`, `bin/skill_telemetry.py` parses the
   transcript (a parser, not a grep — the Skill tool's own schema sits in every transcript as
@@ -314,12 +316,12 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   Gate ran green against a scratch copy of the runtime (`AGENT_WORKFORCE_RUNTIME`, the T3.2
   precedent) because the live runtime carried T7.2's unmerged deploy of four `bin/` scripts,
   which a full deploy from this branch would have reverted; T7.2 merged as PR #35 the same
-  afternoon, so the live deploy now waits only on this branch's merge. **The gate's calendar
-  half is open:** it needs `bin/deploy` after the merge (the fleet is paused since 2026-09-11 12:05
-  CEST, so nothing runs before Dave resumes it either way), then seven days of scheduled runs,
-  then the first Monday digest showing a row per offered skill with a count. Record the live
-  deploy date here when it happens; the Notion card stays In Progress until that digest excerpt
-  is pasted under it.
+  afternoon, and the deploy followed the merge the same day. **The gate's calendar half is
+  open:** seven days of scheduled runs on the deployed code, then the first Monday digest showing
+  a row per offered skill with a count. The clock started at the fleet resume of 2026-09-16
+  ~19:00 CEST (nine runners re-enabled; MEASURED 2026-09-17 with `systemctl is-enabled`), so the
+  first eligible digest is `scorecard.timer` Mon 2026-09-28 07:00. The Notion card stays In
+  Progress until that digest excerpt is pasted under it.
 
 ### Phase 4 — Write the contracts
 
@@ -705,9 +707,14 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   deletes the two override envs in the deny-listed tree; Claude runs the prune and re-verifies.
   Gate: drift clean with no runtime-only `bin/` files.
   **Prune half DONE 2026-09-17:** `bin/deploy --prune` deleted the 11 runtime-only files
-  (7 `profiles/`, 4 `config/job-overrides/`; the three `bin/` runners were already gone), the
-  11 `[[runtime_only]]` entries cleared from `design/deploy-exclusions.toml`, drift clean.
-  Still Dave's: `rm ~/.config/agent-workforce/{content_strategy,faceless_content}.env`.
+  (7 `profiles/`, 4 `config/job-overrides/`), the 11 `[[runtime_only]]` entries cleared from
+  `design/deploy-exclusions.toml`, drift clean. **Not done:** the three `bin/` runners
+  (`run_content_strategy_cc.sh`, `run_faceless_content_cc.sh`,
+  `run_standing_research_topic_cc.sh`) are still in source and deployed — this row first said
+  they were "already gone", which was wrong (MEASURED 2026-09-17: `ls bin/run_*content*`). The
+  brief orders the env deletes first. Still Dave's:
+  `rm ~/.config/agent-workforce/{content_strategy,faceless_content}.env`; then Claude
+  `git rm` the three, `bin/deploy --prune`, verify.
 - **T6.4** [Claude, S] `design/workflow-registry.md` is joined by no test or script. Freeze it as
   the D1 record with a header pointing at the manifests. Gate: header present, no live claim
   left in it.
