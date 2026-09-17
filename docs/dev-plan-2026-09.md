@@ -771,6 +771,18 @@ losing artifacts today.
   Gate: the cause named, and either fixed or recorded as a `DECIDED` with the timeout re-based on
   measured successful turn length.
 
+- **T7.3** [Claude, M] `when=sweep` checks are never evaluated for a unit that receipts its own
+  run. `receipt_sweep.py` skips an invocation whose receipt exists (`already receipted`, never
+  overwritten), and `agent_propose.sh` receipts every run at `--vantage run` — so every sweep
+  check in those contracts (`not-lock-skipped`, `timer-fired-this-window`,
+  `delivered-this-runs-artifact`, `delivery-was-receipted`, `alert-staleness-reported`) is
+  recorded `not_applicable: vantage` and decided by nobody. Found 2026-09-17 while moving
+  Marcus's three delivery checks to `sweep` (they were `run`, which is structurally undecidable:
+  delivery is `ExecStartPost` and starts after the receipt). Fix shape: the sweep amends an
+  existing run-vantage receipt with its sweep-vantage results and re-derives the terminal
+  outcome, or the executor grows a `post` vantage the delivery adapter invokes. Gate: a
+  fixture where the run receipt exists and a sweep check would fail turns the receipt `failed`.
+
 ## Execution order for Claude
 
 Order as of **2026-09-10**, after the 09-10 batch (T3.1, T4.0, T4.1, T4.2, T4.3, T7.1) landed and
