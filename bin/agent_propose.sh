@@ -152,10 +152,19 @@ write_receipt() {
   # does, and the exit that follows it is the one the script would have taken anyway. The
   # adapter's own stdout is the executor's check table, kept in agent_propose.log.
   local outcome=$1; shift
-  local rc=0
-  python3 "$BIN_DIR/propose_receipt.py" "$outcome" "$@" 2>&1 | tee -a "$LOG_DIR/agent_propose.log" || rc=$?
-  # $rc is tee's; the adapter's status is the executor's verdict, which is not this run's.
-  [ "$rc" -eq 0 ] || log "receipt: not written (propose_receipt.py exit $rc) — the run's own outcome stands"
+  local rc=0 out
+  out="$(python3 "$BIN_DIR/propose_receipt.py" "$outcome" "$@" 2>&1)" || rc=$?
+  printf '%s\n' "$out" | tee -a "$LOG_DIR/agent_propose.log"
+  # The executor exits 1 for a written receipt whose checks failed, so its status alone
+  # cannot tell a failed verdict from a broken adapter; the `receipt: <path>` line it
+  # prints on every write can.
+  if [ "$rc" -ne 0 ]; then
+    if [ -n "$(printf '%s\n' "$out" | grep '^receipt: /')" ]; then
+      log "receipt: written, verdict failed (exit $rc) — the run's own outcome stands"
+    else
+      log "receipt: not written (propose_receipt.py exit $rc) — the run's own outcome stands"
+    fi
+  fi
   return 0
 }
 

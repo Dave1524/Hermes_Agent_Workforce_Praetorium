@@ -506,6 +506,8 @@ import json, os, sys
 with open(os.environ["STUB_OUT"], "a") as fh:
     fh.write(json.dumps(sys.argv[1:]) + "\n")
 print("contract_exec: stub")
+if os.environ.get("STUB_RECEIPT_LINE"):
+    print("receipt: " + os.environ["STUB_RECEIPT_LINE"])
 sys.exit(int(os.environ.get("STUB_RC", "0")))
 PY
   chmod +x "$home/stub_exec.py"
@@ -624,6 +626,10 @@ h37b=$(sandbox); rc=$(run_receipt_scenario "$h37b" 1 0 0 /bin/false)
 assert "FAIL with a broken adapter still exits 1" "[ '$rc' = 1 ]"
 h37c=$(sandbox); rc=$(run_receipt_scenario "$h37c" 0 0 0 "$h37c/does-not-exist.py")
 assert "a missing adapter target still exits 0" "[ '$rc' = 0 ]"
+h37d=$(sandbox); rc=$(STUB_RC=1 STUB_RECEIPT_LINE="$h37d/receipts/x.json" run_receipt_scenario "$h37d" 0)
+assert "an executor that wrote a receipt and exits 1 is a failed verdict, not a missing receipt" \
+  "grep -q 'receipt: written, verdict failed' '$h37d/agent-workforce/logs/agent_propose.log'"
+assert "and is not logged as unwritten" "! grep -q 'receipt: not written' '$h37d/agent-workforce/logs/agent_propose.log'"
 h37d=$(sandbox); rc=$(STUB_RC=1 run_receipt_scenario "$h37d" 0)
 assert "an executor that says failed (exit 1) does not fail a NOPROPOSAL run" "[ '$rc' = 0 ]"
 
