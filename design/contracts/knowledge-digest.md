@@ -131,12 +131,15 @@ the stable names; `## Known failure modes` below references them, never the numb
 3. **The body is under 500 words.** "Body" had to be made exact before it could be decided:
    the 2026-09-09 digest is **508 words whole and 499 from line 2**, so the obvious
    `wc -w < file` would have shipped a red on a run that complied. The H1 title line is not
-   body.
+   body. The profile has the agent run this same command on its own file before finishing
+   (since 2026-09-17, when a 518-word digest failed it): the budget is measured, not guessed.
 
    ```check id=body-under-500-words
    f="$AGENT_INBOX_DIR/${RUN_DATE}_knowledge-digest.md"
    [ -f "$f" ] || { echo "n/a: no artifact this run"; exit 77; }
-   [ "$(tail -n +2 "$f" | wc -w)" -lt 500 ]
+   words="$(tail -n +2 "$f" | wc -w)"
+   [ "$words" -lt 500 ] || echo "the body is $words words; the budget is under 500"
+   [ "$words" -lt 500 ]
    ```
 
 4. **The header carries the `weekly-pre-assembly` disclaimer.** In the header, not anywhere

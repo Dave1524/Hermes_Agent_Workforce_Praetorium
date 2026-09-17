@@ -42,9 +42,12 @@ today's knowledge-digest already exists"). Otherwise proceed.
 
 5. Write exactly ONE proposal file `_inbox/agents/<today>_knowledge-digest.md` (today from
    `date +%F`) in the format below. Keep the body UNDER 500 WORDS — this is a pointer
-   digest into notes, not a re-summary of their content. Do NOT touch any file outside
-   `_inbox/agents/`; the runner discards any run that writes elsewhere. Do NOT write to
-   `~/vault` directly.
+   digest into notes, not a re-summary of their content. Measure, do not estimate: after
+   writing, run `tail -n +2 _inbox/agents/<today>_knowledge-digest.md | wc -w` (the title
+   line is not body) and trim until it prints a number below 500 — the run's contract
+   check applies exactly that command, and 518 fails it as surely as 900 (2026-09-17).
+   Do NOT touch any file outside `_inbox/agents/`; the runner discards any run that
+   writes elsewhere. Do NOT write to `~/vault` directly.
 6. Never act outward. This task never emails, posts, DMs, shares, or messages anyone — no
    Notion sharing, no outbound. It only writes the one proposal file. No secrets or
    credentials in the output, ever.
