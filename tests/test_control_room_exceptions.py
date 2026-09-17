@@ -12,6 +12,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from control_room_fixture import NOW, build_model  # noqa: E402
 
 import control_room_exceptions as exceptions  # noqa: E402
+from workflow_receipt import close, judged  # noqa: E402
 
 DAY = 86400
 
@@ -44,7 +45,7 @@ def item(receipts=(), *, state="active", next_run=None, last_trigger=None, fired
          requires=()):
     receipts = list(receipts)
     artifacts = [r for r in receipts if r["terminal"]["outcome"] == "artifact"]
-    eligible = [r for r in receipts if r["terminal"]["outcome"] != "skipped"]
+    eligible = [r for r in receipts if judged(r)]
     last_valid = None
     if artifacts:
         age = int((NOW - dt.datetime.strptime(artifacts[0]["ended_at"], "%Y-%m-%dT%H:%M:%SZ")
@@ -147,6 +148,18 @@ class ExceptionsKindTable(unittest.TestCase):  # (::exceptions-kind-table)
         rows = exceptions.classify(item(receipts), receipts, NOW)
         self.assertEqual([(row["kind"], row["evidence"]["runId"]) for row in rows], [("failed", "r1")])
         self.assertEqual(exceptions.classify(item([SKIPPED]), [SKIPPED], NOW), [])
+
+    def test_a_closed_failure_is_not_a_run_to_judge(self):
+        # (::exceptions-closed-run)
+        failed = receipt("r1", "failed", 4 * 3600, reason="FAIL: rc=91 skip: today's proposal exists", assertions=[FAILED_CHECK])
+        receipts = [SKIPPED, failed, receipt("r0", "failed", DAY, reason="checks failed", assertions=[FAILED_CHECK])]
+        self.assertEqual(kinds(exceptions.classify(item(receipts), receipts, NOW)), ["failed", "missing-artifact"])
+        closed = [SKIPPED, close(failed, "Dave", "skip receipted failed before 73dea03", NOW),
+                  close(receipts[2], "Dave", "mirror-was-not-dirty: stray graft/ tree, excluded", NOW)]
+        self.assertEqual(exceptions.classify(item(closed), closed, NOW), [])
+        half = [closed[0], closed[1], receipts[2]]
+        rows = exceptions.classify(item(half), half, NOW)
+        self.assertEqual([(row["kind"], row["evidence"]["runId"]) for row in rows], [("failed", "r0"), ("missing-artifact", "r0")])
 
     def test_constants_are_the_briefs(self):
         self.assertEqual(exceptions.UNCONSUMED_GRACE_SECONDS, 7 * DAY)

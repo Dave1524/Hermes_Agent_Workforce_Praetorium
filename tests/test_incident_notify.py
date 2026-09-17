@@ -232,6 +232,29 @@ class Notifier(NotifierCase):
         self.sweep(now="2026-09-14T09:10:00Z")
         self.assertEqual(len(self.invocations()), 2)
 
+    def test_closing_the_failed_receipt_recovers_the_incident(self):
+        # (::notify-closed-run)
+        fixture = json.loads((FIXTURES / "receipts" / "knowledge-digest" / "synthetic-failed.json").read_text())
+        run_id = fixture["run_id"]
+        (self.receipts / "knowledge-digest").mkdir(exist_ok=True)
+        (self.receipts / "knowledge-digest" / f"{run_id}.json").write_text(json.dumps(fixture))
+        self.sweep()
+        closed = subprocess.run([sys.executable, str(NOTIFY.parent / "receipt_close.py"), "--root", str(self.receipts),
+                                 "knowledge-digest", run_id, "--by", "Dave", "--reason", "check read the wrong path; fixed"],
+                                capture_output=True, text=True, check=False)
+        self.assertEqual((closed.returncode, closed.stderr), (0, ""))
+        self.sweep(now="2026-09-14T09:05:00Z")
+        calls = self.invocations()
+        self.assertEqual(len(calls), 2)
+        self.assertIn("subject=[recovered] failed-assertion:knowledge-digest", calls[1])
+        self.assertIn("evidence: closed 20", self.messages())
+        self.assertIn(" by Dave: check read the wrong path; fixed", self.messages())
+        entry = self.state()["incidents"]["failed-assertion:knowledge-digest"]
+        self.assertEqual(entry["resolved_at"], "2026-09-14T09:05:00Z")
+        self.sweep(now="2026-09-14T09:10:00Z")
+        self.assertEqual(len(self.invocations()), 2)
+        self.assertEqual(len(state_open := [e for e in self.state()["incidents"].values() if e.get("resolved_at") is None]), 0, state_open)
+
     def test_daily_digest_lists_only_unresolved_incidents(self):
         # (::notify-digest)
         self.receipt("synthetic-failed.json")

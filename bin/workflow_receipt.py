@@ -11,6 +11,10 @@ Two rules the shape enforces rather than documents:
 - Usage and cost are `measured` or `unavailable`, and `unavailable` carries nulls, never
   zeros. Today's `tokens=unknown` and the frozen OpenRouter `0.000000` read as measured
   zero downstream; this schema makes that unrepresentable.
+- A `closed` block (T7.5) is an operator's review of a failed receipt — who, when, why —
+  and only a failed one: a receipt with nothing failed has nothing to close. The recorded
+  outcome stays as written; `judged` is what every reader asks, and a closed receipt is not
+  a run to judge, exactly as a skipped one is not.
 """
 from __future__ import annotations
 
@@ -30,6 +34,7 @@ COST_FIELDS = ("amount",)
 CLAUDE_CODE_SOURCE = "claude-code"
 CLAUDE_CODE_CURRENCY = "USD"
 SWEEP_WORKFLOW_ID = "workflow-receipt-sweep"
+CLOSED_FIELDS = ("at", "by", "reason")
 
 
 def utc_now() -> dt.datetime:
@@ -175,7 +180,52 @@ def validate(data: Any) -> list[str]:
         has_state = isinstance(state_change, dict) and bool(state_change.get("evidence"))
         if not has_artifact and not has_state:
             errors.append("artifact outcome has no artifact URI or state-change evidence")
+    errors.extend(_closed_errors(data))
     return errors
+
+
+def _closed_errors(data: dict[str, Any]) -> list[str]:
+    closed = data.get("closed")
+    if closed is None:
+        return []
+    if not isinstance(closed, dict):
+        return ["closed is not an object"]
+    errors = [f"closed.{field} is missing" for field in CLOSED_FIELDS
+              if not isinstance(closed.get(field), str) or not closed[field].strip()]
+    if not errors and parse_time(closed["at"]) is None:
+        errors.append("closed.at must be an ISO-8601 timestamp")
+    if not has_failure(data):
+        errors.append("closed on a receipt with nothing failed")
+    return errors
+
+
+# --- review -------------------------------------------------------------------------------
+def has_failure(receipt: dict[str, Any]) -> bool:
+    outcome = (receipt.get("terminal") or {}).get("outcome") if isinstance(receipt.get("terminal"), dict) else None
+    assertions = receipt.get("assertions") if isinstance(receipt.get("assertions"), list) else []
+    return outcome == "failed" or any(isinstance(a, dict) and a.get("status") == "failed" for a in assertions)
+
+
+def is_closed(receipt: dict[str, Any]) -> bool:
+    return isinstance(receipt.get("closed"), dict)
+
+
+def judged(receipt: dict[str, Any]) -> bool:
+    """A run every reader may judge: it ran (not skipped) and no operator has closed it."""
+    return (receipt.get("terminal") or {}).get("outcome") != "skipped" and not is_closed(receipt)
+
+
+def close(receipt: dict[str, Any], by: str, reason: str, now: dt.datetime | None = None) -> dict[str, Any]:
+    """The receipt with a review recorded on it; refuses a receipt that has nothing failed,
+    is already closed, or a review with no author or reason."""
+    if not has_failure(receipt):
+        raise ValueError("nothing failed in this receipt; there is nothing to close")
+    if is_closed(receipt):
+        closed = receipt["closed"]
+        raise ValueError(f"already closed {closed.get('at')} by {closed.get('by')}: {closed.get('reason')}")
+    if not by.strip() or not reason.strip():
+        raise ValueError("a closure names who closed it and why")
+    return {**receipt, "closed": {"at": iso_utc(now), "by": by.strip(), "reason": reason.strip()}}
 
 
 # --- writing ------------------------------------------------------------------------------

@@ -3,7 +3,7 @@
 design/benefit-ledger.toml, and `Unknown` wherever neither speaks.
 
 Nothing here estimates. Eligible runs are artifact/decline/failed receipts (a skipped run never
-ran); the valid-artifact rate is artifact / eligible; latency is the median run duration over
+ran) that no operator has closed (workflow_receipt.judged); the valid-artifact rate is artifact / eligible; latency is the median run duration over
 eligible runs; consumption is four separate counts of `true` over artifact receipts that carry
 a `consumption` object, and `unavailable` when none does. The decision, baseline and manual
 minutes avoided come from the ledger only — T5.4 owns its entries — and a decision outside
@@ -16,7 +16,7 @@ import statistics
 import tomllib
 from typing import Any
 
-from workflow_receipt import parse_time
+from workflow_receipt import judged, parse_time
 
 DECISIONS = ("Keep", "Improve", "Retire", "Unknown")
 ELIGIBLE_OUTCOMES = {"artifact", "decline", "failed"}
@@ -55,7 +55,7 @@ def _ledger_entry_problem(entry: Any, index: int) -> str | None:
 
 
 def eligible_receipts(receipts: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [r for r in receipts if (r.get("terminal") or {}).get("outcome") in ELIGIBLE_OUTCOMES]
+    return [r for r in receipts if judged(r) and (r.get("terminal") or {}).get("outcome") in ELIGIBLE_OUTCOMES]
 
 
 def valid_artifact_rate(receipts: list[dict[str, Any]]) -> tuple[int, float | None]:

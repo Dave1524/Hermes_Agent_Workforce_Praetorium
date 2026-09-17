@@ -560,6 +560,38 @@ class ControlRoomApiTest(unittest.TestCase):
         self.assertNotIn("missing-artifact", [row["kind"] for row in self.model.exceptions()["items"]
                                               if row["workflowId"] == "daily-plan"])
         self.assertEqual([i["id"] for i in self.model.incidents()["items"] if i["workflowId"] == "daily-plan"], [])
+    def run_kinds(self, workflow_id: str) -> list[str]:
+        """The run-judging exception kinds on a row; missed-cadence is the fixture timer's own."""
+        return sorted(row["kind"] for row in self.model.exceptions()["items"]
+                      if row["workflowId"] == workflow_id and row["kind"] in {"failed", "stale-input", "missing-artifact"})
+
+    def test_a_closed_failure_is_looked_past_everywhere(self):  # (::control-room-closed-run)
+        self.write_receipt(run="run-1", outcome="failed", ended_at="2026-09-11T07:02:00Z")
+        self.write_receipt(run="run-0", outcome="failed", ended_at="2026-09-11T07:01:00Z")
+        daily = next(item for item in self.model.list_workflows({})["items"] if item["id"] == "daily-plan")
+        self.assertEqual((daily["health"], daily["lastEligibleRun"]["id"], daily["eligibleRuns"]), ("failed", "run-1", 2))
+        self.assertEqual(self.run_kinds("daily-plan"), ["failed", "missing-artifact"])
+        path = self.receipts / "daily-plan" / "run-1.json"
+        receipt = json.loads(path.read_text())
+        receipt["closed"] = {"at": "2026-09-11T07:30:00Z", "by": "Dave", "reason": "artifact-exists read the wrong path"}
+        path.write_text(json.dumps(receipt))
+        daily = next(item for item in self.model.list_workflows({})["items"] if item["id"] == "daily-plan")
+        self.assertEqual((daily["lastRun"]["id"], daily["lastRun"]["outcome"], daily["lastRun"]["closed"]["by"]),
+                         ("run-1", "failed", "Dave"))
+        self.assertEqual((daily["health"], daily["lastEligibleRun"]["id"], daily["eligibleRuns"]), ("failed", "run-0", 1))
+        self.assertEqual([i["runId"] for i in self.model.incidents()["items"] if i["workflowId"] == "daily-plan"], ["run-0"])
+        receipt = json.loads((self.receipts / "daily-plan" / "run-0.json").read_text())
+        receipt["closed"] = {"at": "2026-09-11T07:30:00Z", "by": "Dave", "reason": "same defect"}
+        (self.receipts / "daily-plan" / "run-0.json").write_text(json.dumps(receipt))
+        daily = next(item for item in self.model.list_workflows({})["items"] if item["id"] == "daily-plan")
+        self.assertEqual((daily["health"], daily["lastEligibleRun"], daily["eligibleRuns"], daily["validArtifactRate"]),
+                         ("unknown", None, 0, None))
+        self.assertEqual(self.run_kinds("daily-plan"), [])
+        self.assertEqual([i for i in self.model.incidents()["items"] if i["workflowId"] == "daily-plan"], [])
+        by_day = {d["day"]: d for d in self.model.overview()["reliability7d"]["days"]}
+        self.assertEqual(by_day["2026-09-11"], {"day": "2026-09-11", "eligible": 0, "valid": 0})
+        self.assertEqual(self.model.run_detail("run-1")[0]["closed"]["reason"], "artifact-exists read the wrong path")
+
     def test_control_reader_hook_fills_last_action_verbatim(self):
         last = {"action": "pause", "actor": "Dave", "result": "applied"}
         model = api.ControlRoomReadModel(

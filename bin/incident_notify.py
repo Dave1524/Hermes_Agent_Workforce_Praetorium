@@ -27,7 +27,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import incident_state as state_io  # noqa: E402
 import workflow_incidents as wi  # noqa: E402
 from control_room_api import ControlRoomReadModel, SourcePaths, SystemdReader  # noqa: E402
-from workflow_receipt import iso_utc, parse_time, utc_now  # noqa: E402
+from workflow_receipt import is_closed, iso_utc, parse_time, utc_now  # noqa: E402
 
 BIN_DIR = pathlib.Path(__file__).resolve().parent
 HOME = pathlib.Path.home()
@@ -106,8 +106,13 @@ def render_immediate(entry: dict[str, Any], template: str) -> tuple[str, str]:
     return f"[incident] {entry['key']}", "\n".join(lines)
 
 
-def render_recovery(entry: dict[str, Any], healthy_receipt: str | None) -> tuple[str, str]:
-    evidence = healthy_receipt or f"observation ceased: {entry['issue']}"
+def closure_evidence(closed: dict[str, Any] | None) -> str | None:
+    return f"closed {closed['at']} by {closed['by']}: {closed['reason']}" if closed else None
+
+
+def render_recovery(entry: dict[str, Any], healthy_receipt: str | None,
+                    closed: dict[str, Any] | None = None) -> tuple[str, str]:
+    evidence = closure_evidence(closed) or healthy_receipt or f"observation ceased: {entry['issue']}"
     lines = [f"workflow: {entry['workflow_id'] or 'n/a'} (unit {entry['unit'] or 'n/a'})",
              f"agent: {entry['agent'] or 'n/a'}",
              f"class: {entry['class']}",
@@ -194,10 +199,10 @@ class Sweep:
         if self.args.dry_run:
             sys.stdout.write(line)
 
-    def observe(self) -> tuple[list[dict[str, Any]], bool, dict[str, list[dict[str, Any]]]]:
+    def observe(self) -> tuple[list[dict[str, Any]], bool, dict[str, str | None], dict[str, dict[str, Any]]]:
         model = ControlRoomReadModel(source_paths(self.args), systemd=SystemdReader(), clock=lambda: self.now)
         workflows, status = model.workflows()
-        _, malformed, source_errors = model.receipts()
+        receipts, malformed, source_errors = model.receipts()
         declared, declared_errors = wi.load_declared(self.args.state_dir)
         for error in declared_errors:
             self.log(f"declared incident ignored: {error}")
@@ -206,7 +211,8 @@ class Sweep:
                              manifest_errors=manifest_errors)
         healthy = {w["id"]: (w.get("lastEligibleRun") or {}).get("receiptPath") for w in workflows
                    if (w.get("lastEligibleRun") or {}).get("outcome") in {"artifact", "decline"}}
-        return observed, wi.sources_visible(source_errors, manifest_errors), healthy
+        closed = {r["run_id"]: r["closed"] for r in receipts if is_closed(r)}
+        return observed, wi.sources_visible(source_errors, manifest_errors), healthy, closed
 
     def deliver(self, entry: dict[str, Any], subject: str, body: str, on_success) -> bool:
         if self.args.dry_run:
@@ -239,11 +245,13 @@ class Sweep:
         if len(pending) > self.args.max_sends:
             self.log(f"{len(pending) - self.args.max_sends} open incidents deferred to the next sweep")
 
-    def send_recoveries(self, state: dict[str, Any], healthy: dict[str, str | None]) -> None:
+    def send_recoveries(self, state: dict[str, Any], healthy: dict[str, str | None],
+                        closed: dict[str, dict[str, Any]]) -> None:
         for entry in state["incidents"].values():
             if entry.get("resolved_at") is None or entry.get("notified_at") is None or entry.get("recovery_notified_at"):
                 continue
-            subject, body = render_recovery(entry, healthy.get(entry.get("workflow_id") or ""))
+            subject, body = render_recovery(entry, healthy.get(entry.get("workflow_id") or ""),
+                                            closed.get(entry.get("run_id") or ""))
 
             def mark(receipt: dict[str, Any], entry=entry) -> None:
                 entry["recovery_notified_at"] = iso_utc(self.now)
@@ -269,7 +277,7 @@ class Sweep:
         self.deliver({}, subject, body, mark)
 
     def run(self) -> int:
-        observed, sources_ok, healthy = self.observe()
+        observed, sources_ok, healthy, closed = self.observe()
         state, notice = state_io.load(self.state_path, self.now)
         if notice:
             self.log(notice)
@@ -287,7 +295,7 @@ class Sweep:
         channel = route_channel(self.args.routes_file, self.args.route)
         if channel:
             self.send_opens(state)
-            self.send_recoveries(state, healthy)
+            self.send_recoveries(state, healthy, closed)
             self.send_digest(state)
         else:
             self.log(f"route '{self.args.route}' has no channel UUID in {self.args.routes_file} — sending nothing, state kept")

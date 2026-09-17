@@ -20,7 +20,7 @@ from typing import Any
 
 from control_room_benefit import eligible_receipts
 from missed_receipt import missed_fire
-from workflow_receipt import iso_utc, parse_time
+from workflow_receipt import iso_utc, judged, parse_time
 
 KINDS = ("failed", "stale-input", "missing-artifact", "missed-cadence", "overdue-next-action", "unconsumed-output",
          "dependency-down")
@@ -58,7 +58,7 @@ class _Context:
         self.receipts = receipts
         self.now = now
         self.swept_at = swept_at
-        self.latest = next((r for r in receipts if r["terminal"]["outcome"] != "skipped"), None)
+        self.latest = next((r for r in receipts if judged(r)), None)
         control = item.get("control") or {}
         self.state = control.get("state") or "unknown"
         self.paused = self.state == "paused"

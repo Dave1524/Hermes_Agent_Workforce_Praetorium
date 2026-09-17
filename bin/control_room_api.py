@@ -28,9 +28,9 @@ from typing import Any, Callable, Iterable
 # bin/workflow_receipt.py since 2026-09-11 (T5.1), so the executor that writes receipts and
 # this reader validate one shape. Sibling import, as the other bin/*.py do.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from workflow_receipt import iso_utc, parse_time, utc_now, validate as validate_receipt  # noqa: E402
+from workflow_receipt import iso_utc, is_closed, judged, parse_time, utc_now, validate as validate_receipt  # noqa: E402
 from control_room_cadence import cadence_for, freshness, parse_systemd_timestamp  # noqa: E402
-from control_room_benefit import benefit_row, load_ledger  # noqa: E402
+from control_room_benefit import ELIGIBLE_OUTCOMES, benefit_row, load_ledger  # noqa: E402
 import control_room_control  # noqa: E402
 import control_room_proposals  # noqa: E402
 from control_room_exceptions import KINDS, classify  # noqa: E402
@@ -487,7 +487,8 @@ class ControlRoomReadModel:
                 })
             workflow_receipts = receipt_by_workflow.get(logical_id, [])
             latest = workflow_receipts[0] if workflow_receipts else None
-            last_eligible = next((r for r in workflow_receipts if r["terminal"]["outcome"] != "skipped"), None)
+            last_open = next((r for r in workflow_receipts if not is_closed(r)), None)
+            last_eligible = next((r for r in workflow_receipts if judged(r)), None)
             usage = self._measurement(
                 latest.get("usage") if latest else None,
                 ("input_tokens", "output_tokens", "cache_tokens", "total_tokens"),
@@ -519,7 +520,7 @@ class ControlRoomReadModel:
                 "requiredBy": [],
                 "guards": next((str(entry["guards"]) for entry in group if entry.get("guards")), None),
                 "lifecycle": group[0].get("status", "unknown"),
-                "health": health_of(latest, triggers),
+                "health": health_of(last_open, triggers),
                 "manifestPaths": sorted({str(entry["manifest"]) for entry in group}),
                 "contract": contract,
                 "contractStatus": contract_status,
@@ -600,6 +601,7 @@ class ControlRoomReadModel:
             "parentRunId": receipt.get("parent_run_id"),
             "handoff": receipt.get("handoff"),
             "receiptPath": receipt.get("receipt_path"),
+            "closed": receipt.get("closed"),
         }
 
     def _envelope(self, items: Any, status: dict[str, Any]) -> dict[str, Any]:
@@ -895,11 +897,10 @@ class ControlRoomReadModel:
         }
 
     RELIABILITY_DAYS = 7
-    ELIGIBLE_OUTCOMES = {"artifact", "decline", "failed"}
-
     def _reliability_7d(self, runs: list[dict[str, Any]], receipts_status: str) -> dict[str, Any]:
         """Valid artifacts over eligible runs per UTC day, the last seven ending today. A day with no
-        runs is a measured 0/0; the whole series is unavailable only when the receipt source is."""
+        runs is a measured 0/0; the whole series is unavailable only when the receipt source is.
+        A closed run is a reviewed failure and counts on neither side."""
         if receipts_status == "unavailable":
             return {"status": "unavailable", "days": []}
         today = self.clock().astimezone(dt.timezone.utc).date()
@@ -907,7 +908,7 @@ class ControlRoomReadModel:
         counts = {day: {"eligible": 0, "valid": 0} for day in days}
         for run in runs:
             ended = parse_time(run.get("endedAt"))
-            if ended is None or run.get("outcome") not in self.ELIGIBLE_OUTCOMES:
+            if ended is None or run.get("outcome") not in ELIGIBLE_OUTCOMES or run.get("closed"):
                 continue
             bucket = counts.get(ended.astimezone(dt.timezone.utc).date())
             if bucket is None:
