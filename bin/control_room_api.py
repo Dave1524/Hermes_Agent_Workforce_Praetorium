@@ -181,6 +181,7 @@ class SystemdReader:
         "ExecMainStartTimestamp",
         "ExecMainExitTimestamp",
         "ExecMainStatus",
+        "ActiveEnterTimestamp",
         "UnitFileState",
         "LastTriggerUSec",
         "NextElapseUSecRealtime",

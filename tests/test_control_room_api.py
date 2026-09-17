@@ -540,6 +540,16 @@ class ControlRoomApiTest(unittest.TestCase):
         self.assertIsNone(daily["control"]["lastFiredAt"])
         self.assertEqual(daily["control"]["lastTriggerAt"], "2026-09-10T08:00:00Z")
 
+    def test_the_fake_answers_only_properties_the_live_reader_requests(self):  # (::control-room-reader-properties)
+        fake = FakeSystemd(user_units={"buzz-agent@aurelian.service": {"ActiveState": "active", "SubState": "running"}})
+        answered = set()
+        for name, scope in (("daily-plan.timer", "system"), ("daily-plan.service", "system"),
+                            ("buzz-agent@aurelian.service", "user")):
+            values, error = fake.show(name, scope)
+            self.assertIsNone(error)
+            answered |= set(values)
+        self.assertEqual(answered - set(api.SystemdReader.PROPERTIES), set())
+
     def test_last_eligible_run_looks_past_a_skip(self):  # (::control-room-last-eligible-run)
         self.write_receipt(run="run-1", outcome="artifact")
         self.write_receipt(run="run-2", outcome="skipped", ended_at="2026-09-11T07:08:28Z")

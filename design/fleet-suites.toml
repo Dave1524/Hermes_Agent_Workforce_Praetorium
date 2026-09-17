@@ -322,6 +322,7 @@ asserts = [
   "control-room-dependency-down", # T5.3f: a requirement known down is a dependency-down row on the dependent while it is not paused; unknown yields none
   "control-room-runtime-control", # T5.3g: an agent-runtime row's control carries start/stop/restart from one function; a failed always-on service is paused (startable); /api/v1/agents items carry control and runtime.unitFileState
   "control-room-stamp-not-a-fire", # a LastTriggerUSec at or before the timer's ActiveEnterTimestamp is the stamp read back on resume: firedAt and control.lastFiredAt are null, lastTriggerAt stays as systemd prints it
+  "control-room-reader-properties", # every property the test fake answers is one SystemdReader.PROPERTIES requests from systemctl; a key the fake emits and the live reader never fetches is how ActiveEnterTimestamp passed the suite and was null in production (2026-09-17)
   "control-room-last-eligible-run", # lastEligibleRun is the newest receipt that ran (skipped excluded); lastRun and health still show the skip, and it yields no missing-artifact row and no incident
 ]
 why_no_workflow = """
