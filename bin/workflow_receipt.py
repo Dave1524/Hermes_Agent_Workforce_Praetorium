@@ -67,13 +67,29 @@ def _int_or_none(value: Any) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
+def _costliest_model(models: Any) -> tuple[str, dict[str, Any]] | None:
+    """(name, entry) of the modelUsage member with the largest costUSD; ties keep map order."""
+    if not isinstance(models, dict) or not models:
+        return None
+    entries = [(name, e if isinstance(e, dict) else {}) for name, e in models.items()]
+
+    def cost(item: tuple[str, dict[str, Any]]) -> float:
+        value = item[1].get("costUSD")
+        return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0.0
+
+    return max(entries, key=cost)
+
+
 def usage_from_claude_code(envelope: Any) -> tuple[dict[str, Any], dict[str, Any], str | None]:
     """(usage, cost, model) from a `claude -p --output-format json` result envelope.
 
     `measured` only when the envelope carries all four token counts as integers; a zero is
     then the runtime's zero. Anything less is `unavailable` — never a partial sum rendered
     as a total. Cost is measured only when `total_cost_usd` is a number; its confidence is
-    `modelUsage.<model>.costBasis`, and that map's key names the model that actually ran.
+    `modelUsage.<model>.costBasis`. The model is the map's costliest key: a sonnet or opus
+    run also carries a few-cent haiku entry (Claude Code's own helper calls), and until
+    2026-09-17 the first key was taken, so ten live receipts named haiku for runs that had
+    spent $1-2 on opus.
     """
     if not isinstance(envelope, dict):
         return unavailable_usage(), unavailable_cost(), None
@@ -87,12 +103,10 @@ def usage_from_claude_code(envelope: Any) -> tuple[dict[str, Any], dict[str, Any
             cache = counts[2] + counts[3]
             usage = {"status": "measured", "input_tokens": counts[0], "output_tokens": counts[1],
                      "cache_tokens": cache, "total_tokens": counts[0] + counts[1] + cache}
-    models = envelope.get("modelUsage")
     model, basis = None, None
-    if isinstance(models, dict) and models:
-        model = next(iter(models))
-        entry = models[model]
-        basis = entry.get("costBasis") if isinstance(entry, dict) else None
+    entry = _costliest_model(envelope.get("modelUsage"))
+    if entry is not None:
+        model, basis = entry[0], entry[1].get("costBasis")
     amount = envelope.get("total_cost_usd")
     cost = unavailable_cost()
     if isinstance(amount, (int, float)) and not isinstance(amount, bool):

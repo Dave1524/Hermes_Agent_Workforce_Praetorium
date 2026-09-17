@@ -435,6 +435,11 @@ class ContractExecTest(unittest.TestCase):
         self.assertEqual(usage["total_tokens"], 40099)
         self.assertEqual(cost["amount"], 0.0555477)
         self.assertEqual(model, "claude-haiku-4-5-20251001")
+        two = json.loads(ENVELOPE.read_text())
+        two["modelUsage"]["claude-sonnet-5"] = {"costUSD": 0.41, "costBasis": "list"}
+        usage, cost, model = receipt.usage_from_claude_code(two)
+        self.assertEqual(model, "claude-sonnet-5", "the costliest model, not the first key")
+        self.assertEqual(cost["confidence"], "list")
         usage, cost, model = receipt.usage_from_claude_code(
             {"usage": {"input_tokens": 0, "output_tokens": 0, "cache_creation_input_tokens": 0,
                        "cache_read_input_tokens": 0}})
