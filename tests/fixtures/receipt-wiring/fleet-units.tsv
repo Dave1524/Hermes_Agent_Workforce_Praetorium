@@ -5,5 +5,6 @@ env-probe	user	standing	fixture	timer
 logical-child	system	standing	fixture	timer
 knowledge-digest	system	standing	fixture	timer
 always-on	user	standing	fixture	timer
+self-receipting	system	standing	fixture	timer
 workflow-receipt-sweep	system	standing	trajan	timer
 spent-job	system	spent	fixture	timer

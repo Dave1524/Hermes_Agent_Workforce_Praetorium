@@ -39,6 +39,15 @@ describe("RunDetail", () => {
     expect(screen.getByTestId("closed")).toHaveTextContent(/Closed .*by Dave — check defect fixed in 73dea03/);
   });
 
+  it("renders a swept run with when and which sweep folded its checks in", async () => {
+    const swept = { at: "2026-09-18T03:50:00Z", sweep_run_id: "sweep-9" };
+    mockFetch({ "/api/v1/runs/run-0913": envelope({ ...failedRun, swept }) });
+    renderInShell(<RunDetail runId="run-0913" />);
+    await waitFor(() => expect(screen.getByTestId("swept")).toBeInTheDocument());
+    expect(document.querySelector("[data-outcome='failed']")).toBeInTheDocument();
+    expect(screen.getByTestId("swept")).toHaveTextContent(/Sweep checks folded in .*by sweep-9/);
+  });
+
   it("renders the handoff block when the run carries a parent", async () => {
     mockFetch({ "/api/v1/runs/child": envelope({ ...measuredRun, id: "child", parentRunId: "run-0914", handoff: { from: "marcus", to: "trajan" } }) });
     renderInShell(<RunDetail runId="child" />);

@@ -21,6 +21,11 @@ export interface RunClosure {
   reason: string;
 }
 
+export interface RunSweep {
+  at: string;
+  sweepRunId: string;
+}
+
 export interface NextAction {
   actor: string | null;
   action: string | null;
@@ -47,6 +52,7 @@ export interface Run {
   handoff: unknown;
   receiptPath: string | null;
   closed: RunClosure | null;
+  swept: RunSweep | null;
 }
 
 export const toRun = (r: RunSummary): Run => ({
@@ -69,4 +75,5 @@ export const toRun = (r: RunSummary): Run => ({
   handoff: r.handoff ?? null,
   receiptPath: r.receiptPath ?? null,
   closed: r.closed ? { at: r.closed.at, by: r.closed.by, reason: r.closed.reason } : null,
+  swept: r.swept ? { at: r.swept.at, sweepRunId: r.swept.sweep_run_id } : null,
 });

@@ -5,3 +5,4 @@ env-probe	active	e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5	@1789452600	@1789452660	succes
 logical-child	active	1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c	@1789456200	@1789456300	exit-code	1	@1789456200	failed
 knowledge-digest	inactive	d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1	@1789000000	@1789000100	success	0		inactive
 always-on	active	a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0	@1789450000	@1789450010	success	0	@1789450000	inactive
+self-receipting	active	5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e	@1789460000	@1789460100	success	0	@1789460000	inactive

@@ -602,6 +602,7 @@ class ControlRoomReadModel:
             "handoff": receipt.get("handoff"),
             "receiptPath": receipt.get("receipt_path"),
             "closed": receipt.get("closed"),
+            "swept": receipt.get("swept"),
         }
 
     def _envelope(self, items: Any, status: dict[str, Any]) -> dict[str, Any]:

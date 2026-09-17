@@ -159,7 +159,16 @@ journal, which journald scopes by unit.
   and the worktree, and cannot see a run that never happened, because nothing calls it.
 - `sweep` — decided from outside on a cadence, over systemd and the journal. The only vantage
   that catches a timer that stopped firing or a run the global lock skipped. A check whose
-  failure mode is "nothing ran" is `sweep`, or it is vacuous.
+  failure mode is "nothing ran" is `sweep`, or it is vacuous. It is also the vantage for
+  anything that happens after the run's own receipt is written — delivery is `ExecStartPost`,
+  so "this run's artifact was delivered" is undecidable at `run` and belongs here.
+
+A run-vantage receipt records every `sweep` check `not_applicable: vantage`; the next
+`workflow-receipt-sweep` then runs exactly those checks against that receipt and folds the
+results in by id (`bin/contract_exec.py --amend`, T7.3). The run's own facts stand; a failed
+sweep check turns the receipt `failed`; a `swept` block marks it done. Until 2026-09-17 the
+sweep skipped every receipt that already existed, so the `sweep` checks of every unit that
+receipts its own run were recorded and decided by nobody.
 
 A contract for an always-on unit has no run to be decided from — no `RUN_DATE`, no attempt log,
 no `LastTriggerUSec`. Where every declaring `[[workflows]]` entry carries `kind = "service"` the

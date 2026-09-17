@@ -13,6 +13,14 @@ the only honest evidence for those runs is systemd's own record: `InvocationID` 
 the rest. A run-path receipt always wins: the sweep never overwrites
 `<workflow_id>/<InvocationID>.json`, and a paused timer writes nothing.
 
+**Since 2026-09-17 (T7.3) the sweep also amends.** A receipt a unit wrote for its own run
+(vantage `run`, the `agent_propose.sh` shape) lists its contract's `when=sweep` checks as
+`not_applicable: vantage` — the run cannot see delivery, which starts after the receipt, or
+its own lock skip. The sweep runs exactly those checks (`bin/contract_exec.py --amend`),
+replaces the placeholders by id, turns the receipt `failed` on a failed one and never the
+reverse, and stamps a `swept` block naming this sweep's run id, so the receipt is looked at
+once. Skipped, closed and already-swept receipts are left alone, with the reason logged.
+
 ## Identity
 
 | | |
@@ -26,7 +34,7 @@ the rest. A run-path receipt always wins: the sweep never overwrites
 | Remediation owner | trajan |
 | Retirement condition | every platform runner receipts its own run (then the sweep has nothing to write) |
 | Contract version | 1 (2026-09-15) |
-| Retry | idempotent: a receipt that exists is skipped, so a rerun writes only what the last one missed |
+| Retry | idempotent: a receipt that exists is skipped or, once, amended — a rerun writes only what the last one missed and amends nothing twice |
 
 ## Trigger
 
@@ -48,11 +56,13 @@ deploy step; `systemctl is-enabled workflow-receipt-sweep.timer` reads `disabled
 - **Artifact** — receipts under `~/agent-workforce/var/workflow-receipts/<workflow_id>/`, one
   per finished invocation not already receipted, vantage `sweep`, run id the `InvocationID`,
   `state_change.evidence` = systemd's record, terminal `failed` when `Result` is not `success`;
-  plus the sweep's own vantage-`run` receipt whose evidence is the `swept N: M written, K
-  paused, J refused, S skipped` line it logged.
+  **amendments** of run-vantage receipts not yet swept — sweep checks decided in place, a
+  `swept` block added, `terminal` moved to `failed` only when a sweep check failed (T7.3);
+  plus the sweep's own vantage-`run` receipt whose evidence is the `swept N: M written, A
+  amended, K paused, J refused, S skipped` line it logged.
 - **Log** — `~/agent-workforce/logs/receipt_sweep.log`, one line per unit (`paused:`,
-  `never ran:`, `running:`, `already receipted:`, `refused:`, `written:`, `errored:`) and the
-  `swept` summary.
+  `never ran:`, `running:`, `already receipted:` with its reason, `amended:`, `refused:`,
+  `written:`, `errored:`) and the `swept` summary.
 - **Beneficiary:** the Control Room (`bin/control_room_api.py`), which reads receipts and
   nothing else — without the sweep every platform row is `no receipt` forever.
 - **Next actor:** none
@@ -64,12 +74,13 @@ deploy step; `systemctl is-enabled workflow-receipt-sweep.timer` reads `disabled
 
 ## Decline conditions
 
-none. `paused`, `never ran`, `running`, `already receipted` and `refused` are per-unit reasons
-in the log, each counted in the summary line; none is a decline of the sweep.
+none. `paused`, `never ran`, `running`, `already receipted`, `amended` and `refused` are
+per-unit reasons in the log, each counted in the summary line; none is a decline of the sweep.
 
 ## Side effects
 
-- Receipt files written under the receipt root; never one that already exists.
+- Receipt files written under the receipt root; an existing one is rewritten only by an
+  amendment, atomically, with every field the run wrote intact.
 - `systemctl show` calls, read-only, for every standing timer row.
 
 ## Acceptance checks

@@ -324,6 +324,7 @@ asserts = [
   "control-room-stamp-not-a-fire", # a LastTriggerUSec at or before the timer's ActiveEnterTimestamp is the stamp read back on resume: firedAt and control.lastFiredAt are null, lastTriggerAt stays as systemd prints it
   "control-room-reader-properties", # every property the test fake answers is one SystemdReader.PROPERTIES requests from systemctl; a key the fake emits and the live reader never fetches is how ActiveEnterTimestamp passed the suite and was null in production (2026-09-17)
   "control-room-closed-run",     # T7.5: a closed receipt is looked past by health, lastEligibleRun, eligibleRuns, the rate, exceptions, incidents and reliability7d; lastRun and the run detail carry the closure
+  "control-room-swept-run",      # T7.3: a receipt the sweep amended reads as the sweep left it — failed health, the failed sweep check named on the incident, `swept` on lastRun and the run detail
   "control-room-last-eligible-run", # lastEligibleRun is the newest receipt that ran (skipped excluded); lastRun and health still show the skip, and it yields no missing-artifact row and no incident
 ]
 why_no_workflow = """
@@ -550,6 +551,7 @@ asserts = [
   "exec-decline-flag",               # --decline REASON is the decline branch without a ^DECLINE: line
   "exec-run-id-flag",                # --run-id ID overrides INVOCATION_ID and the sweep's systemd lookup
   "exec-claims-labelled-producer-form",  # standing-research check 5 accepts the label as the producer emits it (bold, colon inside or out)
+  "exec-amend-folds-sweep-checks",   # T7.3: --amend runs only the sweep checks against a run-vantage receipt, folds them in by id, fails it on a failed one, stamps `swept` once; refuses no receipt / skipped / closed / swept / sweep-written
 ]
 why_no_workflow = """
 It tests the executor every contracted workflow will call, against the live knowledge-digest

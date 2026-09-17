@@ -131,10 +131,17 @@ ls ~/.hermes/profiles/                              # base0, leantest, default (
   absence — its token and amount fields are null, never 0. Four producers write it (T5.2,
   2026-09-15), decided by what systemd execs: `bin/agent_propose.sh` (its own run, every
   exit path), `bin/content_change_dispatch.sh` (its tick, handing the child its run ids),
-  `bin/receipt_sweep.py` (every other standing timer, from systemd's record, under the
-  shipped-disabled `workflow-receipt-sweep.timer`) and `bin/interaction_receipt.py` (each
+  `bin/receipt_sweep.py` (every other standing timer, from systemd's record, under
+  `workflow-receipt-sweep.timer` — shipped disabled, enabled and firing daily 05:50 since
+  before 2026-09-17) and `bin/interaction_receipt.py` (each
   `buzz-agent@*` turn, from the Claude Code Stop hook or codex `notify`);
-  `tests/test_receipt_coverage.sh` proves every standing row has exactly one. A failed
+  `tests/test_receipt_coverage.sh` proves every standing row has exactly one. A run that
+  receipts itself cannot decide its contract's `when=sweep` checks (delivery starts after
+  the receipt; a lock skip is only visible from outside), so it records them
+  `not_applicable: vantage` and the **next sweep amends that receipt** — runs exactly those
+  checks, folds them in by id, turns it `failed` on a failed one and never the reverse, and
+  stamps `swept` so it happens once (T7.3, 2026-09-17; `contract_exec.py --amend`). Until
+  then the sweep skipped every existing receipt and those checks were decided by nobody. A failed
   receipt whose defect is already fixed is **closed, not rewritten**: `bin/receipt_close.py`
   adds a `closed` block (who, when, why) and every reader looks past it (T7.5; runbook
   § Control Room "Closing a reviewed failure"). Not to be confused with the two other

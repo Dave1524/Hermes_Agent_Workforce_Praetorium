@@ -5,6 +5,7 @@
                      [--usage-json FILE] [--skipped REASON] [--failed REASON] [--decline REASON]
                      [--run-id ID] [--parent-run-id ID]
                      [--handoff-actor A --handoff-recipient R --handoff-event E]
+    contract_exec.py <unit> --vantage sweep --amend --run-id ID [--sweep-run-id ID]
 
 Every ```check block under the contract's ## Acceptance checks runs as bash under `set -u`
 (never -e, never pipefail), in exactly the environment design/contract-schema.md declares
@@ -22,6 +23,14 @@ cannot be written without one (bin/workflow_receipt.py).
 Exit 0 when the outcome is artifact, decline or skipped; 1 when it is failed; 2 when the unit
 cannot be decided at all — no manifest row, kind = "service", contract_exempt, an unreadable
 contract, a schema variable this executor cannot derive — in which case no receipt exists.
+
+--amend (T7.3) is the sweep's second look at a run that receipted itself: the receipt --run-id
+names must exist at vantage `run` with its `when=sweep` checks recorded not applicable; only
+those checks run, against the run's own start time read back from the receipt, and their
+results replace the placeholders by id. The terminal outcome moves only one way — a failed
+sweep check makes it `failed` — and a `swept` block records the sweep that did it, so the
+next sweep leaves the receipt alone (bin/workflow_receipt.py::sweep_pending). Exit 2, receipt
+untouched, when there is nothing to sweep: no receipt, skipped, closed, already swept.
 
 Overrides (--manifest-dir, --schema-doc, --receipt-root, --attempt-log, --inbox-worktree,
 --vault, --home, --now, --run-started-at, --run-date) exist so fixtures never touch live paths.
@@ -76,6 +85,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--failed", metavar="REASON", help="the producer already knows the run failed; checks still run")
     p.add_argument("--decline", metavar="REASON", help="a decline the producer evidenced without a ^DECLINE: line")
     p.add_argument("--run-id", metavar="ID", help="overrides INVOCATION_ID and every derived id")
+    p.add_argument("--amend", action="store_true",
+                   help="fold this vantage's checks into the run-vantage receipt --run-id names (sweep only)")
+    p.add_argument("--sweep-run-id", metavar="ID", help="with --amend: the sweep run making the amendment")
     p.add_argument("--parent-run-id")
     p.add_argument("--handoff-actor")
     p.add_argument("--handoff-recipient")
@@ -320,6 +332,52 @@ def handoff_of(args: argparse.Namespace) -> dict[str, str] | None:
     return fields if any(fields.values()) else None
 
 
+# --- the sweep's amendment (T7.3) ------------------------------------------------------------------
+def existing_receipt(args: argparse.Namespace, row: dict[str, Any]) -> dict[str, Any]:
+    """The run-vantage receipt --amend folds into, or the refusal that says why there is none."""
+    if args.vantage != workflow_receipt.SWEEP_VANTAGE:
+        raise Refusal(f"--amend is the sweep's second look; --vantage {args.vantage} writes, it never amends")
+    if not args.run_id:
+        raise Refusal("--amend needs --run-id: the receipt to fold this vantage's checks into")
+    workflow_id = str(row.get("logical_workflow") or args.unit)
+    try:
+        path = workflow_receipt.receipt_path(args.receipt_root, {"workflow_id": workflow_id, "run_id": args.run_id})
+        receipt = json.loads(path.read_text())
+    except (OSError, ValueError) as exc:
+        raise Refusal(f"{args.unit}: no receipt to amend at {workflow_id}/{args.run_id}.json: {exc}") from exc
+    errors = workflow_receipt.validate(receipt)
+    if errors:
+        raise Refusal(f"{args.unit}: the receipt at {path} does not validate: {'; '.join(errors)}")
+    why = workflow_receipt.sweep_pending(receipt)
+    if why is not None:
+        raise Refusal(f"{args.unit}: nothing to sweep in {workflow_id}/{args.run_id}.json — {why}")
+    return receipt
+
+
+def seed_run_facts(args: argparse.Namespace, receipt: dict[str, Any]) -> None:
+    """The run's own start decides "this run's artifact" at the sweep too, unless the caller
+    already said when the run started."""
+    started = workflow_receipt.parse_time(receipt.get("started_at"))
+    if started is None:
+        return
+    if args.run_started_at is None:
+        args.run_started_at = int(started.timestamp())
+    if not args.run_date:
+        args.run_date = started.astimezone().strftime("%Y-%m-%d")
+
+
+def amend_receipt(run: Run, existing: dict[str, Any], contract_text: str, env: dict[str, str],
+                  args: argparse.Namespace) -> int:
+    cwd = run.home if run.home.is_dir() else pathlib.Path.cwd()
+    fresh = [run_check(check, env, run.vantage, cwd)
+             for check in declared_checks(contract_text) if check["when"] == run.vantage]
+    sweep_run_id = args.sweep_run_id or run.invocation_id or f"{workflow_receipt.SWEEP_WORKFLOW_ID}-{run.started}"
+    receipt = workflow_receipt.amend(existing, fresh, sweep_run_id, run.now)
+    path = workflow_receipt.write(receipt, args.receipt_root)
+    print_table(receipt, path, label=f"{run.vantage} amend")
+    return 1 if receipt["terminal"]["outcome"] == "failed" else 0
+
+
 # --- the receipt ----------------------------------------------------------------------------------
 def build_receipt(run: Run, run_id: str, assertions: list[dict[str, Any]], terminal: dict[str, Any],
                   args: argparse.Namespace, contract_text: str) -> dict[str, Any]:
@@ -350,8 +408,8 @@ def build_receipt(run: Run, run_id: str, assertions: list[dict[str, Any]], termi
     return receipt
 
 
-def print_table(receipt: dict[str, Any], path: pathlib.Path) -> None:
-    print(f"contract_exec: {receipt['unit']} vantage={receipt['vantage']} run_id={receipt['run_id']} "
+def print_table(receipt: dict[str, Any], path: pathlib.Path, label: str | None = None) -> None:
+    print(f"contract_exec: {receipt['unit']} vantage={label or receipt['vantage']} run_id={receipt['run_id']} "
           f"agent={receipt['agent']}")
     for a in receipt["assertions"]:
         note = a.get("reason") or (a["output"].splitlines() or [""])[0]
@@ -364,11 +422,16 @@ def print_table(receipt: dict[str, Any], path: pathlib.Path) -> None:
 def execute(args: argparse.Namespace) -> int:
     row, agent = manifest_row(args.manifest_dir, args.unit)
     contract = contract_of(row, args.unit, args.repo_root)
+    existing = existing_receipt(args, row) if args.amend else None
+    if existing is not None:
+        seed_run_facts(args, existing)
     run = Run(args, row, agent)
     if run.vantage not in contract_checks.vantages(args.schema_doc):
         raise Refusal(f"--vantage {run.vantage}: not one the schema declares")
     contract_text = contract.read_text()
     env = child_environment(run, contract_checks.executor_environment(args.schema_doc))
+    if existing is not None:
+        return amend_receipt(run, existing, contract_text, env, args)
     if args.skipped is not None:
         assertions: list[dict[str, Any]] = []
     else:

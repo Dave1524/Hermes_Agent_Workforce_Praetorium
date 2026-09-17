@@ -10,7 +10,17 @@ each asks systemd about the unit, in this order:
   timer inactive                        -> `paused: <unit>`, nothing written
   service has no InvocationID           -> `never ran: <unit>` (nothing since boot), nothing
   service still active                  -> `running: <unit>`, nothing — no finished run to decide
-  <workflow_id>/<InvocationID>.json exists -> `already receipted: <unit>`, never overwritten
+  <workflow_id>/<InvocationID>.json exists,
+    written at vantage run, not yet swept -> the executor at --vantage sweep --amend: only the
+                                           contract's sweep checks run and their results replace
+                                           the run's `not_applicable: vantage` placeholders by
+                                           id; a failed one turns the receipt `failed`, and a
+                                           `swept` block marks it done (T7.3). Before this the
+                                           self-receipting units' sweep checks were decided by
+                                           nobody: the run recorded them n/a and the sweep
+                                           skipped the receipt.
+  <workflow_id>/<InvocationID>.json exists otherwise -> `already receipted: <unit>` with the
+                                           reason (swept, skipped, closed, the sweep's own)
   else                                  -> the executor at --vantage sweep, run id = InvocationID,
                                            evidence = systemd's record: `Result=success` is a
                                            state change, anything else is `--failed Result=…`;
@@ -20,8 +30,9 @@ An executor refusal (exit 2 — no manifest row, a service-kind row, no contract
 skipped; an executor that returns without a receipt on disk is `errored`, and the sweep
 exits 1 for it after finishing the walk, so OnFailure= alerts on broken receipt machinery
 but never on a paused fleet. The sweep ends by receipting itself at vantage run with
-`--state-change "swept N: M written, K paused, J refused, S skipped"`, the same line it
-logged, which the contract's run check reads back.
+`--state-change "swept N: M written, A amended, K paused, J refused, S skipped"`, the same
+line it logged, which the contract's run check reads back; every amendment names that
+receipt's run id as its `swept.sweep_run_id`.
 
 Fixtures: SYSTEMCTL names the systemctl to run (default `systemctl`; `--user` is appended
 for `scope=user` rows), CONTRACT_EXEC or --executor the executor, --now the clock. Logs to
@@ -31,6 +42,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import json
 import os
 import pathlib
 import subprocess
@@ -132,7 +144,8 @@ class Sweep:
         self.now = contract_exec._clock(args.now)
         self.started = int(self.now.timestamp())
         self.log_path = pathlib.Path.home() / "agent-workforce" / "logs" / "receipt_sweep.log"
-        self.counts = {"written": 0, "paused": 0, "refused": 0, "skipped": 0}
+        self.run_id = os.environ.get("INVOCATION_ID") or f"{SELF_UNIT}-{self.started}"
+        self.counts = {"written": 0, "amended": 0, "paused": 0, "refused": 0, "skipped": 0}
         self.errored: list[str] = []
 
     def stamp(self) -> str:
@@ -177,6 +190,17 @@ class Sweep:
         except ValueError:
             return False
 
+    def sweep_owed(self, workflow_id: str, run_id: str) -> str | None:
+        """Why the existing receipt is left alone, or None when the sweep owes it an amendment."""
+        try:
+            path = workflow_receipt.receipt_path(self.args.receipt_root, {"workflow_id": workflow_id, "run_id": run_id})
+            receipt = json.loads(path.read_text())
+        except (OSError, ValueError) as exc:
+            return f"unreadable: {exc}"
+        if workflow_receipt.validate(receipt):
+            return "does not validate"
+        return workflow_receipt.sweep_pending(receipt)
+
     def sweep_unit(self, unit: str, scope: str) -> str:
         """One bucket name per unit: written | paused | refused | skipped."""
         if not timer_is_active(scope, unit):
@@ -194,9 +218,30 @@ class Sweep:
         if workflow_id is None:
             return "refused"
         if self.receipt_exists(workflow_id, run_id):
-            self.log(f"already receipted: {unit} — {workflow_id}/{run_id}.json")
+            why = self.sweep_owed(workflow_id, run_id)
+            if why is None:
+                return self.amend(unit, workflow_id, run_id)
+            self.log(f"already receipted: {unit} — {workflow_id}/{run_id}.json ({why})")
             return "skipped"
         return self.write(unit, workflow_id, run_id, record)
+
+    def amend(self, unit: str, workflow_id: str, run_id: str) -> str:
+        done = self.executor(unit, "--vantage", "sweep", "--amend", "--run-id", run_id,
+                             "--sweep-run-id", self.run_id)
+        if done is None:
+            self.errored.append(unit)
+            return "skipped"
+        if done.returncode == 2:
+            self.log(f"refused: {unit} — {done.stderr.strip().splitlines()[-1] if done.stderr.strip() else 'exit 2'}")
+            return "refused"
+        if self.sweep_owed(workflow_id, run_id) is None:
+            self.log(f"errored: {unit} — executor exit {done.returncode} left {workflow_id}/{run_id}.json "
+                     f"unswept: {(done.stderr or done.stdout).strip()[-200:]}")
+            self.errored.append(unit)
+            return "skipped"
+        outcome = "failed" if done.returncode == 1 else "decided"
+        self.log(f"amended: {unit} — {workflow_id}/{run_id}.json ({outcome})")
+        return "amended"
 
     def write(self, unit: str, workflow_id: str, run_id: str, record: dict[str, str]) -> str:
         flags = ["--vantage", "sweep", "--run-id", run_id, *evidence_flags(unit, record)]
@@ -221,10 +266,12 @@ class Sweep:
 
     def summary(self, total: int) -> str:
         c = self.counts
-        return f"swept {total}: {c['written']} written, {c['paused']} paused, {c['refused']} refused, {c['skipped']} skipped"
+        return (f"swept {total}: {c['written']} written, {c['amended']} amended, {c['paused']} paused, "
+                f"{c['refused']} refused, {c['skipped']} skipped")
 
     def receipt_self(self, summary: str) -> bool:
-        flags = ["--vantage", "run", "--state-change", summary, "--run-started-at", str(self.started)]
+        flags = ["--vantage", "run", "--run-id", self.run_id, "--state-change", summary,
+                 "--run-started-at", str(self.started)]
         if self.errored:
             flags += ["--failed", "executor errored for: " + ", ".join(self.errored)]
         done = self.executor(SELF_UNIT, *flags)

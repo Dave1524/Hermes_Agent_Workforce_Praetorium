@@ -15,6 +15,9 @@ Two rules the shape enforces rather than documents:
   and only a failed one: a receipt with nothing failed has nothing to close. The recorded
   outcome stays as written; `judged` is what every reader asks, and a closed receipt is not
   a run to judge, exactly as a skipped one is not.
+- A `swept` block (T7.3) records that the receipt sweep amended a run-vantage receipt with
+  its contract's `when=sweep` results, once. The run's own facts stay as written; a sweep
+  can add failed checks and turn the outcome `failed`, never the reverse.
 """
 from __future__ import annotations
 
@@ -35,6 +38,9 @@ CLAUDE_CODE_SOURCE = "claude-code"
 CLAUDE_CODE_CURRENCY = "USD"
 SWEEP_WORKFLOW_ID = "workflow-receipt-sweep"
 CLOSED_FIELDS = ("at", "by", "reason")
+SWEPT_FIELDS = ("at", "sweep_run_id")
+RUN_VANTAGE = "run"
+SWEEP_VANTAGE = "sweep"
 
 
 def utc_now() -> dt.datetime:
@@ -181,6 +187,7 @@ def validate(data: Any) -> list[str]:
         if not has_artifact and not has_state:
             errors.append("artifact outcome has no artifact URI or state-change evidence")
     errors.extend(_closed_errors(data))
+    errors.extend(_swept_errors(data))
     return errors
 
 
@@ -197,6 +204,77 @@ def _closed_errors(data: dict[str, Any]) -> list[str]:
     if not has_failure(data):
         errors.append("closed on a receipt with nothing failed")
     return errors
+
+
+def _swept_errors(data: dict[str, Any]) -> list[str]:
+    swept = data.get("swept")
+    if swept is None:
+        return []
+    if not isinstance(swept, dict):
+        return ["swept is not an object"]
+    errors = [f"swept.{field} is missing" for field in SWEPT_FIELDS
+              if not isinstance(swept.get(field), str) or not swept[field].strip()]
+    if not errors and parse_time(swept["at"]) is None:
+        errors.append("swept.at must be an ISO-8601 timestamp")
+    if data.get("vantage") != RUN_VANTAGE:
+        errors.append("swept on a receipt the sweep wrote itself")
+    return errors
+
+
+# --- the sweep's amendment (T7.3) ----------------------------------------------------------
+def is_swept(receipt: dict[str, Any]) -> bool:
+    return isinstance(receipt.get("swept"), dict)
+
+
+def sweep_assertions(receipt: dict[str, Any]) -> list[dict[str, Any]]:
+    assertions = receipt.get("assertions") if isinstance(receipt.get("assertions"), list) else []
+    return [a for a in assertions if isinstance(a, dict) and a.get("when") == SWEEP_VANTAGE]
+
+
+def sweep_pending(receipt: dict[str, Any]) -> str | None:
+    """Why the sweep must leave this receipt alone, or None when it owes it an amendment:
+    a run-vantage receipt that ran (not skipped), is not closed, is not yet swept and lists
+    at least one `when=sweep` check the run recorded as not applicable."""
+    if receipt.get("vantage") != RUN_VANTAGE:
+        return "written by the sweep"
+    if (receipt.get("terminal") or {}).get("outcome") == "skipped":
+        return "a skip is not a run"
+    if is_closed(receipt):
+        return "closed by an operator"
+    if is_swept(receipt):
+        return f"swept {receipt['swept'].get('at')}"
+    if not sweep_assertions(receipt):
+        return "no sweep checks"
+    return None
+
+
+def amended_terminal(terminal: dict[str, Any], fresh: list[dict[str, Any]]) -> dict[str, Any]:
+    """Monotone: failed sweep checks make the outcome `failed`; nothing else changes it."""
+    failed = [a["id"] for a in fresh if a.get("status") == "failed"]
+    if not failed:
+        return terminal
+    note = "failed sweep checks: " + ", ".join(failed)
+    outcome, reason = terminal.get("outcome"), terminal.get("reason")
+    if outcome == "failed":
+        return {"outcome": "failed", "reason": f"{reason}; {note}" if reason else note}
+    return {"outcome": "failed", "reason": f"{note}; run outcome was {outcome}" + (f": {reason}" if reason else "")}
+
+
+def amend(receipt: dict[str, Any], fresh: list[dict[str, Any]], sweep_run_id: str,
+          now: dt.datetime | None = None) -> dict[str, Any]:
+    """The receipt with the sweep's results folded in by id and a `swept` block; refuses a
+    receipt the sweep does not owe (sweep_pending says why)."""
+    why = sweep_pending(receipt)
+    if why is not None:
+        raise ValueError(f"nothing to sweep: {why}")
+    if not sweep_run_id.strip():
+        raise ValueError("an amendment names the sweep run that made it")
+    by_id = {a["id"]: a for a in fresh}
+    assertions = [by_id.pop(a["id"], a) if a.get("when") == SWEEP_VANTAGE else a for a in receipt["assertions"]]
+    assertions.extend(by_id.values())
+    return {**receipt, "assertions": assertions,
+            "terminal": amended_terminal(receipt["terminal"], fresh),
+            "swept": {"at": iso_utc(now), "sweep_run_id": sweep_run_id.strip()}}
 
 
 # --- review -------------------------------------------------------------------------------

@@ -31,6 +31,11 @@ export const closedSchema = z.object({
   reason: z.string(),
 });
 
+export const sweptSchema = z.object({
+  at: z.string(),
+  sweep_run_id: z.string(),
+});
+
 export const runSummarySchema = z.object({
   id: z.string().nullish(),
   workflowId: z.string().nullish(),
@@ -51,6 +56,7 @@ export const runSummarySchema = z.object({
   handoff: z.unknown().nullish(),
   receiptPath: z.string().nullish(),
   closed: closedSchema.nullish(),
+  swept: sweptSchema.nullish(),
 });
 
 export const runDetailResponseSchema = envelope(runSummarySchema);
@@ -60,3 +66,4 @@ export type RunSummary = z.infer<typeof runSummarySchema>;
 export type Artifact = z.infer<typeof artifactSchema>;
 export type Assertion = z.infer<typeof assertionSchema>;
 export type Closed = z.infer<typeof closedSchema>;
+export type Swept = z.infer<typeof sweptSchema>;

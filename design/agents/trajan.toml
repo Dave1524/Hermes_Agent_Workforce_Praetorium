@@ -162,7 +162,8 @@ alerted = true
 in_repo = true
 notes = """
 T5.2 criterion 6. Platform rows have no receipt seam of their own, so the sweep writes theirs
-from `systemctl show`; a run-path receipt is never overwritten and a paused timer writes
+from `systemctl show`; a run-path receipt is never overwritten — since T7.3 (2026-09-17) it
+is amended once with its contract's sweep-vantage results — and a paused timer writes
 nothing. The timer is installed with daemon-reload only and enabled at Dave's resume.
 
 `guards` evidence: tests/test_receipt_coverage.sh names this sweep as the one producer for

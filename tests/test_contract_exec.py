@@ -512,6 +512,120 @@ class ContractExecTest(unittest.TestCase):
                                      "--run-id", "explicit-sweep-id")
         self.assertEqual(written["run_id"], "explicit-sweep-id")
 
+    def amend(self, run_id, *extra, seeded=False, unit="knowledge-digest"):
+        """--amend as the sweep invokes it: no --run-started-at / --run-date unless `seeded`,
+        so the executor reads the run's start back from the receipt."""
+        cmd = [sys.executable, str(EXECUTOR), unit, "--vantage", "sweep", "--amend",
+               "--run-id", run_id, "--sweep-run-id", "sweep-77", "--repo-root", str(ROOT),
+               "--manifest-dir", str(FIXTURES / "agents"), "--schema-doc", str(SCHEMA_DOC),
+               "--receipt-root", str(self.box.receipts), "--attempt-log", str(self.box.attempt_log("knowledge-digest")),
+               "--inbox-worktree", str(self.box.inbox), "--vault", str(self.box.vault),
+               "--home", str(self.box.home), "--now", (self.box.now + dt.timedelta(hours=22)).isoformat(), *extra]
+        if seeded:
+            cmd += ["--run-started-at", str(self.box.started), "--run-date", self.box.run_date]
+        parent = {"PATH": f"{self.box.fakebin}:{os.environ['PATH']}", "SECRET_PROBE": "leaked",
+                  "HOME": os.environ.get("HOME", str(self.box.home))}
+        done = subprocess.run(cmd, capture_output=True, text=True, env=parent)
+        path = self.box.receipts / unit / f"{run_id}.json"
+        return done, json.loads(path.read_text()) if path.is_file() else None
+
+    def test_amend_folds_sweep_checks_into_the_run_receipt(self):  # (::exec-amend-folds-sweep-checks)
+        done, before = self.healthy_run(env={"INVOCATION_ID": "run-1"})
+        self.assertEqual({a["id"]: a["status"] for a in before["assertions"] if a["id"] in KD_SWEEP},
+                         {"not-lock-skipped": "not_applicable", "timer-fired-this-week": "not_applicable"})
+        self.assertNotIn("swept", before)
+        # the timer fired, no lock skip: both sweep checks pass, the run's own facts stand
+        self.box.set_state("LastTriggerUSec", f"@{int(time.time()) - 3600}")
+        self.box.set_state("journal.txt", "Started knowledge-digest.service\n")
+        done, after = self.amend("run-1")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn("vantage=sweep amend", done.stdout)
+        self.assertEqual(receipt.validate(after), [])
+        self.assertEqual([a["id"] for a in after["assertions"]], KD_IDS)
+        self.assertEqual({a["id"]: a["status"] for a in after["assertions"] if a["id"] in KD_SWEEP},
+                         {"not-lock-skipped": "passed", "timer-fired-this-week": "passed"})
+        self.assertEqual(after["swept"], {"at": "2026-09-12T05:30:00Z", "sweep_run_id": "sweep-77"})
+        untouched = {k: v for k, v in after.items() if k not in ("assertions", "swept")}
+        self.assertEqual(untouched, {k: v for k, v in before.items() if k != "assertions"})
+        self.assertEqual([a for a in after["assertions"] if a["id"] not in KD_SWEEP],
+                         [a for a in before["assertions"] if a["id"] not in KD_SWEEP])
+        # the run's own start and date are read back from the receipt, not the sweep's clock
+        self.box.write_attempt_log("probe\n", unit="env-probe")
+        done, probe = self.box.run("env-probe", "run", "--artifact", "file:///probe", "--run-id", "probe-1")
+        self.assertEqual(by_id(probe)["sweep-only"]["status"], "not_applicable")
+        done, probe = self.amend("probe-1", unit="env-probe")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(by_id(probe)["sweep-only"]["status"], "passed")
+        self.assertEqual(by_id(probe)["sweep-only"]["output"], f"started={self.box.started} date={self.box.run_date}")
+        # a second look is refused, and the receipt is byte-identical
+        path = self.box.receipts / "knowledge-digest" / "run-1.json"
+        bytes_before = path.read_bytes()
+        done, again = self.amend("run-1")
+        self.assertEqual(done.returncode, 2, done.stdout + done.stderr)
+        self.assertIn("swept 2026-09-12T05:30:00Z", done.stderr)
+        self.assertEqual(path.read_bytes(), bytes_before)
+
+    def test_amend_turns_a_failed_sweep_check_into_a_failed_receipt(self):  # (::exec-amend-folds-sweep-checks)
+        done, before = self.healthy_run(env={"INVOCATION_ID": "run-2"})
+        self.assertEqual(before["terminal"], {"outcome": "artifact", "reason": None})
+        self.box.set_state("LastTriggerUSec", f"@{int(time.time()) - 3600}")
+        self.box.set_state("journal.txt", "Started knowledge-digest.service\nSKIP: previous run still active\n")
+        done, after = self.amend("run-2", seeded=True)
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assertEqual(by_id(after)["not-lock-skipped"]["status"], "failed")
+        self.assertEqual(by_id(after)["timer-fired-this-week"]["status"], "passed")
+        self.assertEqual(after["terminal"], {"outcome": "failed",
+                                             "reason": "failed sweep checks: not-lock-skipped; run outcome was artifact"})
+        self.assertEqual(after["artifact"], before["artifact"])
+        self.assertEqual(receipt.validate(after), [])
+        # a run that already failed keeps its reason first; a decline keeps its sentinel in the reason
+        self.box.write_attempt_log(GUARD_OK + "nothing produced\n")
+        done, failed = self.box.run("knowledge-digest", "run", "--run-id", "run-3")
+        self.assertEqual(failed["terminal"]["outcome"], "failed")
+        done, after = self.amend("run-3", seeded=True)
+        self.assertEqual(done.returncode, 1)
+        self.assertTrue(after["terminal"]["reason"].startswith("neither artifact nor decline"), after["terminal"])
+        self.assertTrue(after["terminal"]["reason"].endswith("; failed sweep checks: not-lock-skipped"), after["terminal"])
+        self.box.write_attempt_log(GUARD_OK + DECLINE)
+        done, declined = self.box.run("knowledge-digest", "run", "--run-id", "run-4")
+        self.assertEqual(declined["terminal"]["outcome"], "decline")
+        done, after = self.amend("run-4", seeded=True)
+        self.assertEqual(after["terminal"]["outcome"], "failed")
+        self.assertIn("run outcome was decline: DECLINE:", after["terminal"]["reason"])
+
+    def test_amend_refuses_what_it_does_not_owe(self):  # (::exec-amend-folds-sweep-checks)
+        self.box.set_state("LastTriggerUSec", f"@{int(time.time()) - 3600}")
+        self.box.set_state("journal.txt", "")
+        cases = []
+        done, _ = self.amend("never-written")
+        cases.append(("no receipt", done))
+        done, skipped = self.box.run("knowledge-digest", "run", "--skipped", "lock held", "--run-id", "skip-1")
+        done, _ = self.amend("skip-1")
+        cases.append(("a skip is not a run", done))
+        done, failed = self.box.run("knowledge-digest", "run", "--run-id", "closed-1")
+        path = self.box.receipts / "knowledge-digest" / "closed-1.json"
+        path.write_text(json.dumps(receipt.close(failed, "Dave", "reviewed")))
+        done, _ = self.amend("closed-1")
+        cases.append(("closed by an operator", done))
+        self.box.set_state("InvocationID", "cafe0002")
+        self.box.write_attempt_log(GUARD_OK)
+        done, swept = self.box.run("knowledge-digest", "sweep", "--state-change", "swept", "--run-id", "sweep-written")
+        done, _ = self.amend("sweep-written")
+        cases.append(("written by the sweep", done))
+        for word, done in cases:
+            self.assertEqual(done.returncode, 2, word)
+            self.assertIn(word, done.stderr, word)
+        self.assertEqual(json.loads(path.read_text())["closed"]["by"], "Dave")
+        # --amend at vantage run, or without --run-id, is a usage error not a receipt
+        done, _ = self.box.run("knowledge-digest", "run", "--amend", "--run-id", "x")
+        self.assertEqual(done.returncode, 2)
+        self.assertIn("never amends", done.stderr)
+        done = subprocess.run([sys.executable, str(EXECUTOR), "knowledge-digest", "--vantage", "sweep", "--amend",
+                               "--manifest-dir", str(FIXTURES / "agents"), "--receipt-root", str(self.box.receipts)],
+                              capture_output=True, text=True)
+        self.assertEqual(done.returncode, 2)
+        self.assertIn("needs --run-id", done.stderr)
+
     def test_refuses_non_contract_rows(self):  # (::exec-refuses-non-contract-rows)
         for unit, word in (("always-on", "service"), ("spent-job", "contract_exempt"), ("no-such-unit", "no")):
             done, written = self.box.run(unit, "run", "--artifact", "file:///x")

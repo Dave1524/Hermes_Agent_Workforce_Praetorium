@@ -2,7 +2,7 @@
 """bin/receipt_sweep.py: one receipt per finished timer invocation, from systemd's record.
 
 Driven as a subprocess over the fake systemctl in tests/fixtures/receipt-wiring/bin/ (copied
-into a sandbox with its sweep-state.tsv), the six-row fleet-units.tsv fixture and the fixture
+into a sandbox with its sweep-state.tsv), the seven-row fleet-units.tsv fixture and the fixture
 manifests under tests/fixtures/receipt-wiring/agents/ — the real executor runs, so every
 receipt on disk is the real shape and the sweep's own receipt exercises the LIVE contract.
 Anchors are the `::` comments; tests/test_receipt_sweep.sh is the gate entry point.
@@ -26,6 +26,9 @@ SWEEP = ROOT / "bin" / "receipt_sweep.py"
 
 ENV_PROBE_ID = "e5" * 16
 LOGICAL_ID = "1c" * 16
+SELF_ID = "5e" * 16
+SELF_STARTED = 1789460000
+EXECUTOR = ROOT / "bin" / "contract_exec.py"
 
 
 def load(name):
@@ -57,6 +60,20 @@ class Sandbox:
         return subprocess.run([sys.executable, str(SWEEP), "--tsv", str(FIX / "fleet-units.tsv"),
                                "--manifest-dir", str(FIX / "agents"), "--repo-root", str(ROOT), *extra],
                               env=env, capture_output=True, text=True, cwd=str(ROOT))
+
+    def self_receipt(self, *extra: str) -> dict:
+        """The run-vantage receipt self-receipting writes for itself, through the real executor."""
+        log = self.home / "agent-workforce" / "logs" / "last-attempt" / "self-receipting.log"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_text("ran\n")
+        cmd = [sys.executable, str(EXECUTOR), "self-receipting", "--vantage", "run", "--run-id", SELF_ID,
+               "--artifact", "file:///self/artifact", "--repo-root", str(ROOT), "--manifest-dir", str(FIX / "agents"),
+               "--receipt-root", str(self.receipts), "--home", str(self.home),
+               "--run-started-at", str(SELF_STARTED), "--now", "2026-09-15T08:15:00Z", *extra]
+        done = subprocess.run(cmd, env={"PATH": os.environ["PATH"], "HOME": str(self.home)},
+                              capture_output=True, text=True, cwd=str(ROOT))
+        assert done.returncode == 0, done.stdout + done.stderr
+        return self.read(f"self-receipting/{SELF_ID}.json")
 
     def set_state(self, unit: str, column: int, value: str) -> None:
         rows = (self.fakebin / "sweep-state.tsv").read_text().splitlines()
@@ -91,7 +108,7 @@ class ReceiptSweepTest(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         self.assertEqual(self.box.receipt_files(),
                          [f"env-probe/{ENV_PROBE_ID}.json", f"logical-parent/{LOGICAL_ID}.json",
-                          "workflow-receipt-sweep/sweep-1.json"])
+                          f"self-receipting/{SELF_ID}.json", "workflow-receipt-sweep/sweep-1.json"])
         probe = self.box.read(f"env-probe/{ENV_PROBE_ID}.json")
         self.assertEqual(receipt.validate(probe), [])
         self.assertEqual(probe["vantage"], "sweep")
@@ -152,9 +169,10 @@ class ReceiptSweepTest(unittest.TestCase):
         self.assertEqual(probe.read_text(), marker)
         self.assertEqual(self.box.receipt_files(), before + ["workflow-receipt-sweep/sweep-2.json"])
         self.assertIn("already receipted: env-probe", self.box.log_text())
-        self.assertIn("already receipted: logical-child", self.box.log_text())
+        self.assertIn(f"already receipted: logical-child — logical-parent/{LOGICAL_ID}.json (written by the sweep)",
+                      self.box.log_text())
         self.assertEqual(self.box.read("workflow-receipt-sweep/sweep-2.json")["state_change"]["evidence"],
-                         "swept 4: 0 written, 1 paused, 1 refused, 2 skipped")
+                         "swept 5: 0 written, 0 amended, 1 paused, 1 refused, 3 skipped")
 
     def test_self_receipt(self):
         # (::sweep-self-receipt)
@@ -166,10 +184,71 @@ class ReceiptSweepTest(unittest.TestCase):
         self.assertEqual(own["unit"], "workflow-receipt-sweep")
         self.assertEqual(own["agent"], "trajan")
         self.assertEqual(own["terminal"]["outcome"], "artifact")
-        self.assertEqual(own["state_change"]["evidence"], "swept 4: 2 written, 1 paused, 1 refused, 0 skipped")
+        self.assertEqual(own["state_change"]["evidence"], "swept 5: 3 written, 0 amended, 1 paused, 1 refused, 0 skipped")
         self.assertEqual({a["id"]: a["status"] for a in own["assertions"]},
                          {"swept-this-run": "passed", "timer-fired-within-window": "not_applicable"})
-        self.assertRegex(self.box.log_text(), r"\n\S+ swept 4: 2 written, 1 paused, 1 refused, 0 skipped\n")
+        self.assertRegex(self.box.log_text(), r"\n\S+ swept 5: 3 written, 0 amended, 1 paused, 1 refused, 0 skipped\n")
+
+    def test_amends_a_self_receipted_run(self):
+        # (::sweep-amends-self-receipted-run) — a unit that receipted its own run recorded its
+        # sweep checks n/a; the sweep decides them in place, once, and its own receipt says so
+        before = self.box.self_receipt()
+        self.assertEqual({a["id"]: a["status"] for a in before["assertions"]},
+                         {"attempt-log-exists": "passed", "delivered-after-the-run": "not_applicable",
+                          "timer-is-loaded": "not_applicable"})
+        done = self.box.sweep("sweep-1")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn(f"amended: self-receipting — self-receipting/{SELF_ID}.json (decided)", self.box.log_text())
+        after = self.box.read(f"self-receipting/{SELF_ID}.json")
+        self.assertEqual(receipt.validate(after), [])
+        self.assertEqual(after["vantage"], "run")
+        self.assertEqual({a["id"]: a["status"] for a in after["assertions"]},
+                         {"attempt-log-exists": "passed", "delivered-after-the-run": "passed", "timer-is-loaded": "passed"})
+        self.assertEqual(self.assertion(after, "delivered-after-the-run")["output"],
+                         f"delivered for the run started @{SELF_STARTED}")
+        self.assertEqual(after["terminal"], before["terminal"])
+        self.assertEqual(after["artifact"], {"uri": "file:///self/artifact"})
+        self.assertEqual(after["swept"]["sweep_run_id"], "sweep-1")
+        self.assertEqual(self.box.read("workflow-receipt-sweep/sweep-1.json")["state_change"]["evidence"],
+                         "swept 5: 2 written, 1 amended, 1 paused, 1 refused, 0 skipped")
+        # the next sweep leaves it alone
+        stamp = (self.box.receipts / "self-receipting" / f"{SELF_ID}.json").read_bytes()
+        done = self.box.sweep("sweep-2")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn(f"already receipted: self-receipting — self-receipting/{SELF_ID}.json (swept {after['swept']['at']})",
+                      self.box.log_text())
+        self.assertEqual((self.box.receipts / "self-receipting" / f"{SELF_ID}.json").read_bytes(), stamp)
+
+    def test_a_failed_sweep_check_turns_the_run_receipt_failed(self):
+        # (::sweep-amends-self-receipted-run) — the gate T7.3 names: the run receipt exists,
+        # a sweep check would fail, and the receipt is `failed` afterwards
+        before = self.box.self_receipt()
+        self.assertEqual(before["terminal"]["outcome"], "artifact")
+        (self.box.home / "delivery-failed").write_text("")
+        done = self.box.sweep("sweep-1")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn(f"amended: self-receipting — self-receipting/{SELF_ID}.json (failed)", self.box.log_text())
+        after = self.box.read(f"self-receipting/{SELF_ID}.json")
+        self.assertEqual(receipt.validate(after), [])
+        self.assertEqual(after["terminal"], {"outcome": "failed",
+                                             "reason": "failed sweep checks: delivered-after-the-run; run outcome was artifact"})
+        self.assertEqual(self.assertion(after, "delivered-after-the-run")["status"], "failed")
+        self.assertEqual(self.assertion(after, "attempt-log-exists"), self.assertion(before, "attempt-log-exists"))
+        self.assertEqual(after["artifact"], before["artifact"])
+        self.assertTrue(receipt.has_failure(after))
+        self.assertFalse(receipt.judged(receipt.close(after, "Dave", "delivery fixed")))
+        # a skipped run receipt is not a run, so nothing is swept and nothing is written
+        skipped = self.box.self_receipt("--skipped", "previous run still active (flock)")
+        self.assertEqual(skipped["assertions"], [])
+        done = self.box.sweep("sweep-2")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn(f"already receipted: self-receipting — self-receipting/{SELF_ID}.json (a skip is not a run)",
+                      self.box.log_text())
+        self.assertNotIn("swept", self.box.read(f"self-receipting/{SELF_ID}.json"))
+
+    @staticmethod
+    def assertion(written: dict, ident: str) -> dict:
+        return next(a for a in written["assertions"] if a["id"] == ident)
 
     def test_executor_crash_is_the_sweeps_failure(self):
         # (::sweep-self-receipt) — a broken executor cannot write receipts at all, and the sweep says so

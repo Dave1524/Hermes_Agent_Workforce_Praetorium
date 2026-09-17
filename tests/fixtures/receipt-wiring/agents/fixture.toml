@@ -37,6 +37,15 @@ kind     = "service"
 contract = "tests/fixtures/contract-exec/contracts/none-next.md"
 status   = "standing"
 
+# T7.3: a unit that receipts its own run (the agent_propose.sh shape) over a contract with
+# sweep checks — the receipt the sweep amends rather than writes.
+[[workflows]]
+unit     = "self-receipting"
+surface  = "scheduled"
+trigger  = "fixture"
+contract = "tests/fixtures/contract-exec/contracts/self-receipting.md"
+status   = "standing"
+
 [[workflows]]
 unit     = "spent-job"
 surface  = "scheduled"

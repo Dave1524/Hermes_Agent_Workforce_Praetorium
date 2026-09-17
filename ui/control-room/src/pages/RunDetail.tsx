@@ -48,6 +48,11 @@ export default function RunDetail({ runId }: { runId: string }) {
               Closed {formatUtc(run.closed.at) ?? run.closed.at} by {run.closed.by} — {run.closed.reason}
             </p>
           )}
+          {run.swept && (
+            <p className="text-sm text-text-2 mt-2" data-testid="swept">
+              Sweep checks folded in {formatUtc(run.swept.at) ?? run.swept.at} by <span className="font-mono">{run.swept.sweepRunId}</span>
+            </p>
+          )}
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">

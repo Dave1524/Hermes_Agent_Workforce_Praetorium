@@ -35,7 +35,7 @@ Scheduled **proposal** agent jobs share `bin/agent_propose.sh` (lock, preflight,
 | Daily plan (ops) | **Mon–Fri 06:00** | `praetorium-daily-plan.{service,timer}` | `~/.config/agent-workforce/daily_plan.env` | `profiles/daily_plan_task.md` | *(headless Claude Code)* |
 | EOD summary (ops) | daily **22:15** | `praetorium-eod-summary.{service,timer}` | `~/.config/agent-workforce/eod_summary.env` | `profiles/eod_summary_task.md` | *(headless Claude Code)* |
 | Agent inbox → Notion sync | `agent-inbox-sync.timer` | `agent-inbox-sync.{service,timer}` | *(service embeds the pipeline cmd)* | n/a | n/a |
-| Workflow receipt sweep (no LLM; T5.2) | daily **05:50** — **shipped disabled**, `systemctl is-enabled workflow-receipt-sweep.timer` reads `disabled` until Dave enables it | `workflow-receipt-sweep.{service,timer}` | n/a | `bin/receipt_sweep.py` — one receipt per finished platform invocation, from systemd's own record | n/a |
+| Workflow receipt sweep (no LLM; T5.2) | daily **05:50** — shipped disabled; `systemctl is-enabled workflow-receipt-sweep.timer` read `enabled` on 2026-09-17 (fires at 05:50, last 09-17 05:50:03) | `workflow-receipt-sweep.{service,timer}` | n/a | `bin/receipt_sweep.py` — one receipt per finished platform invocation, from systemd's own record; since T7.3 it also decides the `when=sweep` checks of every self-receipted run in place (`contract_exec.py --amend`) | n/a |
 
 **Two rows above were corrected 2026-09-02 (W1).** They named `profiles/weekly_pre_assembly_task.md`
 and `profiles/overnight_morning_report_task.md` — both archived to `profiles/archive/` on 2026-09-01 —

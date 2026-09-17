@@ -51,9 +51,12 @@ none
    env
    ```
 
-3. **A sweep-only check**, so a run-vantage receipt carries one `not_applicable` by vantage.
+3. **A sweep-only check**, so a run-vantage receipt carries one `not_applicable` by vantage;
+   it prints the run start and date it was given, so an amendment can prove it read them back
+   from the receipt.
 
    ```check id=sweep-only when=sweep
+   echo "started=$AGENT_RUN_STARTED_AT date=$RUN_DATE"
    [ -n "$SYSTEMCTL" ]
    ```
 

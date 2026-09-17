@@ -592,6 +592,29 @@ class ControlRoomApiTest(unittest.TestCase):
         self.assertEqual(by_day["2026-09-11"], {"day": "2026-09-11", "eligible": 0, "valid": 0})
         self.assertEqual(self.model.run_detail("run-1")[0]["closed"]["reason"], "artifact-exists read the wrong path")
 
+    def test_an_amended_receipt_is_read_as_the_sweep_left_it(self):  # (::control-room-swept-run)
+        self.write_receipt(run="run-1", outcome="artifact", vantage="run")
+        path = self.receipts / "daily-plan" / "run-1.json"
+        receipt = json.loads(path.read_text())
+        receipt["agent"], receipt["unit"] = "marcus", "daily-plan"
+        receipt["assertions"].append({"id": "delivered-this-runs-artifact", "when": "sweep", "status": "failed",
+                                      "reason": "exit 1", "output": "no delivery receipt for this unit"})
+        receipt["terminal"] = {"outcome": "failed",
+                               "reason": "failed sweep checks: delivered-this-runs-artifact; run outcome was artifact"}
+        receipt["swept"] = {"at": "2026-09-12T05:50:00Z", "sweep_run_id": "sweep-9"}
+        path.write_text(json.dumps(receipt))
+        valid, malformed, errors = self.model.receipts()
+        self.assertEqual((malformed, errors), ([], []))
+        daily = next(item for item in self.model.list_workflows({})["items"] if item["id"] == "daily-plan")
+        self.assertEqual((daily["health"], daily["lastRun"]["outcome"], daily["lastRun"]["swept"]["sweep_run_id"]),
+                         ("failed", "failed", "sweep-9"))
+        self.assertIn("failed", self.run_kinds("daily-plan"))
+        detail = self.model.run_detail("run-1")[0]
+        self.assertEqual(detail["swept"], {"at": "2026-09-12T05:50:00Z", "sweep_run_id": "sweep-9"})
+        self.assertEqual([a["status"] for a in detail["assertions"]], ["passed", "failed"])
+        self.assertEqual([i["failedAssertion"] for i in self.model.incidents()["items"] if i["workflowId"] == "daily-plan"],
+                         ["delivered-this-runs-artifact"])
+
     def test_control_reader_hook_fills_last_action_verbatim(self):
         last = {"action": "pause", "actor": "Dave", "result": "applied"}
         model = api.ControlRoomReadModel(

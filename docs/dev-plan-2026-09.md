@@ -821,17 +821,28 @@ losing artifacts today.
   Gate: the cause named, and either fixed or recorded as a `DECIDED` with the timeout re-based on
   measured successful turn length.
 
-- **T7.3** [Claude, M] `when=sweep` checks are never evaluated for a unit that receipts its own
-  run. `receipt_sweep.py` skips an invocation whose receipt exists (`already receipted`, never
-  overwritten), and `agent_propose.sh` receipts every run at `--vantage run` — so every sweep
-  check in those contracts (`not-lock-skipped`, `timer-fired-this-window`,
-  `delivered-this-runs-artifact`, `delivery-was-receipted`, `alert-staleness-reported`) is
-  recorded `not_applicable: vantage` and decided by nobody. Found 2026-09-17 while moving
-  Marcus's three delivery checks to `sweep` (they were `run`, which is structurally undecidable:
-  delivery is `ExecStartPost` and starts after the receipt). Fix shape: the sweep amends an
-  existing run-vantage receipt with its sweep-vantage results and re-derives the terminal
-  outcome, or the executor grows a `post` vantage the delivery adapter invokes. Gate: a
-  fixture where the run receipt exists and a sweep check would fail turns the receipt `failed`.
+- **T7.3** [Claude, M] **Done 2026-09-17.** `when=sweep` checks were never evaluated for a
+  unit that receipts its own run: `receipt_sweep.py` skipped an invocation whose receipt
+  existed, and `agent_propose.sh` receipts every run at `--vantage run` — so every sweep check
+  in those contracts (`not-lock-skipped`, `timer-fired-this-window`,
+  `delivered-this-runs-artifact`, `delivery-was-receipted`, `alert-staleness-reported`) was
+  recorded `not_applicable: vantage` and decided by nobody. Found while moving Marcus's three
+  delivery checks to `sweep` (delivery is `ExecStartPost`, so a `run` check is structurally
+  undecidable). Built as the amend shape: `contract_exec.py --vantage sweep --amend --run-id`
+  runs only the `when=sweep` checks against the run the receipt records (start and date read
+  back from `started_at`), replaces their `not_applicable` placeholders by id, moves the
+  terminal monotonically — a failed sweep check turns the receipt `failed` with a reason that
+  keeps the run's own outcome, an already-failed receipt gains the sweep's names — and stamps
+  `swept {at, sweep_run_id}`. The sweep amends once: pending is vantage `run`, not skipped,
+  not closed, not swept, with sweep checks to fold (`workflow_receipt.sweep_pending`), and its
+  summary now counts `amended`. Readers need nothing new — an amended receipt turning failed
+  is a `failed-assertion` incident on the next tick, and the run page shows the sweep line.
+  Gates: `::exec-amend-folds-sweep-checks` (executor; the failed-check case is the row's
+  gate), `::sweep-amends-self-receipted-run` (the sweep against a self-receipting fixture unit,
+  second pass byte-identical), `::control-room-swept-run` (API + incident). The first live
+  amend is the 05:50 sweep of 2026-09-18 over 09-17's runs. Not built: the sweep never amends
+  its own previous receipt (it is excluded from its own walk, and its sweep check reads the
+  summary it writes).
 
 - **T7.4** [Claude, S] **Done 2026-09-17.** The Control Room's "Needs attention" carried twelve
   rows at 09:30Z and every one was a check defect: ten `missed-cadence`, two `missing-artifact`.
