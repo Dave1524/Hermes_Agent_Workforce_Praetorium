@@ -56,19 +56,17 @@ ls ~/.hermes/profiles/                              # base0, leantest, default (
 - **The one hard gate is outward action.** No email, no social, no messaging humans from this
   box — it holds no outward credentials, ever. Anything for the outside world is a draft Dave
   sends. Notion and Discord are inside the bubble, not outward.
-- **Canonical vault access is a rule you keep, not a boundary that holds.** This file claimed
-  from its first version until 2026-09-05 that the box held *no* canonical credential. It holds
-  one: `~/.ssh/config` maps `Host github-canonical` to
-  `~/.config/agent-workforce/keys/canonical_deploy`, and
-  `git ls-remote git@github-canonical:Dave1524/Obsidian_AI_Operating_System.git` authenticates
-  and lists refs (re-run it rather than trusting this line). It is **write-enabled**: the
-  canonical repo's ruleset names a single bypass actor and that actor is this deploy key, so a
-  push from here is applied and merely logged — the vault's own `pre-push` guard says of itself
-  "This is friction and a record, not a boundary"
-  (`00_system/tools/hooks/pre-push`). So vault work goes on `agents/<date>-<slug>` branches for
-  Mac-side merge because that is the rule, not because anything stops you. The old wording was
-  wrong in the dangerous direction: an agent that believes it cannot reach canonical will not
-  think to be careful with a credential it has.
+- **Canonical vault access: the box pushes as a GitHub App, and `main` refuses it.** Since
+  2026-09-11 the canonical clone's credential helper is `~/.local/bin/github_app_credential.py`
+  (source `00_system/tools/github_app_credential.py` in the vault; config
+  `~/.config/agent-workforce/vault_app.env`): an installation token over HTTPS, an actor the
+  `main` ruleset does not bypass, so `agents/<date>-<slug>` branches push and a `main` push is
+  refused server-side. The SSH alias `github-canonical` → `keys/canonical_deploy` that this
+  bullet described until 2026-09-17 is **dead**: `ssh -T git@github-canonical` answers
+  `Permission denied (publickey)` (measured 2026-09-17; re-run it rather than trusting this
+  line). Push with `git push origin HEAD:agents/…` from `~/dev/Obsidian_AI_Operating_System`
+  or a worktree of it. From 2026-09-05 to 09-17 this bullet said the deploy key was
+  write-enabled and bypassed the ruleset — true when written, and the reason the App exists.
 - **Vault writes go through `agents`, never `main`.** Any proposal to the vault is committed to
   the box-safe repo's `agents` branch/inbox. `main` is machine-published from the Mac — never
   hand-write or merge into it from here.

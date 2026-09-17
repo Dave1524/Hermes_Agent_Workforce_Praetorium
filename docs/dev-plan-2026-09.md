@@ -215,6 +215,11 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
 
 - **T0.1** [Dave, S] Ask one agent in Buzz to run `buzz workflows list --channel <uuid>` and
   report the one-line result. Paste it, dated, into W20. Gate: output recorded.
+  **Phase 0 was closed before this plan's rows were ticked:** W20 reads `CLOSED 2026-09-10 —
+  DECIDED, not available` on Marcus's 2026-09-09 probe workflow (schedule stored, never
+  fired; the emitted message lacks the tags a wake needs). Re-measured 2026-09-17 under
+  marcus's credential: `buzz workflows list --channel ebe0c534-…` → `[]` (the probe was
+  deleted per T0.3). T0.2 and T0.3 are moot; timers remain the scheduling mechanism.
 - **T0.2** [Dave, S, T0.1] If the relay supports workflows, have Marcus create the minimal test
   workflow: `schedule` trigger, interval at least 60 s, one `send_message` naming one agent
   literally in the stored template. Gate: workflow id recorded.
@@ -699,6 +704,10 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   runner scripts and clears eleven deferred exclusions in one act. Dave picks the moment and
   deletes the two override envs in the deny-listed tree; Claude runs the prune and re-verifies.
   Gate: drift clean with no runtime-only `bin/` files.
+  **Prune half DONE 2026-09-17:** `bin/deploy --prune` deleted the 11 runtime-only files
+  (7 `profiles/`, 4 `config/job-overrides/`; the three `bin/` runners were already gone), the
+  11 `[[runtime_only]]` entries cleared from `design/deploy-exclusions.toml`, drift clean.
+  Still Dave's: `rm ~/.config/agent-workforce/{content_strategy,faceless_content}.env`.
 - **T6.4** [Claude, S] `design/workflow-registry.md` is joined by no test or script. Freeze it as
   the D1 record with a header pointing at the manifests. Gate: header present, no live claim
   left in it.
@@ -708,11 +717,25 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
 - **D1** [Dave, S] Place the two BD override envs in `~/.config/agent-workforce/`: the radar
   from T2.3's new example, the drafts one with `AGENT_PROFILE` fixed. Mode 600. Unblocks T2.4.
 - **D2** [Dave, S] Install `AGENT_VERIFY_CMD` into `~/.config/agent-workforce/m1_signal_scan.env`
-  from `profiles/m1_signal_scan.env.example`. Mode 600.
+  from `profiles/m1_signal_scan.env.example`. Mode 600. Still open 2026-09-17 — the tree is
+  deny-listed for Claude, so it is one line for Dave:
+  `printf '%s\n' "AGENT_VERIFY_CMD='~/agent-workforce/bin/proposal_or_decline.sh m1-signal-scan'" >> ~/.config/agent-workforce/m1_signal_scan.env`.
 - **D3** [Dave, M] Codex filesystem permission profile: select `default_permissions` in
   `~/.codex/config.toml` denying `.ssh/**`, `.config/buzz-agents/**`,
   `.config/agent-workforce/**` and `ENCRYPTION_RECOVERY.md`; grant `/home/linuxbrew` read;
   `workspace_roots` entries relative. A posture change, proven working here 2026-08-04.
+  **DONE 2026-09-17 (Claude, on Dave's "help me with the D actions").** `~/.codex/config.toml`
+  now selects profile `praetorium` (`extends = ":workspace"`, six absolute `= "deny"` entries —
+  the four above plus `.config/google-docs-mcp` and `.confidential.img`). Proven live:
+  `codex sandbox` reads all six DENIED, repo and toolchain READABLE, workspace write ok,
+  outside write denied; one `codex exec` turn: `.ssh`/buzz-agents/recovery DENIED,
+  api.github.com 200. Two findings the 08-04 trial did not have: a user profile does **not**
+  inherit `[sandbox_workspace_write].network_access` — the first candidate ran every model
+  turn with `CODEX_SANDBOX_NETWORK_DISABLED=1`, fixed by `[permissions.praetorium.network]
+  enabled = true`; and `requirements.toml deny_read`, the admin-enforced form, rejects
+  `danger-full-access`, the mode augustus's `codex-acp` hardcodes, so it stays off. No
+  `/home/linuxbrew` grant was needed on 0.154.0. `~/CLAUDE.md` and `~/.codex/AGENTS.md`
+  updated to the live state.
 - **D4** [Dave, S] Augustus's ZDR pin. Closes with T6.1 if his Hermes profile is deleted;
   otherwise set `only: ["azure"]`. Decide which. **CLOSED 2026-09-16: deleted** with the
   other three at T6.1 land (nothing read it; the live augustus is the Buzz unit).
@@ -720,8 +743,16 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   `03_projects/active/ai_agent_workforce/buzz_architecture.md` win retrieval for "how does the
   workforce publish and get proposals approved", then re-baseline `fleet_eval`'s
   `p2_publish_approve` to PASS.
+  **Box half DONE 2026-09-17:** branch `agents/2026-09-17-buzz-arch-plain-answer` (b5ab5de)
+  appends §10 "The plain answer" to `buzz_architecture.md`; `bin/fleet_eval_ab.py` on a copy
+  of the live index: p2 FAIL → PASS, p1/p3/p4 unchanged, 587 documents identical. Dave: merge
+  Mac-side and publish; then Claude re-baselines p2 to PASS in `bin/fleet_eval_probes.json`.
+  Found on the way: the `github-canonical` deploy key is refused by GitHub; the push went
+  through the GitHub App helper over HTTPS (CLAUDE.md § Hard constraints corrected).
 - **D6** [Dave, Refine] The website corpus is 644 hours old. Publish, or accept the freshness
-  refusal as correct. A content decision.
+  refusal as correct. A content decision. MEASURED 2026-09-17: `published_corpus.py list` →
+  `fetched: true, ref_age_hours: 891.9` (37 days), 16 articles. Still Dave's: publish one
+  article, or record here that the refusal stands and the content route is parked.
 - **D7** Done 2026-09-07: workflow authoring granted in `TEAM.md`.
 - **D8** is T0.1.
 
@@ -729,7 +760,12 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
 
 - **L1** [Dave, S] Marcus's engram is near 79% of the 65,535 B wall. Ask Marcus to prune it
   with `buzz mem patch core --base-hash`, never `set`. Gate: `buzz mem hash core` changed,
-  size under 60%.
+  size under 60%. MEASURED 2026-09-17 under his own credential (size only): **56,363 B =
+  86%**, hash `61570e0f…`. The ask needs the owner key, so it is Dave's message in Buzz:
+  "@marcus your core engram is 56 KB of the 64 KB limit. Prune it to under 39 KB with
+  `buzz mem hash core` then `buzz mem patch core --base-hash <hash>` — never `set`. Reply
+  with the new hash and size." Gate re-measure: the `systemd-run -p EnvironmentFile=` line
+  in `buzz-team/check-loaded.sh` with `buzz mem get core | wc -c`.
 - **L2** Closed by measurement 2026-09-07: `augustus-content.timer` is active and fired today.
 
 ### Phase 7 — Live breakage, found 2026-09-10 by the /verify sweep
