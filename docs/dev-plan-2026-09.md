@@ -808,7 +808,11 @@ losing artifacts today.
   newest non-skipped receipt (`lastEligibleRun`), and a workflow whose every eligible run is a
   clean decline (raw-ingest: nothing in `05_knowledge/raw/`) is the contract honoured, not
   `missing-artifact`. Gates: `tests/test_missed_receipt.sh`, the exceptions, incidents, notify
-  and API suites.
+  and API suites. Deployed once and `scorecard` stayed red: the API's `SystemdReader` never
+  requested `ActiveEnterTimestamp`, so live `activeSince` was null while the test fake answered
+  it. Fixed the same hour with a test that the fake answers only properties the live reader
+  requests. What remains on the screen is honest: agent-proposal's three eligible receipts
+  are `failed` records of checks fixed that morning, and one artifact run clears both rows.
 
 ## Execution order for Claude
 
