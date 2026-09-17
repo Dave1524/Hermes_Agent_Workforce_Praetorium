@@ -19,8 +19,20 @@
 # per-job file removes both ambiguities at once, which is why there is no tail window left
 # to tune: the file holds one attempt of one job, so there is nothing to window.
 #
+# 2026-09-17: a third legitimate ending. Every profile prints `skip: today's <thing> already
+# exists` when STEP 0 finds this run has already happened, and until today that read as a
+# silent failure — exit 1, FAIL, two check failures on the receipt, for a run that did the
+# right thing. It now exits 3, the DEDUP code agent_propose.sh already maps to a `skipped`
+# receipt with its reason on it, so a same-day re-run stays visible (`incomplete`, not
+# `healthy`) without being reported as broken. Decided under Dave's 2026-09-17 "re-run until
+# working" pass, which T7.1 had deferred to him.
+#
 # usage: proposal_or_decline.sh <slug>
+# exit 0: this run's dated proposal, or its own DECLINE:. exit 3: its own idempotent skip.
+# exit 1: anything else.
 set -euo pipefail
+
+SKIP_EXIT=3
 
 slug="${1:?usage: proposal_or_decline.sh <slug>}"
 : "${RUN_DATE:?RUN_DATE not set (exported by agent_propose.sh) — fail closed}"
@@ -50,6 +62,12 @@ decline_sentinel() {
   grep -qE '^DECLINE:' "$attempt_log"
 }
 
+skip_sentinel() {
+  newer_than_run "$attempt_log" || return 1
+  grep -qE "^skip: today's .* already exists" "$attempt_log"
+}
+
 proposal_fresh && exit 0
 decline_sentinel && exit 0
+skip_sentinel && exit "$SKIP_EXIT"
 exit 1

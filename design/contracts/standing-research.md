@@ -93,11 +93,13 @@ already published, the correct output is a short collision report naming the liv
 still one proposal file, still this run's — because the brief was faulty and Dave needs to
 see that, not silence.
 
-The STEP 0 idempotency skip is **not** a decline: it prints `skip: …` and no artifact, so
-`proposal_or_decline.sh` fails the run. Measured on this box — the 2026-09-09 09:50 and
+The STEP 0 idempotency skip is **not** a decline: it prints `skip: …` and no artifact.
+Until 2026-09-17 `proposal_or_decline.sh` failed the run on it — the 2026-09-09 09:50 and
 10:03 canary rows in `cost.log` are exactly that, `outcome=FAIL attempts=2` on a job that
-had already run that morning. Intended (a second run in one day is anomalous and should be
-visible), and worth knowing before a canary night is scheduled.
+had already run that morning, and the 2026-09-17 07:57 re-run receipted `failed` with two
+spurious check failures for the same non-event. Since then the verifier exits 3 on this
+run's own skip line and the run is receipted `skipped` with the reason (Control Room:
+`incomplete`): a second run in one day stays visible and is no longer reported as broken.
 
 ## Side effects
 

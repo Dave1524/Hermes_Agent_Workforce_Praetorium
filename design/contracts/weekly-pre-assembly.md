@@ -114,9 +114,10 @@ so `agent_propose.sh:167` defaults it to `proposal`.
 
 `bin/proposal_or_decline.sh` — the shared verifier for every proposal-mode job — accepts a run
 only if it produced this run's dated proposal **or** this run's attempt log matches
-`^DECLINE:` (`:decline_sentinel`). Neither instruction above produces that prefix. The profile
-asks for "one line saying why" and for the literal string `skip: …`; nothing tells the agent to
-write `DECLINE:`.
+`^DECLINE:` (`:decline_sentinel`); since 2026-09-17 it also recognises this run's own
+`skip: today's … already exists` line (`:skip_sentinel`, exit 3 → a `skipped` receipt), so
+path 2 above is covered. Path 1 is not: "one line saying why" produces neither prefix, and
+nothing tells the agent to write `DECLINE:`.
 
 `bin/deliver_proposal.sh:37` reads the same prefix to render the message, falling back to
 `DECLINE: no reason recorded in $ATTEMPT_LOG` (`:50`) — so even the delivery Dave sees loses

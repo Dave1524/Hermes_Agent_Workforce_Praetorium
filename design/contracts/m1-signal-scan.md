@@ -87,9 +87,10 @@ Declining is the correct answer to a quiet week. Three thin signals padded to me
 is the failure the floor was meant to prevent, and no check here can tell padding from
 substance — that is Dave's read.
 
-The same-day skip is **not** a decline: it prints `skip: …` and no artifact, so
-`proposal_or_decline.sh` fails the run. A second run in one day is anomalous and should be
-visible.
+The same-day skip is **not** a decline: it prints `skip: …` and no artifact, and since
+2026-09-17 `proposal_or_decline.sh` exits 3 on it, which the run receipts as `skipped`
+(Control Room: `incomplete`) rather than `failed`. A second run in one day is anomalous and
+stays visible; it is no longer reported as broken.
 
 ## Side effects
 

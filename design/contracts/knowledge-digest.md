@@ -71,13 +71,15 @@ stream carries every job with no run boundary in it, so until T7.1 (2026-09-10) 
 decline satisfied every other job's check. There is no tail window left to tune, because
 the file holds one attempt of one job.
 
-The idempotency skip in STEP 0 is **not** a decline — it prints `skip: …` and no artifact,
-so `proposal_or_decline.sh` fails the run. That is the intent (a second run in one day is
-anomalous and should be visible) and, since T7.1, it is also what happens: before the fix
-the skip passed by borrowing whichever sibling had declined most recently. It means a
-manual re-run on a Sunday now genuinely reads as a failure, and a canary-then-schedule
-night costs one red run. Recorded so it is a known behaviour rather than a surprise;
-whether that is the alerting Dave wants is a policy question, not a defect.
+The idempotency skip in STEP 0 is **not** a decline — it prints `skip: …` and no artifact.
+Since 2026-09-17 `proposal_or_decline.sh` exits 3 on this run's own `skip: today's …
+already exists` line, which `agent_propose.sh` records as DEDUP and receipts as `skipped`
+with that reason — the Control Room renders it `incomplete`, so a second run in one day
+stays visible without being reported as broken. From T7.1 (2026-09-10) until then the skip
+was a FAIL: before T7.1 it passed by borrowing whichever sibling had declined most
+recently, and after it a manual re-run on a Sunday read as a failure with two spurious
+check failures on the receipt. The 2026-09-17 agent-proposal re-run was the case that
+decided it.
 
 ## Side effects
 

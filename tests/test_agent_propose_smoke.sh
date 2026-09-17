@@ -232,7 +232,7 @@ echo "--- scenario 10: DEDUP — runtime exits 3 (idempotent kanban hit) (NUC-38
 h10=$(sandbox)
 rc=$(run_scenario "$h10" 3 0)   # mock runtime exits 3 == DEDUP_EXIT
 assert "exits 0 (dedup is clean, not a failure)" "[ '$rc' = 0 ]"
-assert "logs DEDUP idempotent hit" "grep -q 'DEDUP: kanban idempotent hit' '$h10/agent-workforce/logs/agent_propose.log'"
+assert "logs DEDUP idempotent hit" "grep -q 'DEDUP: idempotent hit' '$h10/agent-workforce/logs/agent_propose.log'"
 assert "cost.log outcome=DEDUP" "grep -q 'outcome=DEDUP' '$h10/agent-workforce/logs/cost.log'"
 assert "cost.log attempts=1 (not retried)" "grep -q 'attempts=1' '$h10/agent-workforce/logs/cost.log'"
 assert "cost.log memory=na (dedup skips the memory block)" "grep -q 'memory=na' '$h10/agent-workforce/logs/cost.log'"
@@ -328,6 +328,14 @@ h17=$(silent_fail_sandbox)
 rc=$(run_silent "$h17" 'looks fine to me' 'test -f /nonexistent/morning-report.md')
 assert "exits 1 when artifact missing" "[ '$rc' = 1 ]"
 assert "logs artifact SILENT-FAIL" "grep -q 'SILENT-FAIL: exit 0 but AGENT_VERIFY_CMD found no artifact' '$h17/agent-workforce/logs/agent_propose.log'"
+
+echo "--- scenario 17b: AGENT_VERIFY_CMD exit 3 is the run's own idempotent skip — DEDUP, not FAIL, not retried ---"
+h17b=$(silent_fail_sandbox)
+rc=$(run_silent "$h17b" "skip: today's standing-research already exists" 'exit 3')
+assert "exits 0 (a skip is clean)" "[ '$rc' = 0 ]"
+assert "logs the DEDUP from the verify command" "grep -q 'DEDUP: AGENT_VERIFY_CMD found this run.s idempotent skip' '$h17b/agent-workforce/logs/agent_propose.log'"
+assert "cost.log outcome=DEDUP, attempts=1" "grep -q 'outcome=DEDUP' '$h17b/agent-workforce/logs/cost.log' && grep -q 'attempts=1' '$h17b/agent-workforce/logs/cost.log'"
+assert "no SILENT-FAIL was recorded" "! grep -q 'SILENT-FAIL' '$h17b/agent-workforce/logs/agent_propose.log'"
 
 echo "--- scenario 18: AGENT_VERIFY_CMD passing leaves the run OK ---"
 h18=$(silent_fail_sandbox)

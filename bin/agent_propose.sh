@@ -338,9 +338,12 @@ fi
 # test; real hermes never accepted it. Do not reintroduce it.
 run_cmd="$AGENT_RUNTIME_CMD"
 retry_base="${AGENT_RETRY_BASE_SECONDS:-30}"
-# No runtime produces exit 3 since the kanban path was retired (2026-09-02, D7). The
-# bucket stays because ~/agent-workforce/logs/cost.log holds one historical outcome=DEDUP
-# row (2026-08-13T01:33:57+02:00) that bin/scorecard.sh:51-56 must keep classifying.
+# Produced by AGENT_VERIFY_CMD (bin/proposal_or_decline.sh) since 2026-09-17 when the
+# profile's own `skip: today's … already exists` line ends the run: the run already
+# happened, so this is not a failure and must not be retried. No runtime has produced it
+# since the kanban path was retired (2026-09-02, D7); ~/agent-workforce/logs/cost.log holds
+# one historical outcome=DEDUP row (2026-08-13T01:33:57+02:00) that bin/scorecard.sh:51-56
+# must keep classifying.
 DEDUP_EXIT=3
 # NUC-44: the live producer is bin/run_content_via_buzz.sh (:40,48 — `crash()`), which
 # exits 4 when the dispatch itself failed rather than the agent declining. Re-attributed
@@ -403,13 +406,20 @@ while [ "$attempt" -lt "$max_attempts" ]; do
     rc=90
     log "SILENT-FAIL: exit 0 but the run ended on a provider error — recording FAIL"
   fi
-  if [ "$rc" -eq 0 ] && [ -n "${AGENT_VERIFY_CMD:-}" ] && ! bash -lc "$AGENT_VERIFY_CMD"; then
-    rc=91
-    log "SILENT-FAIL: exit 0 but AGENT_VERIFY_CMD found no artifact — recording FAIL"
+  if [ "$rc" -eq 0 ] && [ -n "${AGENT_VERIFY_CMD:-}" ]; then
+    verify_rc=0
+    bash -lc "$AGENT_VERIFY_CMD" || verify_rc=$?
+    if [ "$verify_rc" -eq "$DEDUP_EXIT" ]; then
+      rc=$DEDUP_EXIT
+      log "DEDUP: AGENT_VERIFY_CMD found this run's idempotent skip — today's artifact already exists"
+    elif [ "$verify_rc" -ne 0 ]; then
+      rc=91
+      log "SILENT-FAIL: exit 0 but AGENT_VERIFY_CMD found no artifact — recording FAIL"
+    fi
   fi
   if [ "$rc" -eq 0 ]; then ok=true; break; fi
-  # NUC-38: a distinct DEDUP exit (idempotent kanban hit — the card already ran under
-  # today's key) is not a failure and must not be retried.
+  # NUC-38: a distinct DEDUP exit (the run already happened under today's key) is not a
+  # failure and must not be retried.
   if [ "$rc" -eq "$DEDUP_EXIT" ]; then is_dedup=true; break; fi
   # NUC-44: a crash-parked card is a failure, but a diagnosed one — record it as such and
   # stop, rather than re-running work hermes has already retried into the ground.
@@ -424,7 +434,7 @@ done
 #    already committed its own proposal). Record outcome=DEDUP and exit clean. Must come
 #    BEFORE the FAIL branch: is_dedup sets ok=false but is not a failure. ──
 if $is_dedup; then
-  log "DEDUP: kanban idempotent hit — card already terminal for today's key; no run recorded"
+  log "DEDUP: idempotent hit — today's artifact already exists; no run recorded"
   run_outcome=DEDUP; run_proposal=none; mem_status=na
   log_cost DEDUP
   write_receipt DEDUP

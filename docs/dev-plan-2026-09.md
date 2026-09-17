@@ -755,6 +755,13 @@ losing artifacts today.
   decision rather than overturning it. The consequence goes live with the fix: a same-day re-run
   goes red, and a canary-then-schedule night costs one red run. Whether that alerting is wanted is
   a policy call for Dave, tracked separately — not something a defect fix should settle.
+  **Settled 2026-09-17** under Dave's "re-run until working" pass: the agent-proposal re-run that
+  morning hit the skip and receipted `failed` with two spurious check failures for a run that had
+  done the right thing. `proposal_or_decline.sh` now exits 3 on this run's own `skip: today's …
+  already exists` line, `agent_propose.sh` maps that to DEDUP, and the receipt is `skipped` with
+  the reason — rendered `incomplete`, so the second run stays visible without reading as broken.
+  Gate: `tests/test_proposal_or_decline.sh` pins exit 3 across all six profiles and exit 1 for a
+  stale or in-prose skip line; smoke scenario 17b pins DEDUP-not-retried.
 - **T7.2** [Claude, M] `augustus-content.service` failed 3 of the last 5 nights — 2026-09-06,
   09-07 and 09-09 (UTC; the last is the 09-10 01:33 CEST run) — every time on
   `run_content_via_buzz: no board movement and no reply within 1200s — recording FAIL`, 20 minutes

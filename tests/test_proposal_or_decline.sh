@@ -108,9 +108,10 @@ attempt_log standing-research 'DECLINE: declared by the run before this one' "$(
 rc=$(check standing-research)
 assert "exits 1" "[ '$rc' = 1 ]"
 
-echo "--- T7.1: the idempotency skip is not a decline, for every profile that prints one ---"
-# design/contracts/knowledge-digest.md records this deliberately: a second run in one day
-# is anomalous and must stay visible. Pinned across all six so a later change is a choice.
+echo "--- the idempotency skip is its own ending (exit 3 = DEDUP), for every profile that prints one ---"
+# T7.1 pinned this at exit 1 (a FAIL) and deferred the choice; decided 2026-09-17: a same-day
+# re-run receipts `skipped` with its reason, which the Control Room renders `incomplete` — still
+# visible, no longer reported broken. Pinned across all six so a later change is a choice.
 pinned=0
 for f in "$REPO_ROOT"/profiles/*_cc_task.md; do
   skip=$(tr '\n' ' ' < "$f" | { grep -o '"skip: [^"]*"' || true; } | awk 'NR==1' | tr -d '"')
@@ -119,10 +120,20 @@ for f in "$REPO_ROOT"/profiles/*_cc_task.md; do
   rm -f "$attempt_dir"/*.log
   attempt_log standing-research "$skip" >/dev/null
   rc=$(check standing-research)
-  assert "$(basename "$f" .md): '$skip' does not certify the run" "[ '$rc' = 1 ]"
+  assert "$(basename "$f" .md): '$skip' is a skip, not a clean run and not a failure" "[ '$rc' = 3 ]"
 done
 assert "every profile that prints a skip was pinned, so a broken extraction cannot pass as a clean run ($pinned)" \
   "[ '$pinned' -eq 6 ]"
+
+echo "--- the skip certifies only THIS run: an earlier run's skip line is a failure ---"
+rm -f "$attempt_dir"/*.log
+attempt_log standing-research "skip: today's standing-research already exists" "$((started - 3600))" >/dev/null
+rc=$(check standing-research)
+assert "a stale skip line exits 1" "[ '$rc' = 1 ]"
+rm -f "$attempt_dir"/*.log
+attempt_log standing-research "the agent said it would skip: today's standing-research already exists, then went on" >/dev/null
+rc=$(check standing-research)
+assert "the sentinel is a line of its own, not a phrase inside prose" "[ '$rc' = 1 ]"
 
 echo "--- fail closed: missing AGENT_RUN_STARTED_AT -> exit non-zero, never 0 ---"
 rm -f "$attempt_dir"/*.log
