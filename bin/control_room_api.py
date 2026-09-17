@@ -35,6 +35,7 @@ import control_room_control  # noqa: E402
 import control_room_proposals  # noqa: E402
 from control_room_exceptions import KINDS, classify  # noqa: E402
 from control_room_lineage import lineage  # noqa: E402
+from missed_receipt import fired_at, sweep_started_at  # noqa: E402
 import incident_state  # noqa: E402
 import workflow_incidents  # noqa: E402
 import workflow_requires  # noqa: E402
@@ -374,6 +375,7 @@ class ControlRoomReadModel:
         started, started_raw = self._stamp(service, "ExecMainStartTimestamp")
         ended, ended_raw = self._stamp(service, "ExecMainExitTimestamp")
         last_trigger, last_trigger_raw = self._stamp(timer, "LastTriggerUSec")
+        active_since, _ = self._stamp(timer, "ActiveEnterTimestamp")
         next_run, next_run_raw = self._stamp(timer, "NextElapseUSecRealtime")
         return {
             "scope": scope,
@@ -394,7 +396,9 @@ class ControlRoomReadModel:
                 "activeState": timer.get("ActiveState") or "unknown",
                 "subState": timer.get("SubState") or "unknown",
                 "enabledState": timer.get("UnitFileState") or "unknown",
+                "activeSince": active_since,
                 "lastTriggerAt": last_trigger,
+                "firedAt": fired_at(last_trigger, active_since),
                 "nextRunAt": next_run,
                 "nextElapseMonotonic": timer.get("NextElapseUSecMonotonic") or None,
                 "persistent": ({"yes": True, "no": False}.get(timer.get("Persistent", "")) if timer else None),
@@ -482,6 +486,7 @@ class ControlRoomReadModel:
                 })
             workflow_receipts = receipt_by_workflow.get(logical_id, [])
             latest = workflow_receipts[0] if workflow_receipts else None
+            last_eligible = next((r for r in workflow_receipts if r["terminal"]["outcome"] != "skipped"), None)
             usage = self._measurement(
                 latest.get("usage") if latest else None,
                 ("input_tokens", "output_tokens", "cache_tokens", "total_tokens"),
@@ -521,6 +526,7 @@ class ControlRoomReadModel:
                 "contractExempt": contract_exempt,
                 "triggers": triggers,
                 "lastRun": self._run_summary(latest) if latest else None,
+                "lastEligibleRun": self._run_summary(last_eligible),
                 "latestOutput": artifact,
                 "usage": usage,
                 "cost": cost,
@@ -705,7 +711,7 @@ class ControlRoomReadModel:
         _, malformed, source_errors = self.receipts()
         declared, _ = workflow_incidents.load_declared(self.paths.incident_root)
         observed = workflow_incidents.derive(
-            workflows, malformed, source_errors, declared, self.clock(),
+            workflows, malformed, source_errors, declared,
             manifest_errors=status["errors"]["manifests"],
         )
         state, state_status = self._incident_state()
@@ -734,8 +740,9 @@ class ControlRoomReadModel:
         by_workflow: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for receipt in receipts:
             by_workflow[str(receipt["workflow_id"])].append(receipt)
-        now = self.clock()
-        rows = [row for workflow in workflows for row in classify(workflow, by_workflow.get(workflow["id"], []), now)]
+        now, swept_at = self.clock(), sweep_started_at(workflows)
+        rows = [row for workflow in workflows
+                for row in classify(workflow, by_workflow.get(workflow["id"], []), now, swept_at=swept_at)]
         rows.sort(key=lambda row: (KINDS.index(row["kind"]), row["since"] or ""))
         envelope = self._envelope(rows, status)
         envelope["dataQuality"] = self._data_quality(status)

@@ -1,0 +1,43 @@
+{
+  "agent": "trajan",
+  "artifact": null,
+  "assertions": [
+    {
+      "id": "sweep-reported",
+      "message": "swept 24: 3 written, 12 paused, 0 refused, 9 skipped",
+      "status": "passed"
+    }
+  ],
+  "cost": {
+    "amount": null,
+    "confidence": null,
+    "currency": null,
+    "source": null,
+    "status": "unavailable"
+  },
+  "ended_at": "2026-09-14T07:20:02Z",
+  "handoff": null,
+  "model": null,
+  "next_action": null,
+  "parent_run_id": null,
+  "run_id": "run-0914",
+  "schema_version": 1,
+  "started_at": "2026-09-14T07:20:00Z",
+  "state_change": {
+    "evidence": "swept 24: 3 written, 12 paused, 0 refused, 9 skipped",
+    "kind": "receipts-swept"
+  },
+  "terminal": {
+    "outcome": "artifact",
+    "reason": null
+  },
+  "unit": "workflow-receipt-sweep.service",
+  "usage": {
+    "cache_tokens": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "status": "unavailable",
+    "total_tokens": null
+  },
+  "workflow_id": "workflow-receipt-sweep"
+}

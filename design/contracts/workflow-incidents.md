@@ -113,9 +113,18 @@ Two `sweep` checks; both read `not applicable` (77) while the timer is disabled.
   show what was never delivered once the route is live.
 - **Recovery is only ever inferred from the next healthy run.** A workflow whose timer is
   paused after a failure stays open until it runs clean; pausing is not fixing.
-- **A stale trigger is judged against a grace window.** A timer that fired and left no receipt
-  within `INCIDENT_RECEIPT_GRACE_SECS` (7200) is an `incomplete-run`; a long-running job that
-  legitimately exceeds two hours needs a larger grace on the unit, not a suppressed class.
+- **A stale trigger is judged by the receipt sweep, not by the clock.** A timer that fired is
+  an `incomplete-run` only once `workflow-receipt-sweep` has started at least
+  `INCIDENT_RECEIPT_GRACE_SECS` (7200) after the fire and still no receipt started after it
+  (bin/missed_receipt.py). Most standing timers are receipted by that daily sweep, so between
+  a fire and the next sweep the missing receipt is the normal case, never an incident; a
+  long-running job that legitimately exceeds two hours needs a larger grace on the unit, not a
+  suppressed class. A `LastTriggerUSec` at or before the timer's `ActiveEnterTimestamp` is the
+  `Persistent=` stamp read back on resume, not a fire, and the fleet resume touches that stamp
+  on purpose — until 2026-09-17 every timer resumed that way alerted within two hours.
+- **A skipped receipt is not a run.** A flock skip or a same-day dedup skip is the timer
+  accounted for; the run judged is the workflow's `lastEligibleRun`, so a skip after a failed
+  run neither masks nor resolves it.
 - **`contract-unavailable` never alerts.** It is a manifest gap the coverage checker owns; it
   rides the digest only.
 - **The flood cap defers, it does not drop.** More than `INCIDENT_MAX_SENDS_PER_SWEEP` (10)

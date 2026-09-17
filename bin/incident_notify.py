@@ -202,10 +202,10 @@ class Sweep:
         for error in declared_errors:
             self.log(f"declared incident ignored: {error}")
         manifest_errors = status["errors"]["manifests"]
-        observed = wi.derive(workflows, malformed, source_errors, declared, self.now, self.args.grace_secs,
+        observed = wi.derive(workflows, malformed, source_errors, declared, self.args.grace_secs,
                              manifest_errors=manifest_errors)
-        healthy = {w["id"]: (w.get("lastRun") or {}).get("receiptPath") for w in workflows
-                   if (w.get("lastRun") or {}).get("outcome") in {"artifact", "decline"}}
+        healthy = {w["id"]: (w.get("lastEligibleRun") or {}).get("receiptPath") for w in workflows
+                   if (w.get("lastEligibleRun") or {}).get("outcome") in {"artifact", "decline"}}
         return observed, wi.sources_visible(source_errors, manifest_errors), healthy
 
     def deliver(self, entry: dict[str, Any], subject: str, body: str, on_success) -> bool:

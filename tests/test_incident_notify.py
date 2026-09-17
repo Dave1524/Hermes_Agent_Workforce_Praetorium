@@ -130,6 +130,17 @@ class NotifierCase(unittest.TestCase):
                 "--job", "workflow-incidents.service", "--link-template", LINK, *extra]
         return subprocess.run(argv, env=env, capture_output=True, text=True, timeout=timeout, check=False)
 
+    def no_artifact(self, workflow: str, unit: str, run_id: str) -> pathlib.Path:
+        """A failed run with no failed check: the skipped fixture's timestamps, ended without
+        an artifact or a decline."""
+        body = json.loads((FIXTURES / "receipts" / "daily-plan" / "skipped.json").read_text())
+        body.update(workflow_id=workflow, unit=unit, run_id=run_id,
+                    terminal={"outcome": "failed", "reason": "neither artifact nor decline"})
+        target = self.receipts / workflow / f"{run_id}.json"
+        target.parent.mkdir(exist_ok=True)
+        target.write_text(json.dumps(body))
+        return target
+
     def state(self) -> dict:
         return json.loads((self.state_dir / "state.json").read_text())
 
@@ -147,10 +158,11 @@ class NotifierCase(unittest.TestCase):
 
 
 class Notifier(NotifierCase):
-    def test_healthy_and_declined_runs_are_silent(self):
+    def test_healthy_declined_and_skipped_runs_are_silent(self):
         # (::notify-silence)
         self.receipt("synthetic-recovered.json")
         self.receipt("decline.json", "daily-plan")
+        self.receipt("skipped.json", "daily-plan")
         result = self.sweep()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.invocations(), [])
@@ -223,12 +235,9 @@ class Notifier(NotifierCase):
     def test_daily_digest_lists_only_unresolved_incidents(self):
         # (::notify-digest)
         self.receipt("synthetic-failed.json")
-        self.receipt("skipped.json", "daily-plan")
+        self.no_artifact("daily-plan", "praetorium-daily-plan", "daily-1")
         self.manifest("trajan", "scorecard")
-        stale = json.loads((FIXTURES / "receipts" / "daily-plan" / "skipped.json").read_text())
-        stale["workflow_id"], stale["unit"], stale["run_id"] = "scorecard", "scorecard", "scorecard-1"
-        (self.receipts / "scorecard").mkdir()
-        (self.receipts / "scorecard" / "scorecard-1.json").write_text(json.dumps(stale))
+        self.no_artifact("scorecard", "scorecard", "scorecard-1")
         self.sweep(now="2026-09-14T06:05:00Z")
         self.assertEqual(len(self.invocations()), 3)
         (self.receipts / "scorecard" / "scorecard-1.json").unlink()
@@ -238,15 +247,15 @@ class Notifier(NotifierCase):
         self.sweep(now="2026-09-15T05:03:00Z", tz="Europe/Amsterdam")
         calls = self.invocations()
         self.assertEqual(len(calls), 5, calls)
-        self.assertIn("subject=[recovered] incomplete-run:scorecard", calls[3])
+        self.assertIn("subject=[recovered] missing-artifact:scorecard", calls[3])
         self.assertIn("subject=[incident digest] 2 unresolved", calls[4])
         digest = self.messages().split("\n")
-        lines = [line for line in digest if line.startswith(("failed-assertion", "incomplete-run"))
+        lines = [line for line in digest if line.startswith(("failed-assertion", "missing-artifact"))
                  and "— since" in line]
         self.assertEqual(len(lines), 2)
         self.assertTrue(lines[0].startswith("failed-assertion knowledge-digest — since 2026-09-14T03:04:00Z (seen 1×"))
-        self.assertTrue(lines[1].startswith("incomplete-run daily-plan — since 2026-09-14T06:00:01Z"))
-        self.assertIn(LINK.format(key="incomplete-run:daily-plan"), lines[1])
+        self.assertTrue(lines[1].startswith("missing-artifact daily-plan — since 2026-09-14T06:00:01Z"))
+        self.assertIn(LINK.format(key="missing-artifact:daily-plan"), lines[1])
         self.assertNotIn("scorecard", "\n".join(lines))
         self.assertEqual(self.state()["last_digest_at"], "2026-09-15T05:03:00Z")
         self.sweep(now="2026-09-15T05:07:00Z", tz="Europe/Amsterdam")

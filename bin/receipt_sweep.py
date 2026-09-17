@@ -41,7 +41,7 @@ import contract_exec  # noqa: E402
 import workflow_receipt  # noqa: E402
 
 BIN_DIR = pathlib.Path(__file__).resolve().parent
-SELF_UNIT = "workflow-receipt-sweep"
+SELF_UNIT = workflow_receipt.SWEEP_WORKFLOW_ID
 SERVICE_PROPS = ("InvocationID", "ExecMainStartTimestamp", "ExecMainExitTimestamp", "Result",
                  "ExecMainStatus", "ActiveState")
 UTC = dt.timezone.utc

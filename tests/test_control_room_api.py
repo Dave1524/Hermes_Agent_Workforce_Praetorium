@@ -75,9 +75,11 @@ class FakeSystemd:
     """Answers as `systemctl show --timestamp=utc` prints them; `paused` flips every timer off;
     `user_units` answers the user bus per unit name (absent = the bus is unreachable)."""
 
-    def __init__(self, paused: bool = False, user_units: dict | None = None) -> None:
+    def __init__(self, paused: bool = False, user_units: dict | None = None,
+                 active_since: str = "Thu 2026-09-10 06:00:00 UTC") -> None:
         self.paused = paused
         self.user_units = user_units
+        self.active_since = active_since
 
     def show(self, name: str, scope: str):
         if scope == "user":
@@ -92,6 +94,7 @@ class FakeSystemd:
                 "ActiveState": "active",
                 "SubState": "waiting",
                 "UnitFileState": "enabled",
+                "ActiveEnterTimestamp": self.active_since,
                 "LastTriggerUSec": "Thu 2026-09-10 08:00:00 UTC",
                 "NextElapseUSecRealtime": "Thu 2026-09-10 09:00:00 UTC",
                 "Persistent": "yes",
@@ -506,6 +509,9 @@ class ControlRoomApiTest(unittest.TestCase):
         self.assertIn("idempotent", actions["retry"]["reason"])
         self.assertEqual(daily["triggers"][0]["systemd"]["timer"]["lastTriggerAt"], "2026-09-10T08:00:00Z")
         self.assertEqual(daily["triggers"][0]["systemd"]["timer"]["raw"]["lastTriggerAt"], "Thu 2026-09-10 08:00:00 UTC")
+        self.assertEqual(daily["triggers"][0]["systemd"]["timer"]["activeSince"], "2026-09-10T06:00:00Z")
+        self.assertEqual(daily["triggers"][0]["systemd"]["timer"]["firedAt"], "2026-09-10T08:00:00Z")
+        self.assertEqual(daily["control"]["lastFiredAt"], "2026-09-10T08:00:00Z")
 
         paused_model = api.ControlRoomReadModel(
             api.SourcePaths(self.repo, self.runtime, self.receipts),
@@ -521,6 +527,29 @@ class ControlRoomApiTest(unittest.TestCase):
         self.assertFalse(actions["pause"]["enabled"])
         self.assertFalse(actions["stop"]["enabled"])
 
+
+    def test_a_trigger_read_back_from_the_stamp_on_resume_is_not_a_fire(self):  # (::control-room-stamp-not-a-fire)
+        resumed = api.ControlRoomReadModel(
+            api.SourcePaths(self.repo, self.runtime, self.receipts),
+            systemd=FakeSystemd(active_since="Thu 2026-09-10 08:00:01 UTC"), clock=lambda: self.now,
+        )
+        daily = next(item for item in resumed.list_workflows({})["items"] if item["id"] == "daily-plan")
+        timer = daily["triggers"][0]["systemd"]["timer"]
+        self.assertEqual((timer["lastTriggerAt"], timer["activeSince"]), ("2026-09-10T08:00:00Z", "2026-09-10T08:00:01Z"))
+        self.assertIsNone(timer["firedAt"])
+        self.assertIsNone(daily["control"]["lastFiredAt"])
+        self.assertEqual(daily["control"]["lastTriggerAt"], "2026-09-10T08:00:00Z")
+
+    def test_last_eligible_run_looks_past_a_skip(self):  # (::control-room-last-eligible-run)
+        self.write_receipt(run="run-1", outcome="artifact")
+        self.write_receipt(run="run-2", outcome="skipped", ended_at="2026-09-11T07:08:28Z")
+        daily = next(item for item in self.model.list_workflows({})["items"] if item["id"] == "daily-plan")
+        self.assertEqual((daily["lastRun"]["id"], daily["lastRun"]["outcome"]), ("run-2", "skipped"))
+        self.assertEqual((daily["lastEligibleRun"]["id"], daily["lastEligibleRun"]["outcome"]), ("run-1", "artifact"))
+        self.assertEqual(daily["health"], "incomplete")
+        self.assertNotIn("missing-artifact", [row["kind"] for row in self.model.exceptions()["items"]
+                                              if row["workflowId"] == "daily-plan"])
+        self.assertEqual([i["id"] for i in self.model.incidents()["items"] if i["workflowId"] == "daily-plan"], [])
     def test_control_reader_hook_fills_last_action_verbatim(self):
         last = {"action": "pause", "actor": "Dave", "result": "applied"}
         model = api.ControlRoomReadModel(

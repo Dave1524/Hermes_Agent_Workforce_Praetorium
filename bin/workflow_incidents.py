@@ -9,7 +9,10 @@
 `receipts()` return. Two consumers call it — the Control Room's `incidents()` and
 bin/incident_notify.py — so there is one derivation, not two. The key is `<class>:<workflow>`
 for run-derived classes: a workflow failing every night is ONE incident that accrues
-observations, never a fresh alert per run.
+observations, never a fresh alert per run. A skipped receipt is not a run: the run judged is
+`lastEligibleRun`, and a fire is `incomplete-run` only once the receipt sweep has looked
+after it and found nothing (bin/missed_receipt.py) — the same judgement the Control Room's
+`missed-cadence` makes.
 
 A declared incident is a file under `<state-dir>/declared/`, written by `declare` (the
 control broker's seam for a failed control action) and closed by `resolve`; it is observed
@@ -29,6 +32,7 @@ from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from control_room_cadence import parse_systemd_timestamp  # noqa: E402
+from missed_receipt import missed_fire, sweep_started_at  # noqa: E402
 from workflow_receipt import iso_utc, parse_time  # noqa: E402
 
 SCHEMA = 1
@@ -88,13 +92,10 @@ def _incident(cls: str, key_: str, workflow_id: str | None, agent: str | None, u
 
 
 def _from_run(workflow: dict[str, Any], run: dict[str, Any]) -> dict[str, Any] | None:
-    outcome = run.get("outcome")
-    if outcome not in {"failed", "skipped"}:
+    if run.get("outcome") != "failed":
         return None
     failed = [a.get("id") for a in run.get("assertions") or [] if a.get("status") == "failed"]
-    if outcome == "skipped":
-        cls, issue = "incomplete-run", run.get("reason") or "the run never happened"
-    elif failed:
+    if failed:
         cls, issue = "failed-assertion", run.get("reason") or f"failed checks: {', '.join(failed)}"
     else:
         cls, issue = "missing-artifact", run.get("reason") or "neither artifact nor decline"
@@ -106,20 +107,19 @@ def _from_run(workflow: dict[str, Any], run: dict[str, Any]) -> dict[str, Any] |
                      run_id=run.get("id"), observed_at=run.get("endedAt"))
 
 
-def _stale_trigger(workflow: dict[str, Any], now: dt.datetime, grace: int) -> dict[str, Any] | None:
-    run = workflow.get("lastRun") or {}
-    newest = parse_time(run.get("startedAt"))
+def _stale_trigger(workflow: dict[str, Any], swept_at: dt.datetime | None, grace: int) -> dict[str, Any] | None:
+    newest = parse_time((workflow.get("lastRun") or {}).get("startedAt"))
     for trigger in workflow.get("triggers") or []:
         timer = (trigger.get("systemd") or {}).get("timer") or {}
-        fired = parse_systemd_utc(timer.get("lastTriggerAt"))
-        if trigger.get("state") == "running" or timer.get("activeState") != "active" or fired is None:
+        if trigger.get("state") == "running" or timer.get("activeState") != "active":
             continue
-        if (now - fired).total_seconds() < grace or (newest is not None and fired <= newest):
+        fired = parse_systemd_utc(timer.get("firedAt"))
+        if not missed_fire(fired, newest, swept_at, grace):
             continue
         unit = str(trigger["unit"])
         return _incident("incomplete-run", key("incomplete-run", workflow["id"]), workflow["id"],
                          workflow.get("owner"), unit,
-                         f"{unit}.timer fired at {iso_utc(fired)} and no receipt followed",
+                         f"{unit}.timer fired at {iso_utc(fired)} and the receipt sweep of {iso_utc(swept_at)} found none",
                          [f"journalctl -u {unit} --since {iso_utc(fired)}"], observed_at=iso_utc(fired))
     return None
 
@@ -145,12 +145,13 @@ def _control(source_errors: list[str], manifest_errors: list[str]) -> list[dict[
 
 
 def derive(workflows: list[dict[str, Any]], malformed: list[dict[str, Any]], source_errors: list[str],
-           declared: list[dict[str, Any]], now: dt.datetime, grace_secs: int = DEFAULT_GRACE_SECS,
+           declared: list[dict[str, Any]], grace_secs: int = DEFAULT_GRACE_SECS,
            manifest_errors: list[str] | None = None) -> list[dict[str, Any]]:
     found: list[dict[str, Any]] = []
+    swept_at = sweep_started_at(workflows)
     for workflow in workflows:
-        candidates = [_contract(workflow), _from_run(workflow, workflow.get("lastRun") or {}),
-                      _stale_trigger(workflow, now, grace_secs)]
+        candidates = [_contract(workflow), _from_run(workflow, workflow.get("lastEligibleRun") or {}),
+                      _stale_trigger(workflow, swept_at, grace_secs)]
         found.extend(c for c in candidates if c)
     for invalid in malformed:
         found.append(_incident("malformed-receipt", key("malformed-receipt", str(invalid["path"])), None, None, None,

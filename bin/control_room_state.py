@@ -4,7 +4,8 @@ cadence fold, last valid artifact and links. Pure functions over the trigger and
 control_room_api assembles; nothing here reads a file or a bus.
 
 `control` is the browser's contract (T5.3 brief § Seams b): state, source, next run (estimated
-from last trigger + cadence when systemd prints none), last trigger, persistence, lastAction
+from last trigger + cadence when systemd prints none), last trigger, last fire (the trigger
+only when it post-dates the timer's activation — bin/missed_receipt.py), persistence, lastAction
 (None until T5.3a's reader is passed in) and the actions with a reason for each one that is
 disabled: the five workflow verbs for a workflow row, the three runtime verbs (T5.3g) for an
 agent-runtime row. Execution of any action is entirely outside this module.
@@ -143,6 +144,7 @@ def control_for(
     source = "systemd" if any(trigger["systemd"]["status"] == "available" for trigger in triggers) else "unavailable"
     state = control_state(triggers) if source == "systemd" else "unknown"
     last_triggers = sorted(timer["lastTriggerAt"] for timer in timers if timer["lastTriggerAt"])
+    last_fires = sorted(timer["firedAt"] for timer in timers if timer.get("firedAt"))
     next_runs = sorted(timer["nextRunAt"] for timer in timers if timer["nextRunAt"])
     last_trigger = last_triggers[-1] if last_triggers else None
     next_run, estimated = (next_runs[0] if next_runs else None), False
@@ -160,6 +162,7 @@ def control_for(
         "nextRunAt": next_run,
         "nextRunEstimated": estimated,
         "lastTriggerAt": last_trigger,
+        "lastFiredAt": last_fires[-1] if last_fires else None,
         "persistent": persistent,
         "lastAction": control_reader(logical_id) if control_reader else None,
         "actions": control_actions(state, source, role),

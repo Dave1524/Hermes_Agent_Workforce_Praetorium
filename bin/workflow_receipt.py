@@ -29,6 +29,7 @@ USAGE_FIELDS = ("input_tokens", "output_tokens", "cache_tokens", "total_tokens")
 COST_FIELDS = ("amount",)
 CLAUDE_CODE_SOURCE = "claude-code"
 CLAUDE_CODE_CURRENCY = "USD"
+SWEEP_WORKFLOW_ID = "workflow-receipt-sweep"
 
 
 def utc_now() -> dt.datetime:

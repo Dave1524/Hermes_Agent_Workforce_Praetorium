@@ -27,11 +27,13 @@ def load(name):
 
 
 wi = load("workflow_incidents")
+mr = load("missed_receipt")
+SWEPT_AT = "2026-09-14T09:50:00Z"
 UTC = dt.timezone.utc
 NOW = dt.datetime(2026, 9, 14, 10, 0, tzinfo=UTC)
 
 
-def trigger(unit, timer_active="inactive", last_trigger=None, running=False):
+def trigger(unit, timer_active="inactive", last_trigger=None, running=False, active_since=None):
     return {
         "unit": unit,
         "kind": "timer",
@@ -40,7 +42,8 @@ def trigger(unit, timer_active="inactive", last_trigger=None, running=False):
             "kind": "timer",
             "service": {"name": f"{unit}.service", "activeState": "active" if running else "inactive",
                         "subState": "running" if running else "dead"},
-            "timer": {"name": f"{unit}.timer", "activeState": timer_active, "lastTriggerAt": last_trigger},
+            "timer": {"name": f"{unit}.timer", "activeState": timer_active, "activeSince": active_since,
+                      "lastTriggerAt": last_trigger, "firedAt": mr.fired_at(last_trigger, active_since)},
         },
     }
 
@@ -57,18 +60,25 @@ def run(outcome, run_id="run-1", failed=(), reason=None, artifact=None, ended="2
     }
 
 
-def workflow(last_run=None, triggers=None, contract="available", wf_id="knowledge-digest"):
+def workflow(last_run=None, triggers=None, contract="available", wf_id="knowledge-digest", eligible_run=None):
+    if eligible_run is None and last_run and last_run["outcome"] != "skipped":
+        eligible_run = last_run
     return {
         "id": wf_id, "owner": "claudius", "contractStatus": contract,
         "contractError": None if contract == "available" else "contract file missing",
         "manifestPaths": ["design/agents/claudius.toml"],
         "triggers": triggers if triggers is not None else [trigger(wf_id)],
-        "lastRun": last_run, "health": "paused",
+        "lastRun": last_run, "lastEligibleRun": eligible_run, "health": "paused",
     }
 
 
-def derive(workflows, malformed=(), source_errors=(), declared=(), now=NOW, **kw):
-    return wi.derive(list(workflows), list(malformed), list(source_errors), list(declared), now, **kw)
+def sweep(started_at=SWEPT_AT):
+    return workflow(run("artifact", run_id="sweep-1", artifact={"uri": "file:///sweep"}, started=started_at,
+                        ended=started_at), [], wf_id=mr.SWEEP_WORKFLOW_ID)
+
+
+def derive(workflows, malformed=(), source_errors=(), declared=(), **kw):
+    return wi.derive(list(workflows), list(malformed), list(source_errors), list(declared), **kw)
 
 
 class Derivation(unittest.TestCase):
@@ -100,27 +110,42 @@ class Derivation(unittest.TestCase):
         self.assertEqual([i["key"] for i in found], ["missing-artifact:knowledge-digest"])
         self.assertEqual(found[0]["issue"], "neither artifact nor decline")
 
-    def test_skipped_is_an_incomplete_run(self):
-        found = derive([workflow(run("skipped", reason="lock held"))])
-        self.assertEqual([i["key"] for i in found], ["incomplete-run:knowledge-digest"])
-        self.assertEqual(found[0]["issue"], "lock held")
+    def test_skipped_is_not_a_run(self):
+        # (::incidents-skipped-not-a-run)
+        self.assertEqual(derive([workflow(run("skipped", reason="lock held"))]), [])
+        masked = workflow(run("skipped", run_id="run-2", reason="dedup: today's proposal already exists",
+                              started="2026-09-14T08:08:00Z", ended="2026-09-14T08:08:28Z"),
+                          eligible_run=run("failed", failed=("artifact-exists",), reason="failed checks"))
+        found = derive([masked])
+        self.assertEqual([(i["key"], i["run_id"]) for i in found], [("failed-assertion:knowledge-digest", "run-1")])
 
-    def test_fired_timer_that_wrote_no_receipt_is_incomplete_after_grace(self):
+    def test_fired_timer_is_incomplete_once_the_sweep_has_looked_and_found_nothing(self):
         # (::incidents-stale-trigger)
         stale = workflow(None, [trigger("knowledge-digest", "active", "2026-09-14T07:00:00Z")])
-        found = derive([stale])
+        found = derive([stale, sweep()])
         self.assertEqual([i["key"] for i in found], ["incomplete-run:knowledge-digest"])
+        self.assertIn(SWEPT_AT, found[0]["issue"])
         self.assertTrue(any(e.startswith("journalctl -u knowledge-digest") for e in found[0]["evidence"]))
-        recent = workflow(None, [trigger("knowledge-digest", "active", "2026-09-14T09:50:00Z")])
-        self.assertEqual(derive([recent]), [])
+        self.assertEqual(derive([stale]), [], "no sweep yet: unknown, not an incident")
+        self.assertEqual(derive([stale, sweep("2026-09-14T08:30:00Z")]), [], "swept inside the grace")
         paused = workflow(None, [trigger("knowledge-digest", "inactive", "2026-09-14T07:00:00Z")])
-        self.assertEqual(derive([paused]), [])
+        self.assertEqual(derive([paused, sweep()]), [])
         running = workflow(None, [trigger("knowledge-digest", "active", "2026-09-14T07:00:00Z", running=True)])
-        self.assertEqual(derive([running]), [])
+        self.assertEqual(derive([running, sweep()]), [])
         receipted = workflow(run("artifact", artifact={"uri": "file:///z"}, ended="2026-09-14T07:30:00Z",
                                  started="2026-09-14T07:01:00Z"),
                              [trigger("knowledge-digest", "active", "2026-09-14T07:00:00Z")])
-        self.assertEqual(derive([receipted]), [])
+        self.assertEqual(derive([receipted, sweep()]), [])
+        skipped = workflow(run("skipped", reason="lock held", started="2026-09-14T07:00:01Z"),
+                           [trigger("knowledge-digest", "active", "2026-09-14T07:00:00Z")])
+        self.assertEqual(derive([skipped, sweep()]), [], "a skip receipt is the fire accounted for")
+
+    def test_stamp_read_back_on_resume_is_not_a_fire(self):
+        # (::incidents-stamp-not-a-fire)
+        resumed = workflow(None, [trigger("scorecard", "active", "2026-09-14T07:00:00Z",
+                                          active_since="2026-09-14T07:00:01Z")], wf_id="scorecard")
+        self.assertEqual(derive([resumed, sweep()]), [])
+        self.assertIsNone(resumed["triggers"][0]["systemd"]["timer"]["firedAt"])
 
     def test_paused_label_does_not_hide_a_failed_last_run(self):
         paused = workflow(run("failed", failed=("artifact-exists",)), [trigger("knowledge-digest", "inactive")])

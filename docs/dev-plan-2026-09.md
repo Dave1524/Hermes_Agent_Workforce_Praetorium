@@ -790,6 +790,26 @@ losing artifacts today.
   outcome, or the executor grows a `post` vantage the delivery adapter invokes. Gate: a
   fixture where the run receipt exists and a sweep check would fail turns the receipt `failed`.
 
+- **T7.4** [Claude, S] **Done 2026-09-17.** The Control Room's "Needs attention" carried twelve
+  rows at 09:30Z and every one was a check defect: ten `missed-cadence`, two `missing-artifact`.
+  Three causes, all in how the classifier and `workflow_incidents` read their evidence.
+  (1) `LastTriggerUSec` was taken as a fire. The 09-16 19:00 fleet resume touched every
+  `Persistent=` stamp on purpose so no timer would catch up; systemd reads that mtime back as
+  the last trigger on start, so `scorecard` "fired" 17:00:25Z, ran nothing, and alerted within
+  two hours, as did every other resumed timer. A trigger at or before the timer's
+  `ActiveEnterTimestamp` is now not a fire (`bin/missed_receipt.py::fired_at`; `firedAt` on the
+  timer view, `lastFiredAt` on `control`). (2) "No receipt followed" was judged 15 minutes (the
+  screen) or 2 hours (incidents) after the fire, while most standing timers are receipted by the
+  daily 05:50 sweep, so every sweep-receipted unit was red for a day after each fire. A fire is
+  now owed a receipt only once `workflow-receipt-sweep` has started at least the grace after it
+  and found none; before that it is unknown, and unknown is not an exception. (3) A `skipped`
+  receipt was an exception on the screen and an `incomplete-run` in incidents; T7.1's dedup
+  skip exists precisely because the artifact exists. A skip is not a run: the run judged is the
+  newest non-skipped receipt (`lastEligibleRun`), and a workflow whose every eligible run is a
+  clean decline (raw-ingest: nothing in `05_knowledge/raw/`) is the contract honoured, not
+  `missing-artifact`. Gates: `tests/test_missed_receipt.sh`, the exceptions, incidents, notify
+  and API suites.
+
 ## Execution order for Claude
 
 Order as of **2026-09-10**, after the 09-10 batch (T3.1, T4.0, T4.1, T4.2, T4.3, T7.1) landed and

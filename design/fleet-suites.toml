@@ -321,6 +321,8 @@ asserts = [
   "control-room-requires",      # T5.3f: requires rows are tri-state from the bus (satisfied null on no bus, false on inactive), guards is the entry's sentence or null, requiredBy names each dependent with enabled = not paused
   "control-room-dependency-down", # T5.3f: a requirement known down is a dependency-down row on the dependent while it is not paused; unknown yields none
   "control-room-runtime-control", # T5.3g: an agent-runtime row's control carries start/stop/restart from one function; a failed always-on service is paused (startable); /api/v1/agents items carry control and runtime.unitFileState
+  "control-room-stamp-not-a-fire", # a LastTriggerUSec at or before the timer's ActiveEnterTimestamp is the stamp read back on resume: firedAt and control.lastFiredAt are null, lastTriggerAt stays as systemd prints it
+  "control-room-last-eligible-run", # lastEligibleRun is the newest receipt that ran (skipped excluded); lastRun and health still show the skip, and it yields no missing-artifact row and no incident
 ]
 why_no_workflow = """
 It tests the portfolio projection and HTTP trust boundary. Assigning it to one rendered
@@ -442,12 +444,29 @@ asserts = [
   "exceptions-stale-input-precedence",# a failed run whose reason says mirror stale is one stale-input row with alsoFailed, not two rows
   "exceptions-paused-suppression",    # paused suppresses missed-cadence and missing-artifact(b); paused + failed is still failed, flagged paused
   "exceptions-unknown-is-not-exception", # no receipt, absent consumption and a null due_at each yield no row
-  "exceptions-missed-cadence",        # an active timer that fired with no receipt after it is missed; a receipt after the trigger is not
+  "exceptions-missed-cadence",        # an active timer that fired and the receipt sweep then found no receipt for is missed; a receipt (a skip counts) after the fire is not
+  "exceptions-sweep-vantage",         # a fire the sweep has not looked at yet, or looked at inside the grace, is unknown and yields no row
+  "exceptions-stamp-not-a-fire",      # a null control.lastFiredAt (the stamp read back on resume) is never a missed cadence
+  "exceptions-clean-decline",         # every eligible run a decline with no failed check is the contract honoured, not missing-artifact(b); a decline with a failed check still counts
+  "exceptions-skipped-not-a-run",     # a skipped latest receipt is not a run: it yields no row and the run before it is the one judged
   "exceptions-dependency-down",       # T5.3f: one row naming every requirement whose satisfied is false, last in KINDS order; true, null, no field and paused yield none
 ]
 why_no_workflow = """
 The classifier is a pure rule table over every workflow's receipts and control state. A row
 of the manifest owning it would credit that row with the rules that judge all thirty.
+"""
+
+[[suite]]
+path    = "tests/test_missed_receipt.sh"
+owner   = "fleet"
+asserts = [
+  "missed-receipt-fired-at",       # LastTriggerUSec is a fire only after the timer's ActiveEnterTimestamp; at or before it is the Persistent= stamp read back on resume
+  "missed-receipt-sweep-started",  # the sweep's vantage is workflow-receipt-sweep's own last run start, null when it has none
+  "missed-receipt-missed-fire",    # a fire is missed only once the sweep started at least the grace after it and no receipt started after the fire minus the grace
+]
+why_no_workflow = """
+One judgement shared by the Control Room's missed-cadence row and workflow-incidents'
+incomplete-run. Owned by either row it would be the other's rule by proxy.
 """
 
 [[suite]]

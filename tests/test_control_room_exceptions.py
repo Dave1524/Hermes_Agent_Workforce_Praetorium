@@ -40,7 +40,8 @@ def requirement(unit, satisfied, *, scope="user", workflow=None):
     return {"unit": unit, "scope": scope, "workflow": workflow, "state": state, "satisfied": satisfied}
 
 
-def item(receipts=(), *, state="active", next_run=None, last_trigger=None, artifact_declared=True, requires=()):
+def item(receipts=(), *, state="active", next_run=None, last_trigger=None, fired=None, artifact_declared=True,
+         requires=()):
     receipts = list(receipts)
     artifacts = [r for r in receipts if r["terminal"]["outcome"] == "artifact"]
     eligible = [r for r in receipts if r["terminal"]["outcome"] != "skipped"]
@@ -52,7 +53,8 @@ def item(receipts=(), *, state="active", next_run=None, last_trigger=None, artif
                       "uri": artifacts[0]["artifact"]["uri"], "title": "x", "kind": "artifact", "ageSeconds": age}
     return {
         "id": "w", "owner": "claudius",
-        "control": {"state": state, "nextRunAt": next_run, "lastTriggerAt": last_trigger},
+        "control": {"state": state, "nextRunAt": next_run, "lastTriggerAt": last_trigger,
+                    "lastFiredAt": last_trigger if fired is None else fired},
         "contract": {"artifact": "one Notion page"} if artifact_declared else None,
         "lastValidArtifact": last_valid,
         "eligibleRuns": len(eligible),
@@ -67,6 +69,9 @@ def kinds(rows):
 
 FAILED_CHECK = {"id": "artifact-is-this-run", "status": "failed", "message": "artifact is dated yesterday"}
 OLD_ARTIFACT = receipt("r0", "artifact", 20 * DAY)
+SKIPPED = receipt("r9", "skipped", 600, reason="dedup: today's proposal already exists", duration=20)
+NEVER_DELIVERED = [receipt("r2", "decline", 3600, reason="DECLINE: nothing to do"),
+                   receipt("r1", "failed", DAY, reason="CRASHED: rc=1")]
 
 
 class ExceptionsKindTable(unittest.TestCase):  # (::exceptions-kind-table)
@@ -74,7 +79,7 @@ class ExceptionsKindTable(unittest.TestCase):  # (::exceptions-kind-table)
         cases = {
             "failed": item([receipt("r1", "failed", 3600, reason="checks failed", assertions=[FAILED_CHECK]), OLD_ARTIFACT]),
             "stale-input": item([receipt("r1", "decline", 3600, reason="DECLINE: mirror stale"), OLD_ARTIFACT]),
-            "missing-artifact": item([receipt("r1", "skipped", 3600, reason="SKIP: previous run still active"), OLD_ARTIFACT]),
+            "missing-artifact": item(NEVER_DELIVERED),
             "missed-cadence": item([], last_trigger=stamp(-3600)),
             "overdue-next-action": item([receipt("r1", "artifact", 2 * DAY,
                                                  next_action={"actor": "Dave", "action": "review", "due_at": stamp(-DAY)})]),
@@ -85,7 +90,7 @@ class ExceptionsKindTable(unittest.TestCase):  # (::exceptions-kind-table)
         self.assertEqual(tuple(cases), exceptions.KINDS)
         for kind, workflow in cases.items():
             with self.subTest(kind=kind):
-                rows = exceptions.classify(workflow, self._receipts_of(kind, cases), NOW)
+                rows = exceptions.classify(workflow, self._receipts_of(kind, cases), NOW, swept_at=NOW)
                 self.assertEqual(kinds(rows), [kind])
                 self.assertEqual(rows[0]["workflowId"], "w")
                 self.assertEqual(rows[0]["owner"], "claudius")
@@ -100,7 +105,7 @@ class ExceptionsKindTable(unittest.TestCase):  # (::exceptions-kind-table)
         return {
             "failed": [receipt("r1", "failed", 3600, reason="checks failed", assertions=[FAILED_CHECK]), OLD_ARTIFACT],
             "stale-input": [receipt("r1", "decline", 3600, reason="DECLINE: mirror stale"), OLD_ARTIFACT],
-            "missing-artifact": [receipt("r1", "skipped", 3600, reason="SKIP: previous run still active"), OLD_ARTIFACT],
+            "missing-artifact": NEVER_DELIVERED,
             "missed-cadence": [],
             "overdue-next-action": [receipt("r1", "artifact", 2 * DAY,
                                             next_action={"actor": "Dave", "action": "review", "due_at": stamp(-DAY)})],
@@ -118,12 +123,30 @@ class ExceptionsKindTable(unittest.TestCase):  # (::exceptions-kind-table)
         self.assertEqual(row["since"], receipts[0]["ended_at"])
 
     def test_missing_artifact_b_when_every_eligible_run_lacks_one(self):
-        receipts = [receipt("r2", "decline", 3600, reason="DECLINE: nothing to do"),
-                    receipt("r1", "decline", DAY, reason="DECLINE: nothing to do")]
-        rows = exceptions.classify(item(receipts), receipts, NOW)
+        rows = exceptions.classify(item(NEVER_DELIVERED), NEVER_DELIVERED, NOW)
         self.assertEqual(kinds(rows), ["missing-artifact"])
-        rows = exceptions.classify(item(receipts, artifact_declared=False), receipts, NOW)
+        self.assertIn("2 eligible run(s)", rows[0]["issue"])
+        self.assertEqual(rows[0]["evidence"]["runId"], "r2")
+        rows = exceptions.classify(item(NEVER_DELIVERED, artifact_declared=False), NEVER_DELIVERED, NOW)
         self.assertEqual(rows, [])
+
+    def test_clean_declines_are_the_contract_honoured_not_a_missing_artifact(self):
+        # (::exceptions-clean-decline)
+        receipts = [receipt("r2", "decline", 3600, reason="DECLINE: no unprocessed sources"),
+                    receipt("r1", "decline", DAY, reason="DECLINE: no unprocessed sources")]
+        self.assertEqual(exceptions.classify(item(receipts), receipts, NOW), [])
+        check = {"id": "declined-only-when-nothing-unprocessed", "status": "failed", "message": "raw/ has 2 files"}
+        unclean = [receipt("r2", "decline", 3600, reason="DECLINE: nothing", assertions=[check]), receipts[1]]
+        self.assertEqual(kinds(exceptions.classify(item(unclean), unclean, NOW)), ["failed", "missing-artifact"])
+
+    def test_skipped_latest_is_not_a_run(self):
+        # (::exceptions-skipped-not-a-run)
+        receipts = [SKIPPED, receipt("r1", "artifact", 4 * 3600)]
+        self.assertEqual(exceptions.classify(item(receipts), receipts, NOW), [])
+        receipts = [SKIPPED, receipt("r1", "failed", 4 * 3600, reason="checks failed", assertions=[FAILED_CHECK]), OLD_ARTIFACT]
+        rows = exceptions.classify(item(receipts), receipts, NOW)
+        self.assertEqual([(row["kind"], row["evidence"]["runId"]) for row in rows], [("failed", "r1")])
+        self.assertEqual(exceptions.classify(item([SKIPPED]), [SKIPPED], NOW), [])
 
     def test_constants_are_the_briefs(self):
         self.assertEqual(exceptions.UNCONSUMED_GRACE_SECONDS, 7 * DAY)
@@ -197,24 +220,44 @@ class ExceptionsUnknownIsNotException(unittest.TestCase):  # (::exceptions-unkno
 
 
 class ExceptionsMissedCadence(unittest.TestCase):  # (::exceptions-missed-cadence)
-    def test_trigger_without_receipt_since_is_missed(self):
+    def test_fire_the_sweep_found_no_receipt_for_is_missed(self):
         workflow = item([OLD_ARTIFACT], last_trigger="2026-09-14T07:00:00Z")
-        rows = exceptions.classify(workflow, [OLD_ARTIFACT], NOW)
+        rows = exceptions.classify(workflow, [OLD_ARTIFACT], NOW, swept_at=NOW)
         self.assertEqual(kinds(rows), ["missed-cadence"])
         self.assertEqual(rows[0]["since"], "2026-09-14T07:00:00Z")
         self.assertIn("07:00", rows[0]["issue"])
+        self.assertIn("2026-09-14T08:00:00Z", rows[0]["issue"])
+
+    def test_fire_the_sweep_has_not_looked_at_is_not_missed(self):
+        # (::exceptions-sweep-vantage)
+        workflow = item([OLD_ARTIFACT], last_trigger="2026-09-14T07:00:00Z")
+        self.assertEqual(exceptions.classify(workflow, [OLD_ARTIFACT], NOW), [])
+        early = NOW - dt.timedelta(seconds=exceptions.MISSED_GRACE_SECONDS + 3600 - 60)
+        self.assertEqual(exceptions.classify(workflow, [OLD_ARTIFACT], NOW, swept_at=early), [])
+
+    def test_stamp_read_back_on_resume_is_not_a_fire(self):
+        # (::exceptions-stamp-not-a-fire)
+        workflow = item([OLD_ARTIFACT], last_trigger="2026-09-14T07:00:00Z", fired=None)
+        workflow["control"]["lastFiredAt"] = None
+        self.assertEqual(exceptions.classify(workflow, [OLD_ARTIFACT], NOW, swept_at=NOW), [])
 
     def test_receipt_after_the_trigger_is_not_missed(self):
         after = receipt("r1", "artifact", 1500, duration=240)
         after["started_at"] = "2026-09-14T07:31:00Z"
         workflow = item([after], last_trigger="2026-09-14T07:30:00Z")
-        self.assertEqual(exceptions.classify(workflow, [after], NOW), [])
+        self.assertEqual(exceptions.classify(workflow, [after], NOW, swept_at=NOW), [])
 
     def test_receipt_started_within_grace_before_the_trigger_counts(self):
         early = receipt("r1", "artifact", 1500, duration=240)
         early["started_at"] = "2026-09-14T07:20:00Z"
         workflow = item([early], last_trigger="2026-09-14T07:30:00Z")
-        self.assertEqual(exceptions.classify(workflow, [early], NOW), [])
+        self.assertEqual(exceptions.classify(workflow, [early], NOW, swept_at=NOW), [])
+
+    def test_a_skip_receipt_is_the_fire_accounted_for(self):
+        skip = receipt("r1", "skipped", 1700, reason="SKIP: previous run still active", duration=1)
+        skip["started_at"] = "2026-09-14T07:30:01Z"
+        workflow = item([skip], last_trigger="2026-09-14T07:30:00Z")
+        self.assertEqual(exceptions.classify(workflow, [skip], NOW, swept_at=NOW), [])
 
     def test_next_run_long_past_is_missed(self):
         workflow = item([OLD_ARTIFACT], next_run=stamp(-2 * 3600))
@@ -274,6 +317,8 @@ class ExceptionsEnvelope(unittest.TestCase):
         by_kind = {row["kind"]: row for row in rows}
         self.assertEqual(by_kind["stale-input"]["workflowId"], "bd-stall-radar")
         self.assertEqual(by_kind["missed-cadence"]["workflowId"], "fleet-turn-check")
+        self.assertIn("2026-09-14T07:20:00Z", by_kind["missed-cadence"]["issue"], "the fixture sweep's start")
+        self.assertNotIn("agent-inbox-sync", {row["workflowId"] for row in rows}, "fired after the fixture sweep")
         self.assertEqual(by_kind["overdue-next-action"]["workflowId"], "overnight-morning-report")
         self.assertEqual(by_kind["unconsumed-output"]["workflowId"], "bd-followup-drafts")
         self.assertNotIn("dependency-down", by_kind, "the fixture bus runs the broker and ollama, and augustus-content is paused")

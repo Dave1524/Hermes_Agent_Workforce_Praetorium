@@ -2,12 +2,15 @@
 """Exception classifier for the Control Room (T5.3): one row per (workflow, kind), pure.
 
 An exception is a condition the operator owes an action on. Unknown is not one: a workflow with
-no receipt, a receipt with no consumption record, a next action with no due date all yield no
-row. Paused is owned state, not an exception — paused workflows keep the rows that are owed
-before resume (a failed run, a stale input, an overdue action) and lose the ones that only an
-active timer can produce (a missed cadence, an artifact rate over runs that are not happening).
-`stale-input` is a free-text heuristic over the reason and failed assertion ids; a typed cause
-field is T5.2/T5.4's to add, and the row says so.
+no receipt, a receipt with no consumption record, a next action with no due date, a timer fire
+the receipt sweep has not looked at yet all yield no row. Paused is owned state, not an
+exception — paused workflows keep the rows that are owed before resume (a failed run, a stale
+input, an overdue action) and lose the ones that only an active timer can produce (a missed
+cadence, an artifact rate over runs that are not happening). A skipped receipt is not a run
+(control_room_benefit says the same): the latest run is the newest receipt that ran, and a
+clean decline is the contract honoured, never a missing artifact. `stale-input` is a free-text
+heuristic over the reason and failed assertion ids; a typed cause field is T5.2/T5.4's to add,
+and the row says so.
 """
 from __future__ import annotations
 
@@ -15,6 +18,8 @@ import datetime as dt
 import re
 from typing import Any
 
+from control_room_benefit import eligible_receipts
+from missed_receipt import missed_fire
 from workflow_receipt import iso_utc, parse_time
 
 KINDS = ("failed", "stale-input", "missing-artifact", "missed-cadence", "overdue-next-action", "unconsumed-output",
@@ -38,23 +43,26 @@ REQUIRED_ACTION = {
 }
 
 
-def classify(workflow_item: dict[str, Any], receipts: list[dict[str, Any]], now: dt.datetime) -> list[dict[str, Any]]:
-    context = _Context(workflow_item, receipts, now)
+def classify(workflow_item: dict[str, Any], receipts: list[dict[str, Any]], now: dt.datetime,
+             swept_at: dt.datetime | None = None) -> list[dict[str, Any]]:
+    context = _Context(workflow_item, receipts, now, swept_at)
     rows = [row for rule in (_failed_or_stale, _missing_artifact, _missed_cadence, _overdue, _unconsumed, _dependency_down)
             for row in rule(context)]
     return sorted(rows, key=lambda row: (KINDS.index(row["kind"]), row["since"] or ""))
 
 
 class _Context:
-    def __init__(self, item: dict[str, Any], receipts: list[dict[str, Any]], now: dt.datetime) -> None:
+    def __init__(self, item: dict[str, Any], receipts: list[dict[str, Any]], now: dt.datetime,
+                 swept_at: dt.datetime | None) -> None:
         self.item = item
         self.receipts = receipts
         self.now = now
-        self.latest = receipts[0] if receipts else None
+        self.swept_at = swept_at
+        self.latest = next((r for r in receipts if r["terminal"]["outcome"] != "skipped"), None)
         control = item.get("control") or {}
         self.state = control.get("state") or "unknown"
         self.paused = self.state == "paused"
-        self.last_trigger = parse_time(control.get("lastTriggerAt"))
+        self.fired = parse_time(control.get("lastFiredAt"))
         self.next_run = parse_time(control.get("nextRunAt"))
 
     def row(self, kind: str, issue: str, *, since: str | None, receipt: dict[str, Any] | None = None,
@@ -112,17 +120,18 @@ def _next_action_text(receipt: dict[str, Any]) -> str | None:
 
 
 def _missing_artifact(ctx: _Context) -> list[dict[str, Any]]:
-    latest = ctx.latest
-    if latest is not None and latest["terminal"]["outcome"] == "skipped":
-        issue = latest["terminal"].get("reason") or "run skipped without a reason"
-        return [ctx.row("missing-artifact", issue, since=latest.get("ended_at"), receipt=latest)]
-    if ctx.paused or not _declares_artifact(ctx.item):
+    if ctx.paused or not _declares_artifact(ctx.item) or _only_clean_declines(ctx.receipts):
         return []
     eligible, rate = ctx.item.get("eligibleRuns") or 0, ctx.item.get("validArtifactRate")
     if eligible >= 1 and rate == 0:
         issue = f"{eligible} eligible run(s), none ended with the declared artifact"
-        return [ctx.row("missing-artifact", issue, since=(latest or {}).get("ended_at"), receipt=latest)]
+        return [ctx.row("missing-artifact", issue, since=(ctx.latest or {}).get("ended_at"), receipt=ctx.latest)]
     return []
+
+
+def _only_clean_declines(receipts: list[dict[str, Any]]) -> bool:
+    eligible = eligible_receipts(receipts)
+    return bool(eligible) and all(r["terminal"]["outcome"] == "decline" and not _failed_ids(r) for r in eligible)
 
 
 def _declares_artifact(item: dict[str, Any]) -> bool:
@@ -133,19 +142,18 @@ def _declares_artifact(item: dict[str, Any]) -> bool:
 def _missed_cadence(ctx: _Context) -> list[dict[str, Any]]:
     if ctx.paused or ctx.state == "running":
         return []
-    if ctx.state == "active" and ctx.last_trigger and not _receipt_since(ctx, ctx.last_trigger):
-        issue = f"timer fired {iso_utc(ctx.last_trigger)} and no receipt followed"
-        return [ctx.row("missed-cadence", issue, since=iso_utc(ctx.last_trigger))]
+    if ctx.state == "active" and missed_fire(ctx.fired, _newest_start(ctx), ctx.swept_at, MISSED_GRACE_SECONDS):
+        issue = f"timer fired {iso_utc(ctx.fired)} and the receipt sweep of {iso_utc(ctx.swept_at)} found none"
+        return [ctx.row("missed-cadence", issue, since=iso_utc(ctx.fired))]
     if ctx.next_run and ctx.next_run < ctx.now - dt.timedelta(seconds=NEXT_RUN_SLACK_SECONDS):
         issue = f"next run was due {iso_utc(ctx.next_run)} and has not started"
         return [ctx.row("missed-cadence", issue, since=iso_utc(ctx.next_run))]
     return []
 
 
-def _receipt_since(ctx: _Context, trigger: dt.datetime) -> bool:
-    floor = trigger - dt.timedelta(seconds=MISSED_GRACE_SECONDS)
-    return any((parse_time(r.get("started_at")) or dt.datetime.min.replace(tzinfo=dt.timezone.utc)) >= floor
-               for r in ctx.receipts)
+def _newest_start(ctx: _Context) -> dt.datetime | None:
+    starts = [parse_time(r.get("started_at")) for r in ctx.receipts]
+    return max((s for s in starts if s is not None), default=None)
 
 
 def _overdue(ctx: _Context) -> list[dict[str, Any]]:
