@@ -263,7 +263,7 @@ forced it to; this is that test.
 path    = "tests/test_pointer_skills.sh"
 owner   = "fleet"
 asserts = [
-  "pointer-not-copy",           # every SKILL.md is a few lines naming its canonical vault path
+  "pointer-not-copy",           # every SKILL.md body is a few lines naming its canonical vault path
   "pointer-names-match",        # front-matter name == directory == the path segment in the body
   "plugin-manifest-valid",      # each owner tree is a plugin named praetorium-<owner>
   "skills-nested-under-skills", # no skill at a plugin root, which --plugin-dir silently ignores
@@ -274,6 +274,7 @@ asserts = [
   "runner-join-counted",        # the manifest join reports its size, so a parse matching nothing is red
   "drift-covers-skills",        # skills is in bin/deploy PATHS and in CONTENT_TREES, read from both
   "pointer-target-exists",      # box-gated: every named vault path resolves (existence only, never read)
+  "pointer-description-synced", # box-gated: each description is the canonical frontmatter's, verbatim
 ]
 
 # T3.3: the transcript extractor behind the three cost.log keys (skills, skills_offered,

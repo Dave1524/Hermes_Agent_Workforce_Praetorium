@@ -43,7 +43,10 @@
 # input and stays silent on a healthy one; groups 7-11 are the verdict on the real tree.
 set -uo pipefail
 
-POINTER_MAX_LINES=20            # the longest real pointer is 9 lines; a copy is hundreds
+POINTER_BODY_MAX_LINES=12       # the body after the frontmatter: the real one is 6 lines, a copy is
+                                # hundreds. The frontmatter is exempt — its description is the
+                                # vault's, mirrored verbatim by bin/pointer_skills_sync.py, and
+                                # a folded multi-line one is a feature, not a copy.
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SKILLS_ROOT="${SKILLS_ROOT:-$REPO_ROOT/skills}"
@@ -93,11 +96,15 @@ front_matter_name() {
   sed -n 's/^name: *//p' "$1" | head -1
 }
 
+pointer_body_lines() {
+  awk 'NR==1 && /^---$/ {fm=1; next} fm && /^---$/ {fm=0; body=1; next} body {n++} END {print n+0}' "$1"
+}
+
 copied_pointers() {
   local root=$1 owner skill f
   while IFS=$'\t' read -r owner skill; do
     f="$root/$owner/skills/$skill/SKILL.md"
-    if [ "$(wc -l < "$f")" -gt "$POINTER_MAX_LINES" ] \
+    if [ "$(pointer_body_lines "$f")" -gt "$POINTER_BODY_MAX_LINES" ] \
        || ! grep -qF "08_skills/$skill/SKILL.md" "$f"; then
       echo "$owner/$skill"
     fi
@@ -281,8 +288,16 @@ make_pointer "$COPY" alpha two
 seq 1 40 >> "$COPY/alpha/skills/one/SKILL.md"
 : > "$COPY/alpha/skills/two/SKILL.md"
 printf -- '---\nname: two\n---\nno canonical path here\n' > "$COPY/alpha/skills/two/SKILL.md"
+make_pointer "$COPY" alpha three
+python3 - "$COPY/alpha/skills/three/SKILL.md" <<'PY'
+import sys, pathlib
+p = pathlib.Path(sys.argv[1]); text = p.read_text()
+folded = "description: >\n" + "".join(f"  folded trigger line {i}\n" for i in range(30))
+p.write_text(text.replace("description: fixture pointer\n", folded))
+PY
 copied=$(copied_pointers "$COPY")
-assert 'an over-long pointer is named' "grep -qx 'alpha/one' <<<\"\$copied\""
+assert 'an over-long body is named' "grep -qx 'alpha/one' <<<\"\$copied\""
+assert 'a long folded description is not — the frontmatter is the vault'"'"'s' "! grep -qx 'alpha/three' <<<\"\$copied\""
 assert 'a pointer naming no canonical path is named' "grep -qx 'alpha/two' <<<\"\$copied\""
 assert 'and both are reported, not just the first' "[ \"\$(count_lines <<<\"\$copied\")\" = 2 ]"
 
@@ -380,7 +395,7 @@ live_pairs=$(tree_pairs "$SKILLS_ROOT" | LC_ALL=C sort)
 n_live=$(count_lines <<<"$live_pairs")
 assert "the tree carries pointers at all (found $n_live)" "[ '$n_live' -ge 1 ]"
 copied=$(copied_pointers "$SKILLS_ROOT")
-assert "every pointer is under $POINTER_MAX_LINES lines and names its canonical vault path (${copied:-none} do not)" \
+assert "every pointer's body is under $POINTER_BODY_MAX_LINES lines and names its canonical vault path (${copied:-none} do not)" \
   "[ -z \"\$copied\" ]"
 
 echo '--- 8. names and plugin manifests (::pointer-names-match) (::plugin-manifest-valid) (::skills-nested-under-skills) ---'
@@ -471,6 +486,20 @@ if box_only_with 'the vault the pointer skills name' "$VAULT_SKILLS"; then
   done <<<"$live_pairs" | tr '\n' ' ')
   assert "all $n_live pointer target(s) resolve under $VAULT_SKILLS (${dangling:-none} dangle)" \
     "[ -z '$dangling' ]"
+else
+  echo "  (skipped — see the SKIP line above)"
+fi
+
+echo '--- 13. every pointer description is the vault'"'"'s, verbatim (::pointer-description-synced) ---'
+if box_only_with 'the vault the pointer skills mirror' "$VAULT_SKILLS"; then
+  # The description is the only text an agent sees before loading a skill, and it lives in
+  # our file. bin/pointer_skills_sync.py check diffs each pointer against what its canonical
+  # frontmatter renders; a paraphrase, a stale mirror or a hand edit is a diff.
+  sync_out=$(python3 "$REPO_ROOT/bin/pointer_skills_sync.py" check --repo "$REPO_ROOT" --vault-skills "$VAULT_SKILLS" 2>&1)
+  sync_rc=$?
+  assert "all $n_live pointer description(s) match the vault (bin/pointer_skills_sync.py check)" \
+    "[ '$sync_rc' = 0 ]"
+  [ "$sync_rc" = 0 ] || printf '%s\n' "$sync_out" | sed 's/^/    /'
 else
   echo "  (skipped — see the SKIP line above)"
 fi
