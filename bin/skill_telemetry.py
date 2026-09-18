@@ -97,6 +97,23 @@ def unqualified(name, namespace_re):
     return match.group(1) if match else None
 
 
+def invoked_by(name, tool_input, namespace_re):
+    if name == "Skill" and isinstance(tool_input.get("skill"), str):
+        return unqualified(tool_input["skill"], namespace_re)
+    return None
+
+
+def read_by(name, tool_input):
+    """The skills one tool use reads: a Read of a SKILL.md, or a shell command naming one —
+    the pointer body says "read the canonical SKILL.md", and marcus's first S1 turn did it
+    with `cat` (2026-09-18), which a Read-only rule recorded as nothing read."""
+    if name == "Read" and isinstance(tool_input.get("file_path"), str):
+        return {skill_from_path(tool_input["file_path"])} - {None}
+    if name == "Bash" and isinstance(tool_input.get("command"), str):
+        return skills_in_text(tool_input["command"])
+    return set()
+
+
 def collect(path, namespace_re):
     offered, invoked, read = set(), set(), set()
     for record in records(path):
@@ -104,11 +121,9 @@ def collect(path, namespace_re):
             continue
         offered.update(filter(None, (unqualified(n, namespace_re) for n in listing_names(record))))
         for name, tool_input in tool_uses(record):
-            if name == "Skill" and isinstance(tool_input.get("skill"), str):
-                invoked.add(unqualified(tool_input["skill"], namespace_re))
-            elif name == "Read" and isinstance(tool_input.get("file_path"), str):
-                read.add(skill_from_path(tool_input["file_path"]))
-    return offered, invoked - {None}, read - {None}
+            invoked.add(invoked_by(name, tool_input, namespace_re))
+            read.update(read_by(name, tool_input))
+    return offered, invoked - {None}, read
 
 
 def csv(names):

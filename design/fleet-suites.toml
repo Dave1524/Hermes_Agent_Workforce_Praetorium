@@ -288,6 +288,7 @@ asserts = [
   "telemetry-offer-from-listing",           # offered = the skill_listing attachment's names, namespace-filtered, unqualified
   "telemetry-invoked-from-skill-tool",      # invoked = a Skill tool_use block naming the pointer
   "telemetry-read-from-skill-md",           # read = a Read tool_use of the canonical or pointer SKILL.md
+  "telemetry-read-from-shell",              # read = a Bash tool_use whose command names a SKILL.md (marcus cat-ed his, 2026-09-18)
   "telemetry-ignores-foreign-namespace",    # shared:codex and a references/ read are neither invoked nor read
   "telemetry-schema-not-an-invocation",     # the tool schema line alone yields invoked=none
   "telemetry-missing-transcript-fails-loud",# a missing path exits 2 with the path on stderr

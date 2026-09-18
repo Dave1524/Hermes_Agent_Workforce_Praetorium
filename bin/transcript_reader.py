@@ -118,11 +118,9 @@ def _skills(records: list[dict[str, Any]], prompt_index: int) -> dict[str, Any]:
         if record.get("isSidechain"):
             continue
         for name, tool_input in skill_telemetry.tool_uses(record):
-            if name == "Skill" and isinstance(tool_input.get("skill"), str):
-                invoked.add(skill_telemetry.unqualified(tool_input["skill"], NAMESPACE_RE))
-            elif name == "Read" and isinstance(tool_input.get("file_path"), str):
-                read.add(skill_telemetry.skill_from_path(tool_input["file_path"]))
-    return workflow_receipt.measured_skills(offered, invoked - {None}, read - {None}, "transcript")
+            invoked.add(skill_telemetry.invoked_by(name, tool_input, NAMESPACE_RE))
+            read.update(skill_telemetry.read_by(name, tool_input))
+    return workflow_receipt.measured_skills(offered, invoked - {None}, read, "transcript")
 
 
 def _tool_uses(message: dict[str, Any]) -> list[dict[str, Any]]:
