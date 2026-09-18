@@ -743,9 +743,12 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
 - **D1** [Dave, S] Place the two BD override envs in `~/.config/agent-workforce/`: the radar
   from T2.3's new example, the drafts one with `AGENT_PROFILE` fixed. Mode 600. Unblocks T2.4.
 - **D2** [Dave, S] Install `AGENT_VERIFY_CMD` into `~/.config/agent-workforce/m1_signal_scan.env`
-  from `profiles/m1_signal_scan.env.example`. Mode 600. Still open 2026-09-17 — the tree is
-  deny-listed for Claude, so it is one line for Dave:
+  from `profiles/m1_signal_scan.env.example`. Mode 600. Open until 2026-09-18 because the tree
+  is deny-listed for Claude, so it was one line for Dave:
   `printf '%s\n' "AGENT_VERIFY_CMD='~/agent-workforce/bin/proposal_or_decline.sh m1-signal-scan'" >> ~/.config/agent-workforce/m1_signal_scan.env`.
+  **Installed by Dave 2026-09-18** (`m1_signal_scan.env:15`, mode 600). In Review until the next
+  run, Mon 2026-09-21 05:33, logs `verify=set` on its mode: line (the tell, f7f5c2b) — the
+  command prints nothing on success, so the log line is the only proof.
 - **D3** [Dave, M] Codex filesystem permission profile: select `default_permissions` in
   `~/.codex/config.toml` denying `.ssh/**`, `.config/buzz-agents/**`,
   `.config/agent-workforce/**` and `ENCRYPTION_RECOVERY.md`; grant `/home/linuxbrew` read;
@@ -990,5 +993,5 @@ because nothing violated it. T4.1 and T4.2 closed; T4.3 keeps one assertion, nam
 Startable today with no blocker: T7.2, T0.3. Everything else waits on one of those,
 on a merge-and-deploy (T3.3's calendar half), or on a Dave item.
 
-Dave's queue: D2, D5, D6, L1, T6.3. D1 closed with T2.4; D4 closed 2026-09-16, D3 2026-09-17; D7 and
+Dave's queue: D5, D6, L1, T6.3 (D2 installed 2026-09-18, proof Mon 09-21). D1 closed with T2.4; D4 closed 2026-09-16, D3 2026-09-17; D7 and
 L2 are closed.
