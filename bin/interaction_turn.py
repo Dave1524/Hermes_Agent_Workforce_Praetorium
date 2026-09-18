@@ -47,6 +47,7 @@ class Turn:
     ended_at: str | None = None
     note: str | None = None
     error: str | None = None
+    skills: dict[str, Any] | None = None
 
 
 def is_send(command: str) -> bool:

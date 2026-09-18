@@ -20,6 +20,9 @@ APPROVALS="${SCORECARD_APPROVALS:-$METRICS_DIR/approvals.tsv}"
 PUSH="${SCORECARD_PUSH:-1}"
 LOCK="${SCORECARD_LOCK:-/tmp/scorecard.lock}"
 BRANCH="${SCORECARD_BRANCH:-agents/inbox}"
+# S1 (2026-09-18): the Buzz turns' skill telemetry lives in the interaction receipts, not
+# cost.log — the same three sets under receipt.skills, one receipt per turn.
+RECEIPTS="${SCORECARD_RECEIPTS:-$HOME/agent-workforce/var/workflow-receipts}"
 
 # ── Own lock (fd 8 — separate from agent_propose's fd 9); skip if busy/unavailable ──
 if command -v flock >/dev/null 2>&1; then
@@ -45,6 +48,48 @@ count_names() {  # $1 = csv, $2 = all-time array name, $3 = 7d array name, $4 = 
     all_by_name[$n]=$(( ${all_by_name[$n]:-0} + 1 ))
     [ "$4" = 1 ] && window_by_name[$n]=$(( ${window_by_name[$n]:-0} + 1 ))
   done
+}
+
+# S1: per pointer skill, Buzz TURNS in the last 7d that were offered it / read it (invoked
+# or read), from receipts whose skills block is measured; one python pass, three line kinds.
+declare -A s1read7d=() s1off7d=()
+s1_turns7d=0 s1_unavailable7d=0
+tally_s1_receipts() {
+  local kind name n
+  [ -d "$RECEIPTS" ] || return 0
+  while IFS=$'\t' read -r kind name n; do
+    case "$kind" in
+      read) s1read7d[$name]=$n ;;
+      offered) s1off7d[$name]=$n ;;
+      summary) s1_turns7d=$name; s1_unavailable7d=$n ;;
+    esac
+  done < <(python3 - "$RECEIPTS" "$cutoff" <<'PY' 2>/dev/null
+import collections, datetime, json, pathlib, sys
+root, cutoff = pathlib.Path(sys.argv[1]), int(sys.argv[2])
+read, offered = collections.Counter(), collections.Counter()
+turns = unavailable = 0
+for path in sorted(root.glob("buzz-agent@*/*.json")):
+    try:
+        r = json.loads(path.read_text())
+        started = datetime.datetime.fromisoformat(r["started_at"].replace("Z", "+00:00")).timestamp()
+    except Exception:
+        continue
+    if started < cutoff or r.get("vantage") != "interaction":
+        continue
+    skills = r.get("skills") or {}
+    turns += 1
+    if skills.get("status") != "measured":
+        unavailable += 1
+        continue
+    read.update(set(skills.get("invoked", [])) | set(skills.get("read", [])))
+    offered.update(set(skills.get("offered", [])))
+for name, n in read.items():
+    print(f"read\t{name}\t{n}")
+for name, n in offered.items():
+    print(f"offered\t{name}\t{n}")
+print(f"summary\t{turns}\t{unavailable}")
+PY
+)
 }
 
 tally_skills() {  # $1 = in7d; reads the current record's kv
@@ -165,7 +210,8 @@ reads7d=0 skills_read7d=0
 for n in "${!read7d[@]}"; do
   reads7d=$(( reads7d + read7d[$n] )); skills_read7d=$(( skills_read7d + 1 ))
 done
-skill_names=$(printf '%s\n' "${!readall[@]}" "${!offall[@]}" | awk 'NF' | sort -u)
+tally_s1_receipts
+skill_names=$(printf '%s\n' "${!readall[@]}" "${!offall[@]}" "${!s1read7d[@]}" "${!s1off7d[@]}" | awk 'NF' | sort -u)
 
 # ── Write the digest (data-derived header => idempotent) ──
 mkdir -p "$METRICS_DIR" 2>/dev/null || { echo "scorecard: cannot create $METRICS_DIR — skip"; exit 0; }
@@ -203,14 +249,16 @@ tmp="$(mktemp "${TMPDIR:-/tmp}/scorecard.XXXXXX")" || { echo "scorecard: mktemp 
   echo
   echo "## Pointer skills (T3.3)"
   echo
-  if [ "$telemetry_records" -eq 0 ]; then
+  if [ "$telemetry_records" -eq 0 ] && [ "$s1_turns7d" -eq 0 ]; then
     echo "_No skill telemetry recorded yet (records predate T3.3)._"
   else
-    echo "| Skill | Runs that read it (7d) | Runs that read it (all-time) | Runs offered it (7d) | Runs offered it (all-time) |"
-    echo "|---|---|---|---|---|"
+    echo "| Skill | Runs that read it (7d) | Runs that read it (all-time) | Runs offered it (7d) | Runs offered it (all-time) | Buzz turns that read it (7d) | Buzz turns offered it (7d) |"
+    echo "|---|---|---|---|---|---|---|"
     for n in $skill_names; do
-      echo "| $n | ${read7d[$n]:-0} | ${readall[$n]:-0} | ${off7d[$n]:-0} | ${offall[$n]:-0} |"
+      echo "| $n | ${read7d[$n]:-0} | ${readall[$n]:-0} | ${off7d[$n]:-0} | ${offall[$n]:-0} | ${s1read7d[$n]:-0} | ${s1off7d[$n]:-0} |"
     done
+    echo
+    echo "_Runs are scheduled (S2) records in cost.log; Buzz turns are S1 interaction receipts — ${s1_turns7d} turn(s) in the window, ${s1_unavailable7d} with no skill evidence._"
   fi
   if [ "$legacy" -gt 0 ]; then
     echo

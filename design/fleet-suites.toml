@@ -718,6 +718,8 @@ asserts = [
   "interaction-send-is-artifact",             # a buzz messages send whose result was accepted is the artifact, nostr:event:<id>, under the agent's unit
   "interaction-silence-is-decline",           # no send is a decline whose reason says the transcript cannot tell silence from a reply that never published
   "interaction-heartbeat-no-receipt",         # a heartbeat prompt is not a turn: nothing written, one log line, in both harnesses
+  "interaction-skills-from-transcript",       # S1 skill telemetry: offered = the session's skill_listing in the praetorium namespace; invoked/read = THIS turn's Skill and SKILL.md Read tool uses, never an earlier turn's; measured-empty when the transcript lists nothing
+  "codex-notify-skills-from-rollout",         # the codex side: offered = the developer <skills_instructions> listing, namespace-filtered; read = every SKILL.md a command in the turn names (through the $CODEX_HOME/skills/praetorium link or the vault); invoked is always empty — no Skill tool
   "interaction-usage-summed",                 # Claude usage is the sum over the turn's assistant messages, counted once per message id
   "interaction-send-is-a-command",            # the send must sit in command position; a grep or echo naming the string is not a send
   "interaction-never-blocks-stop",            # malformed stdin, missing transcript, no unit, unwritable root: exit 0, empty stdout, one log line

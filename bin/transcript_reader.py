@@ -15,6 +15,9 @@ from typing import Any
 
 import interaction_turn
 import skill_telemetry
+import workflow_receipt
+
+NAMESPACE_RE = skill_telemetry.parse_args(["-", "--namespace", skill_telemetry.DEFAULT_NAMESPACE])[1]
 
 
 def _text_of(content: Any) -> str | None:
@@ -99,7 +102,27 @@ def read(path: pathlib.Path, session_id: str) -> interaction_turn.Turn:
         turn.run_id = f"{session_id}-{last_assistant.get('uuid')}"
         turn.ended_at = interaction_turn.iso_seconds(last_assistant.get("timestamp"))
     turn.usage = _sum_usage(usage_by_message)
+    turn.skills = _skills(records, prompt_index)
     return turn
+
+
+def _skills(records: list[dict[str, Any]], prompt_index: int) -> dict[str, Any]:
+    """Offered is the session's listing, which precedes the first prompt; invoked and read
+    are this turn's own tool uses. A session of fifty turns is offered once."""
+    offered: set[str] = set()
+    for record in records:
+        offered.update(filter(None, (skill_telemetry.unqualified(n, NAMESPACE_RE) for n in skill_telemetry.listing_names(record))))
+    invoked: set[str] = set()
+    read: set[str] = set()
+    for record in records[prompt_index + 1:]:
+        if record.get("isSidechain"):
+            continue
+        for name, tool_input in skill_telemetry.tool_uses(record):
+            if name == "Skill" and isinstance(tool_input.get("skill"), str):
+                invoked.add(skill_telemetry.unqualified(tool_input["skill"], NAMESPACE_RE))
+            elif name == "Read" and isinstance(tool_input.get("file_path"), str):
+                read.add(skill_telemetry.skill_from_path(tool_input["file_path"]))
+    return workflow_receipt.measured_skills(offered, invoked - {None}, read - {None}, "transcript")
 
 
 def _tool_uses(message: dict[str, Any]) -> list[dict[str, Any]]:

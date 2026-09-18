@@ -75,6 +75,23 @@ def unavailable_cost() -> dict[str, Any]:
             "confidence": None}
 
 
+# S1 skill telemetry (2026-09-18): which pointer skills an interaction turn was offered,
+# invoked and read — the same three sets cost.log records for a scheduled run under
+# skills_offered= / skills= (T3.3), so bin/scorecard.sh can fold both surfaces into one
+# table. `source` names the evidence (transcript | rollout); unavailable carries empty
+# lists and no source, never a guess.
+SKILL_SETS = ("offered", "invoked", "read")
+
+
+def measured_skills(offered: set[str], invoked: set[str], read: set[str], source: str) -> dict[str, Any]:
+    return {"status": "measured", "offered": sorted(offered), "invoked": sorted(invoked),
+            "read": sorted(read), "source": source}
+
+
+def unavailable_skills() -> dict[str, Any]:
+    return {"status": "unavailable", **{name: [] for name in SKILL_SETS}, "source": None}
+
+
 def _int_or_none(value: Any) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
 
