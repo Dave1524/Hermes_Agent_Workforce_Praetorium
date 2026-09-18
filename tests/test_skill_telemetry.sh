@@ -45,6 +45,8 @@ INVOKE_FOREIGN='{"type":"assistant","message":{"role":"assistant","content":[{"t
 READ_CANONICAL='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_03","name":"Read","input":{"file_path":"/home/dave/vault/08_skills/meeting-prep/SKILL.md"}}]}}'
 READ_POINTER='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_04","name":"Read","input":{"file_path":"/home/dave/agent-workforce/skills/claudius/skills/prospect-research/SKILL.md"}}]}}'
 BASH_CAT_CANONICAL='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_06","name":"Bash","input":{"command":"cat ~/vault/08_skills/weekly-review/SKILL.md; echo ---; ls -la ~/vault/08_skills/weekly-review/"}}]}}'
+BASH_BRACE='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_08","name":"Bash","input":{"command":"head -20 ~/vault/08_skills/{weekly-review,post-call-capture}/SKILL.md"}}]}}'
+BASH_LOOP_VAR='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_09","name":"Bash","input":{"command":"for s in weekly-review post-call-capture; do f=~/vault/08_skills/$s/SKILL.md; wc -l $f; done"}}]}}'
 BASH_NO_SKILL='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_07","name":"Bash","input":{"command":"ls ~/vault/08_skills/weekly-review/references/"}}]}}'
 READ_REFERENCE='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_05","name":"Read","input":{"file_path":"/home/dave/vault/08_skills/meeting-prep/references/x.md"}}]}}'
 # The trap: the Skill tool's schema, carried by every transcript in a prompt_snapshot.
@@ -112,6 +114,12 @@ assert 'read=weekly-review from a Bash cat of the canonical file' "printf '%s' \
 printf '%s\n' "$BASH_NO_SKILL" > "$t5b"
 run "$t5b"; out=$OUT
 assert 'a command that names only the skill directory reads nothing' "printf '%s' \"\$out\" | tr ' ' '\n' | grep -qx 'read=none'"
+printf '%s\n' "$BASH_BRACE" > "$t5b"
+run "$t5b"; out=$OUT
+assert 'a brace group names each alternative' "printf '%s' \"\$out\" | tr ' ' '\n' | grep -qx 'read=post-call-capture,weekly-review'"
+printf '%s\n' "$BASH_LOOP_VAR" > "$t5b"
+run "$t5b"; out=$OUT
+assert 'a loop variable in the path is not a skill name (was read=$s)' "printf '%s' \"\$out\" | tr ' ' '\n' | grep -qx 'read=none'"
 
 echo '--- 6. duplicates collapse and output is sorted ---'
 t6="$TD/t6.jsonl"

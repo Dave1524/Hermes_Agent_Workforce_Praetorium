@@ -32,6 +32,8 @@ SKILL_MD_PATHS = (
     re.compile(r"/skills/praetorium/([^/]+)/SKILL\.md$"),   # augustus: $CODEX_HOME/skills/praetorium -> the owner tree
 )
 SKILL_MD_IN_TEXT = re.compile(r"\S*/SKILL\.md\b")
+SKILL_SLUG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+BRACE_GROUP = re.compile(r"\{([^{}]*,[^{}]*)\}")
 
 
 def parse_args(argv):
@@ -81,15 +83,28 @@ def tool_uses(record):
 def skill_from_path(file_path):
     for pattern in SKILL_MD_PATHS:
         match = pattern.search(file_path)
-        if match:
+        if match and SKILL_SLUG.match(match.group(1)):
             return match.group(1)
     return None
+
+
+def brace_expanded(path):
+    """`08_skills/{a,b}/SKILL.md` names two skills; `08_skills/$s/SKILL.md` names none we can
+    resolve — both shapes came off marcus's first S1 turn (2026-09-18), and the slug rule in
+    skill_from_path drops the variable."""
+    match = BRACE_GROUP.search(path)
+    if not match:
+        return [path]
+    return [path[:match.start()] + alt + path[match.end():] for alt in match.group(1).split(",")]
 
 
 def skills_in_text(text):
     """Every skill a shell command names by its SKILL.md path — the codex side has no Skill
     tool, so a read is the model cat-ing the file."""
-    return {skill_from_path(m.group(0)) for m in SKILL_MD_IN_TEXT.finditer(text)} - {None}
+    found = set()
+    for match in SKILL_MD_IN_TEXT.finditer(text):
+        found.update(skill_from_path(path) for path in brace_expanded(match.group(0)))
+    return found - {None}
 
 
 def unqualified(name, namespace_re):
