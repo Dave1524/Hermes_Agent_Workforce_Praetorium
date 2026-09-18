@@ -778,6 +778,10 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   Mac-side and publish; then Claude re-baselines p2 to PASS in `bin/fleet_eval_probes.json`.
   Found on the way: the `github-canonical` deploy key is refused by GitHub; the push went
   through the GitHub App helper over HTTPS (CLAUDE.md § Hard constraints corrected).
+  **DONE 2026-09-18.** PR #5 (3 commits; the 09-18 corrections, and the section renumbered
+  §11 — the branch had put a second `## 10.` under the existing one) merged by Dave with
+  `--admin`, the ruleset's only path onto `main`; published as mirror 221e779; live probe
+  PASS at rank 1 after `qmd-refresh`; baseline re-recorded PASS (ad213a3).
 - **D6** [Dave, Refine] The website corpus is 644 hours old. Publish, or accept the freshness
   refusal as correct. A content decision. MEASURED 2026-09-17: `published_corpus.py list` →
   `fetched: true, ref_age_hours: 891.9` (37 days), 16 articles. Still Dave's: publish one
@@ -993,5 +997,5 @@ because nothing violated it. T4.1 and T4.2 closed; T4.3 keeps one assertion, nam
 Startable today with no blocker: T7.2, T0.3. Everything else waits on one of those,
 on a merge-and-deploy (T3.3's calendar half), or on a Dave item.
 
-Dave's queue: D5, D6, L1, T6.3 (D2 installed 2026-09-18, proof Mon 09-21). D1 closed with T2.4; D4 closed 2026-09-16, D3 2026-09-17; D7 and
+Dave's queue: D6, L1, T6.3 (D2 installed 2026-09-18, proof Mon 09-21; D5 done 09-18). D1 closed with T2.4; D4 closed 2026-09-16, D3 2026-09-17; D7 and
 L2 are closed.
