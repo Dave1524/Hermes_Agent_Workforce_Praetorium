@@ -31,6 +31,7 @@ SESSION = "5e5e5e5e-5e5e-4e5e-8e5e-5e5e5e5e5e5e"
 EVENT = "e0" * 32
 THREAD = "0a0a0a0a-0a0a-7a0a-8a0a-0a0a0a0a0a0a"
 TURN1, TURN2 = "0b0b0b0b-0b0b-4b0b-8b0b-0b0b0b0b0b01", "0b0b0b0b-0b0b-4b0b-8b0b-0b0b0b0b0b02"
+TURN3, EVENT3 = "0b0b0b0b-0b0b-4b0b-8b0b-0b0b0b0b0b03", "e3" * 32
 
 
 def load(name):
@@ -208,6 +209,7 @@ class CodexNotifyTest(unittest.TestCase):
         self.box = Sandbox(self.tmp)
         self.payload = (CODEX / "codex-notify.json").read_text()
         self.silent = (CODEX / "codex-notify-silent.json").read_text()
+        self.errored = (CODEX / "codex-notify-errored.json").read_text()
 
     def test_send_is_artifact(self):
         # (::codex-notify-send-is-artifact)
@@ -239,6 +241,30 @@ class CodexNotifyTest(unittest.TestCase):
         self.assertIn("no message published to Buzz in this turn", got["terminal"]["reason"])
         self.assertEqual(got["usage"], {"status": "measured", "input_tokens": 2000, "output_tokens": 120,
                                         "cache_tokens": 1500, "total_tokens": 2120})
+
+    def test_harness_error_is_failed(self):
+        # (::codex-notify-harness-error-is-failed) — a turn the model backend refused posts
+        # nothing and looks exactly like silence from the channel; the rollout's
+        # task_complete.error is the only record, and until T7.2 it was receipted as a decline
+        done = self.box.codex_notify(self.errored)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        got = self.box.read(f"buzz-agent@augustus/{THREAD}-{TURN3}.json")
+        self.assertEqual(receipt.validate(got), [])
+        self.assertEqual(got["terminal"]["outcome"], "failed")
+        self.assertIn("the harness turn ended in an error: other: unexpected status 404 Not Found", got["terminal"]["reason"])
+        self.assertIn("gpt-5.5", got["terminal"]["reason"])
+        self.assertNotIn("\n", got["terminal"]["reason"])
+        self.assertEqual(got["ended_at"], "2026-09-14T10:00:11Z")
+
+    def test_inbound_event_is_the_handoff(self):
+        # (::codex-notify-inbound-event-is-handoff) — the relay event that woke him is the
+        # dispatcher's run_id, so a content run can find its own turn's receipt
+        self.box.codex_notify(self.errored)
+        got = self.box.read(f"buzz-agent@augustus/{THREAD}-{TURN3}.json")
+        self.assertEqual(got["handoff"], {"actor": "PRAETORIUM", "event": EVENT3, "recipient": "augustus"})
+        self.box.codex_notify(self.payload)
+        plain = self.box.read(f"buzz-agent@augustus/{THREAD}-{TURN2}.json")
+        self.assertIsNone(plain["handoff"])
 
     def test_usage_from_rollout(self):
         # (::codex-notify-usage-from-rollout) — the turn's share of the thread total: the last

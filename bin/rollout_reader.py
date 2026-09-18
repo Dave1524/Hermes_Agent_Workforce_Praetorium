@@ -11,6 +11,13 @@ inside the span minus the last one before it — so a turn of several model resp
 reported as its final response alone. Codex spawns `notify` while it may still be writing
 the rollout, so the file is re-read up to three times over two seconds until the span's
 task_complete appears; usage is `unavailable` if it never does.
+
+A `task_complete` carrying `error` is a turn the harness ended, not one the agent finished:
+codex-acp still reports it upstream as a completed turn, and nothing is posted. Between
+2026-09-07 and 09-10 forty of augustus's turns ended that way (`404 … The model gpt-5.5 does
+not exist or you do not have access to it`, interleaved with `usage_limit_exceeded`), two of
+them the nightly content run, and every layer outside this file read them as silence. The
+error travels on the Turn so the receipt can name it.
 """
 from __future__ import annotations
 
@@ -123,6 +130,18 @@ def _sends(records: list[dict[str, Any]]) -> list[interaction_turn.Send]:
     return sends
 
 
+def _error(record: dict[str, Any] | None) -> str | None:
+    error = _payload(record).get("error") if record is not None else None
+    if not isinstance(error, dict):
+        return None
+    message = error.get("message")
+    if not isinstance(message, str) or not message.strip():
+        return None
+    kind = error.get("codex_error_info")
+    text = " ".join(message.split())
+    return f"{kind}: {text}" if isinstance(kind, str) and kind else text
+
+
 def _model(records: list[dict[str, Any]], turn_id: str) -> str | None:
     for record in records:
         payload = _payload(record)
@@ -158,6 +177,7 @@ def read(codex_home: pathlib.Path, thread_id: str, turn_id: str) -> interaction_
     turn.started_at = interaction_turn.iso_seconds(records[start].get("timestamp"))
     turn.ended_at = interaction_turn.iso_seconds(records[end].get("timestamp")) if end is not None else None
     turn.usage = _usage(records, start, end) if end is not None else None
+    turn.error = _error(records[end]) if end is not None else None
     for record in span:
         payload = _payload(record)
         if record.get("type") == "event_msg" and payload.get("type") == "user_message" and isinstance(payload.get("message"), str):

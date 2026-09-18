@@ -20,7 +20,7 @@ table and the write boundary two places to drift.
 | Owner | **augustus** (`design/agents/augustus.toml`) |
 | Surface | `buzz_dispatch` — a timer triggers the live augustus session over the content route and waits |
 | Executor | none on this box. `run_content_via_buzz.sh` sends a trigger; the model is augustus's own `buzz-agent@augustus` session on `codex-acp`, inside its bwrap namespace |
-| Contract version | 2 (2026-09-11, T7.2 terminal-evidence repair) |
+| Contract version | 3 (2026-09-18, T7.2 turn-end evidence — the harness error the channel cannot show) |
 | Alerted | yes — `OnFailure=agent-alert@%n.service` on both live units |
 
 The executor row is the reason this contract reads unlike its siblings. Nothing here runs a
@@ -101,10 +101,17 @@ Three things that look like declines and are not:
   the profile mandates when `published_corpus.py list` fails. Exit 1, and the profile is
   explicit that he must **not** `DECLINE:` in that case: the corpus being unreachable is not
   a judgement that there is nothing to write.
-- Silence. The deadline is not proof of silence — `:236-242` re-reads the channel for any
-  reply before recording one, because on 2026-09-07 augustus answered 110 seconds in, no
-  branch matched, and the run spent its remaining 18 minutes logging the opposite of what
-  happened.
+- Silence. Neither the deadline nor the end of his turn is proof of silence — the runner
+  re-reads the channel for any reply before recording one, because on 2026-09-07 augustus
+  answered 110 seconds in, no branch matched, and the run spent its remaining 18 minutes
+  logging the opposite of what happened.
+- A harness error. On 2026-09-07 and 09-09 the Codex turn ended 115s and 11s in on
+  `404 … gpt-5.5 does not exist or you do not have access to it`; codex-acp reported it
+  upstream as `ok`, nothing was posted, the board did not move, and the runner recorded "no
+  reply" at the 1200s deadline. The runner now ends its wait on augustus's own interaction
+  receipt for the trigger event (`handoff.event == run_id`, written by
+  `bin/interaction_receipt.py` within a second of the turn) and records a `failed` receipt as
+  `agent-turn-ended-in-a-harness-error … — <error>`. Exit 1, and the error is the reason.
 
 The sentinel table is ordered so that a reply carrying both a failure prefix and `DECLINE:`
 is a failed run, not a quiet night.
@@ -130,7 +137,7 @@ is a failed run, not a quiet night.
 
 ## Acceptance checks
 
-Twelve checks — eight `run`, four `sweep`. Every block branches on `$UNIT`, because the executor
+Thirteen checks — nine `run`, four `sweep`. Every block branches on `$UNIT`, because the executor
 runs this file once per declaring unit and the two units are not decidable the same way: a
 dispatch tick writes no attempt log of its own, and the run it dispatches records itself
 under `augustus-content`. A check that does not apply to the unit it is running for exits 77
@@ -268,7 +275,34 @@ and says which.
    grep -E '^decline_event=.+' "$snap" >/dev/null
    ```
 
-9. **The nightly unit was not silently skipped by its own condition.** `sweep`.
+9. **Augustus's turn for this dispatch did not end in a harness error.** The one outcome the
+   channel and the board cannot show: a turn the model backend refused leaves no post and no
+   movement, and read from the relay it is identical to a quiet night. His interaction receipt
+   (`~/agent-workforce/var/workflow-receipts/buzz-agent@augustus/`, one per turn, keyed by the
+   trigger event id it answered) is the only vantage that records it. n/a until that receipt
+   exists — the notify hook writes it about a second after the turn ends, which is why the
+   runner itself waits on it; an absent receipt at receipt time is not evidence either way.
+
+   ```check id=agent-turn-did-not-error
+   case "$UNIT" in
+     content-change-dispatch) echo "n/a: decided for the run this tick dispatched"; exit 77 ;;
+   esac
+   run_id="$(sed -n 's/.*trigger published to .* run_id=\([0-9a-f]\{64\}\).*/\1/p' "$AGENT_ATTEMPT_LOG" | tail -1)"
+   [ -n "$run_id" ] || { echo "n/a: no trigger was published — nobody was asked"; exit 77; }
+   turn="$(python3 "$HOME/agent-workforce/bin/content_turn_receipt.py" \
+             "$HOME/agent-workforce/var/workflow-receipts/buzz-agent@augustus" "$run_id")"; rc=$?
+   case "$rc" in
+     0) ;;
+     3) echo "n/a: no interaction receipt for trigger $run_id yet"; exit 77 ;;
+     *) echo "content_turn_receipt.py exited $rc — the receipt could not be read"; exit 1 ;;
+   esac
+   outcome="$(printf '%s\n' "$turn" | cut -f1)"
+   [ "$outcome" != "failed" ] \
+     || { echo "augustus's turn ended in a harness error: $(printf '%s\n' "$turn" | cut -f4-)"; exit 1; }
+   echo "turn ended, outcome=$outcome"
+   ```
+
+10. **The nightly unit was not silently skipped by its own condition.** `sweep`.
    `augustus-content.service` carries `ConditionPathExists=/home/dave/agent-worktrees/inbox`.
    A failed condition makes systemd mark the unit *skipped*: exit 0, no failure state, and
    `OnFailure` never fires — so `agent-alert@` stays quiet and the nightly run simply stops
@@ -287,7 +321,7 @@ and says which.
    [ "$r" != no ]
    ```
 
-10. **Each timer fired inside its own cadence.** `sweep`, and per unit — a single window would
+11. **Each timer fired inside its own cadence.** `sweep`, and per unit — a single window would
    have to be the nightly one, and a 15-minute timer that stopped firing would then be
    invisible for a day. 26 h covers 01:30 plus the 5-minute jitter and a late `Persistent=true`
    catch-up; 1 h covers four ticks of the quarter-hourly one. The lock-skip half applies only
@@ -312,7 +346,7 @@ and says which.
              | grep -F 'SKIP: previous run still active')" ]
    ```
 
-11. **The dispatcher is not stuck fail-soft.** `sweep`, and the check the fail-soft contract
+12. **The dispatcher is not stuck fail-soft.** `sweep`, and the check the fail-soft contract
    makes necessary: every Notion read error exits 0 with `STATE` untouched and no alert, so a
    dead credential or a revoked integration is indistinguishable from a quiet board and stays
    that way indefinitely. One non-`FAIL-SOFT` tick in the last forty is the whole assertion.
@@ -334,7 +368,7 @@ and says which.
    [ -n "$live" ]
    ```
 
-12. **State advanced only over rows a recorded run actually drafted or declined.** `sweep`. The 2026-08-12
+13. **State advanced only over rows a recorded run actually drafted or declined.** `sweep`. The 2026-08-12
     outage was rc=0 taken as evidence, and the dispatcher's own `outcome=CRASHED` guard closes
     that path — but not the one underneath it: the global flock `SKIP` exits 0 **and writes no
     `cost.log` record at all** (`bin/agent_propose.sh:144`, and the comment at `:147-151`
@@ -386,17 +420,22 @@ ambiguous inside a DST repeat hour.
   every hermes attempt had crashed, and 20 nights of `Picked` rows were marked seen without
   being drafted. Guarded by the `outcome=CRASHED` re-read; the flock `SKIP` underneath it is
   not, which is what `state-advanced-only-on-a-recorded-run` exists for.
-- **T7.2 historic delivery ambiguity — DECIDED 2026-09-11.** The retained delivery receipts
-  prove that the trigger was accepted on the failing 2026-09-06, 09-07, and 09-09 runs, while
-  the same route produced successful drafts on 09-08 and 09-10. The old runner nevertheless
-  treated any later board mutation as proof that augustus drafted, and the dispatcher treated
-  an rc=0 with no successful cost record as proof that a `Picked` row had been handled. The
-  retained material cannot identify a single earlier failure seam for every silent run, so the
-  decision is to repair that false-success boundary rather than invent a common cause. Next
-  action: after deployment, retain three consecutive eligible run records (including one
-  nightly and one `picked-change` dispatch) with the receipt run id and either an exact
-  `Picked -> Draft` transition or an owned decline; any timeout, sentinel, unknown reply, or
-  missing OPS record resets the streak.
+- **A model-backend error read as silence (T7.2, cause evidenced 2026-09-18).** Three of the
+  five nights 2026-09-06 → 09-10 burnt the full 1200s and recorded `no board movement and no
+  reply`. 09-06: `RUN-FAILED:` at 109s with no sentinel row for it (closed 09-07, `9b9bee4`).
+  09-07 and 09-09: the trigger was admitted (`agent_claimed`), and the Codex turn ended on
+  `unexpected status 404 Not Found: The model gpt-5.5 does not exist or you do not have
+  access to it` — 115s in, mid-draft, and 11s in, on the first model call — read from
+  `task_complete.error` in his rollouts, not inferred from journal silence. codex-acp reported
+  both turns upstream as `outcome="ok"`; the same 404 hit 40 of his turns 09-07T03:16Z →
+  09-10T19:12Z, interleaved with `usage_limit_exceeded`, and none since 09-11. Box-side, an
+  errored turn was indistinguishable from work at every layer read: the journal said ok, the
+  channel was empty, and the T5.2 interaction receipt called it a `decline` because
+  `rollout_reader.py` ignored the error. Closed by carrying `task_complete.error` into the
+  receipt as `failed`, keying each receipt by the inbound event (`handoff.event`), and ending
+  the runner's wait on that receipt — successful turns measure 2m56s-6m07s, so the 20-minute
+  deadline stays as the backstop, not the normal path. Signal: `agent-turn-did-not-error`.
+  Streak to retain: three consecutive eligible runs with a valid terminal outcome.
 - **Permanent fail-soft.** By contract every Notion error in the dispatcher exits 0 with state
   untouched. Correct for a blip, indistinguishable from a dead credential over a week, and
   `OnFailure` never fires either way. Signal: `dispatcher-is-not-stuck-fail-soft`.
