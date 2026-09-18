@@ -902,6 +902,20 @@ losing artifacts today.
   suites. Not built: a close verb on the screen — it is a write, so it belongs behind the
   broker's allowlist, a root-file change for a verb used a few times a month.
 
+- **T7.6** [Claude, S] **Done 2026-09-18, `fffee43`.** The retire plan bumped one count
+  literal file and left two: both 2026-09-18 retirements went red in CI on
+  `tests/test_receipt_coverage.py` (`EXPECTED_TALLY`, `LOGICAL_WORKFLOWS`) and
+  `tests/test_ship_dev_plan_workflow.sh` (`WORKFLOW_ENTRIES`), fixed by hand on each branch
+  (`cfd42e1`, `7a535b4`). `bin/workflow_pr_retire.py` now edits every file that pins a count,
+  each by that file's own rule — the coverage tally under the producer class the retired unit's
+  `ExecStart` basename decides against the suite's own `SELF_RECEIPTING`, its logical count by
+  one, the dev-plan script by one per manifest entry whatever the lifecycle — and pins every
+  suite it touched so the preview proves the new number. Gate:
+  `tests/test_workflow_pr_retire.sh::retire-count-literals-by-producer` (alpha, two-unit gamma,
+  a spent entry, a tree without the files), proven on a clone of the live tree by planning a
+  never-submitted `knowledge-digest` retirement and running both real suites green.
+  `control-room.service` restarted so the running worker imports the fix.
+
 ## Execution order for Claude
 
 Order as of **2026-09-10**, after the 09-10 batch (T3.1, T4.0, T4.1, T4.2, T4.3, T7.1) landed and
@@ -963,13 +977,14 @@ because nothing violated it. T4.1 and T4.2 closed; T4.3 keeps one assertion, nam
 9. ~~**T6.1**~~ — done 2026-09-16 (PR #43); it was the last open item on the code-complete DoD.
 10. ~~**T5.3e**~~ — done 2026-09-16, `03da64a` (PR #44, merged `f566716`); live at `/app/`.
 11. ~~**T5.3f**~~ — done 2026-09-16, `7166798` (PR #45, merged `ae378f5`); live at `/app/agents`.
-12. **T5.3g** — M; Dave's decision of 2026-09-16, startable now, nothing blocks it.
+12. ~~**T5.3g**~~ — done 2026-09-16, `6d72f90` (PR #47, merged `f07a874`); live on the agent page.
 13. **T0.3** — S, and it closes W20 either way.
 14. **T6.3** when Dave says.
 15. ~~**T6.5**~~ — done 2026-09-18 (PRs #50, #51), by Dave's decision the same day.
+16. ~~**T7.6**~~ — done 2026-09-18, `fffee43`; the count-literal gap T6.5 left.
 
-Startable today with no blocker: T5.3g, T7.2, T0.3. Everything else waits on one of those,
+Startable today with no blocker: T7.2, T0.3. Everything else waits on one of those,
 on a merge-and-deploy (T3.3's calendar half), or on a Dave item.
 
-Dave's queue, unchanged by this sweep: D2, D3, D4, D5, D6, L1, T6.3. D1 closed with T2.4; D7 and
+Dave's queue: D2, D5, D6, L1, T6.3. D1 closed with T2.4; D4 closed 2026-09-16, D3 2026-09-17; D7 and
 L2 are closed.
