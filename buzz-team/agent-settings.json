@@ -17,7 +17,9 @@
       "mcp__claude_ai_Gmail",
       "mcp__claude_ai_Microsoft_365",
       "mcp__claude_ai_Google_Drive",
-      "mcp__claude_ai_Figma"
+      "mcp__claude_ai_Figma",
+      "mcp__claude_ai_Eden",
+      "mcp__claude_ai_Claude_Docs"
     ]
   },
   "hooks": {

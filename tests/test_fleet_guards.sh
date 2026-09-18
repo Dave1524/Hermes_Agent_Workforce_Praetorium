@@ -76,7 +76,7 @@ echo '--- outward connectors are denied for agent sessions (::connector-deny) --
 # ignored — configured-looking and inert.
 assert 'the strict settings file exists' "[ -f '$STRICT_SETTINGS' ]"
 assert 'the strict settings file is valid JSON' "jq -e . '$STRICT_SETTINGS' >/dev/null"
-for family in mcp__claude_ai_Gmail mcp__claude_ai_Microsoft_365 mcp__claude_ai_Google_Drive mcp__claude_ai_Figma; do
+for family in mcp__claude_ai_Gmail mcp__claude_ai_Microsoft_365 mcp__claude_ai_Google_Drive mcp__claude_ai_Figma mcp__claude_ai_Eden mcp__claude_ai_Claude_Docs; do
   assert "$family is denied for agent sessions" "denied_in_strict '$family'"
 done
 assert 'the agent wrapper exists' "[ -f '$WRAPPER' ]"
