@@ -35,3 +35,15 @@
 
 # Pruned 2026-09-17 (T6.3): every entry cleared by one `bin/deploy --prune`; the list is empty
 # until the next source deletion opens a window.
+
+[[runtime_only]]
+path  = "ttm-pool-drain.timer"
+tree  = "systemd"
+since = "2026-09-18"
+why   = "ttm-pool-drain retired via Control Room proposal 20260918T075403Z-retire-ttm-pool-drain-9a5165; the deployed copy waits for bin/deploy --prune."
+
+[[runtime_only]]
+path  = "ttm-pool-drain.service"
+tree  = "systemd"
+since = "2026-09-18"
+why   = "ttm-pool-drain retired via Control Room proposal 20260918T075403Z-retire-ttm-pool-drain-9a5165; the deployed copy waits for bin/deploy --prune."

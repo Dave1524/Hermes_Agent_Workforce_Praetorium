@@ -1,3 +1,5 @@
+> RETIRED 2026-09-18 — Control Room proposal 20260918T075403Z-retire-ttm-pool-drain-9a5165; the workflow no longer exists. Kept as history for T5.4's evidence.
+
 # Contract: ttm-pool-drain
 
 Read on 2026-09-11 from `systemd/ttm-pool-drain.{service,timer}` and the unit's journal. The
