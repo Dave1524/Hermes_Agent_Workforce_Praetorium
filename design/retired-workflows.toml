@@ -12,7 +12,7 @@ retired_on = "2026-09-18"
 reason = "Ollama is removed from the box (Dave, 2026-09-18); the TTM pool it drained after each model unload has read 0 MB on every tick and nothing loads GPU models any more"
 proposal = "20260918T075403Z-retire-ttm-pool-drain-9a5165"
 branch = "control-room/retire-ttm-pool-drain-20260918T075403Z"
-pr = ""
+pr = "https://github.com/Dave1524/Hermes_Agent_Workforce_Praetorium/pull/50"
 runners = []
 profiles = []
 contract = "design/archive/contracts/ttm-pool-drain.md"
@@ -20,7 +20,7 @@ suites = []
 env_override = ""
 run_markers = []
 artifact_retention = { receipts = "keep", notion = "keep", inbox = "keep", note = "The root-owned /usr/local/bin/ttm-pool-drain is removed by hand with the unit; qmd keeps its embedding model resident and the pool stayed at 0 MB for the two days measured" }
-residue_cleared_on = ""
+residue_cleared_on = "2026-09-18"
 env_removed_attested = false
 
 [[retired]]
@@ -32,7 +32,7 @@ retired_on = "2026-09-18"
 reason = "The local inference tier is retired with Ollama and Hermes (Dave, 2026-09-18): nothing local runs any more, so there is no model to score"
 proposal = "20260918T080741Z-retire-local-tier-eval-d15791"
 branch = "control-room/retire-local-tier-eval-20260918T080741Z"
-pr = ""
+pr = "https://github.com/Dave1524/Hermes_Agent_Workforce_Praetorium/pull/51"
 runners = []
 profiles = []
 contract = "design/archive/contracts/local-tier-eval.md"
@@ -40,5 +40,5 @@ suites = ["tests/test_local_tier_eval_score.sh"]
 env_override = ""
 run_markers = []
 artifact_retention = { receipts = "keep", notion = "keep", inbox = "keep", note = "Scorecards and history.psv under ~/logs/local-tier-eval are archived to ~/OUTBOX/local-tier-eval-logs-retired-2026-09-18.tgz" }
-residue_cleared_on = ""
+residue_cleared_on = "2026-09-18"
 env_removed_attested = false
