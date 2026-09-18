@@ -39,6 +39,9 @@ Environment="BUZZ_ACP_MAX_TURNS_PER_SESSION=50"
 # is a property of that harness, not of this line. Here rather than on ExecStart for the
 # same reason as the vars above.
 Environment="CLAUDE_CODE_EXECUTABLE=%h/.config/buzz-team/claude-agent-wrapper.sh"
+# The wrapper selects this agent's rendered settings file and owner skill tree by name
+# (S1 capability isolation, 2026-09-18). %i is the only place the unit knows its agent.
+Environment="BUZZ_AGENT_NAME=%i"
 
 ExecStart=%h/.config/buzz-team/buzz-acp-launch.sh \
   --respond-to owner-only \
@@ -47,7 +50,7 @@ ExecStart=%h/.config/buzz-team/buzz-acp-launch.sh \
   --config %h/.config/buzz-team/%i.toml \
   --heartbeat-prompt-file %h/.config/buzz-team/heartbeat.prompt \
   --idle-timeout 900 \
-  --mcp-command %h/.config/buzz-team/buzz-team-mcp.py \
+  --mcp-command %h/.config/buzz-team/buzz-team-mcp-%i \
   --system-prompt-file %h/.config/buzz-agents/%i.prompt
 Restart=on-failure
 RestartSec=5

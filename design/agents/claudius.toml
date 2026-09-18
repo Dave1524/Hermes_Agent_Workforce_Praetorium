@@ -12,9 +12,11 @@ present     = true
 governed_by = "buzz-team/claudius.toml"      # SOURCE. Deployed to ~/.config/buzz-team/claudius.toml by bin/deploy_buzz_team.sh; the box path is the destination (brief 7)
 admits      = ["owner", "praetorium", "marcus"]
 channels    = "all"
-tools       = ["claude-code-builtins", "mcp__qmd-mcp__*", "notion_* (7, via broker)", "brave_* (4, via brave-mcp.service)"]
-mcp         = ["qmd-mcp", "buzz-team-mcp", "brave-mcp"]
-notes       = "Undenied claude.ai connectors present here too — agent-model.md §6.1."
+tools        = "claude-code-builtins"                     # the builtin family; the per-tool cut is tools_deny (rendered into agent-settings-<name>.json)
+tools_deny   = []# builtins withheld from this session; [] = the whole family
+bridge_tools = ["qmd", "notion", "brave"]# families the bridge shim advertises: qmd (4), notion (7, via broker), brave (4, via brave-mcp.service)
+mcp          = ["buzz-team-mcp"]# the ONE MCP server a session loads (--strict-mcp-config); qmd and brave sit behind it as mcp__buzz-team-mcp-<name>__*
+notes       = "Isolated like marcus (2026-09-18): the wrapper flags, agent-settings-claudius.json and the buzz-team-mcp-claudius shim are rendered from this block — see marcus.toml and agent-model.md §6.1."
 
 # The six scheduled workflows do NOT share one tool set. This is the clearest case on
 # the box of a capability that exists per-workflow rather than per-agent.
@@ -151,7 +153,8 @@ contract = "design/contracts/buzz-interactive.md"   # ONE contract, five owners 
 rule1_exempt = "five units running byte-identical code share one set of obligations; five files would be five copies of one fact"
 status   = "standing"
 suite    = ["tests/test_buzz_interactive_harness.sh"]
-skills   = []
+skills   = ["investment-research", "meeting-prep", "prospect-research"]
+skills_mechanism = "acp-wrapper"
 in_repo  = true
 
 # Capability prohibitions. enforced = true means a mechanism blocks it today;

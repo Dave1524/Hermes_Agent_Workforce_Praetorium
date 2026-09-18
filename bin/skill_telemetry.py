@@ -29,7 +29,9 @@ DEFAULT_NAMESPACE = "praetorium-"
 SKILL_MD_PATHS = (
     re.compile(r"/08_skills/([^/]+)/SKILL\.md$"),
     re.compile(r"/skills/[^/]+/skills/([^/]+)/SKILL\.md$"),
+    re.compile(r"/skills/praetorium/([^/]+)/SKILL\.md$"),   # augustus: $CODEX_HOME/skills/praetorium -> the owner tree
 )
+SKILL_MD_IN_TEXT = re.compile(r"\S*/SKILL\.md\b")
 
 
 def parse_args(argv):
@@ -82,6 +84,12 @@ def skill_from_path(file_path):
         if match:
             return match.group(1)
     return None
+
+
+def skills_in_text(text):
+    """Every skill a shell command names by its SKILL.md path — the codex side has no Skill
+    tool, so a read is the model cat-ing the file."""
+    return {skill_from_path(m.group(0)) for m in SKILL_MD_IN_TEXT.finditer(text)} - {None}
 
 
 def unqualified(name, namespace_re):

@@ -82,9 +82,9 @@ asserts = [
   "contract-exempt-named",  # T4.5: every accepted exemption is printed by name, and named equals counted
   "logical-workflow-reconciled",  # T4.5: standing entries reconcile by logical_workflow — no duplicate unit, no dangling key, one contract per workflow
   "skills-declared",        # T3.2: every entry carries skills = [...], a list of distinct strings; [] is explicit
-  "skills-mechanism",       # T3.2: skills_mechanism is only "heading-extraction", over a profile that extracts owner-tree pointers
+  "skills-mechanism",       # T3.2: skills_mechanism is "heading-extraction" over a profile that extracts owner-tree pointers; S1 (2026-09-18): "acp-wrapper" over the Buzz wrapper's --plugin-dir selected by BUZZ_AGENT_NAME=%i, "codex-home" over the named CODEX_HOME symlink
   "skills-join",            # T3.2: sorted(skills) equals the offer the entry's mechanism delivers to the run
-  "skills-join-counted",    # T3.2: the join reports entries checked = manifest count, and heading-extraction count > 0
+  "skills-join-counted",    # T3.2: the join reports entries checked = manifest count, heading-extraction count > 0; S1: every interactive entry declares an S1 mechanism
   "guards-platform-only",   # T5.3f: guards sits only on surface = "platform" entries — an agent workflow's contract already says what its absence costs
   "one-sentence",           # T5.3f: every guards and every standing platform what is one plain sentence: non-empty, ends in a period, one line, no second sentence
 ]
@@ -263,7 +263,7 @@ forced it to; this is that test.
 path    = "tests/test_pointer_skills.sh"
 owner   = "fleet"
 asserts = [
-  "pointer-not-copy",           # every SKILL.md is a few lines naming its canonical vault path
+  "pointer-not-copy",           # every SKILL.md body is a few lines naming its canonical vault path
   "pointer-names-match",        # front-matter name == directory == the path segment in the body
   "plugin-manifest-valid",      # each owner tree is a plugin named praetorium-<owner>
   "skills-nested-under-skills", # no skill at a plugin root, which --plugin-dir silently ignores
@@ -274,6 +274,7 @@ asserts = [
   "runner-join-counted",        # the manifest join reports its size, so a parse matching nothing is red
   "drift-covers-skills",        # skills is in bin/deploy PATHS and in CONTENT_TREES, read from both
   "pointer-target-exists",      # box-gated: every named vault path resolves (existence only, never read)
+  "pointer-description-synced", # box-gated: each description is the canonical frontmatter's, verbatim
 ]
 
 # T3.3: the transcript extractor behind the three cost.log keys (skills, skills_offered,
@@ -681,10 +682,33 @@ asserts = [
   "bridge-brave-allowlist",          # a Brave tool the fleet is not offered is refused at the bridge and never reaches the daemon
   "bridge-brave-daemon-down",        # nothing listening: tools still advertised (static schema, said on stderr), the call fails naming the daemon, qmd and Notion keep answering
   "bridge-brave-session-recovery",   # the daemon restarted (404): the bridge re-initialises once and the call succeeds
+  "bridge-tools-filter",             # a shim's --agent/--tools: the list carries only the named families, a call outside them is one tool error naming agent and families, serverInfo is buzz-team-mcp-<agent>
+  "bridge-tools-unknown-family",     # a family the bridge does not know exits 2 naming it, never an empty advertisement
 ]
 why_no_workflow = """
-It tests the one stdio MCP bridge all five buzz-agent@* units spawn, over a stub qmd and a
-stub Brave daemon. The bridge belongs to the fleet, not to a workflow.
+It tests the one stdio MCP bridge all five buzz-agent@* units spawn — through the per-agent
+shims since 2026-09-18 — over a stub qmd and a stub Brave daemon. The bridge belongs to the
+fleet, not to a workflow.
+"""
+
+[[suite]]
+path    = "tests/test_fleet_capabilities.sh"
+owner   = "fleet"
+asserts = [
+  "render-matches-committed",        # bin/fleet_capabilities.py check is clean: every shim and settings file is what its manifest renders, proven first to bite on a hand edit
+  "settings-per-agent-superset",     # each agent-settings-<name>.json is the base plus EXACTLY its manifest's tools_deny and withheld bridge families, hooks untouched — joined without the renderer in the loop
+  "wrapper-flags-after-args",        # the wrapper's four flags come after "$@", where the adapter's --setting-sources would otherwise win
+  "wrapper-strict-and-sources",      # --strict-mcp-config, --setting-sources= (empty), --settings and --plugin-dir selected by BUZZ_AGENT_NAME, both proved readable first; the unit sets %i and names the shim
+  "shim-per-agent",                  # one executable shim per manifest exec'ing --agent <name> --tools <its families>, every artefact adopted in MANIFEST.toml, no codex settings file, no orphan shim
+  "bridge-filter-matches-manifest",  # each shim spawned as the harness spawns it: tools/list is its manifest's families and a call into a withheld family is refused by the bridge itself
+  "aurelian-deny-as-declared",       # aurelian: Edit/Write/NotebookEdit and the seven notion_* denied under his namespace; Bash/Read/Glob/Grep stay; no other Claude agent withholds a builtin
+  "connector-deny-complete",         # every claude.ai connector the account exposes (a MEASURED fixture, both directions) is denied in the base
+]
+why_no_workflow = """
+S1 capability isolation is fleet state — what each buzz-agent@* session is offered — and it
+is scheduled by nothing. This suite reads SOURCE (manifests, rendered artefacts, wrapper,
+unit) and runs anywhere; tests/test_fleet_guards.sh reads the deployed copies and
+buzz-team/verify-fleet.sh gates 14 and 15 read the live processes.
 """
 
 [[suite]]
@@ -694,6 +718,8 @@ asserts = [
   "interaction-send-is-artifact",             # a buzz messages send whose result was accepted is the artifact, nostr:event:<id>, under the agent's unit
   "interaction-silence-is-decline",           # no send is a decline whose reason says the transcript cannot tell silence from a reply that never published
   "interaction-heartbeat-no-receipt",         # a heartbeat prompt is not a turn: nothing written, one log line, in both harnesses
+  "interaction-skills-from-transcript",       # S1 skill telemetry: offered = the session's skill_listing in the praetorium namespace; invoked/read = THIS turn's Skill and SKILL.md Read tool uses, never an earlier turn's; measured-empty when the transcript lists nothing
+  "codex-notify-skills-from-rollout",         # the codex side: offered = the developer <skills_instructions> listing, namespace-filtered; read = every SKILL.md a command in the turn names (through the $CODEX_HOME/skills/praetorium link or the vault); invoked is always empty — no Skill tool
   "interaction-usage-summed",                 # Claude usage is the sum over the turn's assistant messages, counted once per message id
   "interaction-send-is-a-command",            # the send must sit in command position; a grep or echo naming the string is not a send
   "interaction-never-blocks-stop",            # malformed stdin, missing transcript, no unit, unwritable root: exit 0, empty stdout, one log line

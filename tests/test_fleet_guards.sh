@@ -64,7 +64,20 @@ denied_in_strict() { jq -e --arg f "$1" '.permissions.deny | index($f)' "$STRICT
 # dies "too many arguments", which is a suite bug wearing a failing assertion's clothes.
 is_empty() { [ -z "${!1}" ]; }
 lists_line() { printf '%s\n' "${!1}" | grep -qx "$2"; }
-wrapper_execs_strict_settings() { grep -q '^exec .*--settings .*agent-settings\.json' "$WRAPPER"; }
+# Since 2026-09-18 the wrapper selects agent-settings-$BUZZ_AGENT_NAME.json (rendered per agent
+# over the base) and passes it after "$@"; the exec spans continuation lines.
+wrapper_execs_strict_settings() {
+  grep -q '^SETTINGS="$HOME/.config/buzz-team/agent-settings-$BUZZ_AGENT_NAME.json"$' "$WRAPPER" \
+    && sed -n '/^exec /,/[^\\]$/p' "$WRAPPER" | tr -d '\\\n' | grep -q '"$@" .*--settings "$SETTINGS"'
+}
+# Every deployed per-agent settings file — the files a `claude` child actually reads.
+agent_settings_files() { ls "$HOME"/.config/buzz-team/agent-settings-*.json 2>/dev/null; }
+denied_in_every_agent_file() {
+  local f
+  for f in $(agent_settings_files); do
+    jq -e --arg t "$1" '.permissions.deny | index($t)' "$f" >/dev/null || return 1
+  done
+}
 codex_acp_tmpfs_over_ssh() { grep -qF -- '--tmpfs "$HOME/.ssh"' "$CODEX_ACP"; }
 augustus_runs_codex_harness() { grep -qF 'Environment="BUZZ_ACP_AGENT_COMMAND=/usr/local/bin/codex-acp"' "$AUGUSTUS_DROPIN"; }
 propose_scopes_violations() { grep -qF "grep -v \"^_inbox/agents/\"" "$PROPOSE"; }
@@ -76,8 +89,16 @@ echo '--- outward connectors are denied for agent sessions (::connector-deny) --
 # ignored — configured-looking and inert.
 assert 'the strict settings file exists' "[ -f '$STRICT_SETTINGS' ]"
 assert 'the strict settings file is valid JSON' "jq -e . '$STRICT_SETTINGS' >/dev/null"
-for family in mcp__claude_ai_Gmail mcp__claude_ai_Microsoft_365 mcp__claude_ai_Google_Drive mcp__claude_ai_Figma; do
+for family in mcp__claude_ai_Gmail mcp__claude_ai_Microsoft_365 mcp__claude_ai_Google_Drive mcp__claude_ai_Figma mcp__claude_ai_Eden mcp__claude_ai_Claude_Docs; do
   assert "$family is denied for agent sessions" "denied_in_strict '$family'"
+done
+# The base is what the per-agent files are rendered over; no `claude` reads it directly since
+# 2026-09-18. The deny must be in every deployed agent-settings-<name>.json, and there must
+# be some — an empty glob would make the loop above vacuous.
+n_agent_files=$(agent_settings_files | grep -c .)
+assert "per-agent settings files are deployed (found $n_agent_files)" "[ '$n_agent_files' -ge 1 ]"
+for family in mcp__claude_ai_Gmail mcp__claude_ai_Eden mcp__claude_ai_Claude_Docs; do
+  assert "$family is denied in every deployed per-agent file" "denied_in_every_agent_file '$family'"
 done
 assert 'the agent wrapper exists' "[ -f '$WRAPPER' ]"
 # Without the exec bit the SDK reports "exists but failed to launch", which reads as a
@@ -133,6 +154,13 @@ PY
 )
 assert 'every deny in ~/.claude/settings.json is present in the strict file' "is_empty missing_denies"
 [ -n "$missing_denies" ] && echo "      missing from strict: $missing_denies"
+# And in every rendered per-agent file: the render is base + manifest denies, so a laxer
+# per-agent file means a hand edit or a stale deploy.
+missing_per_agent=$(for f in $(agent_settings_files); do
+  jq -r --slurpfile base "$STRICT_SETTINGS" '$base[0].permissions.deny - .permissions.deny | .[] | "\(input_filename | sub(".*/"; "")): \(.)"' "$f"
+done)
+assert 'every deny in the base is present in every deployed per-agent file' "is_empty missing_per_agent"
+[ -n "$missing_per_agent" ] && printf '%s\n' "$missing_per_agent" | sed 's/^/      /'
 
 echo '--- the vault main-push guard is installed in every vault clone (::vault-push-guard) ---'
 # Discover the clones; do not hardcode the two known paths. A hand-maintained whitelist is

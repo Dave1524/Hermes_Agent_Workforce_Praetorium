@@ -58,7 +58,7 @@ positions in a count, and a table that renumbers on retirement silently invalida
 
 | # | Surface | Runtime | Who runs here | Tool set | Governed by |
 |---|---|---|---|---|---|
-| **S1** | Buzz interactive | `claude-agent-acp` (marcus, claudius, trajan, aurelian); `codex-acp` in bwrap (augustus) | all five personas | Claude Code built-ins + `mcp__qmd-mcp__*` + 7 `notion_*` (broker) + 4 `brave_*` (bridge → `brave-mcp.service`, since 2026-09-18) + **whatever `~/.claude/settings.json` does not deny** | `buzz-team/<name>.toml` **(source, since 2026-09-03)** → `~/.config/buzz-team/<name>.toml` (who may wake whom); `~/.config/systemd/user/buzz-agent@.service` (flags); `~/.claude/settings.json` (`permissions.deny`) |
+| **S1** | Buzz interactive | `claude-agent-acp` (marcus, claudius, trajan, aurelian); `codex-acp` in bwrap (augustus) | all five personas | **Per agent since 2026-09-18 (S1 isolation):** the manifest's `[surfaces.interactive]` `tools` family minus `tools_deny`, plus the ONE MCP server `buzz-team-mcp-<name>` (the per-agent bridge shim: qmd's 4 + 7 `notion_*` + 4 `brave_*`, filtered to `bridge_tools`), plus the owner's pointer skills. Nothing of Dave's user scope — the Claude agents run `--strict-mcp-config --setting-sources=` and read only the rendered `agent-settings-<name>.json`; augustus's bridge is his shim and his skills the `$CODEX_HOME/skills/praetorium` link | `design/agents/<name>.toml` `[surfaces.interactive]` → `bin/fleet_capabilities.py render` → `buzz-team/agent-settings-<name>.json` + `buzz-team/buzz-team-mcp-<name>` (deployed to `~/.config/buzz-team/`); `buzz-team/claude-agent-wrapper.sh` (the flags); `systemd/user/buzz-agent@.service` (`BUZZ_AGENT_NAME=%i`, `--mcp-command …-%i`); `buzz-team/<name>.toml` (who may wake whom). Proven by `tests/test_fleet_capabilities.sh` (source), `tests/test_fleet_guards.sh` (deployed) and `verify-fleet.sh` gates 14/15 (live) |
 | **S2** | Scheduled headless CC | `claude -p` from `bin/run_*_cc.sh`, wrapped by `bin/agent_propose.sh` | nobody — the owner persona is *accountability*, the executor is anonymous | **no MCP** (`--strict-mcp-config --mcp-config '{"mcpServers":{}}'` — no connector tool exists in the session) plus the `agent_propose.sh` write boundary (proposal mode: anything outside `_inbox/agents/**` discards the whole worktree; ops mode has none). `--allowedTools` is enforced under `--permission-mode dontAsk` (T2.2, 2026-09-09): a tool not on the list is denied, not prompted. A bare `Bash` entry still permits any command the model writes, so Bash is not a sandbox; the write boundary is still the proposal-mode guard. | the wrapper script, one per workflow, in `bin/` |
 | ~~**S3**~~ | ~~Hermes kanban dispatch~~ — **RETIRED 2026-09-02 (D7)** | ~~`hermes-gateway` auto-dispatches `ready` cards every 60s~~; the gateway is disabled+stopped, the board is archived (`design/archive/hermes-kanban-board.md`), `bin/kanban_run_and_wait.sh` is deleted | ~~marcus, claudius, augustus, trajan~~ — nobody | ~~Hermes toolsets + a real skills index with a per-profile allowlist~~ | ~~`~/.hermes/profiles/<p>/config.yaml` and `bin/apply_skills_allowlist.sh` both survived the board~~; profiles deleted 2026-09-14 (T6.1) |
 | **S4** | Buzz-dispatched scheduled | `bin/run_content_via_buzz.sh` — a timer that triggers **S1** and waits | augustus only | inherits S1 entirely | `bin/buzz_routes.env` (destination, kind, who to wake) + the profile augustus is told to read |
@@ -157,11 +157,15 @@ Bash must be absent as a binary or caught by the write boundary.
 
 ### Skills are two mechanisms, and the bigger investment sits on the smaller surface
 
-- **S1 and S2 have no skill index.** `~/.claude/skills/` does not exist. The only
-  registered skills are the seven in the `shared@jbuitenhuis` plugin (`arch-audit`,
+- **S1 and S2 had no skill index until the pointer tree** (T3.1 for S2, 2026-09-11; S1
+  isolation for S1, 2026-09-18). Before that, `~/.claude/skills/` did not exist, the only
+  registered skills were the seven in the `shared@jbuitenhuis` plugin (`arch-audit`,
   `capture-learning`, `codex`, `ddd-design`, `quality-check`, `task-manage`,
-  `task-triage`). The vault's **32** `08_skills/*/SKILL.md` are markdown reachable by
-  path or qmd — an agent reads them, nothing offers them.
+  `task-triage`) — and, measured 2026-09-18, every S1 Claude session was loading exactly
+  that plugin plus Dave's `~/.claude/skills/{graft,synced}` from his user scope, while no
+  pointer reached any of the five. The vault's **32** `08_skills/*/SKILL.md` are markdown
+  reachable by path or qmd — an agent reads them, nothing offers them — except the 13
+  the pointer tree now offers, per owner, on both surfaces.
 - **The hermes profiles had a real skill index** — 148 `SKILL.md` under
   `~/.hermes/shared-skills/`, with `skills.external_dirs` + `skills.disabled` applied per
   profile; the measured per-profile counts (2026-09-01) and the disjointness of the two
@@ -195,13 +199,17 @@ Every `[[workflows]]` entry now carries `skills = [...]`, joined by
 the live tree at 33 of 33 entries: the pointer tree holds **13** skills; **7** are offered
 on at least one live entry — 6 by `--plugin-dir` across the 10 claudius and marcus
 scheduled entries, 1 by heading-extraction across augustus's 2 content triggers; **1 of
-13** (`linkedin-content-engine`) is named by any live profile; **6 reach nobody** —
+13** (`linkedin-content-engine`) is named by any live profile; **6 reached nobody** —
 trajan's 4 (every trajan workflow is `surface = "platform"`, no model to offer to) and
-augustus's `linkedin-review` and `blog-engine` (no profile extracts them). Those six are
+augustus's `linkedin-review` and `blog-engine` (no profile extracts them). Those six were
 recorded as `skills = []` on 16 trajan entries and as absent from augustus's lists, which
-is the honest state, not a gap to close by inventing a runner. What the join proves is
-*offer*, not *use*: whether a run ever opens a skill it is handed is unmeasured until
-T3.3's invocation telemetry.
+was the honest state of the scheduled surface, not a gap to close by inventing a runner.
+**Since 2026-09-18 they reach their owners on S1**: `buzz-agent@trajan` is offered
+trajan's 4 and `buzz-agent@augustus` augustus's 3 (`skills_mechanism = "acp-wrapper"` /
+`"codex-home"`, below), so every pointer is now offered to its owner on at least one
+surface; aurelian's entry stays `[]` by allocation. What the join proves is *offer*, not
+*use*: whether a run ever opens a skill it is handed is measured by T3.3's telemetry on
+S2 and, since the same date, by the `skills` block on every S1 interaction receipt.
 
 **Measured per run since 2026-09-11 (T3.3).** Each `agent_propose.sh` record in `cost.log`
 now carries `skills=` (the pointers the run invoked through the `Skill` tool or read as a
@@ -254,8 +262,21 @@ retired     = "2026-09-02"        # optional: the SURFACE is gone, not just this
                                   # means — aurelian's kanban block was already false while
                                   # the surface was live.
 governed_by = "path"              # the ONE file that decides the below
-tools       = [...]               # what it may call HERE
-mcp         = [...]               # MCP servers reachable HERE ([] = --strict-mcp-config)
+tools       = [...]               # what it may call HERE. Interactive blocks (S1, since
+                                  # 2026-09-18): a FAMILY string, "claude-code-builtins"
+                                  # or "codex-builtins", which must match `harness`
+tools_deny  = [...]               # interactive only: builtins withheld from the family —
+                                  # aurelian's ["Edit", "Write", "NotebookEdit"]; [] else
+bridge_tools = [...]              # interactive only: of qmd, notion, brave, the families
+                                  # the agent's bridge shim advertises. Both keys are the
+                                  # SOURCE bin/fleet_capabilities.py renders into
+                                  # buzz-team/agent-settings-<name>.json and
+                                  # buzz-team/buzz-team-mcp-<name>; `check` refuses a hand
+                                  # edit of either artefact
+mcp         = [...]               # MCP servers reachable HERE ([] = --strict-mcp-config);
+                                  # interactive: ["buzz-team-mcp"], the one server, whose
+                                  # live name is buzz-team-mcp-<name> (tools
+                                  # mcp__buzz-team-mcp-<name>__*)
 admits      = [...]               # interactive only: whose mentions this agent answers
 skills      = 25                  # kanban blocks only: the offered count of the hermes
                                   # PROFILE named by governed_by, measured. Outlives the
@@ -330,13 +351,21 @@ skills      = ["meeting-prep"]    # REQUIRED on every entry (T3.2): the pointer 
                                   # COUNT of the retired hermes profile's allowlist (§2), this
                                   # is a LIST of what this run is handed. Same word, two
                                   # concepts, different tables.
-skills_mechanism = "heading-extraction" # optional; the only value. How the offer reaches the
-                                  # run: absent = the runner's `--plugin-dir` (the offer is
-                                  # every pointer in that tree); "heading-extraction" = the
-                                  # profile's bin/skill_sections.sh calls (the offer is the
-                                  # 08_skills/<name>/SKILL.md paths they name). The field
-                                  # exists because the runner cannot say: augustus-content's
-                                  # runner is agent_propose.sh, which carries no --plugin-dir.
+skills_mechanism = "heading-extraction" # optional. How the offer reaches the run: absent =
+                                  # the runner's `--plugin-dir` (the offer is every pointer
+                                  # in that tree); "heading-extraction" = the profile's
+                                  # bin/skill_sections.sh calls (the offer is the
+                                  # 08_skills/<name>/SKILL.md paths they name);
+                                  # "acp-wrapper" = an S1 Claude agent: the deployed
+                                  # claude-agent-wrapper.sh passes --plugin-dir
+                                  # skills/$BUZZ_AGENT_NAME, and the join proves the unit
+                                  # sets BUZZ_AGENT_NAME=%i and the tree is the owner's;
+                                  # "codex-home" = augustus on S1: the offer is the owner
+                                  # tree through the $CODEX_HOME/skills/praetorium link
+                                  # the entry's notes name (hand-installed, asserted live by
+                                  # verify-fleet gate 15). The field exists because the
+                                  # runner cannot say: augustus-content's runner is
+                                  # agent_propose.sh, which carries no --plugin-dir.
 notes       = """..."""
 
 [[must_not]]                      # one block per prohibition

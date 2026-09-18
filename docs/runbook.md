@@ -676,6 +676,9 @@ one agent, confirm it is up, then move to the next; do not restart all five at o
 | Do the source route table and the live `TEAM.md` agree about event kinds? | `buzz-team/check-team-kinds.py` | `bin/verify.sh`, box-gated |
 | Does the box match the source? | `bin/check_deploy_drift.sh` (fifth tree) | `bin/verify.sh`, box-gated |
 | Are the five processes' *runtime* knobs what the design says — isolation flags from `/proc`, connector denies, secret-path containment? | `~/.config/buzz-team/verify-fleet.sh` | by hand; `~/CLAUDE.md` § Verification |
+| Does each agent's rendered capability set (settings file, shim, wrapper flags, aurelian's denies) still equal its manifest? | `tests/test_fleet_capabilities.sh` | `bin/verify.sh`, anywhere |
+| Is the deployed wrapper the strict one, and does every deployed per-agent settings file carry the base deny? | `tests/test_fleet_guards.sh` | `bin/verify.sh`, box-gated |
+| Is each live session wired to its own settings, skills and bridge shim, and does each shim offer exactly its manifest's families — from the host and, for augustus, inside his namespace? | `verify-fleet.sh` gates 14 and 15 | by hand |
 | Did the running process read the config, and do the credential halves match? | `~/.config/buzz-agents/check-loaded.sh` | by hand; reports `STALE` / `BADAUTH` |
 | Can an agent actually **complete a turn**? | `fleet-turn-check.service` | hourly, on the box |
 
@@ -683,6 +686,69 @@ The split is not arbitrary. Rows 1–3 are decidable from a checkout, so they be
 gate. Rows 4–5 need live `/proc`, a live relay and the deny-listed tree — running them from a
 gate would make a PR red for box state rather than for the diff. Row 6 costs a real model
 turn. Adoption made the code reviewable; it did not make the runtime assertable.
+
+### Capability isolation — per-agent skills and tools (2026-09-18)
+
+Until 2026-09-18 every Claude agent's `claude` child ran with the adapter's own
+`--setting-sources user,project,local` and no `--strict-mcp-config`, so a session loaded
+**Dave's** user scope: his MCP servers (`brave-search` with his key in the child's env,
+`graft`, `google-docs`, `qmd`, the project-scoped `HA` — the agents' cwd is `~`), the
+`shared@jbuitenhuis` plugin's `context7` / `linear`, his `~/.claude/skills/`, and every
+claude.ai connector the five-name deny did not name — Eden's `publish_post_now` included.
+None of the five was offered a pointer skill. Measured on the live cgroups: 15 MCP servers,
+78 tools and 63,912 prompt tokens per request before; the bridge only, 45 tools (aurelian
+33) and 34,593 after.
+
+**One source, one renderer.** `design/agents/<name>.toml` declares it —
+`[surfaces.interactive]` `tools` (the builtin family), `tools_deny`, `bridge_tools`
+(`qmd` / `notion` / `brave`), `mcp = ["buzz-team-mcp"]`, and the `buzz-agent@<name>`
+workflow entry's `skills` + `skills_mechanism` (`acp-wrapper` or `codex-home`). From that
+`bin/fleet_capabilities.py render` writes, and `check` proves committed == rendered:
+
+- `buzz-team/agent-settings-<name>.json` (four, Claude harness only) = the base
+  `agent-settings.json` (connector deny + the Stop receipt hook) ∪ `tools_deny` ∪ the tool
+  names of every bridge family the agent is *not* given, under his own namespace.
+- `buzz-team/buzz-team-mcp-<name>` (five), a two-line shim that execs
+  `buzz-team-mcp.py --agent <name> --tools <families>`. The unit passes `--mcp-command
+  %h/.config/buzz-team/buzz-team-mcp-%i`, because buzz-acp hands the server `args: []` and a
+  fixed env and codex sanitises the env to `BUZZ_* HOME LANG LOGNAME PATH SHELL USER` — the
+  command *path* is the only seam both harnesses carry through. The server name is the
+  file stem, so tools are `mcp__buzz-team-mcp-<name>__*`; `--tools` filters `tools/list`
+  and refuses a `tools/call` outside the set. Policy is still the broker's — the filter is
+  what the *harness* offers, not what a shell talking to the socket could do.
+
+**The Claude side is enforced by `buzz-team/claude-agent-wrapper.sh`**, which appends,
+*after* `"$@"` so it wins the adapter's single-value flags: `--strict-mcp-config`
+(only the adapter's `--mcp-config`, i.e. the bridge), `--setting-sources=` (nothing of
+Dave's — `project,local` would not do: with cwd `~` the project settings file *is*
+`~/.claude/settings.json`), `--settings ~/.config/buzz-team/agent-settings-$BUZZ_AGENT_NAME.json`
+and `--plugin-dir ~/agent-workforce/skills/$BUZZ_AGENT_NAME`, behind the runners'
+readability guard (a missing plugin dir is silent otherwise). The unit sets
+`BUZZ_AGENT_NAME=%i`; the wrapper refuses to exec without it or without its two files.
+`~/CLAUDE.md` and the shared auto-memory pool still load — they are not settings.
+
+**Augustus (codex-acp)** gets his skills through
+`~/.config/codex-agents/augustus/skills/praetorium -> ~/agent-workforce/skills/augustus/skills`,
+a symlink codex follows (rendered `praetorium-augustus:<name>`), hand-installed like a unit
+and asserted live by gate 15. There is no `--settings` on that harness; his tool set is the
+shim's filter plus codex's own sandbox.
+
+**Aurelian is enforced as declared:** `Edit`, `Write`, `NotebookEdit` and the seven
+`notion_*` are denied in his settings file, `Bash` stays; the two `enforced = true`
+must-nots in his manifest name `tests/test_fleet_capabilities.sh::aurelian-deny-as-declared`
+and `::bridge-filter-matches-manifest`.
+
+**Offer is measured per turn.** Every interaction receipt carries a `skills` block
+(`offered` / `invoked` / `read`, `measured` or `unavailable`): from the transcript's skill
+listing and `Skill` / `Read` calls on Claude, from the rollout's `<skills_instructions>`
+message and shell commands naming a `SKILL.md` on codex. `bin/scorecard.sh` folds it into
+the T3.3 table beside the S2 `cost.log` figures, so "offered but never read" is answerable
+per surface.
+
+The loop for a change here is the S1 loop above with one step in front: edit the manifest,
+`bin/fleet_capabilities.py render`, then `bin/deploy_buzz_team.sh`, restart the agent, and
+`verify-fleet.sh`. A change to the vault's skill `description` is
+`bin/pointer_skills_sync.py render` then `bin/deploy` — see `skills/README.md`.
 
 ### Three failures that are silent by construction
 

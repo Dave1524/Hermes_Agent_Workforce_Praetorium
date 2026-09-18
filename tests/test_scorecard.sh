@@ -20,10 +20,14 @@ assert() {
 
 assert "a found pattern is never reported as a failure" "yes | grep -q y"
 
+# SCORECARD_RECEIPTS defaults to the box's live receipt tree; every scenario points it at a
+# directory of its own (RECEIPTS, empty unless a scenario fills it) so the digest under test
+# never reads real turns.
+RECEIPTS="${RECEIPTS:-$TD/receipts-none}"
 sc() {
   local cost=$1 approvals=$2 digest=$3
   SCORECARD_PUSH=0 SCORECARD_WORKTREE="$TD/nonexistent" SCORECARD_LOCK="$TD/lock" \
-    SCORECARD_COST_LOG="$cost" SCORECARD_APPROVALS="$approvals" \
+    SCORECARD_COST_LOG="$cost" SCORECARD_APPROVALS="$approvals" SCORECARD_RECEIPTS="$RECEIPTS" \
     SCORECARD_METRICS_DIR="$(dirname "$digest")" SCORECARD_DIGEST="$digest" \
     bash "$SCRIPT" >/dev/null 2>&1
   echo $?
@@ -199,5 +203,32 @@ d12a="$TD/digest12a.md"; d12b="$TD/digest12b.md"
 sc "$c10" "$TD/none.tsv" "$d12a" >/dev/null
 sc "$c10" "$TD/none.tsv" "$d12b" >/dev/null
 assert "two runs byte-identical" "cmp -s '$d12a' '$d12b'"
+
+echo "--- scenario 13: S1 interaction receipts fold into the table as Buzz turns (2026-09-18) ---"
+# Four receipts: two measured turns in the window (one read weekly-review by Skill and by
+# Read, one offered only), one measured turn outside the window, one unavailable turn in the
+# window (counted as no evidence, names ignored). Turns, not events: one turn is one.
+R13="$TD/receipts13"; mkdir -p "$R13/buzz-agent@marcus" "$R13/buzz-agent@augustus"
+recent_z=$(date -u -d '1 day ago' +%Y-%m-%dT%H:%M:%SZ)
+receipt13() {  # dir file started skills-json
+  printf '{"schema_version":1,"workflow_id":"%s","run_id":"%s","vantage":"interaction","started_at":"%s","ended_at":"%s","terminal":{"outcome":"decline","reason":"x"},"usage":{"status":"unavailable"},"cost":{"status":"unavailable"},"skills":%s}\n' \
+    "$1" "$2" "$3" "$3" "$4" > "$R13/$1/$2.json"
+}
+receipt13 buzz-agent@marcus t1 "$recent_z" '{"status":"measured","source":"transcript","offered":["weekly-review","post-call-capture"],"invoked":["weekly-review"],"read":["weekly-review","meeting-prep"]}'
+receipt13 buzz-agent@marcus t2 "$recent_z" '{"status":"measured","source":"transcript","offered":["weekly-review","post-call-capture"],"invoked":[],"read":[]}'
+receipt13 buzz-agent@marcus t3 "2026-07-13T10:00:00Z" '{"status":"measured","source":"transcript","offered":["weekly-review"],"invoked":["weekly-review"],"read":[]}'
+receipt13 buzz-agent@augustus t4 "$recent_z" '{"status":"unavailable","source":null,"offered":[],"invoked":[],"read":[]}'
+d13="$TD/digest13.md"
+rc=$(RECEIPTS="$R13" sc "$c10" "$TD/none.tsv" "$d13")
+assert "exits 0" "[ '$rc' = 0 ]"
+assert "the table gains two Buzz columns" "grep -q '| Buzz turns that read it (7d) | Buzz turns offered it (7d) |' '$d13'"
+assert "weekly-review: no S2 record, 1 Buzz turn read (invoked or read is one), 2 offered" "grep -qF '| weekly-review | 0 | 0 | 0 | 0 | 1 | 2 |' '$d13'"
+assert "meeting-prep: S2 columns unchanged, 1 Buzz turn read, never offered on S1" "grep -qF '| meeting-prep | 1 | 2 | 2 | 3 | 1 | 0 |' '$d13'"
+assert "post-call-capture: offered on S1 only, shown" "grep -qF '| post-call-capture | 0 | 0 | 0 | 0 | 0 | 2 |' '$d13'"
+assert "the July turn is outside the window" "! grep -E '^\| weekly-review \|.*\| 2 \| 3 \|$' '$d13' | grep -q ."
+assert "the footnote counts 3 turns in the window, 1 with no evidence" "grep -qF '3 turn(s) in the window, 1 with no skill evidence' '$d13'"
+d13b="$TD/digest13b.md"
+RECEIPTS="$R13" sc "$c1" "$TD/none.tsv" "$d13b" >/dev/null
+assert "receipts alone (legacy cost.log) still render the table, not the placeholder" "grep -qF '| weekly-review | 0 | 0 | 0 | 0 | 1 | 2 |' '$d13b' && ! grep -q 'No skill telemetry recorded yet' '$d13b'"
 
 exit $fail

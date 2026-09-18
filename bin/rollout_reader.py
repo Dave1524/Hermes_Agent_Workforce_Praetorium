@@ -23,11 +23,19 @@ from __future__ import annotations
 
 import json
 import pathlib
+import re
 import time
 from typing import Any
 
 import interaction_turn
 import skill_telemetry
+import workflow_receipt
+
+# Codex lists what it offers in a developer message: `- <name>: <description> (file: ...)`
+# under `### Available skills`. A pointer tree mounted at $CODEX_HOME/skills/praetorium
+# renders as praetorium-<owner>:<name>, which is the namespace cost.log already filters on.
+SKILL_LINE = re.compile(r"^- (\S+): ", re.MULTILINE)
+NAMESPACE_RE = skill_telemetry.parse_args(["-", "--namespace", skill_telemetry.DEFAULT_NAMESPACE])[1]
 
 RETRIES = 3
 RETRY_PAUSE_SECONDS = 1.0
@@ -183,4 +191,29 @@ def read(codex_home: pathlib.Path, thread_id: str, turn_id: str) -> interaction_
         if record.get("type") == "event_msg" and payload.get("type") == "user_message" and isinstance(payload.get("message"), str):
             turn.prompt = payload["message"]
             break
+    turn.skills = _skills(records, span)
     return turn
+
+
+def _offered(records: list[dict[str, Any]]) -> set[str]:
+    offered: set[str] = set()
+    for record in records:
+        payload = _payload(record)
+        if record.get("type") != "response_item" or payload.get("role") != "developer":
+            continue
+        for block in payload.get("content") or []:
+            text = block.get("text") if isinstance(block, dict) else None
+            if isinstance(text, str) and text.startswith("<skills_instructions>"):
+                offered.update(filter(None, (skill_telemetry.unqualified(n, NAMESPACE_RE) for n in SKILL_LINE.findall(text))))
+    return offered
+
+
+def _skills(records: list[dict[str, Any]], span: list[dict[str, Any]]) -> dict[str, Any]:
+    """Offered is the thread's developer listing; read is every SKILL.md a command in this
+    turn names. Codex has no Skill tool, so invoked is always empty here."""
+    read: set[str] = set()
+    for record in span:
+        command = _command_of(_payload(record))
+        if command:
+            read.update(skill_telemetry.skills_in_text(command))
+    return workflow_receipt.measured_skills(_offered(records), set(), read, "rollout")

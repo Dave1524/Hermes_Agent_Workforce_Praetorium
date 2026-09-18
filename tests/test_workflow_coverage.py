@@ -195,7 +195,14 @@ PLUGIN_DIR = re.compile(r"--plugin-dir\s+(\S+)")
 # from, which bin/check_deploy_drift.sh holds equal.
 DEPLOYED_PREFIXES = ("$HOME/agent-workforce/", "~/agent-workforce/")
 VAULT_SKILL = re.compile(r"08_skills/([A-Za-z0-9_-]+)/SKILL\.md")
-SKILLS_MECHANISMS = ("heading-extraction",)
+SKILLS_MECHANISMS = ("heading-extraction", "acp-wrapper", "codex-home")
+# S1 (T-S1 isolation, 2026-09-18): the Claude agents get their owner tree from the wrapper's
+# --plugin-dir, whose path is selected by BUZZ_AGENT_NAME (= the unit's %i); augustus gets
+# the same tree through a symlink in his CODEX_HOME. The join reads the declared default
+# with the owner substituted for the name, exactly as the runner join reads a runner.
+ACP_WRAPPER = "buzz-team/claude-agent-wrapper.sh"
+ACP_UNIT = "systemd/user/buzz-agent@.service"
+CODEX_SKILLS_LINK = "~/.config/codex-agents/augustus/skills/praetorium"
 
 
 def repo_path(raw):
@@ -469,24 +476,77 @@ def heading_extraction_offer(owner, w):
     return names
 
 
+def acp_wrapper_offer(owner, w):
+    """The tree the wrapper's --plugin-dir resolves to with BUZZ_AGENT_NAME = owner. The
+    unit must set that name from %i, or the wrapper refuses to start and offers nothing."""
+    unit = w.get("unit")
+    unit_lines = uncommented_lines(ROOT / ACP_UNIT)
+    if not any(line.startswith('Environment="BUZZ_AGENT_NAME=%i"') for line in unit_lines):
+        problem("skills-mechanism",
+                f"{unit} ({owner}): {ACP_UNIT} does not set BUZZ_AGENT_NAME=%i, so the wrapper "
+                "cannot select this owner's tree")
+        return []
+    wrapper = ROOT / ACP_WRAPPER
+    lines = uncommented_lines(wrapper)
+    assigns = {k: v.replace("$BUZZ_AGENT_NAME", owner) for k, v in shell_assigns(lines).items()}
+    tree = None
+    for stripped in lines:
+        pm = PLUGIN_DIR.search(stripped)
+        if pm:
+            tree = repo_path(resolve_token(pm.group(1), assigns))
+    if tree is None:
+        problem("skills-mechanism", f"{unit} ({owner}): {ACP_WRAPPER} passes no --plugin-dir")
+        return []
+    if tree != ROOT / "skills" / owner:
+        problem("skills-mechanism",
+                f"{unit} ({owner}): {ACP_WRAPPER} offers {tree}, not skills/{owner}")
+    if not (tree / ".claude-plugin" / "plugin.json").is_file():
+        problem("skills-mechanism",
+                f"{unit} ({owner}): {tree} has no .claude-plugin/plugin.json — the wrapper's "
+                "guard refuses to start")
+        return []
+    return pointer_names(tree)
+
+
+def codex_home_offer(owner, w):
+    """augustus: the entry names the CODEX_HOME symlink in its notes; the tree it must
+    resolve to is the owner's. The live link is verify-fleet's to assert, not this join's."""
+    unit = w.get("unit")
+    if CODEX_SKILLS_LINK not in (w.get("notes") or ""):
+        problem("skills-mechanism",
+                f"{unit} ({owner}): codex-home names no {CODEX_SKILLS_LINK} in its notes")
+        return []
+    tree = ROOT / "skills" / owner
+    if not (tree / ".claude-plugin" / "plugin.json").is_file():
+        problem("skills-mechanism", f"{unit} ({owner}): skills/{owner} has no plugin manifest")
+        return []
+    return pointer_names(tree)
+
+
 def skills_offer(owner, w):
     mechanism = w.get("skills_mechanism")
     if mechanism is None:
         return pointer_names(plugin_dir_tree(runner_file(w.get("runner"))))
     if mechanism == "heading-extraction":
         return heading_extraction_offer(owner, w)
+    if mechanism == "acp-wrapper":
+        return acp_wrapper_offer(owner, w)
+    if mechanism == "codex-home":
+        return codex_home_offer(owner, w)
     problem("skills-mechanism",
             f"{w.get('unit')} ({owner}): skills_mechanism {mechanism!r} is not one of "
             f"{list(SKILLS_MECHANISMS)}")
     return []
 
 
-skills_checked, skills_he, skills_offered = 0, 0, 0
+skills_checked, skills_he, skills_s1, skills_offered = 0, 0, 0, 0
 for owner, w in entries:
     skills_checked += 1
     unit = w.get("unit")
     if w.get("skills_mechanism") == "heading-extraction":
         skills_he += 1
+    if w.get("skills_mechanism") in ("acp-wrapper", "codex-home"):
+        skills_s1 += 1
     offered = skills_offer(owner, w)
     if offered:
         skills_offered += 1
@@ -505,6 +565,11 @@ for owner, w in entries:
 if entries and skills_checked < len(entries):
     problem("skills-join-counted",
             f"checked {skills_checked} of {len(entries)} entries — the join skipped some")
+s1_entries = [w for _, w in entries if w.get("surface") == "interactive"]
+if s1_entries and skills_s1 < len(s1_entries):
+    problem("skills-join-counted",
+            f"{skills_s1} of {len(s1_entries)} interactive entries declare an S1 mechanism — "
+            "an interactive entry with no mechanism is offered nothing and must say so")
 
 # --- guards (T5.3f) -----------------------------------------------------------------------
 # `guards` is the one sentence a system workflow says about what its absence costs, and it
@@ -749,7 +814,8 @@ print(f"  standing reconciliation: {len(standing)} entries -> {len(logical_group
 print(f"  runner join: checked {runner_checked} of {len(entries)} entries, "
       f"{len(model_alias)} model-alias(es)")
 print(f"  skills join: checked {skills_checked} of {len(entries)} entries, "
-      f"{skills_he} heading-extraction, {skills_offered} with a non-empty offer")
+      f"{skills_he} heading-extraction, {skills_s1} S1 (acp-wrapper/codex-home), "
+      f"{skills_offered} with a non-empty offer")
 print(f"  guards: checked {guards_checked} of {len(entries)} entries, {guards_declared} declared")
 
 print("  exempt from needing a suite — named, never merely skipped:")
@@ -769,6 +835,6 @@ print(f"SUMMARY\tentries={len(entries)} standing={len(standing)} covered={len(co
       f"contract_missing={len(missing_contract_paths)} "
       f"standing_logical={len(logical_groups)} runner_checked={runner_checked} "
       f"model_alias={len(model_alias)} skills_checked={skills_checked} "
-      f"skills_he={skills_he} skills_offered={skills_offered}")
+      f"skills_he={skills_he} skills_s1={skills_s1} skills_offered={skills_offered}")
 for assertion, detail in problems:
     print(f"PROBLEM\t{assertion}\t{detail}")

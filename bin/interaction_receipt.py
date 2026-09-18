@@ -153,6 +153,7 @@ def build_receipt(unit: str, turn: interaction_turn.Turn) -> dict[str, Any]:
         "assertions": [],
         "usage": turn.usage or workflow_receipt.unavailable_usage(),
         "cost": workflow_receipt.unavailable_cost(),
+        "skills": turn.skills or workflow_receipt.unavailable_skills(),
         "next_action": {"actor": None, "action": None},
         "parent_run_id": None,
         "handoff": handoff_of(turn, agent),

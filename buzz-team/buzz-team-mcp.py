@@ -14,6 +14,7 @@ there, on the host side of the namespace.
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import socket
@@ -33,6 +34,13 @@ BRAVE_URL = os.environ.get("BUZZ_BRAVE_MCP_URL", "http://127.0.0.1:8766/mcp")
 # The daemon offers eight tools; these four are search. local/place need a Pro plan,
 # image/video are not this fleet's work.
 BRAVE_TOOLS = ("brave_web_search", "brave_news_search", "brave_llm_context", "brave_summarizer")
+# qmd's own tools, proxied from its tools/list; named here so a per-agent deny list can be
+# rendered for them (bin/fleet_capabilities.py) — the filter below treats every proxied
+# tool as this family, so a new qmd tool is filtered even before it is named here.
+QMD_TOOLS = ("query", "get", "multi_get", "status")
+# The three families a shim may advertise (`--tools qmd,notion,brave`). A manifest's
+# bridge_tools names families, never tools; the tool names are this file's.
+FAMILIES = ("qmd", "notion", "brave")
 BRAVE_RULE = (
     "Web: brave_web_search, brave_news_search, brave_llm_context (grounding snippets) and "
     "brave_summarizer, via brave-mcp.service. A query string LEAVES the box (Brave Software, "
@@ -175,6 +183,7 @@ NOTION_TOOLS: list[dict[str, Any]] = [
         "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
     },
 ]
+NOTION_NAMES = [tool["name"] for tool in NOTION_TOOLS]
 
 
 def emit(message: dict[str, Any]) -> None:
@@ -339,10 +348,55 @@ class QmdProxy:
             self.process.terminate()
 
 
-def main() -> int:
+def family_of(name: str) -> str:
+    if name in NOTION_NAMES:
+        return "notion"
+    if name.startswith("brave_"):
+        return "brave"
+    return "qmd"
+
+
+def family_tools(family: str) -> tuple[str, ...]:
+    """The tool names a family denies when a shim leaves it out — one owner for the
+    renderer's deny list and the filter's refusal."""
+    if family == "notion":
+        return tuple(NOTION_NAMES)
+    if family == "brave":
+        return BRAVE_TOOLS
+    return QMD_TOOLS
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--agent", default=None,
+                        help="the buzz-agent this bridge serves; goes into serverInfo (the shim passes it)")
+    parser.add_argument("--tools", default=",".join(FAMILIES),
+                        help="comma-separated families to advertise, of qmd,notion,brave (default: all)")
+    args = parser.parse_args(argv)
+    args.families = tuple(f for f in args.tools.split(",") if f)
+    unknown = [f for f in args.families if f not in FAMILIES]
+    if unknown:
+        parser.error(f"--tools names no family: {', '.join(unknown)} (families: {', '.join(FAMILIES)})")
+    return args
+
+
+def instructions_for(families: tuple[str, ...], qmd_text: str) -> str:
+    text = qmd_text
+    if "notion" in families:
+        text += ("\n\nNotion: use notion_search, notion_fetch, and notion_query_data_source for "
+                 "content shared with the dedicated Buzz integration. Write only when Dave's "
+                 "request and your charter permit it.")
+    if "brave" in families:
+        text += "\n\n" + BRAVE_RULE
+    return text
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(sys.argv[1:] if argv is None else argv)
+    families = args.families
+    server_name = f"buzz-team-mcp-{args.agent}" if args.agent else "praetorium-buzz"
     qmd = QmdProxy()
     brave = BraveProxy(BRAVE_URL)
-    notion_names = {tool["name"] for tool in NOTION_TOOLS}
     try:
         for line in sys.stdin:
             try:
@@ -358,36 +412,39 @@ def main() -> int:
                     response = qmd.request(request)
                     if "result" in response:
                         result = response["result"]
-                        result["serverInfo"] = {"name": "praetorium-buzz", "version": "1.1.0"}
-                        result["instructions"] = (
-                            result.get("instructions", "")
-                            + "\n\nNotion: use notion_search, notion_fetch, and "
-                            "notion_query_data_source for content shared with the dedicated "
-                            "Buzz integration. Write only when Dave's request and your charter permit it."
-                            + "\n\n" + BRAVE_RULE
-                        )
+                        result["serverInfo"] = {"name": server_name, "version": "1.2.0"}
+                        result["instructions"] = instructions_for(families, result.get("instructions", ""))
                     emit(response)
                     continue
 
                 if method == "tools/list":
                     response = qmd.request(request)
                     if "result" in response:
-                        response["result"].setdefault("tools", []).extend(NOTION_TOOLS)
-                        response["result"]["tools"].extend(brave.tools())
+                        tools = response["result"].setdefault("tools", [])
+                        if "notion" in families:
+                            tools.extend(NOTION_TOOLS)
+                        if "brave" in families:
+                            tools.extend(brave.tools())
+                        response["result"]["tools"] = [t for t in tools if family_of(t["name"]) in families]
                     emit(response)
                     continue
 
                 if method == "tools/call":
                     params = request.get("params") or {}
                     name = params.get("name", "")
-                    if name in notion_names:
+                    family = family_of(name)
+                    if family not in families:
+                        emit({"jsonrpc": "2.0", "id": request_id, "result": tool_result(
+                            f"{name} is not offered to {args.agent or 'this agent'} — the bridge "
+                            f"advertises {', '.join(families)} only", is_error=True)})
+                    elif family == "notion":
                         try:
                             value = notion_tool(name, params.get("arguments") or {})
                             result = tool_result(value)
                         except Exception as exc:
                             result = tool_result(str(exc), is_error=True)
                         emit({"jsonrpc": "2.0", "id": request_id, "result": result})
-                    elif name.startswith("brave_"):
+                    elif family == "brave":
                         try:
                             result = brave.call(name, params.get("arguments") or {})
                         except Exception as exc:

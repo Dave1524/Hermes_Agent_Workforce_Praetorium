@@ -76,6 +76,38 @@ proc_env() {
     "/proc/$1/environ" 2>/dev/null
 }
 
+# One argv value out of a live process, by the flag before it (LAST occurrence, which is
+# the one a single-value option honours). /proc/<pid>/cmdline is never printed whole:
+# buzz-acp's carries the agent's private key, and claude's carries it again inside
+# --mcp-config.
+proc_arg_after() {
+  awk -v flag="$2" 'BEGIN{RS="\0"} prev == flag { val = $0 } { prev = $0 } END { print val }' \
+    "/proc/$1/cmdline" 2>/dev/null
+}
+proc_has_arg() {
+  awk -v want="$2" 'BEGIN{RS="\0"; found=1} $0 == want { found=0 } END { exit found }' \
+    "/proc/$1/cmdline" 2>/dev/null
+}
+# The last --setting-sources argument in either spelling the CLI accepts, normalised to the
+# `=` form. The adapter passes --setting-sources=user,project,local; the wrapper's
+# --setting-sources= comes after it and must be what survives.
+proc_last_setting_sources() {
+  awk 'BEGIN{RS="\0"} $0 ~ /^--setting-sources=/ { last = $0 }
+       prev == "--setting-sources" { last = "--setting-sources=" $0 } { prev = $0 }
+       END { print last }' "/proc/$1/cmdline" 2>/dev/null
+}
+# The claude session processes of a unit: only the SDK's own child carries
+# --permission-prompt-tool. There is none between turns, so a caller must treat an empty
+# result as "nothing to read", never as proof.
+session_pids() {
+  local cg pid
+  cg=$(systemctl --user show "buzz-agent@$1" -p ControlGroup --value)
+  [ -n "$cg" ] || return 0
+  while read -r pid; do
+    proc_has_arg "$pid" --permission-prompt-tool && printf '%s\n' "$pid"
+  done <"/sys/fs/cgroup$cg/cgroup.procs"
+}
+
 unit_start_epoch() {
   local stamp
   stamp=$(systemctl --user show "buzz-agent@$1" -p ExecMainStartTimestamp --value)
@@ -401,6 +433,125 @@ assert_brave_mcp() {
   done
 }
 
+# S1 capability isolation (2026-09-18). The Claude agents' sessions are isolated by the
+# deployed wrapper — --strict-mcp-config --setting-sources= --settings <per-agent file>
+# --plugin-dir <owner tree>, all after "$@" — and the adapter reaches it through
+# CLAUDE_CODE_EXECUTABLE and BUZZ_AGENT_NAME in the unit's environment. Both halves are
+# read from /proc; the flags on a live claude child are read when there is one, and a
+# turn is the only time there is one, so that part skips out loud between turns.
+WRAPPER="$TEAM_DIR/claude-agent-wrapper.sh"
+SKILLS_ROOT="$HOME/agent-workforce/skills"
+
+wrapper_exec_after_args() {
+  sed -n '/^exec /,/[^\\]$/p' "$WRAPPER" | tr -d '\\\n' | sed 's/.*"\$@"//'
+}
+
+assert_capability_isolation() {
+  local agent pid tail settings tree got spid child bad
+  tail=$(wrapper_exec_after_args)
+  for got in '--strict-mcp-config' '--setting-sources= ' '--settings "$SETTINGS"' '--plugin-dir "$SKILLS_DIR"'; do
+    case "$tail" in
+      *"$got"*) ok "14/wrapper carries $got after \"\$@\"" ;;
+      *) fail "14/wrapper carries $got after \"\$@\"" ;;
+    esac
+  done
+  for agent in "${AGENTS[@]}"; do
+    [ "${EXPECT_HARNESS[$agent]}" = claude-agent-acp ] || continue
+    if ! is_running "$agent"; then
+      skip "14/isolation $agent (unit not running)"
+      continue
+    fi
+    pid=$(main_pid "$agent")
+    check "$WRAPPER" "$(proc_env "$pid" CLAUDE_CODE_EXECUTABLE)" "14/executable $agent"
+    check "$agent" "$(proc_env "$pid" BUZZ_AGENT_NAME)" "14/agent-name $agent"
+    settings="$TEAM_DIR/agent-settings-$agent.json"
+    tree="$SKILLS_ROOT/$agent"
+    if jq -e '.permissions.deny | length > 0' "$settings" >/dev/null 2>&1; then
+      ok "14/settings $agent ${settings#$HOME/}"
+    else
+      fail "14/settings $agent ${settings#$HOME/} (missing, unreadable or no deny list)"
+    fi
+    got=$(jq -r .name "$tree/.claude-plugin/plugin.json" 2>/dev/null)
+    check "praetorium-$agent" "$got" "14/skills $agent ${tree#$HOME/}"
+    spid=$(session_pids "$agent" | head -1)
+    if [ -z "$spid" ]; then
+      skip "14/session $agent (no claude child between turns — flags proven from the wrapper)"
+      continue
+    fi
+    proc_has_arg "$spid" --strict-mcp-config && ok "14/session $agent --strict-mcp-config" \
+      || fail "14/session $agent --strict-mcp-config"
+    check "--setting-sources=" "$(proc_last_setting_sources "$spid")" "14/session $agent --setting-sources"
+    check "$settings" "$(proc_arg_after "$spid" --settings)" "14/session $agent --settings"
+    check "$tree" "$(proc_arg_after "$spid" --plugin-dir)" "14/session $agent --plugin-dir"
+    # Every MCP-shaped child of the session is the bridge. Dave's user servers
+    # (brave-search, graft, google-docs, qmd) all carry "mcp" in their argv.
+    bad=""
+    for child in $(pgrep -P "$spid"); do
+      if tr '\0' '\n' <"/proc/$child/cmdline" 2>/dev/null | grep -qi mcp \
+         && ! proc_has_arg "$child" "$TEAM_DIR/buzz-team-mcp.py"; then
+        bad="$bad $child:$(cat "/proc/$child/comm" 2>/dev/null)"
+      fi
+    done
+    check "" "$bad" "14/session $agent no MCP child but the bridge"
+  done
+}
+
+# Every unit names its own bridge shim with --mcp-command; the shim declares the families it
+# advertises, and the deployed bridge must honour that where the harness spawns it: on the
+# host for the Claude agents, inside the bwrap namespace for augustus (gate 9/13 pattern —
+# the two ends can disagree). initialize + tools/list only; nothing is spent.
+assert_bridge_offer() {
+  local agent pid shim families codex_home link target first
+  for agent in "${AGENTS[@]}"; do
+    if ! is_running "$agent"; then
+      skip "15/bridge $agent (unit not running)"
+      continue
+    fi
+    pid=$(main_pid "$agent")
+    shim="$TEAM_DIR/buzz-team-mcp-$agent"
+    check "$shim" "$(proc_arg_after "$pid" --mcp-command)" "15/mcp-command $agent"
+    families=$(sed -n 's/.*--tools \([a-z,]*\).*/\1/p' "$shim" 2>/dev/null)
+    if [ -x "$shim" ] && [ -n "$families" ]; then
+      ok "15/shim $agent declares $families"
+    else
+      fail "15/shim $agent (${shim#$HOME/} missing, not executable, or declares no --tools)"
+      continue
+    fi
+    if python3 "$TEAM_DIR/bridge-probe.py" "$shim" --expect "$families" >/dev/null 2>&1; then
+      ok "15/offer $agent host advertises $families"
+    else
+      fail "15/offer $agent host advertises $families"
+    fi
+    [ "${EXPECT_HARNESS[$agent]}" = codex-acp ] || continue
+    if ! pid=$(sandbox_pid "$agent"); then
+      fail "15/offer $agent namespace (no contained process in the unit cgroup)"
+      continue
+    fi
+    # HOME=: sudo leaves root's, and the bridge finds qmd-mcp under ~ — the agent's own
+    # bridge inherits dave's HOME from codex's sanitised env, so the probe must too.
+    if sudo -n nsenter -t "$pid" -m -- \
+      setpriv --reuid "$(id -u)" --regid "$(id -g)" --init-groups \
+      /usr/bin/env HOME="$HOME" /usr/bin/python3 "$TEAM_DIR/bridge-probe.py" "$shim" --expect "$families" >/dev/null 2>&1; then
+      ok "15/offer $agent namespace advertises $families"
+    else
+      fail "15/offer $agent namespace advertises $families"
+    fi
+    # His skills: codex scans $CODEX_HOME/skills/, and the owner tree reaches it through a
+    # hand-installed symlink. Resolved on the host, then read through the link inside the
+    # namespace — the path the harness actually walks.
+    codex_home=$(proc_env "$(main_pid "$agent")" CODEX_HOME)
+    link="$codex_home/skills/praetorium"
+    target=$(readlink -f "$link" 2>/dev/null)
+    check "$SKILLS_ROOT/$agent/skills" "$target" "15/skills $agent ${link#$HOME/} resolves"
+    first=$(find "$link/" -mindepth 2 -maxdepth 2 -name SKILL.md 2>/dev/null | sort | head -1)
+    if [ -n "$first" ] && ns_reads "$pid" "$first"; then
+      ok "15/skills $agent namespace reads ${first#$HOME/}"
+    else
+      fail "15/skills $agent namespace reads a pointer through the link (${first:-none found})"
+    fi
+  done
+}
+
 assert_units_active
 assert_harness
 assert_team_instructions
@@ -414,6 +565,8 @@ assert_review_isolation
 assert_roster_complete
 assert_calibration_pack
 assert_brave_mcp
+assert_capability_isolation
+assert_bridge_offer
 
 printf '\n%s\n' "----------------------------------------"
 if [ "$failures" -eq 0 ]; then

@@ -250,6 +250,11 @@ skills_checked=$(sed -n 's/^  skills join: checked \([0-9]\{1,\}\) of .*/\1/p' "
 skills_of=$(sed -n 's/^  skills join: checked [0-9]\{1,\} of \([0-9]\{1,\}\) entries.*/\1/p' "$report")
 skills_he=$(sed -n 's/^  skills join: checked [0-9]\{1,\} of [0-9]\{1,\} entries, \([0-9]\{1,\}\) heading-extraction.*/\1/p' "$report")
 live_he=$(cat design/agents/*.toml | grep -c '^skills_mechanism *= *"heading-extraction"' || true)
+# S1 (2026-09-18): the five interactive entries carry acp-wrapper or codex-home; the count
+# the join reports must equal the manifests' own lines and equal the interactive entries.
+skills_s1=$(sed -n 's/^  skills join: checked [0-9]\{1,\} of [0-9]\{1,\} entries, [0-9]\{1,\} heading-extraction, \([0-9]\{1,\}\) S1.*/\1/p' "$report")
+live_s1=$(cat design/agents/*.toml | grep -c '^skills_mechanism *= *"\(acp-wrapper\|codex-home\)"$' || true)
+live_interactive=$(cat design/agents/*.toml | grep -c '^surface *= *"interactive"' || true)
 
 skills_join_checked_every_entry() {
   [ -n "$skills_checked" ] && [ "$skills_checked" = "$skills_of" ] \
@@ -257,7 +262,10 @@ skills_join_checked_every_entry() {
     && [ "$skills_checked" = "$live_entries" ] \
     && [ "$skills_checked" -gt 0 ] \
     && [ -n "$skills_he" ] && [ "$skills_he" = "$live_he" ] \
-    && [ "$skills_he" -gt 0 ]
+    && [ "$skills_he" -gt 0 ] \
+    && [ -n "$skills_s1" ] && [ "$skills_s1" = "$live_s1" ] \
+    && [ "$skills_s1" = "$live_interactive" ] \
+    && [ "$skills_s1" -gt 0 ]
 }
 
 # --- T3.2 negative controls ---------------------------------------------------------------
@@ -275,7 +283,7 @@ skills_fixture() {  # skills_fixture <name> <manifest> <unit> <sed-expr>
   local name=$1 manifest=$2 unit=$3 expr=$4
   local dir="$fx/skills-$name"
   mkdir -p "$dir"
-  cp -r design tests bin systemd skills profiles "$dir"/
+  cp -r design tests bin systemd skills profiles buzz-team "$dir"/
   if [ -n "$expr" ]; then
     sed -i "/^unit *= *\"$unit\"/,/^\[\[workflows\]\]/{$expr}" "$dir/design/agents/$manifest.toml"
   fi
@@ -289,13 +297,23 @@ fx_declared=$(skills_fixture declared claudius knowledge-digest '/^skills *= \[/
 fx_join=$(skills_fixture join claudius knowledge-digest 's/^skills *= \[.*\]/skills = ["meeting-prep"]/')
 fx_mechanism=$(skills_fixture mechanism trajan fleet-turn-check 's/^skills *= \[\]/skills = []\nskills_mechanism = "heading-extraction"/')
 fx_unreachable=$(skills_fixture unreachable trajan fleet-turn-check 's/^skills *= \[\]/skills = ["systematic-debugging"]/')
+# S1: an interactive entry stripped of its mechanism is offered nothing (its runner passes
+# no --plugin-dir), so the declared pointers fail the join AND the S1 count comes up short.
+fx_s1=$(skills_fixture s1 marcus buzz-agent@marcus '/^skills_mechanism *= *"acp-wrapper"/d')
+# S1: the wrapper without its --plugin-dir offers nothing to four entries at once.
+fx_s1_wrapper=$(skills_fixture s1-wrapper marcus buzz-agent@marcus '')
+sed -i '/--plugin-dir "\$SKILLS_DIR"/d' "$fx/skills-s1-wrapper/buzz-team/claude-agent-wrapper.sh"
+python3 "$fx/skills-s1-wrapper/tests/test_workflow_coverage.py" >"$fx/skills-s1-wrapper/report" 2>/dev/null
+fx_s1_wrapper=$(printf '%s:%s\n' \
+  "$(sed -n 's/^  skills join: checked \([0-9]\{1,\}\) of .*/\1/p' "$fx/skills-s1-wrapper/report")" \
+  "$(sed -n 's/^PROBLEM\t\(skills-[a-z-]*\)\t.*/\1/p' "$fx/skills-s1-wrapper/report" | sort -u | paste -sd,)")
 
 # T5.3f: the same shape for guards. Each result is `<entries checked>:<guards-*/one-sentence ids>`.
 guards_fixture() {  # guards_fixture <name> <manifest> <unit> <sed-expr>
   local name=$1 manifest=$2 unit=$3 expr=$4
   local dir="$fx/guards-$name"
   mkdir -p "$dir"
-  cp -r design tests bin systemd skills profiles "$dir"/
+  cp -r design tests bin systemd skills profiles buzz-team "$dir"/
   sed -i "/^unit *= *\"$unit\"/,/^\[\[workflows\]\]/{$expr}" "$dir/design/agents/$manifest.toml"
   python3 "$dir/tests/test_workflow_coverage.py" >"$dir/report" 2>/dev/null
   printf '%s:%s\n' \
@@ -359,10 +377,10 @@ assert 'and the reconciliation folds exactly the second triggers it names, so a 
 check skills-declared \
   'every entry carries skills = [...] as a list of distinct strings; an empty offer is written []'  # (::skills-declared)
 check skills-mechanism \
-  'skills_mechanism, when present, is heading-extraction over an in-repo profile that extracts pointers in the owner tree'  # (::skills-mechanism)
+  'skills_mechanism, when present, is heading-extraction over an in-repo profile that extracts pointers in the owner tree, acp-wrapper over the Buzz wrapper --plugin-dir selected by BUZZ_AGENT_NAME=%i, or codex-home over the named CODEX_HOME symlink'  # (::skills-mechanism)
 check skills-join \
   'every declared skills list equals the offer its mechanism delivers to the run'  # (::skills-join)
-assert 'the skills join checked every parsed entry and exercised the heading-extraction branch, so a skipped entry or a dead branch cannot pass as a clean run' \
+assert 'the skills join checked every parsed entry and exercised the heading-extraction and S1 branches (every interactive entry declares one), so a skipped entry or a dead branch cannot pass as a clean run' \
   skills_join_checked_every_entry  # (::skills-join-counted)
 assert 'fixture control: an unmutated copy of the checkout checks every entry and reports no skills-* problem' \
   "[ \"\$fx_clean\" = \"\$live_entries:\" ]"
@@ -370,6 +388,10 @@ assert 'fixture (a): an entry with skills removed is skills-declared, and only t
   "[ \"\$fx_declared\" = \"\$live_entries:skills-declared\" ]"
 assert 'fixture (b): a claudius entry declaring only meeting-prep is skills-join, and only that' \
   "[ \"\$fx_join\" = \"\$live_entries:skills-join\" ]"
+assert 'fixture (i): the marcus interactive entry without acp-wrapper is skills-join and skills-join-counted, and only those' \
+  "[ \"\$fx_s1\" = \"\$live_entries:skills-join,skills-join-counted\" ]"
+assert 'fixture (j): the wrapper without --plugin-dir is skills-mechanism and skills-join, and only those' \
+  "[ \"\$fx_s1_wrapper\" = \"\$live_entries:skills-join,skills-mechanism\" ]"
 assert 'fixture (c): heading-extraction on an entry with no profile is skills-mechanism, and only that' \
   "[ \"\$fx_mechanism\" = \"\$live_entries:skills-mechanism\" ]"
 assert 'fixture (d): a trajan entry declaring systematic-debugging is skills-join — an unreachable tree cannot be declared as delivered' \

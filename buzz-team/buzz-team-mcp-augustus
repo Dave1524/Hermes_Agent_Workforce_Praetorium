@@ -1,0 +1,4 @@
+#!/bin/sh
+# Rendered by bin/fleet_capabilities.py from design/agents/augustus.toml — edit the manifest, not this file.
+# buzz-agent@augustus names this shim with --mcp-command; the server name is this file's stem.
+exec "$(dirname "$0")/buzz-team-mcp.py" --agent augustus --tools qmd,notion,brave "$@"

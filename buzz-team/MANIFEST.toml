@@ -89,13 +89,58 @@ why = "the one asymmetric file: he admits all five other identities and none of 
 
 [[adopted]]
 path = "agent-settings.json"
-read_by = "`claude --settings`, via claude-agent-wrapper.sh"
-why = "the connector deny-list that closed agent-model.md 6.1, and since T5.2 the Stop hook that receipts every turn through bin/interaction_receipt.py. Both inert for augustus — codex permission profiles do not reach an ACP session, and his turn-end is codex `notify` in his own config.toml — so his absence of connectors is asserted separately"
+read_by = "bin/fleet_capabilities.py — the BASE every agent-settings-<name>.json is rendered over; no `claude` reads it directly since 2026-09-18"
+why = "the connector deny-list that closed agent-model.md 6.1, and since T5.2 the Stop hook that receipts every turn through bin/interaction_receipt.py. Both inert for augustus — codex permission profiles do not reach an ACP session, and his turn-end is codex `notify` in his own config.toml — so his absence of connectors is asserted separately. Edit THIS file for a fleet-wide rule, the manifest for a per-agent one, then re-render"
 
 [[adopted]]
 path = "claude-agent-wrapper.sh"
 read_by = "CLAUDE_CODE_EXECUTABLE in buzz-agent@.service"
-why = "the only seam that makes the deny-list reach an agent. --settings passed via BUZZ_ACP_AGENT_ARGS is accepted and silently ignored"
+why = "the only seam that makes anything reach the `claude` child: buzz-acp parses only --version from BUZZ_ACP_AGENT_ARGS, so every CLI flag lives here, AFTER \"$@\" so it wins over the adapter's. Since 2026-09-18 it is where S1 isolation happens — --strict-mcp-config, --setting-sources= (none), the per-agent --settings and the owner's --plugin-dir, selected by BUZZ_AGENT_NAME"
+
+[[adopted]]
+path = "agent-settings-marcus.json"
+read_by = "`claude --settings`, via claude-agent-wrapper.sh when BUZZ_AGENT_NAME=marcus"
+why = "RENDERED by bin/fleet_capabilities.py from design/agents/marcus.toml [surfaces.interactive] over agent-settings.json — never hand-edited; tests/test_fleet_capabilities.sh::render-matches-committed refuses a drift. The base plus tools_deny plus a deny for every tool of a bridge family the marcus shim withholds"
+
+[[adopted]]
+path = "agent-settings-claudius.json"
+read_by = "`claude --settings`, via claude-agent-wrapper.sh when BUZZ_AGENT_NAME=claudius"
+why = "RENDERED by bin/fleet_capabilities.py from design/agents/claudius.toml [surfaces.interactive] over agent-settings.json — never hand-edited; tests/test_fleet_capabilities.sh::render-matches-committed refuses a drift. The base plus tools_deny plus a deny for every tool of a bridge family the claudius shim withholds"
+
+[[adopted]]
+path = "agent-settings-trajan.json"
+read_by = "`claude --settings`, via claude-agent-wrapper.sh when BUZZ_AGENT_NAME=trajan"
+why = "RENDERED by bin/fleet_capabilities.py from design/agents/trajan.toml [surfaces.interactive] over agent-settings.json — never hand-edited; tests/test_fleet_capabilities.sh::render-matches-committed refuses a drift. The base plus tools_deny plus a deny for every tool of a bridge family the trajan shim withholds"
+
+[[adopted]]
+path = "agent-settings-aurelian.json"
+read_by = "`claude --settings`, via claude-agent-wrapper.sh when BUZZ_AGENT_NAME=aurelian"
+why = "RENDERED by bin/fleet_capabilities.py from design/agents/aurelian.toml [surfaces.interactive] over agent-settings.json — never hand-edited; tests/test_fleet_capabilities.sh::render-matches-committed refuses a drift. The base plus tools_deny plus a deny for every tool of a bridge family the aurelian shim withholds"
+
+[[adopted]]
+path = "buzz-team-mcp-marcus"
+read_by = "buzz-acp --mcp-command %h/.config/buzz-team/buzz-team-mcp-%i, via buzz-agent@marcus.service; spawned by the agent's harness"
+why = "RENDERED by bin/fleet_capabilities.py from design/agents/marcus.toml bridge_tools — a two-line shim exec'ing buzz-team-mcp.py --agent marcus --tools <families>. It exists because buzz-acp hands the server args: [] and a fixed env, and codex sanitises that env to BUZZ_* HOME LANG LOGNAME PATH SHELL USER (measured on augustus's live bridge), so the command PATH is the one per-agent seam both harnesses honour. The server name is the file stem: mcp__buzz-team-mcp-marcus__*"
+
+[[adopted]]
+path = "buzz-team-mcp-claudius"
+read_by = "buzz-acp --mcp-command %h/.config/buzz-team/buzz-team-mcp-%i, via buzz-agent@claudius.service; spawned by the agent's harness"
+why = "RENDERED by bin/fleet_capabilities.py from design/agents/claudius.toml bridge_tools — a two-line shim exec'ing buzz-team-mcp.py --agent claudius --tools <families>. It exists because buzz-acp hands the server args: [] and a fixed env, and codex sanitises that env to BUZZ_* HOME LANG LOGNAME PATH SHELL USER (measured on augustus's live bridge), so the command PATH is the one per-agent seam both harnesses honour. The server name is the file stem: mcp__buzz-team-mcp-claudius__*"
+
+[[adopted]]
+path = "buzz-team-mcp-augustus"
+read_by = "buzz-acp --mcp-command %h/.config/buzz-team/buzz-team-mcp-%i, via buzz-agent@augustus.service; spawned by the agent's harness"
+why = "RENDERED by bin/fleet_capabilities.py from design/agents/augustus.toml bridge_tools — a two-line shim exec'ing buzz-team-mcp.py --agent augustus --tools <families>. It exists because buzz-acp hands the server args: [] and a fixed env, and codex sanitises that env to BUZZ_* HOME LANG LOGNAME PATH SHELL USER (measured on augustus's live bridge), so the command PATH is the one per-agent seam both harnesses honour. The server name is the file stem: mcp__buzz-team-mcp-augustus__*"
+
+[[adopted]]
+path = "buzz-team-mcp-trajan"
+read_by = "buzz-acp --mcp-command %h/.config/buzz-team/buzz-team-mcp-%i, via buzz-agent@trajan.service; spawned by the agent's harness"
+why = "RENDERED by bin/fleet_capabilities.py from design/agents/trajan.toml bridge_tools — a two-line shim exec'ing buzz-team-mcp.py --agent trajan --tools <families>. It exists because buzz-acp hands the server args: [] and a fixed env, and codex sanitises that env to BUZZ_* HOME LANG LOGNAME PATH SHELL USER (measured on augustus's live bridge), so the command PATH is the one per-agent seam both harnesses honour. The server name is the file stem: mcp__buzz-team-mcp-trajan__*"
+
+[[adopted]]
+path = "buzz-team-mcp-aurelian"
+read_by = "buzz-acp --mcp-command %h/.config/buzz-team/buzz-team-mcp-%i, via buzz-agent@aurelian.service; spawned by the agent's harness"
+why = "RENDERED by bin/fleet_capabilities.py from design/agents/aurelian.toml bridge_tools — a two-line shim exec'ing buzz-team-mcp.py --agent aurelian --tools <families>. It exists because buzz-acp hands the server args: [] and a fixed env, and codex sanitises that env to BUZZ_* HOME LANG LOGNAME PATH SHELL USER (measured on augustus's live bridge), so the command PATH is the one per-agent seam both harnesses honour. The server name is the file stem: mcp__buzz-team-mcp-aurelian__*"
 
 [[adopted]]
 path = "buzz-acp-launch.sh"
@@ -104,8 +149,8 @@ why = "the unit's actual entry point — reads TEAM.md and hands it over as BUZZ
 
 [[adopted]]
 path = "buzz-team-mcp.py"
-read_by = "buzz-acp --mcp-command, spawned by the AGENT"
-why = "the stdio MCP bridge: proxies qmd, advertises the notion_* schema and forwards four brave_* search tools to brave-mcp.service on 127.0.0.1:8766 (2026-09-18). Spawned by the agent, so it inherits the agent's namespace — which is why augustus's copy runs inside bwrap and every credential (Notion token, Brave key) lives on the host side"
+read_by = "exec'd by the per-agent shim buzz-team-mcp-<name> that buzz-acp names with --mcp-command; spawned by the AGENT"
+why = "the stdio MCP bridge: proxies qmd, advertises the notion_* schema and forwards four brave_* search tools to brave-mcp.service on 127.0.0.1:8766 (2026-09-18). Since the same day it takes --agent <name> (into serverInfo) and --tools <families> (filters tools/list, refuses a tools/call outside the set) from its shim — what the harness OFFERS, never policy, which stays in the broker. Spawned by the agent, so it inherits the agent's namespace — which is why augustus's copy runs inside bwrap and every credential (Notion token, Brave key) lives on the host side"
 
 [[adopted]]
 path = "buzz-notion-broker.py"
@@ -131,6 +176,11 @@ why = "runs the broker round trip by hand, from both ends of the namespace split
 path = "brave-probe.py"
 read_by = "human / verify-fleet.sh gate 13"
 why = "initialize + tools/list against brave-mcp.service, from both ends of the same namespace split; spends no search quota"
+
+[[adopted]]
+path = "bridge-probe.py"
+read_by = "human / verify-fleet.sh gate 15"
+why = "spawns one per-agent shim (buzz-team-mcp-<name>) as its harness does and reports serverInfo + the families tools/list advertises, --expect to assert them; run on the host for every agent and inside augustus's namespace via nsenter, the two ends that disagreed on 2026-08-10. initialize + tools/list only: nothing is spent"
 
 [[adopted]]
 path = "verify-fleet.sh"

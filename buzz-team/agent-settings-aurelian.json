@@ -19,7 +19,17 @@
       "mcp__claude_ai_Google_Drive",
       "mcp__claude_ai_Figma",
       "mcp__claude_ai_Eden",
-      "mcp__claude_ai_Claude_Docs"
+      "mcp__claude_ai_Claude_Docs",
+      "Edit",
+      "Write",
+      "NotebookEdit",
+      "mcp__buzz-team-mcp-aurelian__notion_status",
+      "mcp__buzz-team-mcp-aurelian__notion_search",
+      "mcp__buzz-team-mcp-aurelian__notion_fetch",
+      "mcp__buzz-team-mcp-aurelian__notion_query_data_source",
+      "mcp__buzz-team-mcp-aurelian__notion_create_page",
+      "mcp__buzz-team-mcp-aurelian__notion_update_page",
+      "mcp__buzz-team-mcp-aurelian__notion_append_blocks"
     ]
   },
   "hooks": {

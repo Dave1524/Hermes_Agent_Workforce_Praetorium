@@ -31,10 +31,10 @@ def free_port() -> int:
 
 
 class Bridge:
-    def __init__(self, brave_url: str):
+    def __init__(self, brave_url: str, *args: str):
         env = dict(os.environ, BUZZ_QMD_MCP_COMMAND=str(FIX / "qmd-stub.py"), BUZZ_BRAVE_MCP_URL=brave_url,
                    BUZZ_NOTION_SOCKET="/nonexistent/buzz-notion.sock")
-        self.proc = subprocess.Popen([sys.executable, str(BRIDGE)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        self.proc = subprocess.Popen([sys.executable, str(BRIDGE), *args], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                      stderr=subprocess.PIPE, text=True, bufsize=1, env=env)
         self.n = 0
 
@@ -119,6 +119,34 @@ class BridgeTest(unittest.TestCase):
         web = next(t for t in bridge.rpc("tools/list")["result"]["tools"] if t["name"] == "brave_web_search")
         self.assertIn("freshness", web["inputSchema"]["properties"])
         bridge.close()
+
+    def test_shim_families_filter_the_list_and_refuse_the_call(self):
+        # (::bridge-tools-filter) — `--agent aurelian --tools qmd,brave` is the rendered
+        # aurelian shim: the list carries no notion_*, a notion call is one tool error naming
+        # the agent and the families, and the instructions drop the Notion paragraph. The
+        # families it does carry are unchanged: qmd's tools and the four brave_* search tools.
+        bridge = Bridge(self.brave.url, "--agent", "aurelian", "--tools", "qmd,brave")
+        init = bridge.start()
+        self.assertEqual(init["result"]["serverInfo"]["name"], "buzz-team-mcp-aurelian")
+        self.assertNotIn("Notion:", init["result"]["instructions"])
+        self.assertIn("LEAVES the box", init["result"]["instructions"])
+        names = [t["name"] for t in bridge.rpc("tools/list")["result"]["tools"]]
+        self.assertEqual([n for n in names if n.startswith("notion_")], [])
+        self.assertEqual(names[:2], ["query", "status"])
+        self.assertEqual([n for n in names if n.startswith("brave_")], BRAVE_OFFERED)
+        refused = bridge.call("notion_search", {"query": "x"})
+        self.assertTrue(refused["isError"])
+        self.assertIn("not offered to aurelian", refused["content"][0]["text"])
+        self.assertIn("qmd, brave", refused["content"][0]["text"])
+        self.assertNotIn("tools/call", [r["method"] for r in self.brave.requests()])  # the refusal reached no upstream
+        bridge.close()
+
+    def test_unknown_family_is_refused_at_startup(self):
+        # (::bridge-tools-unknown-family) — a shim rendered with a family this bridge does not
+        # know exits 2 with the family named, rather than advertising nothing quietly
+        proc = subprocess.run([sys.executable, str(BRIDGE), "--tools", "qmd,gmail"], capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("gmail", proc.stderr)
 
     def test_brave_call_is_forwarded_under_one_session(self):
         # (::bridge-brave-call-forwarded) — initialize once, then every call carries the

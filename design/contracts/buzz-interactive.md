@@ -165,7 +165,10 @@ A silent no-reply that is *not* one of these three is obligation 1 failing.
   the *owner* pubkey and is never injected.
 - May write the `core` engram. Use `buzz mem hash core` → `buzz mem patch core --base-hash`;
   a bare `set` is a blind overwrite and destroys everything accumulated since.
-- Reads the vault through `mcp__qmd-mcp__*` (note the namespace — **not** `mcp__qmd__*`).
+- Reads the vault through `mcp__buzz-team-mcp-<name>__*` (`query`, `get`, `multi_get`,
+  `status`) — the per-agent bridge shim since 2026-09-18; before that `mcp__qmd-mcp__*`,
+  and never `mcp__qmd__*`, which is Dave's interactive server and no longer loads in an
+  agent session (`--strict-mcp-config`).
 - Notion writes go through the broker socket, never a token the agent holds.
 - Writes `~/.claude/projects/-home-dave/memory/`, which is shared by all five agents *and*
   Dave's own `~` sessions. Per-agent state belongs in the engram, which is genuinely

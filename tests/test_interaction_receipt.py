@@ -159,6 +159,26 @@ class StopHookTest(unittest.TestCase):
                                         "cache_tokens": (300 + 5000) + 6500 + 7800,
                                         "total_tokens": 3900 + 120 + 19600})
 
+    def test_skills_offered_and_used_from_the_transcript(self):
+        # (::interaction-skills-from-transcript) — S1 skill telemetry: offered is the session's
+        # skill_listing filtered to the praetorium namespace (code-review is the CLI's, not ours);
+        # invoked is this turn's Skill tool_use; read is this turn's Read of a SKILL.md, pointer
+        # or canonical, and NOT the earlier turn's read of agent-inbox-sync or a daily log
+        done = self.box.stop_hook("transcript-skills.jsonl")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        got = self.box.read(f"buzz-agent@marcus/{SESSION}-a-3.json")
+        self.assertEqual(receipt.validate(got), [])
+        self.assertEqual(got["skills"], {"status": "measured", "source": "transcript",
+                                         "offered": ["agent-inbox-sync", "post-call-capture", "weekly-review"],
+                                         "invoked": ["weekly-review"],
+                                         "read": ["post-call-capture", "weekly-review"]})
+        # and a transcript with no listing at all is measured-empty, never unavailable: the
+        # evidence was read and said nothing
+        self.box.stop_hook("transcript-send.jsonl")
+        got = self.box.read(f"buzz-agent@marcus/{SESSION}-a-3.json")
+        self.assertEqual(got["skills"], {"status": "measured", "source": "transcript",
+                                         "offered": [], "invoked": [], "read": []})
+
     def test_send_is_a_command_not_a_mention(self):
         # (::interaction-send-is-a-command) — a grep or an echo that names the string is not a
         # send; the invocation must sit in command position, path prefix allowed
@@ -276,6 +296,18 @@ class CodexNotifyTest(unittest.TestCase):
                                         "cache_tokens": 3700, "total_tokens": 4760})
         self.assertEqual(got["cost"]["status"], "unavailable")
 
+    def test_skills_from_the_rollout(self):
+        # (::codex-notify-skills-from-rollout) — offered is the thread's developer
+        # <skills_instructions> listing, namespace-filtered (imagegen is codex's own); read is
+        # every SKILL.md a command in THIS turn names — through the $CODEX_HOME/skills/praetorium
+        # link or the vault — and not turn 1's cat of linkedin-review; codex has no Skill tool
+        self.box.codex_notify(self.payload)
+        got = self.box.read(f"buzz-agent@augustus/{THREAD}-{TURN2}.json")
+        self.assertEqual(receipt.validate(got), [])
+        self.assertEqual(got["skills"], {"status": "measured", "source": "rollout",
+                                         "offered": ["blog-engine", "linkedin-content-engine", "linkedin-review"],
+                                         "invoked": [], "read": ["blog-engine"]})
+
     def test_missing_rollout_is_unavailable(self):
         # (::codex-notify-missing-rollout-unavailable)
         payload = json.loads(self.payload)
@@ -286,6 +318,7 @@ class CodexNotifyTest(unittest.TestCase):
         self.assertEqual(receipt.validate(got), [])
         self.assertEqual(got["usage"]["status"], "unavailable")
         self.assertIsNone(got["usage"]["total_tokens"])
+        self.assertEqual(got["skills"], {"status": "unavailable", "source": None, "offered": [], "invoked": [], "read": []})
         self.assertEqual(got["terminal"]["outcome"], "decline")
         self.assertIn("rollout not found", got["terminal"]["reason"])
 
