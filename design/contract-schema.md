@@ -258,7 +258,9 @@ the one contract two units share (T4.3, 2026-09-10), and Claudius's five —
 its unit: `fleet-turn-check`, `fleet-eval`, `local-tier-eval`, `memory-consolidation`,
 `agent-inbox-sync`, `inbox-backlog-alert`, `scorecard`, `qmd-refresh`,
 `agent-workforce-auto-sync`, `ttm-pool-drain`, `overnight-pre-snapshot`, `buzz-pr-watch`
-(user scope), `agent-drift-check`, `agent-buzz-acp-update` (T4.4, 2026-09-11).
+(user scope), `agent-drift-check`, `agent-buzz-acp-update` (T4.4, 2026-09-11). Two of the
+fourteen — `local-tier-eval` and `ttm-pool-drain` — were retired 2026-09-18 with Ollama
+(PRs #50, #51); their contracts sit under `design/archive/contracts/`.
 
 **A light contract is the same eight sections with the deterministic job's six facts in
 them** — trigger and cadence, the artifact or state change, where the evidence of a run is,
@@ -269,8 +271,9 @@ because none of these jobs runs under `bin/agent_propose.sh`; the anchor is the 
 attempt log. Every one answers `Unknown` for the benefit signal, with the reason. Two things
 they surfaced by being written: `buzz-pr-watch` retires itself the day block/buzz#3816 closes,
 and its second check is the status transition the manifest note said nothing would announce;
-and `ttm-pool-drain`'s runner lives outside the repo and is drift-checked by nothing. Both are
-recorded in the contracts, not fixed. The two spent `nekovri-subsidy-*` entries carry
+and `ttm-pool-drain`'s runner lived outside the repo and was drift-checked by nothing (moot
+since its 2026-09-18 retirement). Both are recorded in the contracts, not fixed. The two
+spent `nekovri-subsidy-*` entries carry
 `contract_exempt` naming the reason instead of a contract for a promise nobody makes any more.
 
 **All twenty-six carry the five `#### Outputs fields` bullets** — the first twelve backfilled

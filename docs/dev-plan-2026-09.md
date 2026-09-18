@@ -88,6 +88,7 @@ Development needs no timer: every suite in this repo runs from fixtures (T5.1's
 3. One synthetic incident reaches the Buzz incidents stream, repeats are deduplicated, recovery is
    visible, healthy runs stay silent (T5.3c).
 4. A grep for hermes across `bin/ systemd/ profiles/` returns only historical notes (T6.1, behind D4).
+   Since T6.5 (2026-09-18) the same grep covers `ollama`, and the gate's live set is empty.
 5. `bash bin/verify.sh` green on `main`, drift clean; `control-room.service` and
    `control-room-broker.socket` installed and enabled; the two new *timers* — `workflow-incidents`
    (T5.3c) and `workflow-receipt-sweep` (T5.2) — installed **disabled**, resumed from the screen
@@ -718,6 +719,21 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
 - **T6.4** [Claude, S] `design/workflow-registry.md` is joined by no test or script. Freeze it as
   the D1 record with a header pointing at the manifests. Gate: header present, no live claim
   left in it.
+- **T6.5** [Claude, M] Hermes and Ollama off the box. Dave, 2026-09-18: "Remove both hermes and
+  ollama" and, asked what the local eval becomes, "Delete it all, I do not want to run locally
+  anymore." So: `ttm-pool-drain` retired (PR #50, via `workflow_pr.py retire`; it existed only
+  for Ollama's TTM leak and had measured 0 MB every tick for two days), `local-tier-eval`
+  retired with its harness, scorer, prompts and fixtures (PR #51, same path), the Discord
+  delivery leg of `bin/deliver.sh` dropped — Hermes *was* that leg, so the Discord cutover
+  closes by decision, not by the seven-day audit — `EXTERNAL_UNITS` removed from
+  `bin/workflow_requires.py` (a `requires` target must be a repo unit file), the residue gate
+  widened to `hermes|ollama` with `LIVE_SET = {}`, `~/.hermes` archived to `~/OUTBOX/` and
+  deleted, Ollama's unit, binary, models and user removed. Gate: `tests/test_hermes_residue.sh`
+  green with no live rows, `tests/test_workflow_retirements.sh` green after both `clear`
+  stamps, verify green, drift clean. Two gaps the retire plan left, for a follow-up: it does
+  not bump the count literals in `tests/test_receipt_coverage.py` and
+  `.claude/workflows/ship-dev-plan.js` (fixed by hand, `cfd42e1` and `7a535b4`), and the three
+  reporting contracts keep a `discord-subset-held` check whose surface no longer exists.
 
 ### Phase D — Dave-only
 
@@ -947,6 +963,7 @@ because nothing violated it. T4.1 and T4.2 closed; T4.3 keeps one assertion, nam
 12. **T5.3g** — M; Dave's decision of 2026-09-16, startable now, nothing blocks it.
 13. **T0.3** — S, and it closes W20 either way.
 14. **T6.3** when Dave says.
+15. ~~**T6.5**~~ — done 2026-09-18 (PRs #50, #51), by Dave's decision the same day.
 
 Startable today with no blocker: T5.3g, T7.2, T0.3. Everything else waits on one of those,
 on a merge-and-deploy (T3.3's calendar half), or on a Dave item.

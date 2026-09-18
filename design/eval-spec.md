@@ -47,7 +47,7 @@ workflows, so for the first time coverage is *computable*.
 | L1 | Static + unit | `bin/verify.sh` | on demand (pre-commit) | exit code | `bash -n`, `shellcheck -S error`, **49 executed suites** — `bin/verify.sh` globs `tests/*.sh` and runs every match, which is 47 `test_*.sh` plus the two helper libs `box_precondition.sh` and `rhythm_test_lib.sh`, sourced by others and exec'd as no-ops here (`ls tests/*.sh \| wc -l`, 2026-09-03) — plus `buzz-team/check-team-kinds.py` |
 | L2 | Behavioural conformance | `bin/fleet_eval_behaviour.py` | daily 07:07 | regression vs baseline | delivery receipts vs the **deployed** route table |
 | L3 | Grounding | `bin/fleet_eval_grounding.py` | daily 07:07 | regression vs baseline | qmd retrieval against `fleet_eval_probes.json` |
-| L4 | Local model tier | `bin/local_tier_eval.sh` (+ `_score`/`_report`/`_trend`) | 6×/day | scored trend | on-box model output |
+| ~~L4~~ | ~~Local model tier~~ — **retired 2026-09-18** with `local-tier-eval` and Ollama (PR #51); there is no local model to grade | — | — | — | — |
 | L5 | Turn liveness | `fleet-turn-check` | hourly | can an agent complete a turn | live Buzz round trip |
 
 Machine-level siblings, **half of which stopped being outside this repo on 2026-09-03**
@@ -158,10 +158,10 @@ judgement is the part a coverage figure cannot express.
 |---|---|---|---|
 | `overnight-morning-report` | marcus | standing | **real hole — highest value.** Carries the whole recurring reporting-defect class. |
 | `m1-signal-scan` | claudius | standing | **real hole.** `bin/run_m1_signal_scan_cc.sh` is in-repo and writable. |
-| `agent-workforce-auto-sync` | trajan | standing | **real hole.** `bin/auto-sync` is in-repo. Appears in `test_local_tier_eval_score.sh` only as a `list-timers` *fixture string*. |
+| `agent-workforce-auto-sync` | trajan | standing | **real hole.** `bin/auto-sync` is in-repo. Appeared in `test_local_tier_eval_score.sh` (deleted 2026-09-18) only as a `list-timers` *fixture string*. |
 | `overnight-pre-snapshot` | trajan | standing | **real hole.** `bin/overnight_pre_snapshot.sh` is in-repo. |
 | `fleet-turn-check` | trajan | standing | **exemption ended 2026-09-03** — the script was adopted as `buzz-team/fleet-turn-check.sh`, so the premise was gone; now covered by `tests/test_fleet_turn_check.sh` (structural: it asserts the five design rules the script's own header requires, and deliberately does not run it — gate 2 spends a real model turn) |
-| `ttm-pool-drain` | trajan | standing | exempt — `/usr/local/bin/ttm-pool-drain`, root-owned, outside this repo |
+| `ttm-pool-drain` | trajan | standing | **retired 2026-09-18** with Ollama (PR #50); the row is history |
 | `buzz-pr-watch` | trajan | standing | exempt — `--user` unit running `~/.local/bin/buzz-pr-watch`, outside this repo |
 
 *Two `campaign` rows — `praetorium-content-strategy-research` and
