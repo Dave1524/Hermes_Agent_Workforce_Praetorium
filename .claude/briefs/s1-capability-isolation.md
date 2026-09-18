@@ -78,3 +78,29 @@ new pointer skills; codex `skills.config` disable rules; `BUZZ_AUTH_TAG` in the 
 `bin/deploy` → `bin/deploy_buzz_team.sh` → install the unit + `daemon-reload` → codex symlink →
 restart the five units when idle → `check-loaded.sh` → both fleet gates → `bin/verify.sh` →
 commit and push by hand. The drift check is red on the branch until then, by construction.
+
+## Landed 2026-09-18 (box side; PR pending Dave's merge)
+
+Land-time steps ran in order: `bin/deploy` (4 paths), unit installed + `daemon-reload`,
+`~/.config/codex-agents/augustus/skills/praetorium -> ~/agent-workforce/skills/augustus/skills`,
+`bin/deploy_buzz_team.sh` (13 files), the five units restarted one at a time at ~21:20 CEST
+with no live turn (marcus's last turn ended 21:08:04, `end_turn` + stop hook recorded;
+`NRestarts=0` on all five afterwards), `check-loaded.sh` all OK, `verify-fleet.sh` PASS with
+gates 14 and 15 (14/session skipped out loud on all four — no `claude` child between turns;
+15/offer read `qmd,notion,brave` on marcus/claudius/trajan/augustus host **and** augustus
+namespace, `qmd,brave` on aurelian; augustus's namespace reads
+`skills/praetorium/blog-engine/SKILL.md` through the link), `bin/verify.sh` rc=0, drift clean.
+
+**Cost (criterion 9).** Headless `claude -p ok` with the adapter's flags, cwd `~`, model
+sonnet, before vs after the wrapper's four flags: 15 MCP servers → 1 (the bridge);
+78 tools → 45 (aurelian 33); 38 skills, none a pointer → the owner's pointers + Claude
+Code's bundled set; prompt context 63,912 → 34,593 tokens (cache_creation + cache_read),
+$0.1645 → less than half. `context-cost.py 14` before the restart: static layers marcus
+93,656 B / claudius 48,732 B per request (`[Base]` 13,684; the rest is charter, team and
+memory, untouched by this change). The after figure from `context-cost.py` needs a real
+turn on the new wrapper and is recorded on the first one, together with the first receipt's
+`skills.offered` per agent (criterion 8's live half).
+
+One finding the plan had wrong: the `claude` child does **not** exist only mid-turn — marcus's
+lingered 11 minutes after `end_turn`. Gate 14 is right to read it opportunistically and skip
+out loud; "no child" still does not mean "no session".
