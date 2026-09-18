@@ -21,8 +21,8 @@ admits      = ["owner", "praetorium", "claudius", "trajan", "augustus"]
 # because a set alone would pass an edit that readmitted them unconditionally and
 # deleted the only bound on the chain.
 channels    = "all"
-tools       = ["claude-code-builtins", "mcp__qmd-mcp__*", "notion_* (7, via broker)"]
-mcp         = ["qmd-mcp", "buzz-team-mcp"]
+tools       = ["claude-code-builtins", "mcp__qmd-mcp__*", "notion_* (7, via broker)", "brave_* (4, via brave-mcp.service)"]
+mcp         = ["qmd-mcp", "buzz-team-mcp", "brave-mcp"]
 notes       = """
 The claude.ai connectors (Gmail, M365, Drive, Figma) are denied on this surface as of
 2026-09-01 — CLAUDE_CODE_EXECUTABLE points buzz-agent@.service at

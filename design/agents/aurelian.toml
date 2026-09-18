@@ -25,8 +25,8 @@ present     = true
 governed_by = "buzz-team/aurelian.toml"      # SOURCE. Deployed to ~/.config/buzz-team/aurelian.toml by bin/deploy_buzz_team.sh; the box path is the destination (brief 7)
 admits      = ["owner", "praetorium", "marcus", "claudius", "augustus", "trajan"]
 channels    = "all"
-tools       = ["claude-code-builtins (read paths)", "mcp__qmd-mcp__*"]
-mcp         = ["qmd-mcp", "buzz-team-mcp"]
+tools       = ["claude-code-builtins (read paths)", "mcp__qmd-mcp__*", "brave_* (4, via brave-mcp.service)"]
+mcp         = ["qmd-mcp", "buzz-team-mcp", "brave-mcp"]
 notes       = """
 He is a ONE-WAY SINK: his rules admit all five other identities plus Dave, and none of
 theirs admit him, so a verdict he publishes is accepted by the relay and dropped at every

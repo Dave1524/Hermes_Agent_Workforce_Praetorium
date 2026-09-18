@@ -12,8 +12,8 @@ present     = true
 governed_by = "buzz-team/claudius.toml"      # SOURCE. Deployed to ~/.config/buzz-team/claudius.toml by bin/deploy_buzz_team.sh; the box path is the destination (brief 7)
 admits      = ["owner", "praetorium", "marcus"]
 channels    = "all"
-tools       = ["claude-code-builtins", "mcp__qmd-mcp__*", "notion_* (7, via broker)"]
-mcp         = ["qmd-mcp", "buzz-team-mcp"]
+tools       = ["claude-code-builtins", "mcp__qmd-mcp__*", "notion_* (7, via broker)", "brave_* (4, via brave-mcp.service)"]
+mcp         = ["qmd-mcp", "buzz-team-mcp", "brave-mcp"]
 notes       = "Undenied claude.ai connectors present here too — agent-model.md §6.1."
 
 # The six scheduled workflows do NOT share one tool set. This is the clearest case on
