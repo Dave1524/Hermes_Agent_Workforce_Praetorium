@@ -403,8 +403,12 @@ tree_only=$(comm -23 <(printf '%s\n' "$live_pairs") <(printf '%s\n' "$readme_dec
 readme_only=$(comm -13 <(printf '%s\n' "$live_pairs") <(printf '%s\n' "$readme_declared") | tr '\t' '/' | tr '\n' ' ')
 assert "every pointer on disk is declared by the table (${tree_only:-none} are not)" "[ -z '$tree_only' ]"
 assert "every row of the table exists on disk (${readme_only:-none} do not)" "[ -z '$readme_only' ]"
+# A "none" owner still has a tree: the plugin manifest and an empty skills/ dir, so the
+# Buzz wrapper's readability guard is one rule for five agents (S1 isolation, 2026-09-18).
+# What it must not have is a pointer.
 for none_owner in $(readme_none_owners "$SKILLS_ROOT"); do
-  assert "$none_owner is declared to have no pointers and has no tree" "[ ! -d '$SKILLS_ROOT/$none_owner' ]"
+  assert "$none_owner is declared to have no pointers: a plugin manifest and no SKILL.md under it" \
+    "[ -f '$SKILLS_ROOT/$none_owner/.claude-plugin/plugin.json' ] && [ -z \"\$(find '$SKILLS_ROOT/$none_owner' -name SKILL.md 2>/dev/null)\" ]"
 done
 collisions=$(profile_collisions "$SKILLS_ROOT" "$PROFILES_DIR")
 assert "no pointer duplicates a task profile that owns the same surface (${collisions:-none} do)" \

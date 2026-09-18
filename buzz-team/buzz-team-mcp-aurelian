@@ -1,0 +1,4 @@
+#!/bin/sh
+# Rendered by bin/fleet_capabilities.py from design/agents/aurelian.toml — edit the manifest, not this file.
+# buzz-agent@aurelian names this shim with --mcp-command; the server name is this file's stem.
+exec "$(dirname "$0")/buzz-team-mcp.py" --agent aurelian --tools qmd,brave "$@"

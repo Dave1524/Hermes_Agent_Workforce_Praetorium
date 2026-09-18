@@ -1,0 +1,48 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(//home/dave/.confidential.img)",
+      "Edit(//home/dave/.confidential.img)",
+      "Read(//home/dave/ENCRYPTION_RECOVERY.md)",
+      "Edit(//home/dave/ENCRYPTION_RECOVERY.md)",
+      "Read(//home/dave/.ssh/**)",
+      "Edit(//home/dave/.ssh/**)",
+      "Read(//home/dave/.config/agent-workforce/**)",
+      "Edit(//home/dave/.config/agent-workforce/**)",
+      "Read(//home/dave/.config/buzz-agents/**)",
+      "Edit(//home/dave/.config/buzz-agents/**)",
+      "Read(//home/dave/.config/google-docs-mcp/**)",
+      "Edit(//home/dave/.config/google-docs-mcp/**)",
+      "mcp__claude_ai_Notion",
+      "mcp__claude_ai_Gmail",
+      "mcp__claude_ai_Microsoft_365",
+      "mcp__claude_ai_Google_Drive",
+      "mcp__claude_ai_Figma",
+      "mcp__claude_ai_Eden",
+      "mcp__claude_ai_Claude_Docs",
+      "Edit",
+      "Write",
+      "NotebookEdit",
+      "mcp__buzz-team-mcp-aurelian__notion_status",
+      "mcp__buzz-team-mcp-aurelian__notion_search",
+      "mcp__buzz-team-mcp-aurelian__notion_fetch",
+      "mcp__buzz-team-mcp-aurelian__notion_query_data_source",
+      "mcp__buzz-team-mcp-aurelian__notion_create_page",
+      "mcp__buzz-team-mcp-aurelian__notion_update_page",
+      "mcp__buzz-team-mcp-aurelian__notion_append_blocks"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/agent-workforce/bin/interaction_receipt.py\"",
+            "timeout": 20
+          }
+        ]
+      }
+    ]
+  }
+}

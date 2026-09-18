@@ -25,8 +25,10 @@ present     = true
 governed_by = "buzz-team/aurelian.toml"      # SOURCE. Deployed to ~/.config/buzz-team/aurelian.toml by bin/deploy_buzz_team.sh; the box path is the destination (brief 7)
 admits      = ["owner", "praetorium", "marcus", "claudius", "augustus", "trajan"]
 channels    = "all"
-tools       = ["claude-code-builtins (read paths)", "mcp__qmd-mcp__*", "brave_* (4, via brave-mcp.service)"]
-mcp         = ["qmd-mcp", "buzz-team-mcp", "brave-mcp"]
+tools        = "claude-code-builtins"                     # the builtin family; the per-tool cut is tools_deny (rendered into agent-settings-<name>.json)
+tools_deny   = ["Edit", "Write", "NotebookEdit"]# builtins withheld from this session; [] = the whole family
+bridge_tools = ["qmd", "brave"]# families the bridge shim advertises: qmd (4), notion (7, via broker), brave (4, via brave-mcp.service)
+mcp          = ["buzz-team-mcp"]# the ONE MCP server a session loads (--strict-mcp-config); qmd and brave sit behind it as mcp__buzz-team-mcp-<name>__*
 notes       = """
 He is a ONE-WAY SINK: his rules admit all five other identities plus Dave, and none of
 theirs admit him, so a verdict he publishes is accepted by the relay and dropped at every
@@ -81,6 +83,7 @@ rule1_exempt = "five units running byte-identical code share one set of obligati
 status   = "standing"
 suite    = ["tests/test_buzz_interactive_harness.sh"]
 skills   = []
+skills_mechanism = "acp-wrapper"
 in_repo  = true
 notes    = """
 The suite that owns this entry is the one that asserts the asymmetry he depends on: he
