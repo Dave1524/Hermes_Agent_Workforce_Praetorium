@@ -13,7 +13,9 @@
 #   invoked  — assistant `tool_use` named `Skill` whose `input.skill` is in the namespace
 #   read     — assistant `tool_use` named `Read` whose `input.file_path` is a SKILL.md, either
 #              the canonical vault file (`/08_skills/<name>/SKILL.md`) or the pointer itself
-#              (`/skills/<owner>/skills/<name>/SKILL.md`)
+#              (`/skills/<owner>/skills/<name>/SKILL.md`) — or a `Bash` whose `input.command`
+#              names one (marcus cat-ed the canonical skill on his first S1 turn, 2026-09-18,
+#              and a Read-only rule recorded `read=none` for a turn that read it)
 # Names are printed unqualified (`meeting-prep`, never `praetorium-claudius:meeting-prep`),
 # sorted, unique, comma-joined — the form agent_propose.sh appends to cost.log.
 set -uo pipefail
@@ -42,6 +44,8 @@ INVOKE_RESULT='{"type":"user","message":{"role":"user","content":[{"type":"tool_
 INVOKE_FOREIGN='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_02","name":"Skill","input":{"skill":"shared:codex"}}]}}'
 READ_CANONICAL='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_03","name":"Read","input":{"file_path":"/home/dave/vault/08_skills/meeting-prep/SKILL.md"}}]}}'
 READ_POINTER='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_04","name":"Read","input":{"file_path":"/home/dave/agent-workforce/skills/claudius/skills/prospect-research/SKILL.md"}}]}}'
+BASH_CAT_CANONICAL='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_06","name":"Bash","input":{"command":"cat ~/vault/08_skills/weekly-review/SKILL.md; echo ---; ls -la ~/vault/08_skills/weekly-review/"}}]}}'
+BASH_NO_SKILL='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_07","name":"Bash","input":{"command":"ls ~/vault/08_skills/weekly-review/references/"}}]}}'
 READ_REFERENCE='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_05","name":"Read","input":{"file_path":"/home/dave/vault/08_skills/meeting-prep/references/x.md"}}]}}'
 # The trap: the Skill tool's schema, carried by every transcript in a prompt_snapshot.
 SCHEMA_LINE='{"type":"attachment","attachment":{"type":"prompt_snapshot","tools":[{"name":"Read","description":"Reads a file"},{"name":"Skill","description":"Invoke a skill","input_schema":{"type":"object","properties":{"skill":{"type":"string"}}}}]},"timestamp":"2026-09-11T11:40:00.000Z"}'
@@ -98,6 +102,16 @@ printf '%s\n' "$READ_POINTER" > "$t5"
 run "$t5"; out=$OUT
 assert 'exits 0' "[ '$RC' = 0 ]"
 assert 'read=prospect-research from skills/<owner>/skills/<name>/SKILL.md' "printf '%s' \"\$out\" | tr ' ' '\n' | grep -qx 'read=prospect-research'"
+
+echo '--- 5b. a shell command naming a SKILL.md counts as read; one naming the directory does not (::telemetry-read-from-shell) ---'
+t5b="$TD/t5b.jsonl"
+printf '%s\n' "$BASH_CAT_CANONICAL" "$BASH_NO_SKILL" > "$t5b"
+run "$t5b"; out=$OUT
+assert 'exits 0' "[ '$RC' = 0 ]"
+assert 'read=weekly-review from a Bash cat of the canonical file' "printf '%s' \"\$out\" | tr ' ' '\n' | grep -qx 'read=weekly-review'"
+printf '%s\n' "$BASH_NO_SKILL" > "$t5b"
+run "$t5b"; out=$OUT
+assert 'a command that names only the skill directory reads nothing' "printf '%s' \"\$out\" | tr ' ' '\n' | grep -qx 'read=none'"
 
 echo '--- 6. duplicates collapse and output is sorted ---'
 t6="$TD/t6.jsonl"

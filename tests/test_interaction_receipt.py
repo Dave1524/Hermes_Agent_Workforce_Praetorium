@@ -163,7 +163,8 @@ class StopHookTest(unittest.TestCase):
         # (::interaction-skills-from-transcript) — S1 skill telemetry: offered is the session's
         # skill_listing filtered to the praetorium namespace (code-review is the CLI's, not ours);
         # invoked is this turn's Skill tool_use; read is this turn's Read of a SKILL.md, pointer
-        # or canonical, and NOT the earlier turn's read of agent-inbox-sync or a daily log
+        # or canonical, or a shell command naming one (meeting-prep: read, never offered) — and
+        # NOT the earlier turn's read of agent-inbox-sync or a daily log
         done = self.box.stop_hook("transcript-skills.jsonl")
         self.assertEqual(done.returncode, 0, done.stderr)
         got = self.box.read(f"buzz-agent@marcus/{SESSION}-a-3.json")
@@ -171,7 +172,7 @@ class StopHookTest(unittest.TestCase):
         self.assertEqual(got["skills"], {"status": "measured", "source": "transcript",
                                          "offered": ["agent-inbox-sync", "post-call-capture", "weekly-review"],
                                          "invoked": ["weekly-review"],
-                                         "read": ["post-call-capture", "weekly-review"]})
+                                         "read": ["meeting-prep", "post-call-capture", "weekly-review"]})
         # and a transcript with no listing at all is measured-empty, never unavailable: the
         # evidence was read and said nothing
         self.box.stop_hook("transcript-send.jsonl")
