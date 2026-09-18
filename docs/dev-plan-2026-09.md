@@ -851,87 +851,17 @@ losing artifacts today.
   Gate: the cause named, and either fixed or recorded as a `DECIDED` with the timeout re-based on
   measured successful turn length.
 
-- **T7.3** [Claude, M] **Done 2026-09-17.** `when=sweep` checks were never evaluated for a
-  unit that receipts its own run: `receipt_sweep.py` skipped an invocation whose receipt
-  existed, and `agent_propose.sh` receipts every run at `--vantage run` — so every sweep check
-  in those contracts (`not-lock-skipped`, `timer-fired-this-window`,
-  `delivered-this-runs-artifact`, `delivery-was-receipted`, `alert-staleness-reported`) was
-  recorded `not_applicable: vantage` and decided by nobody. Found while moving Marcus's three
-  delivery checks to `sweep` (delivery is `ExecStartPost`, so a `run` check is structurally
-  undecidable). Built as the amend shape: `contract_exec.py --vantage sweep --amend --run-id`
-  runs only the `when=sweep` checks against the run the receipt records (start and date read
-  back from `started_at`), replaces their `not_applicable` placeholders by id, moves the
-  terminal monotonically — a failed sweep check turns the receipt `failed` with a reason that
-  keeps the run's own outcome, an already-failed receipt gains the sweep's names — and stamps
-  `swept {at, sweep_run_id}`. The sweep amends once: pending is vantage `run`, not skipped,
-  not closed, not swept, with sweep checks to fold (`workflow_receipt.sweep_pending`), and its
-  summary now counts `amended`. Readers need nothing new — an amended receipt turning failed
-  is a `failed-assertion` incident on the next tick, and the run page shows the sweep line.
-  Gates: `::exec-amend-folds-sweep-checks` (executor; the failed-check case is the row's
-  gate), `::sweep-amends-self-receipted-run` (the sweep against a self-receipting fixture unit,
-  second pass byte-identical), `::control-room-swept-run` (API + incident). The first live
-  amend is the 05:50 sweep of 2026-09-18 over 09-17's runs. Not built: the sweep never amends
-  its own previous receipt (it is excluded from its own walk, and its sweep check reads the
-  summary it writes).
-
-- **T7.4** [Claude, S] **Done 2026-09-17.** The Control Room's "Needs attention" carried twelve
-  rows at 09:30Z and every one was a check defect: ten `missed-cadence`, two `missing-artifact`.
-  Three causes, all in how the classifier and `workflow_incidents` read their evidence.
-  (1) `LastTriggerUSec` was taken as a fire. The 09-16 19:00 fleet resume touched every
-  `Persistent=` stamp on purpose so no timer would catch up; systemd reads that mtime back as
-  the last trigger on start, so `scorecard` "fired" 17:00:25Z, ran nothing, and alerted within
-  two hours, as did every other resumed timer. A trigger at or before the timer's
-  `ActiveEnterTimestamp` is now not a fire (`bin/missed_receipt.py::fired_at`; `firedAt` on the
-  timer view, `lastFiredAt` on `control`). (2) "No receipt followed" was judged 15 minutes (the
-  screen) or 2 hours (incidents) after the fire, while most standing timers are receipted by the
-  daily 05:50 sweep, so every sweep-receipted unit was red for a day after each fire. A fire is
-  now owed a receipt only once `workflow-receipt-sweep` has started at least the grace after it
-  and found none; before that it is unknown, and unknown is not an exception. (3) A `skipped`
-  receipt was an exception on the screen and an `incomplete-run` in incidents; T7.1's dedup
-  skip exists precisely because the artifact exists. A skip is not a run: the run judged is the
-  newest non-skipped receipt (`lastEligibleRun`), and a workflow whose every eligible run is a
-  clean decline (raw-ingest: nothing in `05_knowledge/raw/`) is the contract honoured, not
-  `missing-artifact`. Gates: `tests/test_missed_receipt.sh`, the exceptions, incidents, notify
-  and API suites. Deployed once and `scorecard` stayed red: the API's `SystemdReader` never
-  requested `ActiveEnterTimestamp`, so live `activeSince` was null while the test fake answered
-  it. Fixed the same hour with a test that the fake answers only properties the live reader
-  requests. What remains on the screen is honest: agent-proposal's three eligible receipts
-  are `failed` records of checks fixed that morning, and one artifact run clears both rows.
-- **T7.5** [Claude, S] **Done 2026-09-17.** Dave: "old alarms that are fixed should be closed
-  or removed." After T7.4 the queue still carried agent-proposal twice and the notifier had
-  posted a fresh alert for a 07:57Z receipt whose defect 73dea03 had fixed at 08:08 — and
-  nothing but tomorrow's run could clear it. A failed receipt now takes an operator's
-  closure: `bin/receipt_close.py <workflow> <run> --by --reason` writes a `closed` block
-  (`bin/workflow_receipt.py`; only on a receipt with something failed, once) and leaves the
-  outcome as recorded. One predicate, `workflow_receipt.judged`, is what every reader asks —
-  benefit's eligible runs, the exceptions context, `lastEligibleRun`, health, `reliability7d`
-  — so a closed run is looked past everywhere at once, the incident resolves on the next
-  sweep with a `[recovered]` that cites the closure, and the run page shows a `closed` chip
-  with who and why. Resolved incidents were already pruned after 14 days
-  (`INCIDENT_RESOLVED_RETENTION_DAYS`); nothing else needed removing. Gates:
-  `tests/test_receipt_close.sh` and the closed-run cases in the exceptions, API and notify
-  suites. Not built: a close verb on the screen — it is a write, so it belongs behind the
-  broker's allowlist, a root-file change for a verb used a few times a month.
-
-- **T7.6** [Claude, S] **Done 2026-09-18, `fffee43`.** The retire plan bumped one count
-  literal file and left two: both 2026-09-18 retirements went red in CI on
-  `tests/test_receipt_coverage.py` (`EXPECTED_TALLY`, `LOGICAL_WORKFLOWS`) and
-  `tests/test_ship_dev_plan_workflow.sh` (`WORKFLOW_ENTRIES`), fixed by hand on each branch
-  (`cfd42e1`, `7a535b4`). `bin/workflow_pr_retire.py` now edits every file that pins a count,
-  each by that file's own rule — the coverage tally under the producer class the retired unit's
-  `ExecStart` basename decides against the suite's own `SELF_RECEIPTING`, its logical count by
-  one, the dev-plan script by one per manifest entry whatever the lifecycle — and pins every
-  suite it touched so the preview proves the new number. Gate:
-  `tests/test_workflow_pr_retire.sh::retire-count-literals-by-producer` (alpha, two-unit gamma,
-  a spent entry, a tree without the files), proven on a clone of the live tree by planning a
-  never-submitted `knowledge-digest` retirement and running both real suites green.
-  `control-room.service` restarted so the running worker imports the fix.
-
-## Execution order for Claude
-
-Order as of **2026-09-10**, after the 09-10 batch (T3.1, T4.0, T4.1, T4.2, T4.3, T7.1) landed and
-the two 2026-09-10 review waves rewrote the board. Status for every row lives in the Notion
-tracker; this section is the sequence for what is left.
+**Fixed in place — not tasks.** Four defects found during landings on 2026-09-17/18 were
+given rows here and closed the same day. Dave's rule (2026-09-18): a finding surfaced while
+shipping is fixed in that PR, never ship broken or half-working, never a plan row. The rows
+are folded to their commits; the tracker keeps its four Done rows as history.
+- T7.3 — `when=sweep` checks decided by nobody for self-receipting runs; the next sweep now
+  amends the receipt once (`contract_exec.py --amend`, 2026-09-17).
+- T7.4 — Control Room "Needs attention" carried twelve stale rows; classifier and
+  `workflow_incidents` read their evidence wrong three ways (`bin/missed_receipt.py`, 2026-09-17).
+- T7.5 — a reviewed failure whose defect is fixed is closed, not rewritten
+  (`bin/receipt_close.py`, 2026-09-17).
+- T7.6 — the retire plan bumped one count literal of three (`fffee43`, 2026-09-18).
 
 **The gate is green and, since `063e6ce`, the green means more than it did this morning.**
 `bash bin/verify.sh` exits 0: zero FAIL lines, zero `contract-exists` PROBLEM lines, drift clean,
@@ -992,7 +922,12 @@ because nothing violated it. T4.1 and T4.2 closed; T4.3 keeps one assertion, nam
 13. **T0.3** — S, and it closes W20 either way.
 14. **T6.3** when Dave says.
 15. ~~**T6.5**~~ — done 2026-09-18 (PRs #50, #51), by Dave's decision the same day.
-16. ~~**T7.6**~~ — done 2026-09-18, `fffee43`; the count-literal gap T6.5 left.
+16. ~~T7.6~~ — folded into Phase 7's "Fixed in place" note; a finding, not a task.
+
+**Scope is closed at the 2026-09-07 questionnaire** (Dave, 2026-09-18). Open: T7.2, T0.3
+(Claude); T6.3, D6, L1 (Dave). Nothing is appended — a defect found while shipping is fixed
+in that PR, and new work (the single-repo cutover, runbook §4/§6–§8) lives in its own
+existing tracker, not here.
 
 Startable today with no blocker: T7.2, T0.3. Everything else waits on one of those,
 on a merge-and-deploy (T3.3's calendar half), or on a Dave item.
