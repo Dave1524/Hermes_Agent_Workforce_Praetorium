@@ -370,6 +370,37 @@ assert_calibration_pack() {
   fi
 }
 
+# Same split, second service: the four brave_* tools the bridge forwards reach
+# brave-mcp.service over loopback HTTP, and loopback inside a bwrap namespace is
+# only known to work because it is measured. initialize + tools/list, no query,
+# so the gate spends no search quota and nothing leaves the box.
+assert_brave_mcp() {
+  local state agent pid
+  state=$(systemctl is-active brave-mcp)
+  check active "$state" "13/brave-mcp"
+
+  if python3 "$TEAM_DIR/brave-probe.py" >/dev/null 2>&1; then
+    ok "13/brave-reachable host"
+  else
+    fail "13/brave-reachable host"
+  fi
+
+  for agent in "${AGENTS[@]}"; do
+    [ "${EXPECT_HARNESS[$agent]}" = codex-acp ] || continue
+    if ! pid=$(sandbox_pid "$agent"); then
+      fail "13/brave-reachable $agent (no contained process in the unit cgroup)"
+      continue
+    fi
+    if sudo -n nsenter -t "$pid" -m -- \
+      setpriv --reuid "$(id -u)" --regid "$(id -g)" --init-groups \
+      /usr/bin/python3 "$TEAM_DIR/brave-probe.py" >/dev/null 2>&1; then
+      ok "13/brave-reachable $agent"
+    else
+      fail "13/brave-reachable $agent"
+    fi
+  done
+}
+
 assert_units_active
 assert_harness
 assert_team_instructions
@@ -382,6 +413,7 @@ assert_notion_broker
 assert_review_isolation
 assert_roster_complete
 assert_calibration_pack
+assert_brave_mcp
 
 printf '\n%s\n' "----------------------------------------"
 if [ "$failures" -eq 0 ]; then

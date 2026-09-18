@@ -41,6 +41,13 @@ As of NUC-21 the query egresses via a **local persistent daemon** (`brave-mcp.se
 service (its own mode-600 `~/.config/agent-workforce/brave-mcp.env`), not injected into agent
 runs. The transport change does not change the egress destination, rule, or cap below.
 
+Since 2026-09-18 the five `buzz-agent@*` sessions reach the same daemon through the fleet
+MCP bridge (`buzz-team/buzz-team-mcp.py`): four tools — `brave_web_search`, `brave_news_search`,
+`brave_llm_context`, `brave_summarizer` — forwarded over HTTP to 127.0.0.1:8766, the key never
+entering an agent's namespace (augustus's bwrap included). The bridge restates the rule below in
+the server's `instructions` so every session reads it at connect. The cap is now shared by the
+fleet and the scheduled runners.
+
 - **Rule:** queries must stay generic — public company/entity/person names only. Never put
   business-sensitive framing, client-identifiable strings, `_confidential/` content, or internal
   reasoning into a query. Treat this as Tier B-class egress (zero business content) regardless of

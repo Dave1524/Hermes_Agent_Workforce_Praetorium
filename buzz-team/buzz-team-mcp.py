@@ -2,12 +2,14 @@
 """Composite MCP server for the Buzz fleet.
 
 The Buzz harness accepts one stdio MCP command. This process preserves the
-existing qmd server by proxying its JSON-RPC stream, and adds a small Notion
-REST surface. It holds no credential: the agent spawns this process, so for
-augustus it runs inside codex-acp's bwrap namespace where
-`~/.config/agent-workforce` is a tmpfs. Notion calls are forwarded to
-buzz-notion-broker.py over a unix socket; the token and the write policy live
-out there, on the host side of the namespace.
+existing qmd server by proxying its JSON-RPC stream, adds a small Notion
+REST surface, and forwards web search to brave-mcp.service. It holds no
+credential: the agent spawns this process, so for augustus it runs inside
+codex-acp's bwrap namespace where `~/.config/agent-workforce` is a tmpfs.
+Notion calls are forwarded to buzz-notion-broker.py over a unix socket; Brave
+calls to the daemon on 127.0.0.1:8766 (streamable HTTP), which holds the API
+key in its own EnvironmentFile. Token, key and write policy all live out
+there, on the host side of the namespace.
 """
 
 from __future__ import annotations
@@ -17,13 +19,26 @@ import os
 import socket
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 from typing import Any
 
 
-QMD_COMMAND = [os.path.expanduser("~/.local/bin/qmd-mcp")]
+QMD_COMMAND = [os.environ.get("BUZZ_QMD_MCP_COMMAND") or os.path.expanduser("~/.local/bin/qmd-mcp")]
 NOTION_SOCKET = os.environ.get(
     "BUZZ_NOTION_SOCKET",
     f"/run/user/{os.getuid()}/buzz-notion.sock",
+)
+BRAVE_URL = os.environ.get("BUZZ_BRAVE_MCP_URL", "http://127.0.0.1:8766/mcp")
+# The daemon offers eight tools; these four are search. local/place need a Pro plan,
+# image/video are not this fleet's work.
+BRAVE_TOOLS = ("brave_web_search", "brave_news_search", "brave_llm_context", "brave_summarizer")
+BRAVE_RULE = (
+    "Web: brave_web_search, brave_news_search, brave_llm_context (grounding snippets) and "
+    "brave_summarizer, via brave-mcp.service. A query string LEAVES the box (Brave Software, "
+    "US): public names and generic terms only, never client-identifiable strings, deal "
+    "specifics or internal reasoning (docs/data_boundary.md, NUC-21). Free tier: 2,000 "
+    "queries/month, 1/sec."
 )
 
 
@@ -199,6 +214,92 @@ def notion_tool(name: str, args: dict[str, Any]) -> Any:
     return response.get("value")
 
 
+class BraveProxy:
+    """Streamable-HTTP client for brave-mcp.service, initialised on first use.
+
+    Lazy on purpose: a daemon that is down costs the agent one named tool error, never the
+    bridge — qmd and Notion keep working. The tool schemas are taken from the daemon when it
+    answers, so they are exact; when it does not, a minimal static schema is advertised so
+    the tools still exist to be called and to fail with the daemon's name in the message.
+    """
+
+    def __init__(self, url: str) -> None:
+        self.url = url
+        self.session_id: str | None = None
+
+    def _post(self, body: dict[str, Any]) -> list[dict[str, Any]]:
+        headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
+        if self.session_id:
+            headers["mcp-session-id"] = self.session_id
+        request = urllib.request.Request(self.url, data=json.dumps(body).encode("utf-8"), headers=headers, method="POST")
+        with urllib.request.urlopen(request, timeout=90) as response:
+            self.session_id = response.headers.get("mcp-session-id") or self.session_id
+            raw = response.read().decode("utf-8")
+            content_type = response.headers.get("content-type", "")
+        if not raw.strip():
+            return []
+        if content_type.startswith("text/event-stream"):
+            return [json.loads(line[6:]) for line in raw.splitlines() if line.startswith("data: ")]
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, list) else [parsed]
+
+    def _connect(self) -> None:
+        if self.session_id:
+            return
+        self._post({"jsonrpc": "2.0", "id": "brave-init", "method": "initialize", "params": {
+            "protocolVersion": "2025-03-26", "capabilities": {},
+            "clientInfo": {"name": "praetorium-buzz", "version": "1.1.0"}}})
+        self._post({"jsonrpc": "2.0", "method": "notifications/initialized"})
+
+    def _request(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
+        for attempt in (1, 2):
+            try:
+                self._connect()
+                messages = self._post({"jsonrpc": "2.0", "id": f"brave-{method}", "method": method, "params": params})
+            except urllib.error.HTTPError as exc:
+                if exc.code in (400, 404) and attempt == 1:  # the daemon restarted: our session is gone
+                    self.session_id = None
+                    continue
+                raise RuntimeError(f"brave-mcp.service at {self.url} answered HTTP {exc.code}") from exc
+            except (urllib.error.URLError, OSError, ValueError) as exc:
+                self.session_id = None
+                raise RuntimeError(f"brave-mcp.service is unreachable at {self.url}: {exc}") from exc
+            replies = [m for m in messages if m.get("id") == f"brave-{method}"]
+            if not replies:
+                raise RuntimeError(f"brave-mcp.service returned no reply to {method}")
+            if "error" in replies[-1]:
+                raise RuntimeError(str(replies[-1]["error"].get("message", replies[-1]["error"])))
+            return replies[-1].get("result") or {}
+        raise RuntimeError(f"brave-mcp.service at {self.url}: session could not be re-established")
+
+    def tools(self) -> list[dict[str, Any]]:
+        try:
+            live = self._request("tools/list", {}).get("tools", [])
+            by_name = {tool.get("name"): tool for tool in live if isinstance(tool, dict)}
+            if all(name in by_name for name in BRAVE_TOOLS):
+                return [by_name[name] for name in BRAVE_TOOLS]
+            missing = [name for name in BRAVE_TOOLS if name not in by_name]
+            print(f"buzz-team-mcp: brave daemon lacks {missing}; advertising the static schema", file=sys.stderr)
+        except RuntimeError as exc:
+            print(f"buzz-team-mcp: {exc}; advertising the static Brave schema", file=sys.stderr)
+        return [self._static_tool(name) for name in BRAVE_TOOLS]
+
+    @staticmethod
+    def _static_tool(name: str) -> dict[str, Any]:
+        key = "key" if name == "brave_summarizer" else "query"
+        return {
+            "name": name,
+            "description": f"{name} via brave-mcp.service (schema unavailable at startup — the daemon was not answering). " + BRAVE_RULE,
+            "inputSchema": {"type": "object", "properties": {key: {"type": "string"}, "count": {"type": "integer"}}, "required": [key]},
+            "annotations": {"readOnlyHint": True, "openWorldHint": True},
+        }
+
+    def call(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
+        if name not in BRAVE_TOOLS:
+            raise RuntimeError(f"{name} is not offered to this fleet — the bridge forwards only {', '.join(BRAVE_TOOLS)}")
+        return self._request("tools/call", {"name": name, "arguments": args})
+
+
 class QmdProxy:
     def __init__(self) -> None:
         self.process = subprocess.Popen(
@@ -240,6 +341,7 @@ class QmdProxy:
 
 def main() -> int:
     qmd = QmdProxy()
+    brave = BraveProxy(BRAVE_URL)
     notion_names = {tool["name"] for tool in NOTION_TOOLS}
     try:
         for line in sys.stdin:
@@ -256,12 +358,13 @@ def main() -> int:
                     response = qmd.request(request)
                     if "result" in response:
                         result = response["result"]
-                        result["serverInfo"] = {"name": "praetorium-buzz", "version": "1.0.0"}
+                        result["serverInfo"] = {"name": "praetorium-buzz", "version": "1.1.0"}
                         result["instructions"] = (
                             result.get("instructions", "")
                             + "\n\nNotion: use notion_search, notion_fetch, and "
                             "notion_query_data_source for content shared with the dedicated "
                             "Buzz integration. Write only when Dave's request and your charter permit it."
+                            + "\n\n" + BRAVE_RULE
                         )
                     emit(response)
                     continue
@@ -270,6 +373,7 @@ def main() -> int:
                     response = qmd.request(request)
                     if "result" in response:
                         response["result"].setdefault("tools", []).extend(NOTION_TOOLS)
+                        response["result"]["tools"].extend(brave.tools())
                     emit(response)
                     continue
 
@@ -280,6 +384,12 @@ def main() -> int:
                         try:
                             value = notion_tool(name, params.get("arguments") or {})
                             result = tool_result(value)
+                        except Exception as exc:
+                            result = tool_result(str(exc), is_error=True)
+                        emit({"jsonrpc": "2.0", "id": request_id, "result": result})
+                    elif name.startswith("brave_"):
+                        try:
+                            result = brave.call(name, params.get("arguments") or {})
                         except Exception as exc:
                             result = tool_result(str(exc), is_error=True)
                         emit({"jsonrpc": "2.0", "id": request_id, "result": result})

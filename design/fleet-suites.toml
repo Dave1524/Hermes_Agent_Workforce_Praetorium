@@ -673,6 +673,21 @@ logs and envelopes. Assigning it to one of them would credit that row alone.
 """
 
 [[suite]]
+path    = "tests/test_buzz_team_mcp.sh"
+owner   = "fleet"
+asserts = [
+  "bridge-tools-list-composite",     # one server: qmd's tools, the seven notion_*, and exactly the four brave_* search tools of the daemon's eight, with the daemon's own schemas
+  "bridge-brave-call-forwarded",     # one initialize per daemon life; every call carries its session id; the daemon's result is returned untouched
+  "bridge-brave-allowlist",          # a Brave tool the fleet is not offered is refused at the bridge and never reaches the daemon
+  "bridge-brave-daemon-down",        # nothing listening: tools still advertised (static schema, said on stderr), the call fails naming the daemon, qmd and Notion keep answering
+  "bridge-brave-session-recovery",   # the daemon restarted (404): the bridge re-initialises once and the call succeeds
+]
+why_no_workflow = """
+It tests the one stdio MCP bridge all five buzz-agent@* units spawn, over a stub qmd and a
+stub Brave daemon. The bridge belongs to the fleet, not to a workflow.
+"""
+
+[[suite]]
 path    = "tests/test_interaction_receipt.sh"
 owner   = "fleet"
 asserts = [

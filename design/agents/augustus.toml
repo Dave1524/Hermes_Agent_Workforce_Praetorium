@@ -16,8 +16,8 @@ present     = true
 governed_by = "buzz-team/augustus.toml"      # SOURCE. Deployed to ~/.config/buzz-team/augustus.toml by bin/deploy_buzz_team.sh; the box path is the destination (brief 7)
 admits      = ["owner", "praetorium", "marcus"]
 channels    = "all"
-tools       = ["codex-builtins", "mcp__qmd-mcp__*", "notion_* (7, via broker)"]
-mcp         = ["qmd-mcp", "buzz-team-mcp"]
+tools       = ["codex-builtins", "mcp__qmd-mcp__*", "notion_* (7, via broker)", "brave_* (4, via brave-mcp.service)"]
+mcp         = ["qmd-mcp", "buzz-team-mcp", "brave-mcp"]
 notes       = """
 His bwrap wrapper --tmpfs's ~/.ssh and ~/.config/agent-workforce, so he can never
 git fetch and never read a job credential. That is deliberate containment, and it is why

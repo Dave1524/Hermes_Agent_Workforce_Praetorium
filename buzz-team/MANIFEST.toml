@@ -105,7 +105,7 @@ why = "the unit's actual entry point — reads TEAM.md and hands it over as BUZZ
 [[adopted]]
 path = "buzz-team-mcp.py"
 read_by = "buzz-acp --mcp-command, spawned by the AGENT"
-why = "the stdio MCP bridge: proxies qmd and advertises the notion_* schema. Spawned by the agent, so it inherits the agent's namespace — which is why augustus's copy runs inside bwrap and the credential had to move to the broker"
+why = "the stdio MCP bridge: proxies qmd, advertises the notion_* schema and forwards four brave_* search tools to brave-mcp.service on 127.0.0.1:8766 (2026-09-18). Spawned by the agent, so it inherits the agent's namespace — which is why augustus's copy runs inside bwrap and every credential (Notion token, Brave key) lives on the host side"
 
 [[adopted]]
 path = "buzz-notion-broker.py"
@@ -126,6 +126,11 @@ why = "the kind table has one owner — bin/buzz_routes.env — and this is what
 path = "notion-probe.py"
 read_by = "human / verify-fleet.sh gate 9"
 why = "runs the broker round trip by hand, from both ends of the namespace split"
+
+[[adopted]]
+path = "brave-probe.py"
+read_by = "human / verify-fleet.sh gate 13"
+why = "initialize + tools/list against brave-mcp.service, from both ends of the same namespace split; spends no search quota"
 
 [[adopted]]
 path = "verify-fleet.sh"
@@ -162,13 +167,14 @@ why = "tails a live agent turn"
 [[excluded]]
 path = "TEAM.md"
 kind = "prose"
-sha256 = "9a0402ba953cef94b3979d30750b6359f4e690167bd980d37e96c76c7533302e"
+sha256 = "723cca4ba9ee4c4828913f1859bfabedda012e07cb3bb93b94f244c65472e40d"
 why = """
 Read by every agent as team instructions (buzz-acp-launch.sh exports it as
 BUZZ_ACP_TEAM_INSTRUCTIONS). It is the largest prose surface in this tree, the one most
 likely to accrete client detail as the team's working agreements grow, and this repo is
-public. Checked for client content 2026-09-03 and again 2026-09-07 after the hop-token and
-workflow-grant sections were added; it has none — that is the reason this is a standing-risk
+public. Checked for client content 2026-09-03, again 2026-09-07 after the hop-token and
+workflow-grant sections were added, and 2026-09-18 after the "Reading the web" section
+(the brave_* tools and the query boundary); it has none — that is the reason this is a standing-risk
 boundary rather than a leak finding. Re-read it before every pin bump: the pin proves the bytes
 changed as recorded, never that what they say is safe to publish.
 
