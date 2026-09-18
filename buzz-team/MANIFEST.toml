@@ -149,8 +149,8 @@ why = "the unit's actual entry point — reads TEAM.md and hands it over as BUZZ
 
 [[adopted]]
 path = "buzz-team-mcp.py"
-read_by = "buzz-acp --mcp-command, spawned by the AGENT"
-why = "the stdio MCP bridge: proxies qmd, advertises the notion_* schema and forwards four brave_* search tools to brave-mcp.service on 127.0.0.1:8766 (2026-09-18). Spawned by the agent, so it inherits the agent's namespace — which is why augustus's copy runs inside bwrap and every credential (Notion token, Brave key) lives on the host side"
+read_by = "exec'd by the per-agent shim buzz-team-mcp-<name> that buzz-acp names with --mcp-command; spawned by the AGENT"
+why = "the stdio MCP bridge: proxies qmd, advertises the notion_* schema and forwards four brave_* search tools to brave-mcp.service on 127.0.0.1:8766 (2026-09-18). Since the same day it takes --agent <name> (into serverInfo) and --tools <families> (filters tools/list, refuses a tools/call outside the set) from its shim — what the harness OFFERS, never policy, which stays in the broker. Spawned by the agent, so it inherits the agent's namespace — which is why augustus's copy runs inside bwrap and every credential (Notion token, Brave key) lives on the host side"
 
 [[adopted]]
 path = "buzz-notion-broker.py"

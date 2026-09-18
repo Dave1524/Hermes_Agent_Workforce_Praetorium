@@ -1,8 +1,20 @@
 # skills/ — the pointer-skill tree
 
-Each `SKILL.md` here is a **pointer**: a few lines naming the canonical vault path, never a
-copy of it. The vault owns the text (`08_skills/<name>/SKILL.md`) and changes it without this
+Each `SKILL.md` here is a **pointer**: a few lines naming the canonical vault directory, never
+a copy of it. The vault owns the text (`08_skills/<name>/SKILL.md`) and changes it without this
 repo being told, so a copy here would be a second source of truth that goes stale in silence.
+
+**The frontmatter `description` is the one thing mirrored, verbatim.** It is the only text a
+model sees before deciding to load a skill (the "level 1" of Anthropic's agent-skills note:
+name + description in the system prompt, the body on demand), and it lives in *our* file.
+Until 2026-09-18 every pointer paraphrased it — several dropped the vault's multi-line "Use
+when …" triggers — which is a credible cause of T3.3's zero invocations across 30 runs.
+`bin/pointer_skills_sync.py render` rewrites each pointer as `name` + the canonical
+description block (folded YAML and quoting kept) over a fixed body naming the directory, and
+`tests/test_pointer_skills.sh::pointer-description-synced` (box-gated: it reads the vault)
+fails when the vault's description has moved on. `pointer-not-copy` bounds the *body*, so a
+long folded description is never mistaken for a copy. **Edit the vault, then re-render** —
+never the pointer.
 
 ## What this tree is for
 
@@ -31,6 +43,19 @@ from source without the gate going red. The nine scheduled runners then load the
 tree **by explicit path** in that deployed tree — never `~/.claude/skills/` — and each one
 proves the plugin manifest is readable before it execs, because a `--plugin-dir` path that
 does not exist is silent: exit 0, no diagnostic, no skills.
+
+**Since 2026-09-18 the Buzz fleet (S1) loads the same tree.** The four Claude agents'
+`claude` child runs through `buzz-team/claude-agent-wrapper.sh`, which appends `--plugin-dir
+~/agent-workforce/skills/$BUZZ_AGENT_NAME` (the unit sets `BUZZ_AGENT_NAME=%i`) behind the
+same readability guard — together with `--strict-mcp-config --setting-sources=` and the
+rendered per-agent settings file, so nothing of Dave's user scope (his `~/.claude/skills/`,
+his marketplace plugin, his MCP servers) reaches an agent session any more. Augustus, on
+codex-acp, reaches his tree through `~/.config/codex-agents/augustus/skills/praetorium`, a
+symlink into the deployed tree that codex follows (skills render as
+`praetorium-augustus:<name>`); the link is hand-installed like a unit and asserted live by
+`verify-fleet.sh` gate 15. Aurelian has a plugin manifest and no pointers, by allocation, so
+the wrapper's guard is uniform across the four. `skills_mechanism = "acp-wrapper"` /
+`"codex-home"` on the `buzz-agent@*` entries is what `tests/test_workflow_coverage.py` joins.
 
 ## The allocation
 
@@ -68,18 +93,21 @@ beside them would be a second owner of one job. Asserted as
 trajan's `agent-inbox-sync` is a `surface = "platform"` systemd timer that runs a script and
 no model. Different things, same name.
 
-**Trajan's tree and two of Augustus's three pointers reach no runner, and the manifests say so.**
+**Every pointer now reaches its owner on at least one surface, and the manifests say which.**
 Since T3.2 (2026-09-11) every `[[workflows]]` entry in `design/agents/*.toml` carries
 `skills = [...]`, and `tests/test_workflow_coverage.py` joins each list to the offer its
 mechanism really delivers: claudius's and marcus's scheduled entries declare their three
 pointers (the runner's `--plugin-dir` tree); augustus's two content triggers declare
 `["linkedin-content-engine"]` under `skills_mechanism = "heading-extraction"` (the only
 pointer their profile extracts through `bin/skill_sections.sh`); trajan's sixteen platform
-entries (no model to offer a skill to) and the five `buzz-agent@*` entries (codex-acp and
-claude-agent-acp take no `--plugin-dir`) declare `[]`. Of the 13 pointers, 7 are offered
-on at least one live entry and 6 — trajan's four, `linkedin-review`, `blog-engine` — are
-offered to nobody. That is recorded state, not an omission — do not close the gap by
-inventing a runner. Offered is not used: which pointers a run opens is T3.3's question.
+entries (no model to offer a skill to) declare `[]`. Until 2026-09-18 the five `buzz-agent@*`
+entries declared `[]` too — codex-acp and claude-agent-acp took no `--plugin-dir` — and 6 of
+the 13 pointers (trajan's four, `linkedin-review`, `blog-engine`) were offered to nobody.
+Now each `buzz-agent@<owner>` entry declares its owner's pointers under `acp-wrapper` /
+`codex-home`, so trajan's four reach him and augustus's three reach him on S1; aurelian's
+stays `[]` by allocation. Do not close a remaining scheduled-surface gap by inventing a
+runner. Offered is not used: which pointers a run opens is T3.3's question on S2 and the
+`skills` block of each interaction receipt on S1 (`bin/scorecard.sh` folds both).
 
 **The gate cannot list what a live session loaded.** `claude plugin details` does not accept
 `--plugin-dir`, so there is no deterministic CLI way to enumerate a session-loaded plugin's
