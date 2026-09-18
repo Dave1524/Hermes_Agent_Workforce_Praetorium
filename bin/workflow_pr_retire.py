@@ -4,6 +4,7 @@ join, the registry record, and the residue scan that is the plan's own post-cond
 """
 from __future__ import annotations
 
+import ast
 import datetime as dt
 import pathlib
 import re
@@ -21,7 +22,11 @@ RETENTION_KEYS = ("receipts", "notion", "inbox", "note")
 IDLE_STATUSES = {"spent", "planned"}
 MIN_REASON = 10
 COUNT_LITERAL_RE = re.compile(r"^([A-Z][A-Z_]*)\s*=\s*(\d+)\s*(#.*)?$")
+EXEC_START_RE = re.compile(r"^ExecStart=(\S+)", re.MULTILINE)
 VIEWS_SUITE = "tests/test_control_room_views.py"
+COVERAGE_SUITE = "tests/test_receipt_coverage.py"
+DEV_PLAN_SCRIPT = ".claude/workflows/ship-dev-plan.js"
+DEV_PLAN_SUITE = "tests/test_ship_dev_plan_workflow.sh"
 REGISTRY = residue.REGISTRY
 REGISTRY_HEADER = ("# Retired workflows — one [[retired]] per retired logical workflow, written by the retire plan\n"
                    "# (bin/workflow_pr_retire.py), read by tests/test_workflow_retirements.sh and\n"
@@ -340,6 +345,69 @@ def decrement_count_literals(text: str, before: dict[str, int], removed_standing
     return "".join(out), changed
 
 
+def module_literal(text: str, name: str) -> tuple[Any, int, int] | None:
+    """A module-level `NAME = <literal>` in Python source: its value and first/last line numbers."""
+    for node in ast.parse(text).body:
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets):
+            return ast.literal_eval(node.value), node.lineno, node.end_lineno or node.lineno
+    return None
+
+
+def receipt_classes(worktree: pathlib.Path, units: list[dict[str, Any]]) -> dict[str, int]:
+    """How many of these timer units tests/test_receipt_coverage.py tallies under each producer
+    class — decided as that suite decides it: the service's ExecStart basename against the suite's
+    own SELF_RECEIPTING map, `sweep` for every other timer."""
+    suite = worktree / COVERAGE_SUITE
+    if not suite.is_file():
+        return {}
+    found = module_literal(suite.read_text(encoding="utf-8"), "SELF_RECEIPTING")
+    self_receipting = found[0] if found and isinstance(found[0], dict) else {}
+    classes: dict[str, int] = {}
+    for unit in units:
+        if unit["kind"] != "timer":
+            continue
+        program = _exec_start_program(worktree / unit["service_path"]) if unit["service_path"] else None
+        cls = self_receipting.get(program, "sweep")
+        classes[cls] = classes.get(cls, 0) + 1
+    return classes
+
+
+def _exec_start_program(service: pathlib.Path) -> str | None:
+    match = EXEC_START_RE.search(service.read_text(encoding="utf-8", errors="replace"))
+    return pathlib.PurePosixPath(match.group(1)).name if match else None
+
+
+def decrement_tally(text: str, removed: dict[str, int]) -> tuple[str, list[str]]:
+    """`EXPECTED_TALLY = {"<class>": N, …}` in the receipt-coverage suite, each named class down by its count."""
+    found = module_literal(text, "EXPECTED_TALLY")
+    if not found:
+        return text, []
+    lines = text.splitlines(keepends=True)
+    _value, first, last = found
+    span, changed = "".join(lines[first - 1:last]), []
+    for cls, delta in sorted(removed.items()):
+        span, note = _decrement_key(span, cls, delta)
+        changed += note
+    return "".join(lines[:first - 1]) + span + "".join(lines[last:]), changed
+
+
+def _decrement_key(span: str, cls: str, delta: int) -> tuple[str, list[str]]:
+    match = re.search(rf'"{re.escape(cls)}"\s*:\s*(\d+)', span)
+    if not match or not delta:
+        return span, []
+    value = int(match.group(1))
+    return span[:match.start(1)] + str(value - delta) + span[match.end(1):], [f"EXPECTED_TALLY[{cls}] {value} → {value - delta}"]
+
+
+def decrement_named_literal(text: str, name: str, delta: int) -> tuple[str, list[str]]:
+    """`NAME = N` (or JS `const NAME = N`) at line start, by name rather than by value."""
+    match = re.search(rf"^(?:const )?{re.escape(name)}\s*=\s*(\d+)", text, re.MULTILINE)
+    if not match or not delta:
+        return text, []
+    value = int(match.group(1))
+    return text[:match.start(1)] + str(value - delta) + text[match.end(1):], [f"{name} {value} → {value - delta}"]
+
+
 def append_retired_record(text: str, entry: dict[str, Any]) -> str:
     def toml_value(value: Any) -> str:
         if isinstance(value, bool):
@@ -373,6 +441,7 @@ def plan_retire(worktree: pathlib.Path, item: dict[str, Any], proposed: dict[str
     branch = f"control-room/retire-{slug(item['id'])}-{pid.split('-', 1)[0]}"
     subjects = subject_set(worktree, item)
     before = count_literals(worktree)
+    classes = receipt_classes(worktree, subjects["units"])
     edits, removal, deleted, archived = [], [], [], {}
     unit_names = [u["name"] for u in subjects["units"]]
     owned_runners = [r["path"] for r in subjects["runners"] if r["owned"]]
@@ -416,7 +485,7 @@ def plan_retire(worktree: pathlib.Path, item: dict[str, Any], proposed: dict[str
     if exclusion_entries and exclusions.is_file():
         exclusions.write_text(append_exclusions(exclusions.read_text(encoding="utf-8"), exclusion_entries, date, pid, item["id"]), encoding="utf-8")
         edits.append("design/deploy-exclusions.toml")
-    decremented = _decrement(worktree, before, subjects, item, edits)
+    decremented, pinned_extra = _decrement(worktree, before, classes, subjects, item, edits)
     entry = _registry_entry(subjects, item, date, reason, pid, branch, retention, contract_target)
     registry = worktree / REGISTRY
     registry.parent.mkdir(parents=True, exist_ok=True)
@@ -428,14 +497,14 @@ def plan_retire(worktree: pathlib.Path, item: dict[str, Any], proposed: dict[str
     description = _description(item, subjects, unit_names, retention, removal, shared_notes, decremented, source_report, live_report, reason)
     attention = list(shared_notes)
     if decremented:
-        attention.append("count literals decremented in " + VIEWS_SUITE + ": " + "; ".join(decremented))
+        attention.append("count literals decremented: " + "; ".join(decremented))
     attention += [f"residue on this branch: {i['class']} {i['path']}" for i in source_report["items"] if i["blocks"]]
     summary = f"retire {item['id']}: {', '.join(unit_names)} archived; {len(removal)} paths change"
     subject_paths = residue.subject_paths(worktree, flat) + [u[k] for u in subjects["units"] for k in ("timer_path", "service_path") if u[k]] + list(subjects["profiles"]) + owned_runners
     return Plan("retire", item["id"], unit_names, sorted(set(edits)), description, summary, attention,
                 {"subjects": flat, "subject_paths": sorted(set(subject_paths)), "retention": retention, "deleted": deleted,
                  "slugs": subjects["slugs"], "residue": {"source": source_report, "live": live_report},
-                 "pinned_extra": [VIEWS_SUITE[:-3] + ".sh"] if decremented else [],
+                 "pinned_extra": pinned_extra,
                  "acknowledge_pinned_tests": bool(proposed.get("acknowledge_pinned_tests", False)), "registry_entry": entry})
 
 
@@ -492,16 +561,37 @@ def _edit_declarations(worktree: pathlib.Path, unit_names: list[str], subjects: 
              f"lines naming {', '.join(suite_names)} dropped", "CI skip ledger")
 
 
-def _decrement(worktree: pathlib.Path, before: dict[str, int], subjects: dict[str, Any], item: dict[str, Any], edits: list[str]) -> list[str]:
-    views = worktree / VIEWS_SUITE
-    if not views.is_file():
-        return []
-    removed_standing = len(subjects["units"]) if item.get("lifecycle") == "standing" else 0
-    text, changed = decrement_count_literals(views.read_text(encoding="utf-8"), before, removed_standing, 1)
-    if changed:
-        views.write_text(text, encoding="utf-8")
-        edits.append(VIEWS_SUITE)
-    return changed
+def _decrement(worktree: pathlib.Path, before: dict[str, int], classes: dict[str, int], subjects: dict[str, Any], item: dict[str, Any],
+               edits: list[str]) -> tuple[list[str], list[str]]:
+    """Every count literal a retirement moves, each in the file that pins it: (notes, suites to pin).
+    The views suite and the receipt-coverage suite count standing entries, so a dormant or spent
+    entry moves neither; the dev-plan script counts manifest entries of any status."""
+    standing = item.get("lifecycle") == "standing"
+    removed_units = len(subjects["units"])
+    removed_standing = removed_units if standing else 0
+    transforms = (
+        (VIEWS_SUITE, VIEWS_SUITE[:-3] + ".sh", lambda text: decrement_count_literals(text, before, removed_standing, 1)),
+        (COVERAGE_SUITE, COVERAGE_SUITE[:-3] + ".sh", lambda text: _decrement_coverage(text, classes if standing else {}, 1 if standing else 0)),
+        (DEV_PLAN_SCRIPT, DEV_PLAN_SUITE, lambda text: decrement_named_literal(text, "WORKFLOW_ENTRIES", removed_units)),
+    )
+    notes, pinned = [], []
+    for relative, suite, transform in transforms:
+        path = worktree / relative
+        if not path.is_file():
+            continue
+        text, changed = transform(path.read_text(encoding="utf-8"))
+        if changed:
+            path.write_text(text, encoding="utf-8")
+            edits.append(relative)
+            notes.append(f"{relative} " + ", ".join(changed))
+            pinned.append(suite)
+    return notes, pinned
+
+
+def _decrement_coverage(text: str, classes: dict[str, int], removed_logical: int) -> tuple[str, list[str]]:
+    text, changed = decrement_tally(text, classes)
+    text, logical = decrement_named_literal(text, "LOGICAL_WORKFLOWS", removed_logical)
+    return text, changed + logical
 
 
 def _registry_entry(subjects: dict[str, Any], item: dict[str, Any], date: str, reason: str, pid: str, branch: str,

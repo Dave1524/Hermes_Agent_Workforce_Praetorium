@@ -5,8 +5,8 @@ body sections, the refusals, and the branch scan that fails closed.
 
 Anchors: (::retire-removal-across-joins) (::retire-keeps-shared-runner) (::retire-empties-a-surface)
 (::retire-needs-explicit-retention) (::retire-two-trigger-retires-both)
-(::retire-count-literals-or-pinned) (::retire-pr-body-sections) (::retire-refusals)
-(::residue-fails-closed-on-branch)
+(::retire-count-literals-or-pinned) (::retire-count-literals-by-producer) (::retire-pr-body-sections)
+(::retire-refusals) (::residue-fails-closed-on-branch)
 """
 from __future__ import annotations
 
@@ -110,13 +110,21 @@ class Removal(TempState):
         self.assertIn("STANDING_ENTRIES = 4\n", views)
         self.assertIn("LOGICAL_WORKFLOWS = 3\n", views)
         self.assertIn("RETRY_BUDGET = 3  #", views)
+        coverage = (wt / "tests/test_receipt_coverage.py").read_text()
+        self.assertIn('EXPECTED_TALLY = {"scheduled": 1, "sweep": 3, "interaction": 1}\n', coverage)
+        self.assertIn("LOGICAL_WORKFLOWS = 4\n", coverage)
+        self.assertIn("const WORKFLOW_ENTRIES = 5\n", (wt / ".claude/workflows/ship-dev-plan.js").read_text())
         self.assertEqual((wt / "docs/runbook.md").read_text(), (FIXTURES / "repo/docs/runbook.md").read_text())
         source = plan.context()["residue"]["source"]
         self.assertEqual(source["verdict"], "clear", residue.render_w19_table(source))
         self.assertTrue(any(i["class"] == "prose" and i["path"] == "docs/runbook.md" for i in source["items"]))
         self.assertEqual(plan.context()["retention"], RETENTION)
         self.assertEqual(plan.context()["deleted"], ["tests/test_alpha_smoke.sh"])
-        self.assertIn("tests/test_control_room_views.sh", plan.context()["pinned_extra"])
+        self.assertEqual(plan.context()["pinned_extra"], ["tests/test_control_room_views.sh", "tests/test_receipt_coverage.sh", "tests/test_ship_dev_plan_workflow.sh"])
+        self.assertEqual([a for a in plan.reviewer_attention if a.startswith("count literals decremented")],
+                         ["count literals decremented: tests/test_control_room_views.py STANDING_ENTRIES 5 → 4, LOGICAL_WORKFLOWS 4 → 3; "
+                          "tests/test_receipt_coverage.py EXPECTED_TALLY[scheduled] 2 → 1, LOGICAL_WORKFLOWS 5 → 4; "
+                          ".claude/workflows/ship-dev-plan.js WORKFLOW_ENTRIES 6 → 5"])
         second = checkout(self.tmp, "wt2")
         self.plan(second)
         self.assertEqual(worktree_diff(wt), worktree_diff(second))
@@ -176,6 +184,42 @@ class Removal(TempState):
         self.assertEqual(after["logical_standing"], before["logical_standing"])
         text, changed = retire.decrement_count_literals(f"LOGICAL_WORKFLOWS = {after['logical_standing']}\n", after, 1, 1)
         self.assertEqual(text, f"LOGICAL_WORKFLOWS = {after['logical_standing'] - 1}\n", changed)
+
+    def test_count_literals_by_producer(self):
+        """(::retire-count-literals-by-producer) — the receipt-coverage tally drops under the class the
+        retired unit's ExecStart decides (a swept timer, not a self-receipting one), once per unit;
+        the dev-plan entry count drops once per manifest entry whatever the lifecycle; a spent entry
+        was never a standing row, so its tally and logical count stay."""
+        wt = checkout(self.tmp)
+        self.plan(wt, "gamma", pid="20260914T080000Z-retire-gamma-abc123")
+        coverage = (wt / "tests/test_receipt_coverage.py").read_text()
+        self.assertIn('EXPECTED_TALLY = {"scheduled": 2, "sweep": 1, "interaction": 1}\n', coverage)
+        self.assertIn("LOGICAL_WORKFLOWS = 4\n", coverage)
+        self.assertIn("const WORKFLOW_ENTRIES = 4\n", (wt / ".claude/workflows/ship-dev-plan.js").read_text())
+        for suite in ("tests/test_receipt_coverage.sh", "tests/test_ship_dev_plan_workflow.sh", "tests/test_control_room_views.sh"):
+            done = subprocess.run(["bash", suite], cwd=wt, capture_output=True, text=True)
+            self.assertEqual(done.returncode, 0, f"{suite}: {done.stdout}{done.stderr}")
+        spent = checkout(self.tmp, "spent")
+        manifest = spent / "design/agents/claudius.toml"
+        manifest.write_text(manifest.read_text().replace('contract = "design/contracts/alpha.md"\nstatus   = "standing"', 'contract = "design/contracts/alpha.md"\ncontract_exempt = "nekovri-shaped: every date fired"\nstatus   = "spent"'))
+        tsv = spent / "config/fleet-units.tsv"
+        tsv.write_text(tsv.read_text().replace("alpha\tsystem\tstanding", "alpha\tsystem\tspent"))
+        coverage_path = spent / "tests/test_receipt_coverage.py"
+        coverage_path.write_text(coverage_path.read_text().replace('"scheduled": 2', '"scheduled": 1').replace("LOGICAL_WORKFLOWS = 5", "LOGICAL_WORKFLOWS = 4"))
+        _git(spent, "commit", "-qam", "alpha spent")
+        plan = self.plan(spent)
+        coverage = coverage_path.read_text()
+        self.assertIn('EXPECTED_TALLY = {"scheduled": 1, "sweep": 3, "interaction": 1}\n', coverage)
+        self.assertIn("LOGICAL_WORKFLOWS = 4\n", coverage)
+        self.assertIn("const WORKFLOW_ENTRIES = 5\n", (spent / ".claude/workflows/ship-dev-plan.js").read_text())
+        self.assertNotIn("tests/test_receipt_coverage.sh", plan.context()["pinned_extra"])
+        self.assertIn("tests/test_ship_dev_plan_workflow.sh", plan.context()["pinned_extra"])
+        without = checkout(self.tmp, "without")
+        for relative in ("tests/test_receipt_coverage.py", "tests/test_receipt_coverage.sh", ".claude/workflows/ship-dev-plan.js", "tests/test_ship_dev_plan_workflow.sh"):
+            (without / relative).unlink()
+        _git(without, "commit", "-qam", "no extra literal files")
+        plan = self.plan(without)
+        self.assertEqual(plan.context()["pinned_extra"], ["tests/test_control_room_views.sh"])
 
     def test_two_trigger_retires_both(self):
         """(::retire-two-trigger-retires-both)"""
@@ -316,7 +360,11 @@ class ThroughTheWorker(TempState):
         pinned = self.check(response, "pinned-tests")
         self.assertEqual(pinned["status"], "pass", pinned["output"])
         self.assertIn("tests/test_control_room_views.sh", pinned["output"])
+        self.assertIn("tests/test_receipt_coverage.sh + tests/test_receipt_coverage.py: pass", pinned["output"])
+        self.assertIn("tests/test_ship_dev_plan_workflow.sh: pass", pinned["output"])
         self.assertIn("+STANDING_ENTRIES = 4", response["diff"])
+        self.assertIn('+EXPECTED_TALLY = {"scheduled": 1, "sweep": 3, "interaction": 1}', response["diff"])
+        self.assertIn("+const WORKFLOW_ENTRIES = 5", response["diff"])
         self.assertTrue(response["submit_allowed"], response["submit_blockers"])
         self.assertFalse(rec["draft"])
         variant_tmp = self.tmp / "variant"

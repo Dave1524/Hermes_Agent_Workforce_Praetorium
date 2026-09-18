@@ -607,6 +607,7 @@ asserts = [
   "retire-empties-a-surface",         # the last entry on a surface flips present = false with a retired = line, and the real surfaces suite accepts it
   "retire-needs-explicit-retention",  # no retention decision, no plan: receipts, notion and inbox each need a value from their vocabulary
   "retire-count-literals-or-pinned",  # a count literal is decremented and its suite pinned; a suite that names the unit stays red and forces a draft
+  "retire-count-literals-by-producer", # the receipt-coverage tally drops under the retired unit's producer class and the dev-plan entry count per manifest entry; a spent entry moves only the latter
   "retire-refusals",                  # a service, a planned entry and a short reason are refused with no change to the checkout
   "retire-pr-body-sections",          # the PR body carries evidence, retention, removal, both W19 tables, checks, attention and the Dave-only land steps in order
   "residue-fails-closed-on-branch",   # residue the plan left on the branch blocks submit as residue_in_branch naming the path

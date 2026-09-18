@@ -595,6 +595,18 @@ so the PR's `deploy-preview` check lists what else the prune would take (the def
 `design/deploy-exclusions.toml`), and the retirement adds its own files there so the deployed
 copies wait for the prune instead of failing the drift check on the branch.
 
+**Count literals move with the entry, in every file that pins one.** Three suites pin a
+count a retirement changes, and the plan decrements each by that file's own rule, then pins the
+suite so the preview proves the new number: `tests/test_control_room_views.py`
+(`STANDING_ENTRIES`, `LOGICAL_WORKFLOWS`, by value against `count_literals`),
+`tests/test_receipt_coverage.py` (`EXPECTED_TALLY["<class>"]` under the producer class the
+retired unit's `ExecStart` basename decides against that suite's own `SELF_RECEIPTING` —
+`scheduled` for an `agent_propose.sh` job, `sweep` for a plain timer — and
+`LOGICAL_WORKFLOWS` by one) and `.claude/workflows/ship-dev-plan.js` (`WORKFLOW_ENTRIES`, one
+per manifest entry, whatever its status). A dormant or spent entry was never a standing row, so
+only the last moves. Until 2026-09-18 the plan bumped the views suite alone and CI went red on
+the other two after every retirement (`cfd42e1`, `7a535b4`).
+
 **The registry is the fail-closed half.** The PR appends a `[[retired]]` entry to
 `design/retired-workflows.toml` with the whole subject set (units, runners, profiles, contract,
 suites, env override, run markers, retention) and `residue_cleared_on = ""`.

@@ -730,10 +730,13 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   widened to `hermes|ollama` with `LIVE_SET = {}`, `~/.hermes` archived to `~/OUTBOX/` and
   deleted, Ollama's unit, binary, models and user removed. Gate: `tests/test_hermes_residue.sh`
   green with no live rows, `tests/test_workflow_retirements.sh` green after both `clear`
-  stamps, verify green, drift clean. Two gaps the retire plan left, for a follow-up: it does
-  not bump the count literals in `tests/test_receipt_coverage.py` and
-  `.claude/workflows/ship-dev-plan.js` (fixed by hand, `cfd42e1` and `7a535b4`), and the three
-  reporting contracts keep a `discord-subset-held` check whose surface no longer exists.
+  stamps, verify green, drift clean. Two gaps the retire plan left: it did not bump the count
+  literals in `tests/test_receipt_coverage.py` and `.claude/workflows/ship-dev-plan.js` (fixed
+  by hand, `cfd42e1` and `7a535b4`; **closed the same day** — `bin/workflow_pr_retire.py`
+  now decrements both by the retired unit's producer class and manifest-entry count and pins
+  their suites, `tests/test_workflow_pr_retire.sh::retire-count-literals-by-producer`), and
+  the three reporting contracts keep a `discord-subset-held` check whose surface no longer
+  exists (still open).
 
 ### Phase D — Dave-only
 
