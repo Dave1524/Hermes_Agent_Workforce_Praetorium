@@ -221,7 +221,7 @@ while IFS=$'\t' read -r owner unit scope status kind where profile; do
 done < <(manifest_rows)
 
 echo '--- the reporting consumers read the list rather than a glob of their own (::consumers-name-the-list) ---'
-for c in bin/praetorium-status.sh bin/overnight_pre_snapshot.sh bin/local_tier_eval.sh \
+for c in bin/praetorium-status.sh bin/overnight_pre_snapshot.sh \
          profiles/daily_plan_task.md profiles/eod_summary_task.md \
          profiles/overnight_morning_report_cc_task.md; do
   assert "$c names config/fleet-units.tsv" \

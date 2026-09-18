@@ -152,8 +152,6 @@ class RequiresRows(ServedCase):  # (::control-room-requires)
         content = rows["augustus-content"]["requires"]
         self.assertEqual([(r["unit"], r["scope"], r["workflow"], r["satisfied"]) for r in content],
                          [("buzz-agent@augustus", "user", "buzz-agent@augustus", True), ("buzz-notion-broker", "user", None, True)])
-        self.assertEqual([(r["unit"], r["scope"], r["satisfied"]) for r in rows["local-tier-eval"]["requires"]],
-                         [("ollama.service", "system", True)])
         self.assertEqual(rows["augustus-content"]["control"]["state"], "paused")
         self.assertEqual(rows["buzz-agent@augustus"]["requiredBy"], [{"workflow": "augustus-content", "enabled": False}])
         self.assertEqual(sum(1 for row in rows.values() if row["requiredBy"]), 1)

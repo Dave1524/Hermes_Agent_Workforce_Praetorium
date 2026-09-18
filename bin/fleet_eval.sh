@@ -49,7 +49,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# Non-blocking, like local_tier_eval.sh: a run that collides with the previous one has
+# Non-blocking: a run that collides with the previous one has
 # nothing new to measure, and queueing two embedding passes helps nobody.
 exec 9>"$LOCK"
 if ! flock -n 9; then
