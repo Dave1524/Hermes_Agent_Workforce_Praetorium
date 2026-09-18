@@ -31,7 +31,10 @@ connector the deny list did not name — Eden and Claude Docs were open until `a
    unit sets `BUZZ_AGENT_NAME=%i`. Augustus: `$CODEX_HOME/skills/praetorium` resolves to the
    deployed `skills/augustus/skills`. Aurelian: an empty owner plugin, so the guard is uniform.
 4. **Tools are isolated.** Wrapper flags after `"$@"`: `--strict-mcp-config`,
-   `--setting-sources project,local`, `--settings <per-agent>`, `--plugin-dir`. The bridge shim
+   `--setting-sources=` (none — the agents' cwd is `/home/dave`, so the *project* settings
+   file is `~/.claude/settings.json` itself; measured 2026-09-18, `project,local` still
+   loaded it), `--settings <per-agent>`, `--plugin-dir`. `~/CLAUDE.md` and the auto-memory
+   pool are not settings and still load (measured). The bridge shim
    per agent (`--mcp-command %h/.config/buzz-team/buzz-team-mcp-%i`) execs
    `buzz-team-mcp.py --agent <name> --tools <bridge_tools>`; the bridge filters `tools/list`
    and refuses `tools/call` outside the set. Per-agent settings = base ∪ `tools_deny` ∪ denies
