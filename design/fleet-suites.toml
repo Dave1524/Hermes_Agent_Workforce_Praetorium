@@ -708,14 +708,13 @@ them cannot be credited to any one of them.
 path    = "tests/test_hermes_residue.sh"
 owner   = "fleet"
 asserts = [
-  "residue-code-line-is-comment-or-live",  # every `hermes` line in a code file under bin/ systemd/ profiles/ is a comment or an allowlisted live anchor
-  "residue-prose-is-listed",               # every `hermes` line in a prose file there is an allowlisted historical note
+  "residue-code-line-is-comment-or-live",  # every `hermes` or `ollama` line in a code file under bin/ systemd/ profiles/ is a comment or an allowlisted live anchor
+  "residue-prose-is-listed",               # every `hermes` or `ollama` line in a prose file there is an allowlisted historical note
   "residue-no-stale-row",                  # every allowlist row still matches a line; a row that outlives its subject is a finding
-  "residue-live-is-pinned",                # the live set is exactly deliver.sh (discord-cutover) and local_tier_eval.sh (local-tier-eval)
-  "residue-local-tier-on-base0",           # local_tier_eval.sh runs -p base0, never a persona profile
+  "residue-live-is-pinned",                # the live set is empty: the last two dependencies left with Hermes and Ollama on 2026-09-18
   "residue-canary-red",                    # the scanner reports an uncommented hit on a synthetic tree and stays silent on the commented one
 ]
 why_no_workflow = """
-It scans the whole gate set for a retired platform. A residue claim over every file cannot be
-credited to any one workflow; the two live anchors it pins belong to two different ones.
+It scans the whole gate set for two retired runtimes. A residue claim over every file cannot
+be credited to any one workflow.
 """

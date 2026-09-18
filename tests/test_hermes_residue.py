@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
-"""The Hermes residue rule (T6.1): every `hermes` line under bin/ systemd/ profiles/ is a
-comment in a code file, a listed prose line, or one of the two pinned live dependencies.
+"""The Hermes and Ollama residue rule (T6.1, widened 2026-09-18): every `hermes` or
+`ollama` line under bin/ systemd/ profiles/ is a comment in a code file or a listed prose
+line. There is no live dependency left on either runtime.
 
-A hit is any line containing `hermes`, case-insensitively, after the GitHub repository's own
-name (Hermes_Agent_Workforce_Praetorium) is blanked out — the repo is named after the runtime
-it no longer runs, and a rename is a separate decision from retiring the runtime. Code files
-(.sh .py .service .timer .env.example .conf .toml .tsv, extension-less) pass a hit when the
-line is a `#` comment or matches a `live` row; prose files (.md .json .txt) pass only via a
-`historical` row. Paths with an `archive` component, `__pycache__` and `*.bak*` are skipped.
+A hit is any line containing `hermes` or `ollama`, case-insensitively, after the GitHub
+repository's own name (Hermes_Agent_Workforce_Praetorium) is blanked out — the repo is named
+after the runtime it no longer runs, and a rename is a separate decision from retiring the
+runtime. Code files (.sh .py .service .timer .env.example .conf .toml .tsv, extension-less)
+pass a hit when the line is a `#` comment or matches a `live` row; prose files (.md .json
+.txt) pass only via a `historical` row. Paths with an `archive` component, `__pycache__` and
+`*.bak*` are skipped.
 
-The live set is pinned here as a literal so a third live dependency cannot arrive unnamed:
-the Discord delivery leg (bin/deliver.sh) retires with the Discord cutover, and
-bin/local_tier_eval.sh with local-tier-eval itself.
+The live set is pinned here as a literal so a live dependency cannot arrive unnamed. It is
+empty: the Discord delivery leg (bin/deliver.sh) left with Hermes on 2026-09-18, and
+bin/local_tier_eval.sh with local-tier-eval and Ollama the same day.
 """
 
 from __future__ import annotations
@@ -27,10 +29,9 @@ GATE_DIRS = ("bin", "systemd", "profiles")
 PROSE_SUFFIXES = {".md", ".json", ".txt"}
 SKIP_PARTS = {"archive", "__pycache__"}
 REPO_NAME = "Hermes_Agent_Workforce_Praetorium"
-HIT = re.compile("hermes", re.IGNORECASE)
+HIT = re.compile("hermes|ollama", re.IGNORECASE)
 COMMENT = re.compile(r"^\s*#")
-LIVE_SET = {"bin/deliver.sh": "discord-cutover", "bin/local_tier_eval.sh": "local-tier-eval"}
-PERSONA_PROFILE = re.compile(r"-p\s+(marcus|claudius|augustus|trajan)\b")
+LIVE_SET: dict[str, str] = {}
 
 
 def is_skipped(rel: pathlib.Path) -> bool:
@@ -122,11 +123,6 @@ class HermesResidue(unittest.TestCase):
             if row["class"] == "historical":
                 self.assertTrue(is_prose(pathlib.Path(row["path"])),
                                 f"historical rows excuse prose only; a code line is a comment or live: {row}")
-
-    def test_local_tier_on_base0(self):  # (::residue-local-tier-on-base0)
-        text = (ROOT / "bin" / "local_tier_eval.sh").read_text(encoding="utf-8")
-        self.assertTrue("-p base0" in text, "local_tier_eval.sh does not run -p base0")
-        self.assertIsNone(PERSONA_PROFILE.search(text), "local_tier_eval.sh names a persona profile")
 
     def test_canary_red(self):  # (::residue-canary-red)
         red, red_stale = scan(FIXTURES / "tree-red", read_allowlist(FIXTURES / "tree-red" / "allowlist.tsv"))

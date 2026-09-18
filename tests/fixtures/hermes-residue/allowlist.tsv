@@ -1,6 +1,6 @@
 # path	class	anchor	retires_with_or_why
 # class `historical`: a prose line (.md .json .txt) that narrates the retired runtime; passes only via a row here.
-# class `live`: a code line that still execs the hermes CLI; the fourth column names the decision that retires it.
+# class `live`: a code line that still execs the hermes or ollama CLI; the fourth column names the decision that retires it. None since 2026-09-18.
 # Comment lines in code files are inert by rule and need no row. A row that matches no line fails residue-no-stale-row.
 profiles/m1_signal_scan_cc_task.md	historical	NOT hermes/claudius	prompt asserts the 2026-07-24 runtime swap
 profiles/weekly_pre_assembly_cc_task.md	historical	NOT hermes/claudius	prompt asserts the 2026-07-28 runtime swap
@@ -8,12 +8,3 @@ profiles/standing_research_cc_task.md	historical	NOT hermes/claudius	prompt asse
 profiles/standing_research_cc_task.md	historical	no hermes MEMORY store	prompt asserts there is no episodic store
 profiles/overnight_morning_report_cc_task.md	historical	NOT hermes/marcus	prompt asserts the 2026-07-30 runtime swap
 bin/fleet_eval_probes.json	historical	retired Discord/Hermes/Kanban design	probe description records a retired design
-bin/deliver.sh	live	hermes_send	discord-cutover
-bin/deliver.sh	live	HERMES_BIN	discord-cutover
-bin/deliver.sh	live	.hermes/hermes-agent/venv/bin/hermes	discord-cutover
-bin/deliver.sh	live	.hermes/hermes-agent/venv/bin/python	discord-cutover
-bin/deliver.sh	live	.local/bin/hermes	discord-cutover
-bin/deliver.sh	live	hermes_cli.main send	discord-cutover
-bin/deliver.sh	live	hermes send --to discord	discord-cutover
-bin/local_tier_eval.sh	live	HERMES_BIN	local-tier-eval
-bin/local_tier_eval.sh	live	"$HERMES"	local-tier-eval

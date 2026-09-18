@@ -12,10 +12,9 @@ DELIVERY_ADAPTER="${DELIVERY_ADAPTER:-$(basename "${BASH_SOURCE[1]:-adapter.sh}"
 DELIVERY_NAME="${DELIVERY_ADAPTER%.sh}"
 DELIVER_BIN="${DELIVER_BIN:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/deliver.sh}"
 
-# There is deliberately no default route. A caller that has not been given one keeps
-# exactly its pre-migration behaviour — Discord only — and deliver.sh files a
-# config_error receipt, so an unported producer surfaces in the dual-run audit
-# instead of defaulting into someone else's channel.
+# There is deliberately no default route. A caller that has not been given one sends
+# nothing and deliver.sh files a config_error receipt, so an unported producer
+# surfaces in the delivery audit instead of defaulting into someone else's channel.
 DELIVERY_ROUTE="${DELIVERY_ROUTE:-unrouted}"
 DELIVERY_JOB="${DELIVERY_JOB:-$DELIVERY_ADAPTER}"
 

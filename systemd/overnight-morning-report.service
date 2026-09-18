@@ -26,9 +26,10 @@ ExecStartPre=/usr/bin/mkdir -p /home/dave/logs/run-markers
 ExecStartPre=/usr/bin/touch /home/dave/logs/run-markers/%n
 EnvironmentFile=/home/dave/.config/agent-workforce/secrets.env
 ExecStart=/home/dave/agent-workforce/bin/agent_propose.sh
-# Deliver the freshly-written report to both surfaces (NUC-30 Discord, plus the Buzz
-# ops channel from 2026-08-04). Fail-soft — deliver_report.sh always exits 0 — so a
-# transport hiccup never marks the report unit failed / fires the OnFailure alert.
+# Deliver the freshly-written report to the Buzz ops channel (NUC-30 introduced this
+# hook for Discord; Buzz-only since 2026-09-18). Fail-soft — deliver_report.sh always
+# exits 0 — so a transport hiccup never marks the report unit failed / fires the
+# OnFailure alert.
 ExecStartPost=/home/dave/agent-workforce/bin/deliver_report.sh
 TimeoutStartSec=15min
 NoNewPrivileges=true

@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# audit_buzz_dual_run.sh — the only evidence that may close the Discord cutover.
+# audit_buzz_dual_run.sh — did every expected timer fire reach Buzz?
 #
 # usage: audit_buzz_dual_run.sh [--days N] [--receipts FILE] [--unit UNIT] [--verbose]
 #
-# For every expected timer fire in the window it answers one question: did Discord, the
-# Buzz channel AND the Pulse note all land, or did this producer correctly have nothing
-# to say? Anything else is a gap and exits non-zero.
+# For every expected timer fire in the window it answers one question: did the Buzz
+# channel AND the Pulse note both land, or did this producer correctly have nothing to
+# say? Anything else is a gap and exits non-zero. It was written as the evidence for the
+# Discord cutover (the "dual run" in its name); that cutover closed by decision on
+# 2026-09-18 when Hermes, the Discord leg, left the box, and Buzz is the only surface.
 #
 # Why receipts and not the journal: the two live failures this migration exists to fix
 # both stayed green. A unit that exits 0 having delivered nothing, and one that delivered
@@ -153,7 +155,7 @@ def verdict(rows):
     """Worst verdict among the receipts a unit wrote on one day."""
     ranked = []
     for row in rows:
-        legs = [row.get("discord_result"), row.get("buzz_result"), row.get("pulse_result")]
+        legs = [row.get("buzz_result"), row.get("pulse_result")]
         outcome = row.get("outcome", "")
         if outcome == "skipped":
             ranked.append((3, "SKIPPED", row.get("error") or "nothing was sent"))
@@ -162,7 +164,7 @@ def verdict(rows):
         elif all(leg == "ok" for leg in legs):
             ranked.append((0, "ok", ""))
         else:
-            bad = [name for name, leg in zip(("discord", "buzz", "pulse"), legs) if leg != "ok"]
+            bad = [name for name, leg in zip(("buzz", "pulse"), legs) if leg != "ok"]
             ranked.append((2, "PARTIAL", "not delivered: " + ", ".join(bad)))
     ranked.sort(reverse=True)
     return ranked[0][1], ranked[0][2]
@@ -178,7 +180,7 @@ if only_unit:
         print("audit: {} is not in the producer manifest".format(only_unit))
         sys.exit(2)
 
-print("Buzz dual-run audit — {} day window, {} .. {}".format(
+print("Buzz delivery audit — {} day window, {} .. {}".format(
     days, window[0].isoformat(), window[-1].isoformat()))
 print("receipts: {}".format(receipts_path))
 print("")
@@ -250,13 +252,13 @@ for row in rows:
 
 if pending:
     print("")
-    print("pending — not yet ported to Buzz, still Discord-only:")
+    print("pending — not yet ported to Buzz, no route:")
     for unit in pending:
         print("    {}".format(unit))
 
 print("")
 if gaps:
-    print("RESULT: {} gap(s). The dual-run clock restarts.".format(gaps))
+    print("RESULT: {} gap(s).".format(gaps))
 elif pending and not only_unit:
     print("RESULT: no gaps among wired producers, but {} producer(s) are still "
           "unported. A fleet-wide clean day requires all of them.".format(len(pending)))

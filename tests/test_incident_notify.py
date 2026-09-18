@@ -176,8 +176,8 @@ class Notifier(NotifierCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         calls = self.invocations()
         self.assertEqual(len(calls), 1)
-        self.assertIn("job=workflow-incidents.service route=incidents subject=[incident] failed-assertion:knowledge-digest "
-                      "DELIVER_DISCORD=0", calls[0])
+        self.assertIn("job=workflow-incidents.service route=incidents subject=[incident] failed-assertion:knowledge-digest",
+                      calls[0])
         argv = (self.fake / "argv.log").read_text().splitlines()[0]
         self.assertIn("--job workflow-incidents.service --route incidents --runtime none", argv)
         body = self.messages()
@@ -359,7 +359,7 @@ class Notifier(NotifierCase):
             (self.receipts / unit / "run.json").write_text(json.dumps(body))
         self.sweep("--max-sends", "10")
         self.assertEqual(len(self.invocations()), 10)
-        self.assertTrue(self.invocations()[0].endswith("failed-assertion:wf-00 DELIVER_DISCORD=0"))
+        self.assertTrue(self.invocations()[0].endswith("failed-assertion:wf-00"))
         self.sweep("--max-sends", "10", now="2026-09-14T03:10:00Z")
         self.assertEqual(len(self.invocations()), 12)
 
