@@ -104,3 +104,21 @@ turn on the new wrapper and is recorded on the first one, together with the firs
 One finding the plan had wrong: the `claude` child does **not** exist only mid-turn — marcus's
 lingered 11 minutes after `end_turn`. Gate 14 is right to read it opportunistically and skip
 out loud; "no child" still does not mean "no session".
+
+**First turns, 2026-09-18 21:34–21:49 CEST (marcus, DM).** Receipt 1: `skills.offered` ==
+manifest. Receipt 2 (weekly-review): `invoked: ["weekly-review"]` — and `read: []` for a turn
+that cat-ed the canonical file, which is PR #55 (a shell command naming a SKILL.md is a read).
+Gate 14 read the live session: four flags on the `claude` child, the bridge its only MCP child,
+qmd the bridge's only child.
+
+**After figure (criterion 9), measured from transcript usage, not `context-cost.py`** — that
+script keys on `[Base]`/`[System]` text blocks in the first user record, and the current
+buzz-acp puts `<context>` / `<conversation-context>` / `<buzz-event>` there instead, with the
+static layers in the system prompt the transcript never records; it reports "No fleet turns"
+for every session since the harness upgrade and needs rewriting before it measures anything
+again. Same agent, same DM channel, same shape (first request, owner DM with full scrollback):
+2026-09-16 17:25 → 156,600 tokens, of which ~42.5k the 89-message scrollback, **114,088 the
+rest**; 2026-09-18 21:34 → 129,829, ~42.8k scrollback, **87,026 the rest**. −27,062 per
+request (−23.7%), in line with the headless probe's −29k, resent on every one of the turn's
+116 requests. The scrollback is now the largest single layer of a DM turn and unchanged by
+this work — `BUZZ_ACP_CONTEXT_MESSAGE_LIMIT`'s question, not S1's.
