@@ -178,6 +178,11 @@ read_by = "human / verify-fleet.sh gate 13"
 why = "initialize + tools/list against brave-mcp.service, from both ends of the same namespace split; spends no search quota"
 
 [[adopted]]
+path = "bridge-probe.py"
+read_by = "human / verify-fleet.sh gate 15"
+why = "spawns one per-agent shim (buzz-team-mcp-<name>) as its harness does and reports serverInfo + the families tools/list advertises, --expect to assert them; run on the host for every agent and inside augustus's namespace via nsenter, the two ends that disagreed on 2026-08-10. initialize + tools/list only: nothing is spent"
+
+[[adopted]]
 path = "verify-fleet.sh"
 read_by = "human; ~/CLAUDE.md's own Verification block"
 why = "the S1 gate. Roughly twelve gates over rules files, sandbox deny-paths, charter resolution, config freshness, kind agreement, broker reachability, env knobs, roster and the aurelian calibration pin. It was the only thing standing between the DAG and a cascade, and no PR ran it"

@@ -692,6 +692,26 @@ fleet, not to a workflow.
 """
 
 [[suite]]
+path    = "tests/test_fleet_capabilities.sh"
+owner   = "fleet"
+asserts = [
+  "render-matches-committed",        # bin/fleet_capabilities.py check is clean: every shim and settings file is what its manifest renders, proven first to bite on a hand edit
+  "settings-per-agent-superset",     # each agent-settings-<name>.json is the base plus EXACTLY its manifest's tools_deny and withheld bridge families, hooks untouched — joined without the renderer in the loop
+  "wrapper-flags-after-args",        # the wrapper's four flags come after "$@", where the adapter's --setting-sources would otherwise win
+  "wrapper-strict-and-sources",      # --strict-mcp-config, --setting-sources= (empty), --settings and --plugin-dir selected by BUZZ_AGENT_NAME, both proved readable first; the unit sets %i and names the shim
+  "shim-per-agent",                  # one executable shim per manifest exec'ing --agent <name> --tools <its families>, every artefact adopted in MANIFEST.toml, no codex settings file, no orphan shim
+  "bridge-filter-matches-manifest",  # each shim spawned as the harness spawns it: tools/list is its manifest's families and a call into a withheld family is refused by the bridge itself
+  "aurelian-deny-as-declared",       # aurelian: Edit/Write/NotebookEdit and the seven notion_* denied under his namespace; Bash/Read/Glob/Grep stay; no other Claude agent withholds a builtin
+  "connector-deny-complete",         # every claude.ai connector the account exposes (a MEASURED fixture, both directions) is denied in the base
+]
+why_no_workflow = """
+S1 capability isolation is fleet state — what each buzz-agent@* session is offered — and it
+is scheduled by nothing. This suite reads SOURCE (manifests, rendered artefacts, wrapper,
+unit) and runs anywhere; tests/test_fleet_guards.sh reads the deployed copies and
+buzz-team/verify-fleet.sh gates 14 and 15 read the live processes.
+"""
+
+[[suite]]
 path    = "tests/test_interaction_receipt.sh"
 owner   = "fleet"
 asserts = [

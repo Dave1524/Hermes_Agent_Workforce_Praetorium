@@ -104,9 +104,21 @@ That gate is machine-level and stays machine-level; see docs/runbook.md § S1.
 # enforced = false means it is stated policy that nothing currently prevents.
 
 [[must_not]]
-rule     = "execute anything — no writes, no commits, no sends"
+rule     = "execute anything — no commits, no sends"
 enforced = false
-why      = "the pin is unattestable by construction; it is charter prose, and an INCONCLUSIVE verdict is correct behaviour rather than a fault"
+why      = "the pin is unattestable by construction; it is charter prose, and an INCONCLUSIVE verdict is correct behaviour rather than a fault. The write half of the old wording ('no writes') is enforced since 2026-09-18 — see the next two rules; Bash stays, so a commit or a send through it is still prose"
+
+[[must_not]]
+rule     = "edit or write a file from his Buzz session"
+enforced = true
+why      = "design/agents/aurelian.toml tools_deny withholds Edit, Write and NotebookEdit; bin/fleet_capabilities.py renders that into buzz-team/agent-settings-aurelian.json, the only settings file his claude child loads (--setting-sources= --settings, after \"$@\"). Bash is deliberately not withheld: his checks run through it"
+test     = "tests/test_fleet_capabilities.sh::aurelian-deny-as-declared"
+
+[[must_not]]
+rule     = "call a notion_* tool"
+enforced = true
+why      = "his bridge shim buzz-team/buzz-team-mcp-aurelian advertises qmd and brave only and the bridge refuses a notion call outside its families; the settings file denies the seven names under mcp__buzz-team-mcp-aurelian__ as well, so the deny holds even if the shim were swapped"
+test     = "tests/test_fleet_capabilities.sh::bridge-filter-matches-manifest"
 
 [[must_not]]
 rule     = "co-author or edit an artifact he later verifies"
