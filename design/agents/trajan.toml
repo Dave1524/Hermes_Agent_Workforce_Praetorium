@@ -94,18 +94,7 @@ the intended quiet second signal via `systemctl --failed`, and it clears on the 
 run. Do not "fix" this.
 """
 
-[[workflows]]
-unit = "local-tier-eval"
-contract = "design/contracts/local-tier-eval.md"
-surface = "platform"
-status = "standing"
-suite    = ["tests/test_local_tier_eval_score.sh"]
-skills   = []
-trigger = "02,08,11,14,17,20:17 (no jitter)"
-what = "Measures six times a day whether the local Ollama model on the Arc GPU still handles its mechanical tasks."
-requires = ["system/ollama.service"]   # T5.3f: every task runs on ollama_local (bin/local_tier_eval.sh); the unit file carries the matching Wants=
-alerted = true                   # wired 2026-09-01 (D2)
-in_repo = true
+# local-tier-eval retired 2026-09-18 via Control Room proposal 20260918T080741Z-retire-local-tier-eval-d15791 (branch control-room/retire-local-tier-eval-20260918T080741Z): The local inference tier is retired with Ollama and Hermes (Dave, 2026-09-18): nothing local runs any more, so there is no model to score. Artifacts: receipts=keep notion=keep inbox=keep. Record: design/retired-workflows.toml.
 
 [[workflows]]
 unit = "agent-inbox-sync"
