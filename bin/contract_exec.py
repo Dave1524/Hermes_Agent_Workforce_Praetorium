@@ -200,10 +200,13 @@ def _clock(value: str | None) -> dt.datetime:
 
 
 def child_environment(run: Run, names: list[str]) -> dict[str, str]:
-    """Exactly the schema's variables plus PATH — nothing else from this process leaks.
+    """Exactly the schema's variables plus what its tools need — nothing else from this process leaks.
 
     PATH is not in the schema's list but must reach the child or `grep` and `find` in a
-    block cannot run; the "nothing else" rule is about the parent's variables.
+    block cannot run, and at user scope `systemctl --user` cannot find its bus without
+    XDG_RUNTIME_DIR; the "nothing else" rule is about the parent's variables. The sweep is a
+    system unit, so without the second every user-scope `$SYSTEMCTL` check it ran failed on
+    the bus and never on the unit (buzz-pr-watch, 2026-09-18).
     """
     known = run.derivations()
     missing = [n for n in names if n not in known]
@@ -212,6 +215,8 @@ def child_environment(run: Run, names: list[str]) -> dict[str, str]:
                       "it — teach bin/contract_exec.py the variable before running checks against it")
     env = {name: known[name] for name in names}
     env["PATH"] = os.environ.get("PATH", os.defpath)
+    if run.scope == "user":
+        env["XDG_RUNTIME_DIR"] = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
     return env
 
 

@@ -222,7 +222,7 @@ class ContractExecTest(unittest.TestCase):
         self.assertEqual(got["secret-probe"]["status"], "passed")
         self.assertEqual(got["sweep-only"]["status"], "not_applicable")
         dump = dict(line.split("=", 1) for line in got["env-dump"]["output"].splitlines() if "=" in line)
-        self.assertEqual(set(dump) - BASH_OWN, set(schema) | {"PATH"})
+        self.assertEqual(set(dump) - BASH_OWN, set(schema) | {"PATH", "XDG_RUNTIME_DIR"})
         self.assertNotIn("SECRET_PROBE", dump)
         self.assertEqual(dump["SYSTEMCTL"], "systemctl --user")
         self.assertEqual(dump["JOURNALCTL"], "journalctl --user")
@@ -250,7 +250,23 @@ class ContractExecTest(unittest.TestCase):
                                      schema_doc=trimmed)
         dump = dict(line.split("=", 1) for line in by_id(written)["env-dump"]["output"].splitlines() if "=" in line)
         self.assertNotIn("VAULT", dump)
-        self.assertEqual(set(dump) - BASH_OWN, set(checks.executor_environment(trimmed)) | {"PATH"})
+        self.assertEqual(set(dump) - BASH_OWN,
+                         set(checks.executor_environment(trimmed)) | {"PATH", "XDG_RUNTIME_DIR"})
+
+    def test_user_scope_carries_the_runtime_dir(self):  # (::exec-user-scope-runtime-dir)
+        """`systemctl --user` finds its bus through XDG_RUNTIME_DIR; the sweep is a system
+        unit, so a user-scope check that inherits nothing fails on the bus, never on the unit."""
+        def dump(unit, **env):
+            self.box.write_attempt_log("probe\n", unit=unit)
+            done, written = self.box.run(unit, "run", "--artifact", "file:///probe", env=env or None)
+            self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+            return dict(line.split("=", 1) for line in by_id(written)["env-dump"]["output"].splitlines() if "=" in line)
+
+        self.assertEqual(dump("env-probe", XDG_RUNTIME_DIR="/run/user/4242")["XDG_RUNTIME_DIR"], "/run/user/4242")
+        self.assertEqual(dump("env-probe")["XDG_RUNTIME_DIR"], f"/run/user/{os.getuid()}")
+        system = dump("env-probe-system", XDG_RUNTIME_DIR="/run/user/4242")
+        self.assertNotIn("XDG_RUNTIME_DIR", system)
+        self.assertEqual(system["SYSTEMCTL"], "systemctl")
 
     def test_artifact_is_this_run(self):  # (::exec-artifact-is-this-run)
         done, written = self.healthy_run()

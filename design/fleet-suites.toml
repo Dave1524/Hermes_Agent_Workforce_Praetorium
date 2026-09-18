@@ -535,6 +535,7 @@ owner   = "fleet"
 asserts = [
   "exec-one-result-per-check",       # every declared check yields one assertion, in contract order; wrong vantage is n/a, never omitted
   "exec-env-is-schema-list",         # the child sees the schema doc's variables plus PATH and nothing of the parent's
+  "exec-user-scope-runtime-dir",     # a user-scope row's child also carries XDG_RUNTIME_DIR (parent's, else /run/user/<uid>) so `systemctl --user` reaches its bus; a system-scope row's does not
   "exec-artifact-is-this-run",       # check class: artifact is this run's (knowledge-digest check 1)
   "exec-decline-is-own",             # check class: sentinel branch — fresh ^DECLINE: in this run's own attempt log
   "exec-write-boundary",             # check class: write boundary (knowledge-digest check 5)

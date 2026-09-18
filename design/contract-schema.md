@@ -132,7 +132,10 @@ per unit, and T5.1 is what makes them true.
 
 - `UNIT` — the unit name with no suffix, from the manifest entry.
 - `SYSTEMCTL` — `systemctl`, or `systemctl --user` where the entry says `scope = "user"`.
-  Never hardcode one: half this fleet is `--user` and half is not.
+  Never hardcode one: half this fleet is `--user` and half is not. At user scope the child
+  also carries `XDG_RUNTIME_DIR`, the way it carries `PATH` — transport for the tool, not a
+  variable a block reads; without it the sweep, a system unit, failed every user-scope
+  `$SYSTEMCTL` check on the bus rather than on the unit (2026-09-18).
 - `JOURNALCTL` — the same, for `journalctl`.
 - `RUN_DATE` — `YYYY-MM-DD`, exported once (`bin/agent_propose.sh:317`) and read, never
   recomputed, so a run spanning midnight cannot disagree with itself.
