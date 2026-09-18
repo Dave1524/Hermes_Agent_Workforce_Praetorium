@@ -681,10 +681,13 @@ asserts = [
   "bridge-brave-allowlist",          # a Brave tool the fleet is not offered is refused at the bridge and never reaches the daemon
   "bridge-brave-daemon-down",        # nothing listening: tools still advertised (static schema, said on stderr), the call fails naming the daemon, qmd and Notion keep answering
   "bridge-brave-session-recovery",   # the daemon restarted (404): the bridge re-initialises once and the call succeeds
+  "bridge-tools-filter",             # a shim's --agent/--tools: the list carries only the named families, a call outside them is one tool error naming agent and families, serverInfo is buzz-team-mcp-<agent>
+  "bridge-tools-unknown-family",     # a family the bridge does not know exits 2 naming it, never an empty advertisement
 ]
 why_no_workflow = """
-It tests the one stdio MCP bridge all five buzz-agent@* units spawn, over a stub qmd and a
-stub Brave daemon. The bridge belongs to the fleet, not to a workflow.
+It tests the one stdio MCP bridge all five buzz-agent@* units spawn — through the per-agent
+shims since 2026-09-18 — over a stub qmd and a stub Brave daemon. The bridge belongs to the
+fleet, not to a workflow.
 """
 
 [[suite]]
