@@ -445,9 +445,9 @@ the suite runs on a hosted runner with no bus. Rules, each asserted by
 
 - A bare name must be a manifest unit and takes that entry's scope; a unit outside the
   manifests is written `system/<unit>` or `user/<unit>` and must be a repo unit file under
-  `systemd/` or `systemd/user/`, or a key of `EXTERNAL_UNITS` in `bin/workflow_requires.py`
-  (`system/ollama.service` — the Ollama package unit no repo file describes). The map is
-  printed by name on every run; it is not a place to hide a dependency.
+  `systemd/` or `systemd/user/`. There is no external-unit map any more: its one key,
+  `system/ollama.service`, left with Ollama on 2026-09-18, and a dependency on a unit this
+  repo does not describe is a resolver error, not an allowlist entry.
 - Every entry of one `logical_workflow` declares the same list — `augustus-content` and
   `content-change-dispatch` are two triggers on one workflow with one dependency set.
 - An entry whose `runner` hands off through `run_content_via_buzz.sh` requires
@@ -465,7 +465,7 @@ state refuses (exit 1, `requires <unit>: <state>`), and a bus that answers nothi
 never a refusal; a default of `false` would make every requirement read as down on the
 fixture bus and `dependency-down` fire on a lie. `bin/agent_propose.sh` runs the check after
 its lock and vault pre-flights and exits through `block_exit` (a BLOCKED receipt, exit 0);
-`bin/local_tier_eval.sh` logs and exits 0 in parity with its collision path. The Control
+it is the only executor pre-flight since `local-tier-eval` retired (2026-09-18). The Control
 Room classifies an enabled workflow with a requirement known to be down as
 `dependency-down`, one row naming every down unit; a paused workflow raises none.
 

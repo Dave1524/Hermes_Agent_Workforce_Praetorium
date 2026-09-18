@@ -160,7 +160,7 @@ class Sender:
         offset = a.receipts_log.stat().st_size if a.receipts_log.exists() else 0
         command = [str(a.deliver_bin), "--job", a.job, "--route", a.route, "--runtime", "none",
                    "--subject", subject, "--message", message]
-        env = {**os.environ, "DELIVER_DISCORD": "0", "BUZZ_ROUTES_FILE": str(a.routes_file),
+        env = {**os.environ, "BUZZ_ROUTES_FILE": str(a.routes_file),
                "DELIVERY_RECEIPTS": str(a.receipts_log)}
         try:
             completed = subprocess.run(command, env=env, capture_output=True, text=True, timeout=a.deliver_timeout, check=False)

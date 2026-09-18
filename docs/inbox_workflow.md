@@ -43,15 +43,18 @@ git diff main...origin/agents/inbox -- _inbox/agents/   # inspect (Claude can as
 
 ## Outbound alerts (NUC-30)
 
-Several model-free Discord notification paths keep Dave in the loop without any
-LLM spend (all use `hermes send --to discord` via the `secrets.env` bot token):
+Several model-free notification paths keep Dave in the loop without any LLM
+spend. All of them go through `bin/deliver.sh` to the Buzz channel their route
+names (`bin/buzz_routes.env`); the Discord leg they were built on (NUC-30,
+`hermes send --to discord`) left with Hermes on 2026-09-18 and Buzz is the only
+surface. Every send leaves a receipt in `~/logs/delivery-receipts.jsonl`:
 
 - **Morning report** — `bin/deliver_report.sh` is wired as `ExecStartPost` on
   `overnight-morning-report.service`. After the 06:15 NUC-36 run writes
-  `~/logs/overnight/morning-report-*.md`, it posts the newest file to
-  `#praetorium-main-chat`. Fail-soft: any delivery error is logged to
-  `~/logs/deliver_report.log` and the script still exits 0, so a Discord hiccup
-  never marks the report unit failed.
+  `~/logs/overnight/morning-report-*.md`, it posts the newest file to the `ops`
+  channel. Fail-soft: any delivery error is logged to `~/logs/deliver_report.log`
+  and the script still exits 0, so a transport hiccup never marks the report
+  unit failed.
 - **Approvals aging** — `bin/inbox_backlog_alert.sh` (daily 06:20 via
   `inbox-backlog-alert.timer`) reuses the NUC-26 oldest-pending computation from
   `praetorium-status.sh`. If the oldest proposal in `_inbox/agents/` is more than
@@ -61,14 +64,14 @@ LLM spend (all use `hermes send --to discord` via the `secrets.env` bot token):
   Mac-side human gate.
 - **Agent failure alerts** — `agent-alert@.service` (systemd template) calls
   `bin/notify.sh` on any unit with `OnFailure=agent-alert@%n.service`. Fires
-  into `#praetorium-main-chat` with the failed unit name and timestamp.
+  into the `ops` channel with the failed unit name and timestamp.
 - **Completion heartbeats** — `agent-proposal.service` and
   `augustus-content.service` have `ExecStartPost` that calls `bin/notify.sh` on
   successful completion. Once-daily each; complements the morning digest.
 
-The `bin/notify.sh` script is the consolidated dispatch entrypoint (96 lines,
-fail-soft, supports text and `--file` modes). Standalone notification dispatch
-via `hermes send` is also available for ad-hoc use.
+The `bin/notify.sh` script is the consolidated dispatch entrypoint (fail-soft,
+supports text and `--file` modes). For an ad-hoc message call `bin/deliver.sh`
+directly with `--route`; nothing else on the box sends.
 
 The old Hermes-cron `overnight-morning-report` LLM job (id `1dee98c14b36`) has
 been removed — all delivery now goes through the box-side paths above.

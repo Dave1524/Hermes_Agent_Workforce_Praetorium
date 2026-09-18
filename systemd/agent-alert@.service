@@ -6,7 +6,7 @@
 #   1. Journal (tag "agent-alert", priority err) — secret-free, always works.
 #   2. Log file at /home/dave/logs/agent-alert.log.
 #   3. notify.sh (NUC-30) — fail-soft; since 2026-08-04 it hands off to
-#      bin/deliver.sh, which posts to Discord AND the Buzz ops channel.
+#      bin/deliver.sh, which posts to the Buzz ops channel.
 #
 # The local journal and log paths are deliberately first and independent: they are
 # the only two that still work when the failure being reported IS the transport.

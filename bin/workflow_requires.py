@@ -6,15 +6,15 @@
 
 `requires = ["<unit>", …]` on a `[[workflows]]` entry in design/agents/*.toml. A bare name is a
 manifest unit and takes its scope from that entry; a unit outside the manifests is written
-`user/<unit>` or `system/<unit>` and must be a repo unit file under systemd/ or systemd/user/,
-or a key of EXTERNAL_UNITS — the units this box depends on that no repo file describes. Every
-requirement resolves statically, so the audit runs on a hosted runner with no bus.
+`user/<unit>` or `system/<unit>` and must be a repo unit file under systemd/ or systemd/user/ —
+every unit this box depends on has a source here. Every requirement resolves statically, so
+the audit runs on a hosted runner with no bus.
 
 `check` asks systemd for each requirement's ActiveState and exits 1 on the first that is
 known to be down, printing `requires <unit>: <state>`. A bus that answers nothing is
 `unknown`, and unknown is not a refusal: the run proceeds and the Control Room's row reads
 `satisfied: null` for the same reason. The Control Room imports the resolver; the executor
-pre-flights (bin/agent_propose.sh, bin/local_tier_eval.sh) call the CLI.
+pre-flight (bin/agent_propose.sh) calls the CLI.
 """
 from __future__ import annotations
 
@@ -28,9 +28,6 @@ import sys
 import tomllib
 from typing import Any, Callable
 
-EXTERNAL_UNITS = {
-    "system/ollama.service": "Ollama package unit",
-}
 SCOPES = ("system", "user")
 ACTIVE_STATES = {"active", "activating", "reloading"}
 UNIT_DIRS = {"system": "systemd", "user": "systemd/user"}
@@ -98,8 +95,8 @@ def resolve(raw: Any, entries: list[dict[str, Any]], repo_root: pathlib.Path) ->
     scope, _, unit = raw.partition("/")
     if scope not in SCOPES or not unit:
         raise ValueError(f"requires {raw!r}: the scope prefix must be system/ or user/")
-    if raw not in EXTERNAL_UNITS and _unit_file(repo_root, scope, unit) is None:
-        raise ValueError(f"requires {raw!r}: no repo unit file under {UNIT_DIRS[scope]}/ and not a key of EXTERNAL_UNITS")
+    if _unit_file(repo_root, scope, unit) is None:
+        raise ValueError(f"requires {raw!r}: no repo unit file under {UNIT_DIRS[scope]}/")
     entry = by_unit.get(unit)
     workflow = str(entry.get("logical_workflow") or entry["unit"]) if entry else None
     return Requirement(unit, scope, workflow)
@@ -228,8 +225,6 @@ def main(argv: list[str] | None = None) -> int:
     problems = audit(repo_root)
     for problem in problems:
         print(f"PROBLEM\t{problem}")
-    for key, description in EXTERNAL_UNITS.items():
-        print(f"EXTERNAL\t{key}\t{description}")
     return 1 if problems else 0
 
 

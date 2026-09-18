@@ -1,3 +1,5 @@
+> RETIRED 2026-09-18 — Control Room proposal 20260918T080741Z-retire-local-tier-eval-d15791; the workflow no longer exists. Kept as history for T5.4's evidence.
+
 # Contract: local-tier-eval
 
 Read on 2026-09-11 from `systemd/local-tier-eval.{service,timer}` and `bin/local_tier_eval.sh`.

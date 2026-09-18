@@ -2,8 +2,8 @@
 # Offline-by-contract suite for bin/deliver.sh — the single transport owner.
 #
 # Nothing here can reach a relay or a real credential: every case runs in a throwaway
-# HOME with a mock credential helper and a mock hermes entrypoint, and a decoy `buzz`
-# and `hermes` on PATH exist only to prove deliver.sh never resolves either via PATH.
+# HOME with a mock credential helper, and a decoy `buzz` on PATH exists only to prove
+# deliver.sh never resolves it via PATH.
 #
 # The invariant that matters most is fail-soft: a work-producing unit must never be
 # marked failed because a transport was unavailable (that would fire OnFailure=
@@ -37,7 +37,7 @@ assert() {
 # deterministic: it fails if and only if a condition is evaluated under pipefail.
 assert 'a found pattern is never reported as a failure' "yes | grep -q y"
 
-# ── Sandbox: throwaway HOME + mock helper + mock hermes + decoy PATH binaries ──
+# ── Sandbox: throwaway HOME + mock helper + decoy PATH binary ──
 sandbox() {
   local h; h=$(mktemp -d)
   mkdir -p "$h/logs" "$h/mock" "$h/pathbin" "$h/artifacts"
@@ -75,21 +75,11 @@ fi
 printf '{"accepted":true,"event_id":"%s","message":"published"}\n' "$id"
 SH
 
-  cat > "$h/hermes" <<'SH'
-#!/usr/bin/env bash
-mkdir -p "$MOCK_DIR"
-printf '%s\n' "$*" >> "$MOCK_DIR/hermes.log"
-exit "${MOCK_HERMES_RC:-0}"
-SH
-
-  for decoy in buzz hermes; do
-    cat > "$h/pathbin/$decoy" <<'SH'
+  cat > "$h/pathbin/buzz" <<'SH'
 #!/usr/bin/env bash
 touch "$MOCK_DIR/PATH_LEAK"
 SH
-    chmod +x "$h/pathbin/$decoy"
-  done
-  chmod +x "$h/helper.sh" "$h/hermes"
+  chmod +x "$h/pathbin/buzz" "$h/helper.sh"
 
   printf 'ROUTE_ops=%s\nROUTE_research=\n' "$CH_ID" > "$h/routes.env"
   printf 'AGENT_marcus=%s\n' "$AGENT_HEX" > "$h/agents.env"
@@ -106,7 +96,6 @@ run_deliver() {
   BUZZ_ROUTES_FILE="$h/routes.env" \
   BUZZ_AGENTS_FILE="${AGENTS:-$h/agents.env}" \
   BUZZ_DELIVER_HELPER="${HELPER:-$h/helper.sh}" \
-  HERMES_BIN="${HERMES:-$h/hermes}" \
   DELIVERY_RECEIPTS="$h/receipts.jsonl" \
   DELIVERY_LOG="$h/deliver.log" \
   bash "$SCRIPT" "$@" >/dev/null 2>&1
@@ -142,7 +131,6 @@ assert 'outcome delivered' "[ \"\$(field '$h' outcome)\" = delivered ]"
 assert 'channel event id captured' "[ \"\$(field '$h' buzz_event_id)\" = '$CH_ID' ]"
 assert 'pulse event id captured' "[ \"\$(field '$h' pulse_event_id)\" = '$NOTE_ID' ]"
 assert 'publishing identity recorded' "[ \"\$(field '$h' identity)\" = praetorium ]"
-assert 'discord attempted and ok' "[ \"\$(field '$h' discord_result)\" = ok ]"
 assert 'artifact sha256 recorded' "[ -n \"\$(field '$h' artifact_sha256)\" ]"
 assert 'artifact basename recorded' "[ \"\$(field '$h' artifact)\" = morning-report-1.md ]"
 assert 'exactly one receipt per invocation' "[ \"\$(nreceipts '$h')\" -eq 1 ]"
@@ -164,7 +152,6 @@ assert 'no attachment offered to the relay' "! grep -q -- '--file' '$h/mock/argv
 assert 'receipt records how the artifact was carried' "[ \"\$(field '$h' buzz_payload)\" = inline ]"
 assert 'the artifact body is in the channel content' "grep -q '^line two$' '$h/mock/content.messages'"
 assert 'the subject still leads the message' "head -1 '$h/mock/content.messages' | grep -q '^s$'"
-assert 'discord still receives the attachment' "grep -q -- '--file $h/artifacts/report.md' '$h/mock/hermes.log'"
 assert 'artifact provenance still recorded' "[ -n \"\$(field '$h' artifact_sha256)\" ]"
 
 echo '--- a media artifact is still attached, and an oversized body is cut cleanly ---'
@@ -195,15 +182,14 @@ rc=$(MOCK_CHANNEL_RC=1 MOCK_ERROR='unsupported file type: application/octet-stre
 assert 'exits 0' "[ '$rc' = 0 ]"
 assert 'categorized artifact_error' "[ \"\$(field '$h' error)\" = artifact_error ]"
 
-echo '--- unknown route: Buzz skipped, Discord still attempted ---'
+echo '--- unknown route: nothing is attempted, and the receipt says so ---'
 h=$(sandbox)
 rc=$(run_deliver "$h" --job x.service --route nosuchroute --subject s --message m)
 assert 'exits 0' "[ '$rc' = 0 ]"
 assert 'error categorized config_error' "[ \"\$(field '$h' error)\" = config_error ]"
 assert 'buzz not attempted' "[ \"\$(field '$h' buzz_attempted)\" = false ]"
-assert 'discord still attempted and ok' "[ \"\$(field '$h' discord_result)\" = ok ]"
-assert 'outcome partial_success (discord landed, buzz did not)' \
-  "[ \"\$(field '$h' outcome)\" = partial_success ]"
+assert 'outcome failed (Buzz is the only surface, and it was never reached)' \
+  "[ \"\$(field '$h' outcome)\" = failed ]"
 assert 'helper never invoked' "[ \"\$(ncalls '$h')\" -eq 0 ]"
 
 echo '--- unconfigured route (empty UUID) behaves the same ---'
@@ -211,7 +197,7 @@ h=$(sandbox)
 rc=$(run_deliver "$h" --job x.service --route research --subject s --message m)
 assert 'exits 0' "[ '$rc' = 0 ]"
 assert 'empty ROUTE_ value is a config_error' "[ \"\$(field '$h' error)\" = config_error ]"
-assert 'discord still attempted' "[ \"\$(field '$h' discord_result)\" = ok ]"
+assert 'outcome failed' "[ \"\$(field '$h' outcome)\" = failed ]"
 
 echo '--- the route table decides the event kind, and only 9 or 45001 are sendable ---'
 # A forum channel renders kinds:[45001] only, so a kind-9 post into one is accepted by
@@ -246,7 +232,6 @@ rc=$(run_deliver "$h" --job x.service --route comment --subject s --message m)
 assert 'exits 0' "[ '$rc' = 0 ]"
 assert '45003 is a config_error, not a send' "[ \"\$(field '$h' error)\" = config_error ]"
 assert 'the helper is never invoked for it' "[ \"\$(ncalls '$h')\" -eq 0 ]"
-assert 'discord still attempted' "[ \"\$(field '$h' discord_result)\" = ok ]"
 
 h=$(sandbox); route_kind "$h" bogus 1234
 rc=$(run_deliver "$h" --job x.service --route bogus --subject s --message m)
@@ -316,7 +301,7 @@ h=$(sandbox)
 rc=$(HELPER="$h/nope.sh" run_deliver "$h" --job x.service --route ops --subject s --message m)
 assert 'exits 0' "[ '$rc' = 0 ]"
 assert 'missing helper is a config_error' "[ \"\$(field '$h' error)\" = config_error ]"
-assert 'discord still attempted' "[ \"\$(field '$h' discord_result)\" = ok ]"
+assert 'outcome failed' "[ \"\$(field '$h' outcome)\" = failed ]"
 
 echo '--- artifact anchoring: run marker ---'
 h=$(sandbox)
@@ -336,7 +321,6 @@ rc=$(run_deliver "$h" --job x.service --route ops --subject s \
 assert 'exits 0' "[ '$rc' = 0 ]"
 assert 'artifact older than the marker is rejected' "[ \"\$(field '$h' error)\" = artifact_error ]"
 assert 'nothing is sent for a stale artifact' "[ \"\$(ncalls '$h')\" -eq 0 ]"
-assert 'discord is NOT given a stale artifact either' "[ ! -f '$h/mock/hermes.log' ]"
 assert 'outcome skipped' "[ \"\$(field '$h' outcome)\" = skipped ]"
 
 h=$(sandbox)
@@ -375,27 +359,12 @@ for c in "3|auth|auth_error" "2|relay|network_error" "4|other|transport_error" \
   assert "buzz exit $code did not publish a note" "[ \"\$(field '$h' pulse_attempted)\" = false ]"
 done
 
-echo '--- Discord failure is independent of Buzz success ---'
+echo '--- the Discord leg is gone with Hermes (2026-09-18): no receipt names it ---'
 h=$(sandbox)
-rc=$(MOCK_HERMES_RC=1 run_deliver "$h" --job x.service --route ops --subject s --message m)
-assert 'exits 0' "[ '$rc' = 0 ]"
-assert 'discord failure categorized' "[ \"\$(field '$h' error)\" = discord_error ]"
-assert 'buzz still delivered' "[ \"\$(field '$h' buzz_result)\" = ok ]"
-assert 'outcome partial_success' "[ \"\$(field '$h' outcome)\" = partial_success ]"
-
-echo '--- no hermes entrypoint at all ---'
-h=$(sandbox)
-rc=$(HERMES="$h/no-hermes" run_deliver "$h" --job x.service --route ops --subject s --message m)
-assert 'exits 0' "[ '$rc' = 0 ]"
-assert 'buzz still delivered' "[ \"\$(field '$h' buzz_result)\" = ok ]"
-assert 'no PATH fallback to a bare hermes' "[ ! -e '$h/mock/PATH_LEAK' ]"
-
-echo '--- DELIVER_DISCORD=0 stops attempting Discord (Phase 4 cutover) ---'
-h=$(sandbox)
-rc=$(DELIVER_DISCORD=0 run_deliver "$h" --job x.service --route ops --subject s --message m)
-assert 'discord not attempted' "[ \"\$(field '$h' discord_attempted)\" = false ]"
+rc=$(DELIVER_DISCORD=1 run_deliver "$h" --job x.service --route ops --subject s --message m)
 assert 'buzz delivered' "[ \"\$(field '$h' outcome)\" = delivered ]"
-assert 'hermes never invoked' "[ ! -f '$h/mock/hermes.log' ]"
+assert 'no discord field on the receipt' "! grep -q 'discord' '$h/receipts.jsonl'"
+assert 'no PATH fallback to a bare buzz' "[ ! -e '$h/mock/PATH_LEAK' ]"
 
 echo '--- canvas: the body defaults to the message, --canvas-file decouples it ---'
 h=$(sandbox)
@@ -639,7 +608,7 @@ assert 'an overridden template leaves no stray brace' \
 echo '--- receipt shape ---'
 h=$(sandbox)
 rc=$(run_deliver "$h" --job z.service --route ops --subject s --message m --runtime rt)
-for k in schema ts job route channel payload_type discord_attempted discord_result \
+for k in schema ts job route channel payload_type \
          buzz_attempted buzz_result buzz_event_id pulse_attempted pulse_result outcome runtime; do
   assert "receipt carries $k" "[ \"\$(field '$h' $k)\" != '<no-receipt>' ]"
 done

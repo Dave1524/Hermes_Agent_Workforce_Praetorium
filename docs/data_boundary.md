@@ -53,7 +53,12 @@ runs. The transport change does not change the egress destination, rule, or cap 
 
 ## Direct web-fetch egress (NUC-22)
 
-The Research Analyst's fetch capability is the built-in Hermes `browser` toolset in **local
+**Retired with Hermes on 2026-09-18.** The toolset this section describes no longer exists on
+the box; the scheduled runners are headless Claude Code and fetch through its own tools, whose
+egress path is Anthropic's, not the box's IP. What follows is the record of the Hermes-era
+rule, kept because the URL discipline in it still applies to any fetch an agent makes.
+
+The Research Analyst's fetch capability was the built-in Hermes `browser` toolset in **local
 headless-Chromium mode** (agent-browser; no Browserbase/Browser Use credential on the box). It
 adds an egress path distinct from Brave search and LLM inference: the box makes a **direct HTTPS
 request from its own IP** to the target URL to render JS/Cloudflare-gated pages.

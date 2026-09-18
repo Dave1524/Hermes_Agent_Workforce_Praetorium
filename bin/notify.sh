@@ -8,10 +8,10 @@
 #   notify.sh <subject> <message> --file <path> # attach a file instead
 #
 # The destination is NOT decided here. There is deliberately no default route: a
-# caller that has not been given DELIVERY_ROUTE (or --route) delivers to Discord
-# exactly as before and leaves a config_error receipt behind. Hardcoding a fallback
-# would quietly file research and content output into the ops channel, and the audit
-# would still show a clean dual-run.
+# caller that has not been given DELIVERY_ROUTE (or --route) delivers nowhere and
+# leaves a config_error receipt behind. Hardcoding a fallback would quietly file
+# research and content output into the ops channel, and the audit would still show
+# a clean week.
 #
 # FAIL-SOFT: always exits 0, so an OnFailure handler or ExecStartPost can never
 # itself fail the unit it is reporting on.

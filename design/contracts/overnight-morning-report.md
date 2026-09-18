@@ -62,16 +62,17 @@ carry it and this job must not.
   stated permission, so it is the only one with a mode check.
 - **Delivery** — `ExecStartPost=bin/deliver_report.sh`, `REPORT_DIR=/home/dave/logs/overnight`,
   `REPORT_GLOB=morning-report-*.md`, `DELIVERY_ROUTE=ops` → channel
-  `62f321f3-bd6a-4b31-b19b-b8b49bed30f4`, event kind 9, notify `marcus`; plus Discord, subject
-  `[Praetorium] Morning report`. Anchored by `DELIVERY_RUN_MARKER=/home/dave/logs/run-markers/%n`,
+  `62f321f3-bd6a-4b31-b19b-b8b49bed30f4`, event kind 9, notify `marcus`, subject
+  `[Praetorium] Morning report` (plus Discord until 2026-09-18). Anchored by
+  `DELIVERY_RUN_MARKER=/home/dave/logs/run-markers/%n`,
   stamped by an `ExecStartPre` before `ExecStart` because `ExecStartPost` cannot see
   `agent_propose.sh`'s `AGENT_RUN_STARTED_AT`.
 - **No Notion row, no vault write, no proposal.** `AGENT_RUN_MODE=ops`.
 - **Shape:** no markdown tables, no horizontal rules (`profiles/…:165`, `:173`), target under
   1800 characters (`:176`). See `## Known failure modes` for the target.
 
-- **Beneficiary:** Dave, first thing. Delivery is to him twice — Discord and the ops
-  channel — and to nobody else.
+- **Beneficiary:** Dave, first thing. Delivery is to him in the ops channel and to nobody
+  else (twice, with Discord, until 2026-09-18).
 - **Next actor:** Dave.
 - **Next action:** read what changed overnight and act on it. The mode-600 file under
   `~/logs/overnight/` is the record; the message is the delivery.
@@ -248,7 +249,7 @@ this job has already broken once.
   only neighbour, and a 15-minute budget makes an overlap possible), so this is real but less
   likely than for the 22:15 job. Signal: `timer-fired-and-not-skipped`.
 - **The report is delivered but nobody reads it — and it exits 0 either way.**
-  `deliver_report.sh` is deliberately fail-soft (unit `:24-26`) so a Discord or Buzz hiccup
+  `deliver_report.sh` is deliberately fail-soft (unit `:24-26`) so a Buzz hiccup
   cannot mark the report unit failed. Correct for alert hygiene, and it means transport failure
   has *no* signal in the unit's status. Signal: `delivered-this-runs-artifact`, from the
   receipt line, which is the only place it is recorded.

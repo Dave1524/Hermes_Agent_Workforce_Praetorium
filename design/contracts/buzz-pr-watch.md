@@ -47,7 +47,8 @@ to move the entry to `spent`.
 - **Nothing, daily, while the PR is open** (`:40-41`). No log line, no file; the journal shows
   only systemd's start/finish lines. Silence is correct and undistinguishable from a run that
   never polled — accepted for a one-subject watch with no alert.
-- **Once, on close** — a message via `hermes send --to discord` (`:23-29`) naming the verdict
+- **Once, on close** — a message to the Buzz `ops` channel through `bin/deliver.sh --route
+  ops` (`:26-35`; `hermes send --to discord` until 2026-09-18) naming the verdict
   (`MERGED` / `CLOSED WITHOUT MERGE`), the PR and the unpark instructions (`:16-20`); then the
   stamp `~/.local/state/buzz-pr-watch/3816.announced` holding `<verdict> <timestamp>`; then
   `systemctl --user disable --now buzz-pr-watch.timer`.
@@ -67,8 +68,9 @@ none.
 
 ## Side effects
 
-- One outbound message, once, to Hermes' Discord home channel — **outside the delivery
-  adapters, so no receipt will record it** (`~/logs/delivery-receipts.jsonl` never sees it).
+- One outbound message, once, to the Buzz `ops` channel via `bin/deliver.sh`, so it leaves a
+  receipt in `~/logs/delivery-receipts.jsonl` under `job=buzz-pr-watch.service` (until
+  2026-09-18 it went to Hermes' Discord home channel, outside the adapters, unreceipted).
 - Writes one stamp file; disables its own timer.
 
 ## Acceptance checks
@@ -101,12 +103,13 @@ Two checks, both `sweep`. Under the executor `$SYSTEMCTL` is `systemctl --user` 
 
 ## Known failure modes
 
-- **The announce path has never run.** `hermes send --to discord` resolves to Hermes' home
-  channel (`hermes send --list` on 2026-09-11 shows `#praetorium-main-chat`), which is not the
-  fleet's delivery route and leaves no receipt. If `hermes send` raises, `check=True` (`:26`)
-  aborts the run **before the stamp is written** (`:47-48`), the unit fails with no
-  `OnFailure`, and the script retries the announce every morning and never retires. Check 2
-  cannot see that; the journal can (`journalctl --user -u buzz-pr-watch.service`).
+- **The announce path has never run.** Since 2026-09-18 it is `bin/deliver.sh --route ops`,
+  which is fail-soft by contract — it exits 0 on a refused send and files a categorized
+  receipt — so `check=True` (`:30`) no longer guards the stamp: a delivery that did not land
+  still stamps and disables the timer, and the receipt is the only evidence. Read
+  `~/logs/delivery-receipts.jsonl` for `job=buzz-pr-watch.service` the day check 2 turns red.
+  (Before that date the call was `hermes send --to discord`, which resolved to Hermes' home
+  channel and would have aborted before the stamp on any error.)
 - **GitHub unreachable.** `urlopen` raises, the unit fails silently (no alert), tomorrow
   retries. A week of that is a week of not knowing; nothing counts it.
 - **The stamp is written after the announce.** Correct order for "announce once", wrong order

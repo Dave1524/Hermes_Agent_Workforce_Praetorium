@@ -68,10 +68,10 @@ HEALTHY = """
     status = "standing"
     requires = ["buzz-agent@augustus", "user/buzz-notion-broker"]
     [[workflows]]
-    unit = "local-tier-eval"
+    unit = "index-eval"
     surface = "platform"
     status = "standing"
-    requires = ["system/ollama.service"]
+    requires = ["system/index-daemon.service"]
     [[workflows]]
     unit = "buzz-agent@augustus"
     surface = "interactive"
@@ -80,7 +80,8 @@ HEALTHY = """
     status = "standing"
 """
 HEALTHY_UNITS = {
-    "systemd/local-tier-eval.service": "[Unit]\nWants=ollama.service\n",
+    "systemd/index-eval.service": "[Unit]\nWants=index-daemon.service\n",
+    "systemd/index-daemon.service": "[Unit]\n",
     "systemd/augustus-content.service": "[Unit]\nWants=network-online.target\n",
     "systemd/content-change-dispatch.service": "[Unit]\n",
     "systemd/user/buzz-notion-broker.service": "[Unit]\n",
@@ -92,7 +93,7 @@ class Resolves(unittest.TestCase):  # (::workflow-requires-resolves)
     def test_every_live_entry_resolves_statically(self):
         entries = wr.load_entries(ROOT)
         declared = [(e["unit"], e["requires"]) for e in entries if e.get("requires")]
-        self.assertGreaterEqual(len(declared), 3, "the brief declares three entries")
+        self.assertEqual(sorted(unit for unit, _ in declared), ["augustus-content", "content-change-dispatch"])
         for entry in entries:
             for requirement in wr.requirements_for(entry, entries, ROOT):
                 self.assertIn(requirement.scope, {"system", "user"})
@@ -106,30 +107,24 @@ class Resolves(unittest.TestCase):  # (::workflow-requires-resolves)
         self.assertEqual([(r.unit, r.scope, r.workflow) for r in content],
                          [("buzz-agent@augustus", "user", "buzz-agent@augustus"), ("buzz-notion-broker", "user", None)])
         self.assertEqual([r.service_name for r in content], ["buzz-agent@augustus.service", "buzz-notion-broker.service"])
-        eval_reqs = wr.requirements_for(by_unit["local-tier-eval"], entries, root)
+        eval_reqs = wr.requirements_for(by_unit["index-eval"], entries, root)
         self.assertEqual([(r.unit, r.scope, r.workflow, r.service_name) for r in eval_reqs],
-                         [("ollama.service", "system", None, "ollama.service")])
+                         [("index-daemon.service", "system", None, "index-daemon.service")])
         self.assertEqual(wr.requirements_for(by_unit["buzz-agent@augustus"], entries, root), [])
 
     def test_bare_name_outside_the_manifests_refuses(self):
-        root = fixture(HEALTHY.replace('"system/ollama.service"', '"ollama.service"'), HEALTHY_UNITS)
+        root = fixture(HEALTHY.replace('"system/index-daemon.service"', '"index-daemon.service"'), HEALTHY_UNITS)
         entries = wr.load_entries(root)
-        entry = next(e for e in entries if e["unit"] == "local-tier-eval")
-        with self.assertRaisesRegex(ValueError, "ollama.service"):
+        entry = next(e for e in entries if e["unit"] == "index-eval")
+        with self.assertRaisesRegex(ValueError, "index-daemon.service"):
             wr.requirements_for(entry, entries, root)
-        self.assertTrue(any("ollama.service" in problem for problem in wr.audit(root)))
+        self.assertTrue(any("index-daemon.service" in problem for problem in wr.audit(root)))
 
-    def test_scoped_name_must_be_a_repo_unit_or_external(self):
-        root = fixture(HEALTHY.replace('"system/ollama.service"', '"system/nothing-here"'), HEALTHY_UNITS)
+    def test_scoped_name_must_be_a_repo_unit(self):
+        root = fixture(HEALTHY.replace('"system/index-daemon.service"', '"system/nothing-here"'), HEALTHY_UNITS)
         self.assertTrue(any("nothing-here" in problem for problem in wr.audit(root)))
-        root = fixture(HEALTHY.replace('"system/ollama.service"', '"host/ollama.service"'), HEALTHY_UNITS)
-        self.assertTrue(any("host/ollama.service" in problem for problem in wr.audit(root)))
-
-    def test_external_units_are_named(self):
-        self.assertIn("system/ollama.service", wr.EXTERNAL_UNITS)
-        for key, description in wr.EXTERNAL_UNITS.items():
-            self.assertRegex(key, r"^(system|user)/")
-            self.assertTrue(description)
+        root = fixture(HEALTHY.replace('"system/index-daemon.service"', '"host/index-daemon.service"'), HEALTHY_UNITS)
+        self.assertTrue(any("host/index-daemon.service" in problem for problem in wr.audit(root)))
 
 
 class FoldAgrees(unittest.TestCase):  # (::workflow-requires-fold-agrees)
@@ -150,10 +145,10 @@ class UnitFile(unittest.TestCase):  # (::workflow-requires-unit-file)
         self.assertEqual([p for p in wr.audit(ROOT) if "unit file" in p], [])
 
     def test_same_scope_requirement_missing_from_the_unit_file_is_named(self):
-        units = dict(HEALTHY_UNITS, **{"systemd/local-tier-eval.service": "[Unit]\nWants=network-online.target\n"})
+        units = dict(HEALTHY_UNITS, **{"systemd/index-eval.service": "[Unit]\nWants=network-online.target\n"})
         problems = [p for p in wr.audit(fixture(HEALTHY, units)) if "unit file" in p]
         self.assertEqual(len(problems), 1, problems)
-        self.assertIn("ollama.service", problems[0])
+        self.assertIn("index-daemon.service", problems[0])
 
     def test_cross_manager_requirement_is_exempt(self):
         problems = [p for p in wr.audit(fixture(HEALTHY, HEALTHY_UNITS)) if "buzz-notion-broker" in p]

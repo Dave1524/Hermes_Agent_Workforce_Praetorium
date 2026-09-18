@@ -18,7 +18,7 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
-printf 'job=%s route=%s subject=%s DELIVER_DISCORD=%s\n' "$job" "$route" "$subject" "${DELIVER_DISCORD:-unset}" \
+printf 'job=%s route=%s subject=%s\n' "$job" "$route" "$subject" \
   >> "$FAKE_DIR/argv.log"
 receipt() {  # receipt <outcome> <buzz_result>
   python3 - "$DELIVERY_RECEIPTS" "$job" "$route" "$subject" "$1" "$2" "${FAKE_EVENT_ID:-}" "${FAKE_CHANNEL:-}" <<'PY'

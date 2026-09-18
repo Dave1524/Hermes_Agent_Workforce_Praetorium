@@ -287,12 +287,12 @@ class ExceptionsDependencyDown(unittest.TestCase):  # (::exceptions-dependency-d
     def test_a_requirement_known_down_is_one_row_naming_every_down_unit(self):
         workflow = item([OLD_ARTIFACT], requires=[requirement("buzz-agent@augustus", False, workflow="buzz-agent@augustus"),
                                                   requirement("buzz-notion-broker", True),
-                                                  requirement("ollama.service", False, scope="system")])
+                                                  requirement("index-daemon.service", False, scope="system")])
         rows = exceptions.classify(workflow, [OLD_ARTIFACT], NOW)
         self.assertEqual(kinds(rows), ["dependency-down"])
         row = rows[0]
         self.assertIn("buzz-agent@augustus (user): inactive", row["issue"])
-        self.assertIn("ollama.service (system): inactive", row["issue"])
+        self.assertIn("index-daemon.service (system): inactive", row["issue"])
         self.assertNotIn("buzz-notion-broker", row["issue"])
         self.assertIn("pre-flight", row["requiredAction"])
         self.assertIsNone(row["since"])
@@ -334,7 +334,7 @@ class ExceptionsEnvelope(unittest.TestCase):
         self.assertNotIn("agent-inbox-sync", {row["workflowId"] for row in rows}, "fired after the fixture sweep")
         self.assertEqual(by_kind["overdue-next-action"]["workflowId"], "overnight-morning-report")
         self.assertEqual(by_kind["unconsumed-output"]["workflowId"], "bd-followup-drafts")
-        self.assertNotIn("dependency-down", by_kind, "the fixture bus runs the broker and ollama, and augustus-content is paused")
+        self.assertNotIn("dependency-down", by_kind, "the fixture bus runs the broker and the index daemon, and augustus-content is paused")
         paused_ids = {w["id"] for w in build_model().workflows()[0] if w["control"]["state"] == "paused"}
         self.assertNotIn("knowledge-digest", {row["workflowId"] for row in rows})
         for row in rows:

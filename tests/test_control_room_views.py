@@ -27,8 +27,8 @@ import control_room_static as static  # noqa: E402
 import control_room_views as views  # noqa: E402
 import control_room_view_workflow as view_workflow  # noqa: E402
 
-STANDING_ENTRIES = 31   # MEASURED 2026-09-16 (T6.1 retired memory-consolidation)
-LOGICAL_WORKFLOWS = 30
+STANDING_ENTRIES = 30   # MEASURED 2026-09-16 (T6.1 retired memory-consolidation)
+LOGICAL_WORKFLOWS = 29
 ROW = re.compile(r'<tr[^>]*\bdata-workflow="([^"]+)"[^>]*>(.*?)</tr>', re.DOTALL)
 CSP = "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'"
 
@@ -152,8 +152,6 @@ class RequiresRows(ServedCase):  # (::control-room-requires)
         content = rows["augustus-content"]["requires"]
         self.assertEqual([(r["unit"], r["scope"], r["workflow"], r["satisfied"]) for r in content],
                          [("buzz-agent@augustus", "user", "buzz-agent@augustus", True), ("buzz-notion-broker", "user", None, True)])
-        self.assertEqual([(r["unit"], r["scope"], r["satisfied"]) for r in rows["local-tier-eval"]["requires"]],
-                         [("ollama.service", "system", True)])
         self.assertEqual(rows["augustus-content"]["control"]["state"], "paused")
         self.assertEqual(rows["buzz-agent@augustus"]["requiredBy"], [{"workflow": "augustus-content", "enabled": False}])
         self.assertEqual(sum(1 for row in rows.values() if row["requiredBy"]), 1)

@@ -126,6 +126,7 @@ class ControlRoomApiTest(unittest.TestCase):
         )
         (self.repo / "systemd" / "user").mkdir(parents=True)
         (self.repo / "systemd" / "user" / "buzz-notion-broker.service").write_text("[Unit]\nDescription=fixture broker\n")
+        (self.repo / "systemd" / "index-daemon.service").write_text("[Unit]\nDescription=fixture daemon\n")
         (self.repo / "design" / "agents" / "aurelian.toml").write_text(
             'name="aurelian"\n[[workflows]]\nunit="buzz-agent@aurelian"\nsurface="interactive"\nscope="user"\n'
             'kind="service"\ntrigger="event-driven"\nstatus="standing"\n'
@@ -134,7 +135,7 @@ class ControlRoomApiTest(unittest.TestCase):
             'name="trajan"\n[[workflows]]\nunit="drift-check"\nsurface="platform"\n'
             'trigger="daily"\nstatus="standing"\ncontract="design/contracts/drift-check.md"\n'
             'what="Compares source against the deployed tree for Dave."\n'
-            'requires=["system/ollama.service"]\n'
+            'requires=["system/index-daemon.service"]\n'
             'guards="Without it a hand edit under /etc is caught by nothing."\n'
             '[[workflows]]\nunit="spent-kickoff"\nsurface="scheduled"\ntrigger="once, 2026-08-03"\n'
             'status="spent"\ncontract_exempt="spent: its one date fired 2026-08-03; nothing is promised any more"\n'
@@ -234,7 +235,7 @@ class ControlRoomApiTest(unittest.TestCase):
             {"unit": "buzz-notion-broker", "scope": "user", "workflow": None, "state": "unknown", "satisfied": None},
         ])
         self.assertEqual(items["drift-check"]["requires"],
-                         [{"unit": "ollama.service", "scope": "system", "workflow": None, "state": "inactive", "satisfied": False}])
+                         [{"unit": "index-daemon.service", "scope": "system", "workflow": None, "state": "inactive", "satisfied": False}])
         self.assertEqual(items["daily-plan"]["requires"], [])
         self.assertEqual(items["drift-check"]["guards"], "Without it a hand edit under /etc is caught by nothing.")
         self.assertIsNone(items["daily-plan"]["guards"])
@@ -260,7 +261,7 @@ class ControlRoomApiTest(unittest.TestCase):
     def test_dependency_down_is_an_exception_only_while_the_dependent_runs(self):  # (::control-room-dependency-down)
         rows = [row for row in self.model.exceptions()["items"] if row["kind"] == "dependency-down"]
         self.assertEqual([(row["workflowId"], row["issue"]) for row in rows],
-                         [("drift-check", "requires ollama.service (system): inactive")])
+                         [("drift-check", "requires index-daemon.service (system): inactive")])
         self.assertFalse(rows[0]["paused"])
         paused = api.ControlRoomReadModel(api.SourcePaths(self.repo, self.runtime, self.receipts),
                                           systemd=FakeSystemd(paused=True), clock=lambda: self.now)

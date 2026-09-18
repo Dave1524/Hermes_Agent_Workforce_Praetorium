@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# deliver.sh — the single owner of Discord and Buzz transport for scheduled output.
+# deliver.sh — the single owner of Buzz transport for scheduled output.
 #
 # usage: deliver.sh --job <unit> --route <key> --subject <text>
 #                   [--message <text>] [--file <exact-path>] [--note <digest>]
@@ -10,9 +10,8 @@
 #                   [--acceptance-check <text>]...
 #
 # Every other script in bin/ is an INPUT adapter: it parses its own caller interface,
-# selects a payload, and invokes this once. Nothing else may call `hermes send`,
-# `buzz messages send`, `buzz social publish` or `buzz canvas set` —
-# tests/test_buzz_unit_wiring.sh enforces that.
+# selects a payload, and invokes this once. Nothing else may call `buzz messages send`,
+# `buzz social publish` or `buzz canvas set` — tests/test_buzz_unit_wiring.sh enforces that.
 #
 # THE ARTIFACT IS THE REVIEW SURFACE. A message that only names what a run produced is
 # not reviewable in Buzz, and for the proposal producers it was the whole delivery. The
@@ -74,7 +73,6 @@ PULSE_ROOT_FILE="${BUZZ_PULSE_ROOT_FILE:-$HOME/var/buzz-pulse-root}"
 PULSE_ROOT_TEMPLATE="${BUZZ_PULSE_ROOT_TEMPLATE:-}"
 [ -n "$PULSE_ROOT_TEMPLATE" ] || PULSE_ROOT_TEMPLATE='Praetorium — {date}'
 RECEIPTS="${DELIVERY_RECEIPTS:-$HOME/logs/delivery-receipts.jsonl}"
-DELIVER_DISCORD="${DELIVER_DISCORD:-1}"
 LOG="${DELIVERY_LOG:-$HOME/logs/deliver.log}"
 
 mkdir -p "$(dirname "$RECEIPTS")" "$(dirname "$LOG")" 2>/dev/null || true
@@ -122,7 +120,6 @@ done
 error=""; detail=""; anchor="none"; channel=""; kind=9
 notify=""; notify_pubkey=""
 artifact_id=""; content_sha256=""; supersedes="none"
-discord_attempted=false; discord_result="skipped"
 buzz_attempted=false;    buzz_result="skipped";  buzz_event_id=""; buzz_payload="none"
 pulse_attempted=false;   pulse_result="skipped"; pulse_event_id=""
 canvas_attempted=false;  canvas_result="skipped"
@@ -139,7 +136,6 @@ emit_receipt() {  # emit_receipt <outcome>
     "subject=$subject" "runtime=$runtime"
     "payload_type=$([ -n "$artifact" ] && echo file || echo text)"
     "anchor=$anchor" "run_marker=$run_marker"
-    "discord_attempted=$discord_attempted" "discord_result=$discord_result"
     "buzz_attempted=$buzz_attempted" "buzz_result=$buzz_result"
     "buzz_event_id=$buzz_event_id" "buzz_payload=$buzz_payload" "kind=$kind"
     "artifact_id=$artifact_id" "supersedes=$supersedes"
@@ -173,7 +169,7 @@ settle() {
   # `unchanged` is a canvas that already holds exactly this content. Nothing failed and
   # the intended state is present, so it settles as a success — otherwise a `--canvas
   # only` producer would report failed on every quiet week, which is most weeks.
-  for r in "$discord_result" "$buzz_result" "$canvas_result" "$pulse_result"; do
+  for r in "$buzz_result" "$canvas_result" "$pulse_result"; do
     { [ "$r" = ok ] || [ "$r" = unchanged ]; } && ok=$((ok + 1))
     [ "$r" = failed ] && bad=$((bad + 1))
   done
@@ -250,40 +246,7 @@ if [ -n "$artifact" ] && ! validate_artifact; then
   finish skipped
 fi
 
-# ── 3. Discord (independent of Buzz for the whole dual-run) ─────────────────────
-hermes_send() {
-  local bin=""
-  if [ -n "${HERMES_BIN:-}" ] && [ -x "${HERMES_BIN:-}" ]; then
-    bin="$HERMES_BIN"
-  elif [ -x "$HOME/.hermes/hermes-agent/venv/bin/hermes" ]; then
-    bin="$HOME/.hermes/hermes-agent/venv/bin/hermes"
-  elif [ -x "$HOME/.local/bin/hermes" ]; then
-    bin="$HOME/.local/bin/hermes"
-  fi
-  if [ -z "$bin" ]; then
-    local py="$HOME/.hermes/hermes-agent/venv/bin/python"
-    [ -x "$py" ] || return 127
-    set -- -m hermes_cli.main send "$@"
-    bin="$py"
-  fi
-  if [ -n "$artifact" ]; then
-    "$bin" send --to discord --subject "$subject" --file "$artifact" --quiet
-  else
-    "$bin" send --to discord --subject "$subject" "$message" --quiet
-  fi
-}
-
-if [ "$DELIVER_DISCORD" = 1 ]; then
-  discord_attempted=true
-  if hermes_send >/dev/null 2>&1; then
-    discord_result="ok"
-  else
-    discord_result="failed"
-    fault discord_error "hermes send --to discord failed or no entrypoint resolved"
-  fi
-fi
-
-# ── 4. route + helper resolution (never via PATH) ───────────────────────────────
+# ── 3. route + helper resolution (never via PATH) ───────────────────────────────
 resolve_route() {
   case "$route" in
     [a-z]|[a-z][a-z0-9_-]*) ;;
@@ -348,7 +311,7 @@ if [ ! -x "$HELPER" ]; then
   settle
 fi
 
-# ── 5. Buzz channel message ─────────────────────────────────────────────────────
+# ── 4. Buzz channel message ─────────────────────────────────────────────────────
 helper_out="$workdir/out"; helper_err="$workdir/err"
 # Set to a file for the calls that pass `--content -`; every other call is given
 # /dev/null so the helper can never inherit and block on the caller's stdin.
@@ -416,8 +379,8 @@ resolve_pulse_root() {  # today's thread root, published once a day; empty outpu
 
 # The relay's Blossom store accepts media only. The CLI declares every other file as
 # application/octet-stream, which the upload endpoint refuses outright, so a text
-# artifact reaches a Buzz channel as message body or it does not reach it at all.
-# Discord still gets the attachment, and the receipt still carries the sha256.
+# artifact reaches a Buzz channel as message body or it does not reach it at all; the
+# receipt still carries the sha256.
 is_media_artifact() {
   case "$(file -b --mime-type "$artifact" 2>/dev/null)" in
     image/*|video/*|audio/*) return 0 ;;
@@ -425,7 +388,7 @@ is_media_artifact() {
   return 1
 }
 
-# ── 5a. typed envelope ──────────────────────────────────────────────────────────
+# ── 4a. typed envelope ──────────────────────────────────────────────────────────
 # A pointer is not a review surface, and neither is an artifact a reader has to diff by
 # eye against the last one. The envelope states what this is, what it would change, what
 # it hashes to and which delivery it replaces — enough for a broker to verify a decision
@@ -479,7 +442,7 @@ if [ -n "$artifact" ]; then
   envelope=$(render_envelope)
 fi
 
-# ── 5b. compose the content inside the CLI's byte ceiling ───────────────────────
+# ── 4b. compose the content inside the CLI's byte ceiling ───────────────────────
 # The program is passed with -c rather than on stdin: `python3 -` would consume the
 # body, since the interpreter reads its own source from the same stream.
 FIT_BODY_PY=$(cat <<'PY'
@@ -535,7 +498,7 @@ if [ -s "$body_source" ]; then
   fit_body "$budget" < "$body_source" >> "$content_file"
 fi
 
-# ── 5c. Buzz channel message ────────────────────────────────────────────────────
+# ── 4c. Buzz channel message ────────────────────────────────────────────────────
 send_message() {
   buzz_attempted=true
   local send_args=(messages send --channel "$channel" --content -)
@@ -561,7 +524,7 @@ if [ "$canvas_mode" != only ] && ! send_message; then
   settle
 fi
 
-# ── 5d. canvas: one living document per channel, one designated writer ──────────
+# ── 4d. canvas: one living document per channel, one designated writer ──────────
 # A recurring rollup that posts a new message every week buries the previous one and
 # gives the channel N copies of the same document. The canvas is the same content held
 # at one address, so `unchanged` is a real outcome and must not read as a failure.
@@ -630,7 +593,7 @@ fi
 
 [ "$canvas_mode" = only ] && settle
 
-# ── 6. bounded NIP-01 note, only after the channel send landed ──────────────────
+# ── 5. bounded NIP-01 note, only after the channel send landed ──────────────────
 pointer=${POINTER_TEMPLATE//\{channel\}/$channel}
 pointer=${pointer//\{event\}/$buzz_event_id}
 

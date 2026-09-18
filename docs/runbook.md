@@ -159,9 +159,8 @@ Supporting daemons (not override-driven):
 | `scorecard.timer` | Weekly scorecard publish |
 | `agent-workforce-auto-sync.timer` | Shell auto-sync of this git repo (no LLM) |
 | `overnight-pre-snapshot.timer` | Model-free pre-run state capture → `~/logs/overnight/` (NUC-36) |
-| `inbox-backlog-alert.timer` | Daily 06:20 approvals-aging Discord alert (>2d oldest pending) — NUC-30 |
+| `inbox-backlog-alert.timer` | Daily 06:20 approvals-aging alert to the Buzz `approvals` channel (>2d oldest pending) — NUC-30 |
 | `workflow-incidents.timer` | Every 5 min (+30 s jitter) actionable workflow incidents → Buzz `incidents` stream via `bin/deliver_incidents.sh` (T5.3c): one `[incident]` per failed check, missing artifact, incomplete run, malformed receipt or control failure; one `[recovered]` when it clears; one `[incident digest]` a day (07:00 gate) while anything stays open. **Ships disabled** and the `incidents` route is empty until Dave creates the channel. State: `~/agent-workforce/var/incidents/state.json`; log `~/logs/workflow-incidents.log` |
-| `local-tier-eval.timer` | Tier-0 capability eval 6×/day (02,08,11,14,17,20:17) via `bin/local_tier_eval.sh`. No `EnvironmentFile` by design — it must never reach a paid provider |
 | `fleet-eval.timer` | Daily 07:07 drift check via `bin/fleet_eval.sh`: tier 1 grades receipts against `bin/buzz_routes.env`, tier 2 re-asks the vault questions the fleet got wrong — three assert which document wins, and `p4_kind_span` asserts the answer is still inside the anchor's own retrieved chunk, because prose added to a vault file re-cuts every chunk below it. Gates on **regression against the baselines in `bin/fleet_eval_probes.json`**, not on absolute state — two probes fail today by design, and re-recording a baseline is a deliberate fixture edit. Exits 1 and posts to `ops` only when something moved backwards; history spine at `~/logs/fleet-eval/history.psv` |
 | `agent-drift-check.timer` | Daily 05:40 source-vs-deployed drift via `bin/check_deploy_drift.sh` (D8). Compares every destination `bin/deploy` writes plus the three unit trees — `bin/` ↔ runtime, the eight content trees ↔ their runtime copies (`profiles`, `docs`, `config`, `CLAUDE.md`, `AGENTS.md`, `README.md`, `systemd` — the staging copy — and `skills`, the pointer tree the scheduled runners load by explicit path), `systemd/` ↔ `/etc`, `systemd/user/` ↔ `~/.config/systemd/user/`, `buzz-team/` ↔ `~/.config/buzz-team/` — in **both membership directions**, not just the bytes of units present in both. Ownership fails closed: an installed unit with no source is red unless declared in `design/unit-ownership.toml` (permanent) or by its manifest's `status = "campaign"` + `expires` (dated, and an expired entry still doing work is itself red). Reports only — no `/etc` writes, no `systemctl`, no deploy. The staging copy `~/agent-workforce/systemd/` is compared against **source**, never used as a stand-in for `/etc` (W17): `bin/deploy` writes it, so it is a destination this repo answers for, but systemd never reads it — source-vs-staging alone would go green the moment a unit is deployed while `/etc` stayed stale. Both comparisons run |
 | `agent-buzz-acp-update.timer` | Daily 07:35 upstream-currency check for the Buzz CLI/ACP via `bin/buzz_acp_update.sh check` (W20). The class it covers: the fleet ran a `buzz-acp` twelve releases behind for five weeks and nothing on this box could have reported it. **Buzz Desktop on the Mac and the CLI here are two independent installs of one release stream** — every upstream tag is `desktop-vX.Y.Z` and the CLI ships inside `Buzz_X.Y.Z_amd64.deb` at `usr/bin/`, as a byproduct of packaging the app — so Desktop keeping itself current through its Tauri updater says nothing about this box, and there is no dpkg package to `apt upgrade`. Neither binary answers `--version` and neither carries the release (`strings` finds the same `0.5.3` dependency crate in the July and September builds), so staleness is not merely unreported, it is **unaskable** without a receipt: `~/agent-workforce/var/buzz-cli-install.json` records tag *and* sha256, and every run re-hashes the live files before believing the tag. Non-zero is the whole notification path — **10** behind, **1** unpinned or a week without reaching upstream — because `agent-alert@` already owns the throttle (one alert on the transition, one reminder per 24h) and a second notifier would be a second copy of that policy. **It never installs.** It may stage and probe a new release, once per tag, so the report says whether that release would still *run* here: the three `buzz:workflow*` wake literals plus every flag the unit's `ExecStart` passes, since `buzz-acp` rejects an unknown flag at startup and `Restart=on-failure` turns that into a crash loop rather than a visible stop. Installing is `bin/buzz_acp_update.sh apply <tag>` by hand — canary restart, fleet gate, automatic rollback. Making it unattended is a one-line `ExecStart` change and the probe is what would make that defensible; do it after a few releases have passed cleanly, not before. |
@@ -322,9 +321,9 @@ down, grey `unknown`. The workflow page adds a Requires / Required by panel with
 **enabled** workflow with a requirement known to be down is a `dependency-down` exception
 (one row naming every down unit); paused workflows raise none, and unknown is never a
 refusal. The executors check the same thing before running:
-`bin/workflow_requires.py check <unit>` in `bin/agent_propose.sh` (a BLOCKED receipt, exit 0)
-and `bin/local_tier_eval.sh` (log and exit 0). `bin/workflow_requires.py audit` is the static
-half, run by `tests/test_workflow_requires.sh` with no live `systemctl`.
+`bin/workflow_requires.py check <unit>` in `bin/agent_propose.sh` (a BLOCKED receipt, exit 0).
+`bin/workflow_requires.py audit` is the static half, run by `tests/test_workflow_requires.sh`
+with no live `systemctl`.
 
 `guards` is a declared one-sentence field on platform entries only — what stops working when
 the job is off — rendered as a chip and as an amber notice in the Pause and Stop dialogs. A
@@ -706,7 +705,7 @@ vault write stays Mac-side** — the box never writes `07_daily/logs/`, on any b
 | Runtime | `bin/run_daily_plan_cc.sh` | `bin/run_eod_summary_cc.sh` |
 | Notion row | `<date> — Daily Plan` in Daily Plans | `<date> — EOD Summary` in Daily Plans **and** `<date>` in Daily Log |
 | Local artifact | `~/logs/daily-plan/daily-plan-<ts>.md` + `receipt-<date>.json` | `~/logs/eod-summary/eod-summary-<ts>.md` + `receipt-<date>.json` |
-| Discord | `ExecStartPost=deliver_report.sh` (`REPORT_DIR`/`REPORT_GLOB`/`REPORT_SUBJECT` per unit) | same |
+| Buzz `ops` | `ExecStartPost=deliver_report.sh` (`REPORT_DIR`/`REPORT_GLOB`/`REPORT_SUBJECT` per unit) | same |
 
 Both entrypoints are thin wrappers over `bin/run_daily_rhythm_cc.sh`, which owns the
 vault freshness gate and the headless Claude Code invocation (box subscription, `$0`
@@ -728,7 +727,7 @@ newer than `$AGENT_RUN_STARTED_AT`, so yesterday's receipt cannot satisfy today'
 |---|---|---|
 | Unit failed, journal says `REFUSING to run` | `vault_sync_guard.sh check` refused: `~/vault` is dirty or lagging `origin/main` by >24h | Route the named drift (see below), then re-run by hand |
 | Unit failed, log says `AGENT_VERIFY_CMD found no artifact` | the agent produced no Notion write | Read `logs/last-attempt/<task>.log` — this run's own output, the only file attributable to it — then `logs/agent_run.log` for history; do **not** trust the exit code |
-| No Discord message, unit green | `deliver_report.sh` is fail-soft | `~/logs/deliver_report.log` |
+| No Buzz message, unit green | `deliver_report.sh` is fail-soft | `~/logs/deliver_report.log`, then the receipt in `~/logs/delivery-receipts.jsonl` |
 | Two rows for one date | something wrote Notion outside `notion_daily.py` | Archive the duplicate; keep the title-keyed path |
 
 Re-run either job by hand (same guarded path as the timer):
@@ -773,7 +772,6 @@ Because git rewrites `FETCH_HEAD` even when a fetch fails, the guard keeps its o
 | Job-override runtime envs | `~/.config/agent-workforce/{augustus-content,bd_stall_radar,weekly_pre_assembly}.env` | **not secrets**, but recreate from templates if lost |
 | qmd config | `~/.config/qmd/index.yml` | `backup_config.sh` tarball |
 | Secrets template | `~/.config/agent-workforce/.env.example` + README | `backup_config.sh` tarball |
-| Hermes profiles kept | `~/.hermes/profiles/{base0,leantest}` (local-tier-eval) — `config.yaml` only; the persona profiles were deleted 2026-09-14 (T6.1, `design/archive/hermes-profiles-2026-09-14.md`) | add on first profile change |
 | Brave MCP key | `~/.config/agent-workforce/brave-mcp.env` (mode 600) | **NEVER backed up** — re-derive from `secrets.env` `BRAVE_API_KEY` |
 | Secrets values | `secrets.env`, deploy key | **NEVER backed up** — re-issued at providers (see `~/.config/agent-workforce/README.md`) |
 | Vault content | GitHub `Dave1524/obsidian-ai-os-boxsafe` | already remote; clone is disposable |
@@ -787,11 +785,11 @@ Run `~/agent-workforce/bin/backup_config.sh`, then pull the tarball to the Mac:
 1. Install Ubuntu Server LTS headless; create user `dave`; enable SSH (NUC-02/03 pattern).
 2. Join Tailscale (`tailscale up`), confirm Mac SSH; UFW default-deny + 22/tcp (Tailscale-only net).
 3. `sudo apt install git curl xz-utils nodejs npm && sudo npm i -g @tobilu/qmd`.
-4. Install Hermes: `curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --skip-browser`
-   (needed only for `local-tier-eval` and the Discord delivery leg of `bin/deliver.sh`).
-   - **Fetch backend (NUC-22):** the `--skip-browser` above is why the browser was never
-     bootstrapped. Install local headless Chromium once (credential-free): `npx --yes
-     agent-browser@latest install` (as `dave`) then `sudo npx --yes playwright install-deps chromium`.
+4. Do **not** install Hermes or Ollama — both left the box 2026-09-18 (Hermes tree archived
+   at `~/OUTBOX/hermes-tree-retired-2026-09-18.tgz`); nothing in this repo execs either.
+   - **Fetch backend (NUC-22):** install local headless Chromium once (credential-free):
+     `npx --yes agent-browser@latest install` (as `dave`) then
+     `sudo npx --yes playwright install-deps chromium`.
 5. Restore the config tarball over `$HOME` and `/etc/systemd/system/` (or rsync from this repo of scripts).
    Install **system** units from `systemd/` including job timers (`augustus-content`,
    `bd-stall-radar`, `weekly-pre-assembly`) and `qmd-mcp.service.d/gpu.conf`.
@@ -805,7 +803,7 @@ Run `~/agent-workforce/bin/backup_config.sh`, then pull the tarball to the Mac:
    re-issued, not restored (`~/.config/buzz-agents/PROVISIONING.md`).
    Finish with `bash bin/check_deploy_drift.sh` — a rebuild is not done until it is clean.
 6. Recreate secrets per `~/.config/agent-workforce/README.md` (new deploy key → register on repo,
-   new OpenRouter key → re-apply spend cap, new Discord token). Then re-derive the Brave MCP env:
+   new OpenRouter key → re-apply spend cap). Then re-derive the Brave MCP env:
    `umask 077; grep -E '^BRAVE_API_KEY=' ~/.config/agent-workforce/secrets.env > ~/.config/agent-workforce/brave-mcp.env`.
    Install job-override envs from `profiles/*.env.example` (mode 600) — see § Job wiring.
 7. `~/agent-workforce/bin/finish_boxsafe_clone.sh` (clone, index, exclusion gates, enable services).
@@ -903,7 +901,7 @@ the scorecard's approval cells still read "pending (awaiting Mac sync)". Infra h
 Every scheduled unit's output reaches Buzz through **one** script, `bin/deliver.sh`. Each other
 `bin/deliver_*.sh` is an input adapter: it decides what this run produced and calls the transport
 once. `tests/test_buzz_unit_wiring.sh` enforces that nothing else invokes `buzz messages send`,
-`buzz social publish`, `buzz canvas set` or `hermes send`, so "did it actually send?" has exactly
+`buzz social publish` or `buzz canvas set`, so "did it actually send?" has exactly
 one answer and exactly one receipt (`~/logs/delivery-receipts.jsonl`).
 
 **Where each unit delivers** is `bin/buzz_producers.tsv` — unit, route, payload kind, wired/pending,

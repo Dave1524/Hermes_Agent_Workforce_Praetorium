@@ -3,9 +3,8 @@
 # backlog and, if the oldest pending proposal is > 2 days old, posts a single
 # line via bin/deliver.sh. Silent when the inbox is clear or under threshold.
 # Shape copied from content-change-dispatch.service (plain bin runner + OnFailure
-# alert), minus the AGENT_JOB_OVERRIDES / secrets env — delivery's Discord leg still
-# resolves the hermes CLI (bin/deliver.sh hermes_send) until the Discord cutover, plus
-# the Buzz credential helper; no OpenRouter key.
+# alert), minus the AGENT_JOB_OVERRIDES / secrets env — delivery needs only the Buzz
+# credential helper; no OpenRouter key.
 [Unit]
 Description=Agent-inbox approvals-aging alert (>2d oldest pending) — NUC-30
 After=network-online.target

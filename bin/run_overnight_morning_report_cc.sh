@@ -8,7 +8,7 @@
 #
 # agent_propose.sh (AGENT_RUN_MODE=ops) still owns lock, preflight, retry, cost.log
 # and the AGENT_VERIFY_CMD artifact assertion; this script is only the "brain" it execs.
-# deliver_report.sh (ExecStartPost) still posts the resulting file to Discord.
+# deliver_report.sh (ExecStartPost) still posts the resulting file to the Buzz ops channel.
 #
 # No vault freshness gate here, unlike run_daily_rhythm_cc.sh: this report reads systemd,
 # journals, logs and the inbox worktree — never the vault mirror — so a stale mirror is

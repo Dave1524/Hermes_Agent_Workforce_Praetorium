@@ -25,7 +25,6 @@ machine state with a live reader:
 ```
 systemctl --user list-units 'buzz-agent@*' --all    # the chat fleet — five units on 2026-09-05
 ls design/agents/                                   # the personas — one manifest each
-ls ~/.hermes/profiles/                              # base0, leantest, default (MEASURED 2026-09-16)
 ```
 
 - Box name: **Praetorium**. Keep the Roman-emperor convention for any additional agent profiles.
@@ -34,17 +33,20 @@ ls ~/.hermes/profiles/                              # base0, leantest, default (
   a scheduled job runs on is the `--model` in its `bin/run_*_cc.sh`; the model a Buzz agent runs
   on is its unit's env. Read the runbook's Job wiring table, not a persona list, to answer
   "what runs tonight".
-- **Hermes remains on this box for two things only:** the `hermes` CLI as the Discord delivery
-  leg (`bin/deliver.sh`, until the Discord cutover) and the profiles `base0` / `leantest` —
-  `qwen3-64k` on Ollama, Tier 0 (zero egress) — for `local-tier-eval`. The four persona profiles
-  (`SOUL.md`, `config.yaml`, episodic store, skills allowlist) were deleted 2026-09-14 (T6.1;
-  record: `design/archive/hermes-profiles-2026-09-14.md`; augustus's on 2026-09-16, closing
-  **D4**). `tests/test_hermes_residue.sh` is the gate.
+- **Hermes and Ollama are off the box (2026-09-18, Dave's decision).** The four persona
+  profiles went 2026-09-14 (T6.1; record: `design/archive/hermes-profiles-2026-09-14.md`);
+  the two remaining uses — the `hermes` CLI as the Discord delivery leg in `bin/deliver.sh`,
+  and the `base0` / `leantest` profiles over `qwen3-64k` on Ollama for `local-tier-eval` —
+  went with the runtimes: `local-tier-eval` and `ttm-pool-drain` are retired
+  (`design/retired-workflows.toml`, PRs #50 and #51), `~/.hermes` is archived under
+  `~/OUTBOX/` and Ollama is uninstalled. `tests/test_hermes_residue.sh` scans for both
+  names with an empty live set. There is no local inference tier any more.
 - **Vespasianus / `trading_researcher` was never built** — treat that roster row as lapsed, not
   pending. PolyScalper research is not staffed on the box.
 - Per-profile Discord identities were never built: `discord-bot.service` is staged in
   `~/deploy-staging/` only, not installed or enabled. The live chat surface is **Buzz** (see the
-  machine-level `~/CLAUDE.md`), not Discord — Discord is delivery-only via `bin/deliver_report.sh`.
+  machine-level `~/CLAUDE.md`), and since 2026-09-18 Buzz is the only delivery surface too —
+  the Discord leg left with Hermes, and this box sends nothing to Discord.
 
 ## Hard constraints (short form)
 - **Vault data is in-bubble.** The box sits inside Dave's private trust zone (the same zone as
@@ -71,14 +73,12 @@ ls ~/.hermes/profiles/                              # base0, leantest, default (
   the box-safe repo's `agents` branch/inbox. `main` is machine-published from the Mac — never
   hand-write or merge into it from here.
 - **Publishing is Mac-side only.** Never run `publish_boxsafe.sh` from this box.
-- **Inference is remote-first, with a narrow local tier.** Generative agent work (Marcus,
-  Claudius, Augustus, Trajan and their synthesis) runs on remote APIs (OpenRouter). A charter-
-  scoped **local inference tier** (Ollama on the Arc iGPU) is now permitted for *mechanical*,
-  high-volume work only — classification/summarization/tagging — to cut OpenRouter cost and keep
-  those tokens on-box. Local inference has zero egress, so it is the safest tier for business
-  content; the LLM egress boundary in `docs/data_boundary.md` governs the remote tiers only.
-  Do NOT route Tier-A judgment/synthesis to the local model. See
-  `~/vault/03_projects/active/ai_agent_workforce/local_inference_charter.md`.
+- **Inference is remote only.** Generative agent work runs on remote APIs (the Claude
+  subscription for the scheduled runners and the Buzz fleet; OpenRouter where a job still
+  names it). The charter-scoped local tier (Ollama on the Arc iGPU, for mechanical
+  classification/summarization) was permitted from 2026-07 and **removed 2026-09-18** with
+  Ollama itself — nothing runs locally, and the LLM egress boundary in `docs/data_boundary.md`
+  governs every call. The vault's `local_inference_charter.md` is history, not policy.
 - **Secrets are a separate tree.** `~/.config/agent-workforce/` holds credentials (deploy key,
   mode 600) and is NOT this repo. Never `git add` anything from that path into this repo.
 
@@ -164,7 +164,7 @@ ls ~/.hermes/profiles/                              # base0, leantest, default (
   names the units it cannot run without (`bin/workflow_requires.py`; grammar in
   `design/agent-model.md` §4): the row shows each one's live state with a tri-state
   `satisfied`, an enabled workflow with one known down is a `dependency-down` exception, and
-  `bin/agent_propose.sh` / `bin/local_tier_eval.sh` refuse the run at pre-flight — unknown
+  `bin/agent_propose.sh` refuses the run at pre-flight — unknown
   (bus unreachable) is never a refusal. `guards` is a declared one-sentence field on platform
   entries only, rendered as a chip and an amber dialog notice, never a refusal.
   Since T5.3g (2026-09-16) the agent page carries **Start / Stop / Restart agent now** — the
@@ -250,7 +250,7 @@ weekly `bd-stall-radar` (Mon 09:07) so each pack consumes that morning's fresh r
 It writes up to 10 copy-paste-ready drafts (5 while it was nightly) for every **Dave-owed** BD next
 action — the union of radar stalls, Client Pipeline rows past their `Next action date`, and
 due BD-scoped Task Inbox rows — into
-`_inbox/agents/YYYY-MM-DD_bd-followup-drafts.md`, delivered to Discord by
+`_inbox/agents/YYYY-MM-DD_bd-followup-drafts.md`, delivered to the Buzz `bd` channel by
 `bin/deliver_report.sh`. The radar flags and stops; this job writes the text. It exists
 because three overdue sends sat `Planned` in the Task Inbox for five straight days — the
 missing artifact was the message, not the task row.

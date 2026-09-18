@@ -351,7 +351,7 @@ asserts = [
   "control-room-control-stub-501",    # the two POST stubs validate then answer 501; every other write is 405; GET on control paths is 405
   "control-room-serve-tailscale-only",# the launcher binds the tailscale ip -4 address and refuses to start without one
   "control-room-agents",              # T5.3f: five agents from the manifests, four active and aurelian unknown on the fixture bus; summary.agents and summary.workflows; runtimes leave the default list and ?role=all restores them
-  "control-room-requires",            # T5.3f: augustus-content's two requirements and local-tier-eval's ollama read satisfied on the fixture bus; buzz-agent@augustus is requiredBy the paused augustus-content with enabled = false; guards sits on the five platform rows only
+  "control-room-requires",            # T5.3f: augustus-content's two requirements read satisfied on the fixture bus; buzz-agent@augustus is requiredBy the paused augustus-content with enabled = false; guards sits on the five platform rows only
 ]
 why_no_workflow = """
 It tests the screen every workflow is rendered on and the hosting boundary that keeps it
@@ -418,7 +418,7 @@ not a manifest workflow; the POST it handles is forwarded for whichever workflow
 """
 
 # T5.3f. `requires` is a manifest field with two readers — the screen's row and the executor
-# pre-flights in bin/agent_propose.sh and bin/local_tier_eval.sh — and one resolver,
+# pre-flight in bin/agent_propose.sh — and one resolver,
 # bin/workflow_requires.py. The suite asserts the static half (every declaration resolves,
 # a fold agrees, the unit files mirror it, a Buzz hand-off requires its runtime) over the
 # live tree and over mutated copies, and drives `check` with a fake systemctl on PATH. It
@@ -432,7 +432,7 @@ asserts = [
   "workflow-requires-unit-file",     # a same-scope requirement appears in the unit file's Wants=/Requires=/BindsTo=, and a hard dependency there is mirrored in requires; cross-manager is exempt
   "workflow-requires-buzz-handoff",  # a runner that hands off through run_content_via_buzz.sh requires buzz-agent@<owner>
   "workflow-requires-check",         # check exits 1 naming the first requirement that is down, 0 on active, no entry or an unreachable bus (unknown is not a refusal)
-  "workflow-requires-preflight",     # agent_propose.sh checks the unit systemd is running and BLOCKs on exit 1 (smoke scenario 40 drives it); local_tier_eval.sh checks local-tier-eval and skips with exit 0, on the exit status alone, before main reads the bus
+  "workflow-requires-preflight",     # agent_propose.sh checks the unit systemd is running and BLOCKs on exit 1 (smoke scenario 40 drives it); unknown is not a refusal
 ]
 why_no_workflow = """
 It tests the one resolver behind every row's requires and every executor's pre-flight. A
@@ -708,14 +708,13 @@ them cannot be credited to any one of them.
 path    = "tests/test_hermes_residue.sh"
 owner   = "fleet"
 asserts = [
-  "residue-code-line-is-comment-or-live",  # every `hermes` line in a code file under bin/ systemd/ profiles/ is a comment or an allowlisted live anchor
-  "residue-prose-is-listed",               # every `hermes` line in a prose file there is an allowlisted historical note
+  "residue-code-line-is-comment-or-live",  # every `hermes` or `ollama` line in a code file under bin/ systemd/ profiles/ is a comment or an allowlisted live anchor
+  "residue-prose-is-listed",               # every `hermes` or `ollama` line in a prose file there is an allowlisted historical note
   "residue-no-stale-row",                  # every allowlist row still matches a line; a row that outlives its subject is a finding
-  "residue-live-is-pinned",                # the live set is exactly deliver.sh (discord-cutover) and local_tier_eval.sh (local-tier-eval)
-  "residue-local-tier-on-base0",           # local_tier_eval.sh runs -p base0, never a persona profile
+  "residue-live-is-pinned",                # the live set is empty: the last two dependencies left with Hermes and Ollama on 2026-09-18
   "residue-canary-red",                    # the scanner reports an uncommented hit on a synthetic tree and stays silent on the commented one
 ]
 why_no_workflow = """
-It scans the whole gate set for a retired platform. A residue claim over every file cannot be
-credited to any one workflow; the two live anchors it pins belong to two different ones.
+It scans the whole gate set for two retired runtimes. A residue claim over every file cannot
+be credited to any one workflow.
 """

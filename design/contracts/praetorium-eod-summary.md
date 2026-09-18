@@ -62,8 +62,8 @@ reports that state.
 - **Body file** — `~/logs/eod-summary/eod-summary-<UTC ISO minute>Z.md`, mode 644 (the runner
   sets no `umask`).
 - **Delivery** — `ExecStartPost=bin/deliver_report.sh`, `DELIVERY_ROUTE=ops` → channel
-  `62f321f3-bd6a-4b31-b19b-b8b49bed30f4`, event kind 9, notify `marcus`; plus Discord.
-  Anchored by `DELIVERY_RUN_MARKER=~/logs/run-markers/%n`.
+  `62f321f3-bd6a-4b31-b19b-b8b49bed30f4`, event kind 9, notify `marcus` (plus Discord until
+  2026-09-18). Anchored by `DELIVERY_RUN_MARKER=~/logs/run-markers/%n`.
 - **Shape:** no markdown tables, no horizontal rules, target under 1800 characters
   (`profiles/eod_summary_task.md:162`). See `## Known failure modes` for what the target is
   worth in practice.
@@ -233,7 +233,7 @@ exist in the sibling contract and is the highest-value check here.
   above reads the receipt and none reads Notion. Anyone adding a "the row exists" check here
   would be asserting Dave's laptop.
 - **Partial Notion write.** Daily Plans lands, Daily Log does not: the exit code is 0, the
-  receipt exists, the body file exists, Discord gets the summary, and the structured row Dave
+  receipt exists, the body file exists, Buzz gets the summary, and the structured row Dave
   reviews weekly is silently missing. Signal: `both-notion-rows-landed`. Not observed in the
   receipts under `~/logs/eod-summary/` as of 2026-09-10 — recorded because it is unobservable
   by every other means, not because it has happened.

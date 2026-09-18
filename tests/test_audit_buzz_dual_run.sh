@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# bin/audit_buzz_dual_run.sh — the only thing that may certify the seven-day dual run.
+# bin/audit_buzz_dual_run.sh — did every expected timer fire reach Buzz?
 #
-# The migration exists because two live failures stayed green: a unit that exits 0 and
-# a delivery that reached nobody look identical from the journal. So the auditor's job
-# is to answer, per expected timer fire, "did Discord, the Buzz channel AND the Pulse
-# note all land, or did this job correctly have nothing to say?" — and to exit non-zero
-# the moment it cannot say yes.
+# The auditor exists because two live failures stayed green: a unit that exits 0 and
+# a delivery that reached nobody look identical from the journal. So its job is to
+# answer, per expected timer fire, "did the Buzz channel AND the Pulse note both land,
+# or did this job correctly have nothing to say?" — and to exit non-zero the moment it
+# cannot say yes.
 #
 # Every case here builds a synthetic receipt file. The auditor is read-only: it must
 # never write, send, or touch a relay.
@@ -35,16 +35,16 @@ assert 'a found pattern is never reported as a failure' "yes | grep -q y"
 day() { date -u -d "$1 days ago" +%Y-%m-%d; }
 
 # A receipt as deliver.sh would have written it, on a given day.
-receipt() {  # receipt <file> <days-ago> <job> <outcome> [discord] [buzz] [pulse]
+receipt() {  # receipt <file> <days-ago> <job> <outcome> [buzz] [pulse]
   python3 - "$@" <<'PY'
 import json, sys
 path, days, job, outcome = sys.argv[1:5]
-d, b, p = (sys.argv[5:] + ["ok", "ok", "ok"])[:3]
+b, p = (sys.argv[5:] + ["ok", "ok"])[:2]
 import subprocess
 ts = subprocess.run(["date", "-u", "-d", f"{days} days ago", "+%Y-%m-%dT%H:%M:%SZ"],
                     capture_output=True, text=True).stdout.strip()
 row = {"schema": 1, "ts": ts, "job": job, "route": "ops", "channel": "c" * 64,
-       "outcome": outcome, "discord_result": d, "buzz_result": b, "pulse_result": p,
+       "outcome": outcome, "buzz_result": b, "pulse_result": p,
        "buzz_event_id": "e" * 64, "pulse_event_id": "f" * 64, "error": ""}
 open(path, "a").write(json.dumps(row) + "\n")
 PY
@@ -81,11 +81,11 @@ assert 'exits non-zero' "[ '$rc' -ne 0 ]"
 assert 'names the missing date' "grep -q '$(day 3)' <<<'$out'"
 assert 'labels it MISSING' "grep -q 'MISSING' <<<'$out'"
 
-echo '--- a delivered Discord message with a dead Buzz leg is still a gap ---'
+echo '--- a Pulse note that landed over a dead channel leg is still a gap ---'
 r=$(mktemp)
-for i in 1 2 3 4 5 6 7; do receipt "$r" "$i" overnight-morning-report.service delivered ok ok ok; done
+for i in 1 2 3 4 5 6 7; do receipt "$r" "$i" overnight-morning-report.service delivered ok ok; done
 grep -v "$(day 2)" "$r" > "$r.tmp" && mv "$r.tmp" "$r"
-receipt "$r" 2 overnight-morning-report.service partial_success ok failed skipped
+receipt "$r" 2 overnight-morning-report.service partial_success failed ok
 out=$(run_audit "$r"); rc=$?
 assert 'exits non-zero' "[ '$rc' -ne 0 ]"
 assert 'labels the partial day' "grep -q 'PARTIAL' <<<'$out'"
@@ -95,7 +95,7 @@ echo '--- a channel that landed without its Pulse note is a gap too ---'
 r=$(mktemp)
 for i in 1 2 3 4 5 6 7; do receipt "$r" "$i" overnight-morning-report.service delivered; done
 grep -v "$(day 5)" "$r" > "$r.tmp" && mv "$r.tmp" "$r"
-receipt "$r" 5 overnight-morning-report.service delivered ok ok failed
+receipt "$r" 5 overnight-morning-report.service delivered ok failed
 out=$(run_audit "$r"); rc=$?
 assert 'a missing Pulse leg fails the audit' "[ '$rc' -ne 0 ]"
 assert 'names the affected date' "grep -q '$(day 5)' <<<'$out'"
@@ -104,7 +104,7 @@ echo '--- a skipped run (no fresh artifact) is a gap, not a pass ---'
 r=$(mktemp)
 for i in 1 2 3 4 5 6 7; do receipt "$r" "$i" overnight-morning-report.service delivered; done
 grep -v "$(day 1)" "$r" > "$r.tmp" && mv "$r.tmp" "$r"
-receipt "$r" 1 overnight-morning-report.service skipped skipped skipped skipped
+receipt "$r" 1 overnight-morning-report.service skipped skipped skipped
 out=$(run_audit "$r"); rc=$?
 assert 'exits non-zero' "[ '$rc' -ne 0 ]"
 assert 'labels it SKIPPED rather than silently passing' "grep -q 'SKIPPED' <<<'$out'"
@@ -134,7 +134,7 @@ with open(sys.argv[1], "a") as fh:
         fh.write(json.dumps({
             "schema": 1, "ts": d.strftime("%Y-%m-%dT06:00:00Z"),
             "job": "praetorium-daily-plan.service", "outcome": "delivered",
-            "discord_result": "ok", "buzz_result": "ok", "pulse_result": "ok"}) + "\n")
+            "buzz_result": "ok", "pulse_result": "ok"}) + "\n")
 PY
 out=$("$SCRIPT" --receipts "$r" --unit praetorium-daily-plan.service 2>&1); rc=$?
 assert 'weekday-only producer passes with no weekend receipts' "[ '$rc' -eq 0 ]"
@@ -146,7 +146,7 @@ run_audit "$r" >/dev/null 2>&1
 after=$(sha256sum "$r" | cut -d' ' -f1)
 assert 'the receipt file is never modified' "[ '$before' = '$after' ]"
 assert 'the auditor invokes no transport' \
-  "! grep -vE '^[[:space:]]*#' '$SCRIPT' | grep -qE 'hermes(_cli\.main)? send|buzz messages send|buzz social publish'"
+  "! grep -vE '^[[:space:]]*#' '$SCRIPT' | grep -qE 'buzz messages send|buzz social publish'"
 
 echo '--- a missing receipt file is a loud failure, not an empty pass ---'
 out=$("$SCRIPT" --receipts /nonexistent/receipts.jsonl 2>&1); rc=$?

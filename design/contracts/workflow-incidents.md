@@ -78,7 +78,7 @@ source are each logged with their reason and are not declines.
 
 ## Side effects
 
-- One `bin/deliver.sh` call per message sent, `DELIVER_DISCORD=0` — never a direct Buzz call.
+- One `bin/deliver.sh` call per message sent — never a direct Buzz call.
 - `state.json` rewritten atomically every sweep; `declared/*.json` read only.
 - `systemctl show` calls, read-only, for every standing trigger.
 

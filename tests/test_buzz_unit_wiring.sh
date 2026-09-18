@@ -159,11 +159,10 @@ while IFS=$'\t' read -r unit route payload status silence canvas; do
         "[ -x '$REPO_ROOT/bin/${hook##*/}' ]"
     done
   else
-    # A pending unit may keep its pre-migration Discord hook — that path IS the
-    # dual-run baseline, and the adapters route it to `unrouted`, which delivers
-    # to Discord exactly as before and files a config_error receipt. What it must
-    # not do is claim a route it has not been ported to: that half-state posts to
-    # a channel nobody has agreed owns it, and reads as a completed migration.
+    # A pending unit may keep its pre-migration delivery hook — the adapters route
+    # it to `unrouted`, which sends nothing and files a config_error receipt. What
+    # it must not do is claim a route it has not been ported to: that half-state
+    # posts to a channel nobody has agreed owns it, and reads as a completed port.
     assert "$unit (pending) claims no route yet" "[ '$has_route' -eq 0 ]"
     assert "$unit (pending) claims no run marker yet" \
       "! code '$f' | grep -q '^Environment=DELIVERY_RUN_MARKER='"
@@ -264,7 +263,7 @@ offenders=$(
     # Not `grep -q`: it would exit on the first match, SIGPIPE the comment strip, and
     # under pipefail that reads as "no match" — dropping the offender it just found.
     if grep -v '^[[:space:]]*#' "$f" \
-         | grep -E 'hermes(_cli\.main)? send|buzz messages send|buzz social publish|buzz canvas set' \
+         | grep -E 'buzz messages send|buzz social publish|buzz canvas set' \
            >/dev/null; then
       basename "$f"
     fi

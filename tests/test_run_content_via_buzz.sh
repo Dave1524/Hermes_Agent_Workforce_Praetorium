@@ -125,8 +125,7 @@ PY
 }
 
 run_dispatch() {  # run_dispatch [extra env assignments...]
-  env DELIVER_DISCORD=0 \
-      DELIVERY_RECEIPTS="$WORK/receipts.jsonl" \
+  env DELIVERY_RECEIPTS="$WORK/receipts.jsonl" \
       BUZZ_DELIVER_HELPER="$WORK/helper.sh" \
       BUZZ_HELPER_BIN="$WORK/helper.sh" \
       CONTENT_DIGEST_BIN="$WORK/digest.sh" \

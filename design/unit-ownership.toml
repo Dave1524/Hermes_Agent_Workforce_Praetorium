@@ -7,8 +7,8 @@
 #
 # WHY A DECLARATION AND NOT A HEURISTIC. The obvious test for "is this unit ours" —
 # references /home/dave, or carries User=dave — misclassifies one of our own:
-# systemd/ttm-pool-drain.service has neither, because it runs as root and execs
-# /usr/local/bin/ttm-pool-drain. A heuristic that is wrong about a unit we wrote will be
+# systemd/archive/ttm-pool-drain.service had neither, because it ran as root and exec'd
+# /usr/local/bin/ttm-pool-drain (retired 2026-09-18 with Ollama). A heuristic that is wrong about a unit we wrote will be
 # wrong about one we did not. And "unknown => ignore" is the defect class this repo keeps
 # rediscovering: a check that asks a list whether it is fine cannot fail (eval-spec.md R12).
 #
@@ -18,16 +18,6 @@
 # one fact in two places, which is the thing this brief exists to detect.
 
 # --- third party: installed by something other than us, never sourced here -------------
-
-[[third_party]]
-unit = "ollama.service"
-tree = "etc"
-why  = """
-Installed by the Ollama upstream installer, which also owns /etc/systemd/system/ollama.service.d.
-It is the local inference tier's server (CLAUDE.md § local inference); we configure it and
-depend on it, but we do not author its unit and must not commit a copy that would then rot
-against whatever the installer writes on the next upgrade.
-"""
 
 [[third_party]]
 unit = "chronyd.service"

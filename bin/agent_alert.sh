@@ -15,7 +15,7 @@
 # TWO RECORDS, ONE THROTTLED. The journal and the log file are written on EVERY
 # failure and are never suppressed: they are local, free, and are the only paths that
 # still work when the failure being reported is the transport itself. Only the
-# outbound notification (Discord + Buzz, via notify.sh) is throttled. Nothing is lost
+# outbound notification (Buzz, via notify.sh) is throttled. Nothing is lost
 # — a suppressed failure is still on disk, it just does not buzz Dave's phone again.
 #
 # NOTIFIES WHEN:
@@ -40,7 +40,7 @@ BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NOTIFY_BIN="${NOTIFY_BIN:-$BIN_DIR/notify.sh}"
 # Both outward calls are seams, the way DELIVER_BIN is one for the transport: the
 # case table drives every branch offline, against neither the real journal nor a
-# real Discord/Buzz delivery.
+# real Buzz delivery.
 JOURNALCTL_BIN="${JOURNALCTL_BIN:-journalctl}"
 STATE_DIR="${AGENT_ALERT_STATE_DIR:-$HOME/.local/state/agent-workforce/alert}"
 LOG_FILE="${AGENT_ALERT_LOG:-$HOME/logs/agent-alert.log}"

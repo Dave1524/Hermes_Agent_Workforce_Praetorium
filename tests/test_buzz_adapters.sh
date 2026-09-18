@@ -91,7 +91,7 @@ h=$(sandbox)
 rc=$(REPORT_DIR="$h/overnight" DELIVERY_ROUTE=ops run_adapter "$h" deliver_report.sh)
 assert 'no transport call for an empty artifact' "[ \"\$(calls '$h')\" -eq 0 ]"
 
-echo '--- an unrouted caller keeps its Discord behaviour and stays visible as a gap ---'
+echo '--- an unrouted caller still calls deliver.sh and stays visible as a gap ---'
 h=$(sandbox)
 printf 'body\n' > "$h/overnight/morning-report-2026-08-04.md"
 rc=$(REPORT_DIR="$h/overnight" run_adapter "$h" deliver_report.sh)

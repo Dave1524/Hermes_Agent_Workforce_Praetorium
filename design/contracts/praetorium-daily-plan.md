@@ -53,7 +53,7 @@ A daily-cadence freshness window would report every Monday morning as a stopped 
   its children instead of stacking a second one. `Events Count` and `Tasks Count` are the two
   numbers counted from `notion_daily.py inputs`.
 - **Body file** — `~/logs/daily-plan/daily-plan-<UTC ISO minute>Z.md`, the exact bytes that
-  become both the Notion body and the Discord message. Mode 644; the runner sets no `umask`,
+  become both the Notion body and the Buzz message. Mode 644; the runner sets no `umask`,
   unlike `run_overnight_morning_report_cc.sh`.
 - **Receipt** — `~/logs/daily-plan/receipt-<YYYY-MM-DD>.json`, written by
   `notion_daily.py:157` **only after** Notion accepts the upsert, carrying
@@ -62,12 +62,13 @@ A daily-cadence freshness window would report every Monday morning as a stopped 
   response (2026-07-21 regression).
 - **Delivery** — `ExecStartPost=bin/deliver_report.sh` with `REPORT_DIR=~/logs/daily-plan`,
   `REPORT_GLOB=daily-plan-*.md`, `DELIVERY_ROUTE=ops` → channel
-  `62f321f3-bd6a-4b31-b19b-b8b49bed30f4`, **event kind 9** (stream), notify `marcus`; plus
-  Discord. Anchored by `DELIVERY_RUN_MARKER=~/logs/run-markers/%n`, stamped by an
+  `62f321f3-bd6a-4b31-b19b-b8b49bed30f4`, **event kind 9** (stream), notify `marcus` (plus
+  Discord until 2026-09-18). Anchored by `DELIVERY_RUN_MARKER=~/logs/run-markers/%n`, stamped by an
   `ExecStartPre` before `ExecStart`, because `ExecStartPost` cannot see
   `agent_propose.sh`'s `AGENT_RUN_STARTED_AT`.
-- **Shape:** no markdown tables and no horizontal rules — Discord renders neither, and the
-  2000-char splitter breaks a table across messages mid-row. Target under 1800 characters;
+- **Shape:** no markdown tables and no horizontal rules — written for Discord, which rendered
+  neither and whose 2000-char splitter broke a table across messages mid-row; the leg is gone
+  (2026-09-18) and the rule is kept until Buzz's rendering is measured. Target under 1800 characters;
   see `## Known failure modes` for what that target is actually worth.
 
 - **Beneficiary:** Dave, before the working day starts. Nobody else reads the ops channel,

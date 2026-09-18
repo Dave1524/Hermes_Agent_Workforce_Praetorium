@@ -10,7 +10,7 @@
 # copy is not — so this unit must invoke the source path (same path the retired
 # cron prompt used).
 #
-# WHY IT ALERTS (OnFailure -> Discord, then retries every ~15 min): bin/auto-sync
+# WHY IT ALERTS (OnFailure -> Buzz ops, then retries every ~15 min): bin/auto-sync
 # does a `git pull --ff-only origin main`, so this unit fails whenever local `main`
 # has DIVERGED from origin/main. Cause is always commits made directly on local
 # main and left unpushed while origin advanced (e.g. a merged PR) — auto-sync

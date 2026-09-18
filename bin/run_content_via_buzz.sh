@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # run_content_via_buzz.sh — the AGENT_RUNTIME_CMD target that runs the nightly content
-# task on buzz-agent@augustus instead of hermes → OpenRouter (NUC-46).
+# task on buzz-agent@augustus instead of a scheduled OpenRouter runner (NUC-46).
 #
 # OpenRouter has answered `402 Insufficient credits` on every augustus-content call
 # since ~2026-07-25. The same Editor-in-Chief already runs on this box on the codex-acp
@@ -115,7 +115,7 @@ receipts_before=0
 # categorized receipt instead. The receipt is therefore the only evidence that the
 # trigger actually reached the relay, and `--mention` of a non-member fails the WHOLE
 # send, so this is also how a membership regression surfaces.
-DELIVER_DISCORD=0 "$DELIVER_BIN" \
+"$DELIVER_BIN" \
   --job "$JOB" --route "$ROUTE" --runtime buzz-augustus \
   --subject "[Praetorium] Augustus content — run now" \
   --message "$trigger" >/dev/null 2>&1
