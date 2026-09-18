@@ -232,18 +232,7 @@ alerted = true
 in_repo = true
 notes = "The one unit that execs from ~/dev/agent-workforce rather than the deployed copy (registry §7.8)."
 
-[[workflows]]
-unit = "ttm-pool-drain"
-contract = "design/contracts/ttm-pool-drain.md"
-surface = "platform"
-status = "standing"
-suite    = []
-skills   = []
-suite_exempt = "script lives at /usr/local/bin/ttm-pool-drain (root-owned), not in this repo"
-trigger = "every 2 min, 2min after boot"
-what = "Hands the GPU memory the graphics driver hoards after each Ollama unload back to the kernel every two minutes."
-alerted = true                   # wired 2026-09-01 (D2)
-in_repo = true                   # adopted into systemd/ 2026-09-01 (D2)
+# ttm-pool-drain retired 2026-09-18 via Control Room proposal 20260918T075403Z-retire-ttm-pool-drain-9a5165 (branch control-room/retire-ttm-pool-drain-20260918T075403Z): Ollama is removed from the box (Dave, 2026-09-18); the TTM pool it drained after each model unload has read 0 MB on every tick and nothing loads GPU models any more. Artifacts: receipts=keep notion=keep inbox=keep. Record: design/retired-workflows.toml.
 
 [[workflows]]
 unit = "overnight-pre-snapshot"
