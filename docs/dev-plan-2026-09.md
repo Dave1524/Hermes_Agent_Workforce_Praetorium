@@ -779,6 +779,10 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   refusal as correct. A content decision. MEASURED 2026-09-17: `published_corpus.py list` →
   `fetched: true, ref_age_hours: 891.9` (37 days), 16 articles. Still Dave's: publish one
   article, or record here that the refusal stands and the content route is parked.
+  Re-read 2026-09-18: `ref_age_hours: 914.9` (38 days; last article 2026-07-27). Nothing
+  refuses today — the 72 h `MAX_LAG_HOURS` gate fires only when origin is unreachable, and
+  this morning's run fetched and augustus declined on his own — so this is purely the content
+  decision, with no mechanical cost of leaving it open.
 - **D7** Done 2026-09-07: workflow authoring granted in `TEAM.md`.
 - **D8** is T0.1.
 
