@@ -260,7 +260,12 @@ run_owner="${AGENT_OWNER:-$run_profile}"
 # which no live job runs — augustus-content rows logged openai/gpt-5.5 from a profile the
 # buzz-agent runtime never used. The receipt (T5.2) carries the measured model.
 run_model=unknown
-log "mode: AGENT_RUN_MODE=$run_mode task=$run_task profile=$run_profile owner=$run_owner"
+verify_state=unset
+[ -n "${AGENT_VERIFY_CMD:-}" ] && verify_state=set
+log "mode: AGENT_RUN_MODE=$run_mode task=$run_task profile=$run_profile owner=$run_owner verify=$verify_state"
+# verify= is the only place a job's AGENT_VERIFY_CMD wiring is visible from outside the
+# deny-listed env tree: the command itself prints nothing on success, so an unset one
+# (D2, m1_signal_scan.env) was indistinguishable from a passing one.
 
 # ── NUC-31: preflight MCP tool-health gate (advisory by default) ──
 # Placed AFTER profile/model resolution so a warn/block record carries the real
