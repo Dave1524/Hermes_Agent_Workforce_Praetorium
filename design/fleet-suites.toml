@@ -684,6 +684,8 @@ asserts = [
   "interaction-never-blocks-stop",            # malformed stdin, missing transcript, no unit, unwritable root: exit 0, empty stdout, one log line
   "codex-notify-send-is-artifact",            # the codex notify payload plus the rollout under CODEX_HOME give the same receipt shape
   "codex-notify-silence-is-decline",          # a turn without a send is a decline, usage still measured from the rollout
+  "codex-notify-harness-error-is-failed",     # a rollout whose task_complete carries an error is a failed turn with the error as its reason, never a decline
+  "codex-notify-inbound-event-is-handoff",    # the <buzz-event> Event ID the turn answered is recorded as handoff.event, the dispatcher's run_id
   "codex-notify-usage-from-rollout",          # the turn's share of the thread total: last token_count in the span minus the last before it
   "codex-notify-missing-rollout-unavailable", # no rollout: a receipt with usage unavailable and the reason naming the missing rollout
   "codex-notify-never-fails",                 # malformed payload, wrong type, no CODEX_HOME, no unit: exit 0, empty stdout, one log line, no env value logged

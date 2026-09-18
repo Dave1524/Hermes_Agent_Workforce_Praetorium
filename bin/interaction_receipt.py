@@ -122,8 +122,18 @@ def codex_turn(raw: str) -> interaction_turn.Turn:
     return rollout_reader.read(codex_home, thread, turn_id)
 
 
+def handoff_of(turn: interaction_turn.Turn, agent: str | None) -> dict[str, Any] | None:
+    """The relay event that woke this turn, mirroring the dispatcher's own `handoff` block so
+    the two receipts of one content run share the event id (T7.2)."""
+    event = interaction_turn.inbound_event_in(turn.prompt)
+    if not event:
+        return None
+    return {"actor": interaction_turn.inbound_sender_in(turn.prompt), "event": event, "recipient": agent}
+
+
 def build_receipt(unit: str, turn: interaction_turn.Turn) -> dict[str, Any]:
     terminal, uri = interaction_turn.interaction_outcome(turn)
+    agent = unit.partition("@")[2] or None
     now = interaction_turn.iso_seconds(workflow_receipt.iso_utc())
     started = turn.started_at or now
     ended = turn.ended_at or now
@@ -134,7 +144,7 @@ def build_receipt(unit: str, turn: interaction_turn.Turn) -> dict[str, Any]:
         "workflow_id": unit,
         "run_id": turn.run_id,
         "unit": unit,
-        "agent": unit.partition("@")[2] or None,
+        "agent": agent,
         "model": turn.model,
         "vantage": "interaction",
         "started_at": started,
@@ -145,7 +155,7 @@ def build_receipt(unit: str, turn: interaction_turn.Turn) -> dict[str, Any]:
         "cost": workflow_receipt.unavailable_cost(),
         "next_action": {"actor": None, "action": None},
         "parent_run_id": None,
-        "handoff": None,
+        "handoff": handoff_of(turn, agent),
     }
     if uri:
         receipt["artifact"] = {"uri": uri}

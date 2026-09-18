@@ -1,0 +1,11 @@
+{
+  "type": "agent-turn-complete",
+  "thread-id": "0a0a0a0a-0a0a-7a0a-8a0a-0a0a0a0a0a0a",
+  "turn-id": "0b0b0b0b-0b0b-4b0b-8b0b-0b0b0b0b0b03",
+  "cwd": "/home/dave",
+  "client": "@agentclientprotocol/codex-acp",
+  "input-messages": [
+    "<base>\nYou are an agent operating inside Buzz.\n</base>\n\n<buzz-event type=\"praetorium\">\nEvent ID: e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3\nChannel: content (#36dc03cb-5b24-45f6-b6d4-ac6de33c4621)\nKind: 45001\nFrom: PRAETORIUM (npub: npub1praetorium, hex: b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0)\nTime: 2026-09-14T10:00:00+00:00\nContent: [Praetorium] Augustus content — run now\n\nNightly content run. Read /home/dave/agent-workforce/profiles/augustus_content_task.md and execute it now.\n</buzz-event>"
+  ],
+  "last-assistant-message": null
+}

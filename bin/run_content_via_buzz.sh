@@ -23,6 +23,18 @@
 # (45001) and the mention (augustus's pubkey) are therefore properties of
 # bin/buzz_routes.env, not of anything here. Reading the channel back is not a
 # transport and stays local.
+#
+# THE WAIT ENDS ON HIS TURN, NOT ON THE CLOCK (T7.2, 2026-09-18). Three of five nights in
+# September burnt the full 20 minutes: augustus's harness had ended the turn on a model
+# error (`404 … gpt-5.5 does not exist or you do not have access to it`) 11s and 115s after
+# the trigger, codex-acp reported the turn upstream as `ok`, nothing was posted, and this
+# script recorded "no reply" — the CLAUDE.md trap of reading silence as evidence, twenty
+# minutes late. The signal that the turn ended exists: bin/interaction_receipt.py writes
+# his receipt within a second, keyed by the trigger event id (`handoff.event`), and its
+# `failed` reason names the error. The poll reads it, takes one last look at the board and
+# the channel, and records the verdict. Successful turns measured 2m56s-6m07s (four runs,
+# 09-05 to 09-17); the deadline stays 20 minutes as the backstop for a turn that never ends
+# (codex-acp's in-flight limit is 7200s) or a notify hook that did not fire.
 set -uo pipefail
 
 BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -36,6 +48,8 @@ RECEIPTS="${DELIVERY_RECEIPTS:-$HOME/logs/delivery-receipts.jsonl}"
 SNAPSHOT="${CONTENT_BOARD_SNAPSHOT:-$HOME/agent-workforce/var/content_board.snapshot}"
 IDENTITY="${BUZZ_SERVICE_IDENTITY:-praetorium}"
 PROFILE="${CONTENT_TASK_PROFILE:-$HOME/agent-workforce/profiles/augustus_content_task.md}"
+TURN_RECEIPT_BIN="${CONTENT_TURN_RECEIPT_BIN:-$BIN_DIR/content_turn_receipt.py}"
+TURN_RECEIPTS="${CONTENT_TURN_RECEIPTS:-$HOME/agent-workforce/var/workflow-receipts/buzz-agent@augustus}"
 JOB="${AGENT_TASK_SLUG:-augustus-content}"
 ROUTE=content
 ENTRY_POINT="${CONTENT_ENTRY_POINT:-nightly}"
@@ -239,27 +253,64 @@ sentinel_log() {  # sentinel_log <prefix> <event-id> <line>
   esac
 }
 
-deadline=$(( dispatch_epoch + wait_secs ))
-while :; do
+# One read of the board and the channel: exits on a terminal outcome, returns 1 while
+# nothing has answered yet.
+read_for_answer() {
+  local current page row hit
   current=$("$DIGEST_BIN") || current=""
   if [ -n "$current" ] && page=$(picked_to_draft_transition "$current"); then
     printf 'page=%s from=Picked to=Draft\n' "$page" >>"$SNAPSHOT"
     log "content-board-transition-produced-draft run_id=$run_id entry_point=$ENTRY_POINT page=$page from=Picked to=Draft"
     exit 0
   fi
-
   for row in "${SENTINELS[@]}"; do
     hit=$(sentinel_reply "$dispatch_epoch" "${row%% *}") || continue
     [ -n "$hit" ] || continue
     sentinel_log "${row%% *}" "${hit%% *}" "${hit#* }"
     exit "${row##* }"
   done
+  return 1
+}
 
+# augustus's own receipt for THIS dispatch — joined on the trigger event id, so a turn he
+# is running for anyone else can never end this wait. Absent until his turn ends; absent
+# for the whole wait if the notify hook did not fire, in which case the deadline decides.
+turn_ended() {  # -> "<outcome>\t<receipt run id>\t<ended_at>\t<error or empty>"
+  python3 "$TURN_RECEIPT_BIN" "$TURN_RECEIPTS" "$run_id" 2>/dev/null
+}
+
+deadline=$(( dispatch_epoch + wait_secs ))
+turn=""
+while :; do
+  read_for_answer
+  if turn=$(turn_ended); then
+    read_for_answer  # a board write or a reply that landed as the turn closed
+    break
+  fi
   [ "$(date +%s)" -ge "$deadline" ] && break
   sleep "$poll_secs"
 done
 
-# ── 4. the deadline is not proof of silence ───────────────────────────────────────
+# ── 4. neither the turn's end nor the deadline is proof of silence ────────────────
+# The wait ended for one of two reasons, and both are named before anything is recorded.
+#
+# His turn ended. The receipt says how: a `failed` outcome with a reason is a turn the
+# harness ended in an error — the one outcome the channel and the board cannot show, since
+# nothing was posted and nothing moved. Recorded as its own named failure, with the error,
+# so a model outage never again reads as augustus staying quiet.
+if [ -n "$turn" ]; then
+  IFS=$'\t' read -r turn_outcome turn_receipt turn_ended_at turn_error <<<"$turn"
+  log "augustus's turn for this dispatch ended at ${turn_ended_at} — interaction receipt ${turn_receipt}, outcome=${turn_outcome}"
+  if [ -n "$turn_error" ]; then
+    log "  his harness ended the turn on an error: nothing was posted and nothing moved. A FAILURE of the"
+    log "  harness or its model backend — not a decline, not silence. The receipt names it; the channel cannot."
+    log "content-board-transition-produced-draft failed run_id=$run_id entry_point=$ENTRY_POINT — no pre-dispatch Picked row reached Draft"
+    log "owned-reply-evidences-decline failed run_id=$run_id entry_point=$ENTRY_POINT — the turn ended before any reply"
+    log "agent-turn-ended-in-a-harness-error run_id=$run_id entry_point=$ENTRY_POINT — $turn_error"
+    exit 1
+  fi
+fi
+
 # Before recording "no reply", ask whether there WAS one: the empty prefix matches any
 # non-blank line augustus wrote after the dispatch. On 2026-09-07 he answered 110 seconds
 # in, no branch matched, and the run spent the remaining 18 minutes to log the opposite of
@@ -278,5 +329,9 @@ fi
 
 log "content-board-transition-produced-draft failed run_id=$run_id entry_point=$ENTRY_POINT — no pre-dispatch Picked row reached Draft"
 log "owned-reply-evidences-decline failed run_id=$run_id entry_point=$ENTRY_POINT — no post-dispatch Augustus DECLINE: reply"
-log "no board movement and no reply within ${wait_secs}s — recording FAIL"
+if [ -n "$turn" ]; then
+  log "no board movement and no reply — augustus's turn ended (receipt ${turn_receipt}) without either; recording FAIL after $(( $(date +%s) - dispatch_epoch ))s, not at the ${wait_secs}s deadline"
+else
+  log "no board movement and no reply within ${wait_secs}s — recording FAIL"
+fi
 exit 1

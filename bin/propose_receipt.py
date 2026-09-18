@@ -29,7 +29,11 @@ import content_run_evidence  # noqa: E402
 
 BIN_DIR = pathlib.Path(__file__).resolve().parent
 CONTENT_TASK = "augustus-content"
-REASON_TAIL = 160
+# Wide enough for the runner's `agent-turn-ended-in-a-harness-error … — <error>` line: the
+# codex error text alone (`unexpected status 404 Not Found: The model gpt-5.5 does not
+# exist …, url: …, request id …`) runs past 160, and a reason that truncates the one line
+# naming the cause is the defect one layer down.
+REASON_TAIL = 400
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

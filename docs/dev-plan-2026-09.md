@@ -850,6 +850,29 @@ losing artifacts today.
   by a **named assertion**; three consecutive eligible runs reach a valid terminal outcome.
   Gate: the cause named, and either fixed or recorded as a `DECIDED` with the timeout re-based on
   measured successful turn length.
+  **Cause evidenced and fixed 2026-09-18, `e428bc2` (PR #52).** Read from augustus's Codex
+  rollouts (`task_complete.error`), not from the journal: on 09-07 and 09-09 his turn ended 115s
+  and 11s after the trigger on `404 … gpt-5.5 does not exist or you do not have access to it`
+  (40 of his turns 09-07T03:16Z → 09-10T19:12Z, interleaved with `usage_limit_exceeded`; none
+  since 09-11). codex-acp reported both turns `ok`, nothing was posted, the board did not move,
+  and every layer the box reads called it silence — the T5.2 receipt called it a `decline`,
+  because `rollout_reader.py` ignored the error. 09-06 was the `RUN-FAILED` gap closed 09-07
+  (`9b9bee4`). The `p` tags, membership and cgroup were all fine, which is the point: the
+  CLAUDE.md path would have found nothing, and the evidence was in a file nothing read.
+  Fix: an errored turn receipts as `failed` with the error as its reason; every interaction
+  receipt records the relay event it answered (`handoff.event` = the dispatcher's `run_id`,
+  proven on the real 09-07 turn against its delivery receipt); the runner ends its wait on that
+  receipt and records `agent-turn-ended-in-a-harness-error … — <error>` at once, or silence
+  seconds after the turn instead of at the deadline. Successful turns measured 2m56s-6m07s
+  (09-05, 09-08, 09-10, 09-17), so 1200s stays as the backstop, not the path. Contract v3 adds
+  `agent-turn-did-not-error` (run vantage). Gate: `tests/test_run_content_via_buzz.sh` (errored
+  turn exits 1 in under 10s with the named line last; a receipt for another event never ends the
+  wait; the contract block run under a fake HOME) and `tests/test_interaction_receipt.py`
+  (errored rollout → `failed`; `<buzz-event>` prompt → `handoff`).
+  **Open half — three consecutive eligible runs.** `augustus-content.timer` has been stopped and
+  disabled since Dave's 09-11 mass stop; the 09-18 08:34 manual run (`AGENT_RUN_MODE=ops`) is
+  one clean decline. The streak needs the timer re-enabled or two more manual runs — Dave's
+  call, since the resume is the clock start for every workflow (Order of work, step 7).
 
 **Fixed in place — not tasks.** Four defects found during landings on 2026-09-17/18 were
 given rows here and closed the same day. Dave's rule (2026-09-18): a finding surfaced while

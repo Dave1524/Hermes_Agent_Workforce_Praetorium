@@ -67,12 +67,14 @@ chmod +x "$WORK/helper.sh"
 # The digest the runner sees. The board "moves" only when a case asks it to, and only
 # from the second read on — the runner's first read is its pre-dispatch baseline, so a
 # board that differed from call one would be a board that moved before anyone was asked.
+# A case that needs the move later writes the read number into the move file.
 cat >"$WORK/digest.sh" <<'STUB'
 #!/usr/bin/env bash
 n=$(cat "$STUB_DIGEST_N" 2>/dev/null || echo 0); n=$((n + 1))
 printf '%s' "$n" >"$STUB_DIGEST_N"
 [ -s "$STUB_DIGEST_RC" ] && exit "$(cat "$STUB_DIGEST_RC")"
-if [ -f "$STUB_DIGEST_MOVE" ] && [ "$n" -ge 2 ]; then
+move_at=$(cat "$STUB_DIGEST_MOVE" 2>/dev/null); move_at=${move_at:-2}
+if [ -f "$STUB_DIGEST_MOVE" ] && [ "$n" -ge "$move_at" ]; then
   cat "$STUB_DIGEST_AFTER"
 else
   cat "$STUB_DIGEST_BEFORE"
@@ -103,6 +105,7 @@ export STUB_DIGEST_AFTER="$WORK/digest_after"
 export STUB_DIGEST_MOVE="$WORK/digest_move"
 export STUB_DIGEST_N="$WORK/digest_n"
 export STUB_CORPUS_RC="$WORK/corpus_rc"
+export STUB_TURN_RECEIPTS="$WORK/turn-receipts"
 
 printf 'page-1:Picked\npage-2:Draft\n' >"$STUB_DIGEST_BEFORE"
 printf 'page-1:Draft\npage-2:Draft\n' >"$STUB_DIGEST_AFTER"
@@ -111,7 +114,23 @@ reset_case() {
   : >"$STUB_ARGV"; : >"$STUB_SEND_RC"; : >"$STUB_DIGEST_RC"; : >"$STUB_STDIN"
   : >"$STUB_CORPUS_RC"
   rm -f "$STUB_DIGEST_MOVE" "$STUB_DIGEST_N" "$WORK/board.snapshot"
+  rm -rf "$STUB_TURN_RECEIPTS"
   printf '[]\n' >"$STUB_EVENTS"
+}
+
+# augustus's interaction receipt for one turn, as bin/interaction_receipt.py writes it —
+# the runner joins on handoff.event, which is the trigger's relay event id (the run_id).
+turn_receipt() {  # turn_receipt <outcome> <handoff-event> [reason]
+  mkdir -p "$STUB_TURN_RECEIPTS"
+  python3 - "$STUB_TURN_RECEIPTS" "$1" "$2" "${3:-}" <<'PY'
+import json, pathlib, sys
+d, outcome, event, reason = sys.argv[1:]
+pathlib.Path(d, "0a0a-thread-0b03.json").write_text(json.dumps({
+    "run_id": "0a0a-thread-0b03", "unit": "buzz-agent@augustus", "agent": "augustus",
+    "vantage": "interaction", "started_at": "2026-09-14T10:00:00Z", "ended_at": "2026-09-14T10:00:11Z",
+    "terminal": {"outcome": outcome, "reason": reason or None},
+    "handoff": {"actor": "PRAETORIUM", "event": event, "recipient": "augustus"}}))
+PY
 }
 
 # An augustus-authored event on the content channel, `secs` from now.
@@ -131,6 +150,7 @@ run_dispatch() {  # run_dispatch [extra env assignments...]
       CONTENT_DIGEST_BIN="$WORK/digest.sh" \
       CONTENT_CORPUS_BIN="$WORK/corpus.sh" \
       CONTENT_BOARD_SNAPSHOT="$WORK/board.snapshot" \
+      CONTENT_TURN_RECEIPTS="$STUB_TURN_RECEIPTS" \
       AGENT_BUZZ_WAIT_SECONDS="${WAIT_SECS:-2}" \
       AGENT_BUZZ_POLL_SECONDS=1 \
       "$@" bash "$RUNNER" >"$WORK/out" 2>&1
@@ -347,6 +367,65 @@ assert 'and it is NOT reported as an owned decline' "! grep -qi 'augustus declin
 assert 'and genuine silence still says exactly that' \
   "grep -q 'no board movement and no reply' '$WORK/out'"
 
+RUN_ID="$(printf 'a%.0s' {1..64})"
+ERROR_404='the harness turn ended in an error: other: unexpected status 404 Not Found: The model `gpt-5.5` does not exist or you do not have access to it., url: https://chatgpt.com/backend-api/codex/responses, request id: 80c03fe9'
+
+echo '--- completion: his turn ended in a harness error — a named FAILURE, at once ---'
+# 2026-09-07 and 09-09: the Codex turn ended on a model 404 at 115s and 11s, nothing was
+# posted, the board did not move, and the runner spent the full 1200s to record "no reply".
+reset_case
+turn_receipt failed "$RUN_ID" "$ERROR_404"
+started=$(date +%s)
+WAIT_SECS=30 run_dispatch; rc=$?
+elapsed=$(( $(date +%s) - started ))
+assert 'an errored turn exits 1 (asked, and the harness failed him)' "[ $rc -eq 1 ]"
+assert 'and the wait ended on the receipt, not the 30s deadline' "[ $elapsed -lt 10 ]"
+assert 'and the failure is named after the harness, not after silence' \
+  "grep -q 'agent-turn-ended-in-a-harness-error run_id=$RUN_ID' '$WORK/out'"
+assert 'and it carries the error text the receipt recorded' "grep -q '404 Not Found' '$WORK/out'"
+assert 'and that line is the LAST one — it becomes the run receipt'"'"'s reason' \
+  "tail -1 '$WORK/out' | grep -q 'agent-turn-ended-in-a-harness-error'"
+assert 'and it never says "no reply" — silence was not what happened' \
+  "! grep -q 'no board movement and no reply' '$WORK/out'"
+assert 'and it is NOT reported as a decline' "! grep -qi 'declined' '$WORK/out'"
+assert 'and both board assertions still fail by name' \
+  "grep -q 'content-board-transition-produced-draft failed' '$WORK/out' && grep -q 'owned-reply-evidences-decline failed' '$WORK/out'"
+assert 'and the log names the interaction receipt it read' "grep -q '0a0a-thread-0b03' '$WORK/out'"
+
+echo '--- completion: his turn ended clean with nothing to show — silence, recorded early ---'
+reset_case
+turn_receipt decline "$RUN_ID"
+started=$(date +%s)
+WAIT_SECS=30 run_dispatch; rc=$?
+elapsed=$(( $(date +%s) - started ))
+assert 'a turn that ended without a post or a move exits 1' "[ $rc -eq 1 ]"
+assert 'and does not wait out the deadline for a turn that is over' "[ $elapsed -lt 10 ]"
+assert 'and still calls it what it is' "grep -q 'no board movement and no reply' '$WORK/out'"
+assert 'and says the turn ended, naming the receipt' \
+  "grep -q 'turn ended (receipt 0a0a-thread-0b03)' '$WORK/out'"
+assert 'and does not claim the deadline was reached' "! grep -q 'within 30s' '$WORK/out'"
+
+echo '--- completion: the board moved as the turn closed ---'
+# The receipt lands about a second after the turn; the last board write can land with it.
+# One more read after the receipt, or a draft written in that second would be recorded as
+# a failed run.
+reset_case
+turn_receipt artifact "$RUN_ID"
+printf 3 >"$STUB_DIGEST_MOVE"
+WAIT_SECS=30 run_dispatch; rc=$?
+assert 'a Draft that appears on the post-turn read exits 0' "[ $rc -eq 0 ]"
+assert 'and names the transition' \
+  "grep -q 'content-board-transition-produced-draft.*page=page-1 from=Picked to=Draft' '$WORK/out'"
+
+echo '--- a receipt for a different event never ends this wait ---'
+reset_case
+turn_receipt failed "$(printf 'b%.0s' {1..64})" "$ERROR_404"
+WAIT_SECS=3 run_dispatch; rc=$?
+assert 'someone else'"'"'s turn leaves the run waiting to its own deadline' \
+  "grep -q 'no board movement and no reply within 3s' '$WORK/out'"
+assert 'and its error is never attributed to this dispatch' \
+  "! grep -q 'agent-turn-ended-in-a-harness-error' '$WORK/out'"
+
 echo '--- completion: a publish failure is exit 4, never "no reply yet" ---'
 reset_case
 echo 2 >"$STUB_SEND_RC"
@@ -445,6 +524,47 @@ assert 'and it passes BECAUSE of the owned decline, not because the board looks 
   "grep -qi 'owned-reply-evidences-decline' '$WORK/out'"
 assert 'it never claims movement that did not happen' \
   "! grep -qi 'board moved' '$WORK/out'"
+
+echo '--- the contract check reads the same receipt: agent-turn-did-not-error ---'
+# The block is lifted from design/contracts/augustus-content.md and run as contract_exec.py
+# runs it, under a HOME whose deployed tree is this checkout's reader and a receipts dir the
+# case controls. The runner ends the run on the receipt; this is the receipt-time reader
+# that turns the same evidence into the receipt's check result.
+CONTRACT="$REPO_ROOT/design/contracts/augustus-content.md"
+sed -n '/^   ```check id=agent-turn-did-not-error/,/^   ```$/p' "$CONTRACT" | sed '1d;$d' >"$WORK/check.sh"
+assert 'the contract carries the check' "[ -s '$WORK/check.sh' ]"
+FAKE_HOME="$WORK/home"
+mkdir -p "$FAKE_HOME/agent-workforce/bin" "$FAKE_HOME/agent-workforce/var/workflow-receipts"
+ln -sfn "$REPO_ROOT/bin/content_turn_receipt.py" "$FAKE_HOME/agent-workforce/bin/content_turn_receipt.py"
+STUB_TURN_RECEIPTS="$FAKE_HOME/agent-workforce/var/workflow-receipts/buzz-agent@augustus"
+run_check() {  # run_check <attempt-log>
+  env -i PATH="$PATH" HOME="$FAKE_HOME" UNIT=augustus-content AGENT_ATTEMPT_LOG="$1" \
+    bash "$WORK/check.sh" >"$WORK/check.out" 2>&1
+}
+printf 'corpus gate armed\n' >"$WORK/no_trigger.log"
+printf 'corpus gate armed\ntrigger published to content (channel c, mention a) run_id=%s entry_point=nightly\n' "$RUN_ID" >"$WORK/trigger.log"
+
+rm -rf "$STUB_TURN_RECEIPTS"
+run_check "$WORK/no_trigger.log"; rc=$?
+assert 'no trigger published — n/a, nobody was asked' "[ $rc -eq 77 ] && grep -q 'nobody was asked' '$WORK/check.out'"
+run_check "$WORK/trigger.log"; rc=$?
+assert 'trigger but no receipt yet — n/a, not a pass' "[ $rc -eq 77 ] && grep -q 'no interaction receipt' '$WORK/check.out'"
+turn_receipt failed "$RUN_ID" "$ERROR_404"
+run_check "$WORK/trigger.log"; rc=$?
+assert 'a failed receipt for this trigger fails the check' "[ $rc -eq 1 ]"
+assert 'and the check output quotes the harness error' "grep -q '404 Not Found' '$WORK/check.out'"
+rm -rf "$STUB_TURN_RECEIPTS"
+turn_receipt artifact "$RUN_ID"
+run_check "$WORK/trigger.log"; rc=$?
+assert 'a clean turn passes' "[ $rc -eq 0 ] && grep -q 'outcome=artifact' '$WORK/check.out'"
+env -i PATH="$PATH" HOME="$FAKE_HOME" UNIT=content-change-dispatch AGENT_ATTEMPT_LOG="$WORK/trigger.log" \
+  bash "$WORK/check.sh" >"$WORK/check.out" 2>&1; rc=$?
+assert 'the dispatch tick is n/a — decided for the run it dispatched' "[ $rc -eq 77 ]"
+rm -f "$FAKE_HOME/agent-workforce/bin/content_turn_receipt.py"
+run_check "$WORK/trigger.log"; rc=$?
+assert 'a reader that cannot run is a failure, never "no receipt yet"' \
+  "[ $rc -eq 1 ] && grep -q 'could not be read' '$WORK/check.out'"
+STUB_TURN_RECEIPTS="$WORK/turn-receipts"
 
 echo '--- transport ownership: the dispatcher owns no transport ---'
 # bin/deliver.sh is the single owner of `buzz messages send`
