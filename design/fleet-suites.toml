@@ -704,6 +704,8 @@ asserts = [
   "bridge-filter-matches-manifest",  # each shim spawned as the harness spawns it: tools/list is its manifest's families and a call into a withheld family is refused by the bridge itself
   "aurelian-deny-as-declared",       # aurelian: Edit/Write/NotebookEdit and the seven notion_* denied under his namespace; Bash/Read/Glob/Grep stay; no other Claude agent withholds a builtin
   "connector-deny-complete",         # every claude.ai connector the account exposes (a MEASURED fixture, both directions) is denied in the base
+  "plugins-match-manifest",          # enabledPlugins in each rendered settings file is exactly the manifest's plugins: the shared coding-standards plugin on trajan, marcus, aurelian; none on claudius, none possible on codex
+  "managed-settings-paths-only",     # etc/claude-code/managed-settings.json is the base's twelve Read/Edit credential-path rules and nothing else — it binds Dave's sessions and the runners too
 ]
 why_no_workflow = """
 S1 capability isolation is fleet state — what each buzz-agent@* session is offered — and it

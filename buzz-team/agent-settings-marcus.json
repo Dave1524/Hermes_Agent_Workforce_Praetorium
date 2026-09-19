@@ -35,5 +35,8 @@
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "shared@jbuitenhuis": true
   }
 }

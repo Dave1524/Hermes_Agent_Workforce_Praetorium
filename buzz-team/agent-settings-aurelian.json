@@ -45,5 +45,8 @@
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "shared@jbuitenhuis": true
   }
 }

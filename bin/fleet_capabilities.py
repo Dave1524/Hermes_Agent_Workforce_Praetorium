@@ -6,6 +6,7 @@ The manifest `design/agents/<name>.toml` `[surfaces.interactive]` block is the s
     tools        = "claude-code-builtins" | "codex-builtins"
     tools_deny   = [<builtin tool names withheld>]
     bridge_tools = [<families of qmd, notion, brave the bridge shim advertises>]
+    plugins      = [<Claude Code plugins enabled in the session, by marketplace name>]  # optional
 
 From it, two artefacts per agent land in buzz-team/ (deployed to ~/.config/buzz-team/ by
 bin/deploy_buzz_team.sh, drift-checked like every adopted file):
@@ -18,8 +19,21 @@ bin/deploy_buzz_team.sh, drift-checked like every adopted file):
   agent-settings-<name>.json    claude-agent-acp harness only: the base agent-settings.json
                                 (secret-path denies, connector denies, Stop receipt hook)
                                 plus tools_deny plus a deny for every tool of a bridge
-                                family the shim does not advertise. Belt to the shim's
-                                braces on the Claude side; codex reads no settings file.
+                                family the shim does not advertise, plus enabledPlugins
+                                for the manifest's plugins. Belt to the shim's braces on
+                                the Claude side; codex reads no settings file.
+
+One artefact is fleet-wide and root-installed, never deployed:
+
+  etc/claude-code/managed-settings.json   the base's secret-path denies (Read/Edit of the
+                                six credential paths) and nothing else. Claude Code applies
+                                a managed file to every session on the box whatever
+                                --setting-sources or --settings say, so this is the one
+                                deny no flag can drop. Fleet policy (connectors,
+                                Skill(schedule)) stays out: it would bind Dave's own
+                                sessions and the scheduled runners. Installed by hand
+                                (sudo install -D -o root -g root -m 0644) and compared by
+                                bin/check_deploy_drift.sh.
 
 `render` writes them; `check` exits 1 with a diff when a committed file differs from what
 the manifests render — the gate's way of refusing a hand edit.
@@ -37,6 +51,7 @@ import tomllib
 from typing import Any
 
 BASE_SETTINGS = "agent-settings.json"
+MANAGED_SETTINGS = "etc/claude-code/managed-settings.json"
 CLAUDE_HARNESS = "claude-agent-acp"
 TOOL_FAMILIES = {"claude-code-builtins": CLAUDE_HARNESS, "codex-builtins": "codex-acp"}
 
@@ -88,36 +103,54 @@ def settings_text(name: str, block: dict[str, Any], base: dict[str, Any], bridge
         deny += [f"mcp__buzz-team-mcp-{name}__{tool}" for tool in bridge.family_tools(family)]
     rendered = dict(base)
     rendered["permissions"] = dict(base["permissions"], deny=deny)
+    plugins = block.get("plugins") or []
+    if plugins:
+        rendered["enabledPlugins"] = {name: True for name in plugins}
     return json.dumps(rendered, indent=2) + "\n"
 
 
+def is_secret_path_deny(rule: str) -> bool:
+    return rule.startswith(("Read(//", "Edit(//"))
+
+
+def managed_settings_text(base: dict[str, Any]) -> str:
+    deny = [rule for rule in base["permissions"]["deny"] if is_secret_path_deny(rule)]
+    return json.dumps({"permissions": {"deny": deny}}, indent=2) + "\n"
+
+
 def render(repo: pathlib.Path) -> dict[str, str]:
-    """Every artefact as {relative path under buzz-team/: text}."""
+    """Every artefact as {path relative to the repo: text}."""
     bridge = bridge_module(repo)
     base = json.loads((repo / "buzz-team" / BASE_SETTINGS).read_text(encoding="utf-8"))
     out: dict[str, str] = {}
     for name, data in manifests(repo).items():
         block = interactive(name, data)
-        out[f"buzz-team-mcp-{name}"] = shim_text(name, block["bridge_tools"])
+        out[f"buzz-team/buzz-team-mcp-{name}"] = shim_text(name, block["bridge_tools"])
         if data.get("harness") == CLAUDE_HARNESS:
-            out[f"agent-settings-{name}.json"] = settings_text(name, block, base, bridge)
+            out[f"buzz-team/agent-settings-{name}.json"] = settings_text(name, block, base, bridge)
+    out[MANAGED_SETTINGS] = managed_settings_text(base)
     return out
+
+
+def is_shim(rel: str) -> bool:
+    return pathlib.PurePath(rel).name.startswith("buzz-team-mcp-")
 
 
 def write(repo: pathlib.Path) -> int:
     for rel, text in render(repo).items():
-        path = repo / "buzz-team" / rel
+        path = repo / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
-        if rel.startswith("buzz-team-mcp-"):
+        if is_shim(rel):
             path.chmod(0o755)
-        print(f"rendered {path.relative_to(repo)}")
+        print(f"rendered {rel}")
     return 0
 
 
 def check(repo: pathlib.Path) -> int:
     status = 0
     for rel, expected in render(repo).items():
-        path = repo / "buzz-team" / rel
+        path = repo / rel
         if not path.is_file():
             print(f"missing: {path.relative_to(repo)} — run bin/fleet_capabilities.py render")
             status = 1
@@ -127,7 +160,7 @@ def check(repo: pathlib.Path) -> int:
             sys.stdout.writelines(difflib.unified_diff(actual.splitlines(True), expected.splitlines(True),
                                                        fromfile=str(path.relative_to(repo)), tofile="render"))
             status = 1
-        if rel.startswith("buzz-team-mcp-") and not path.stat().st_mode & 0o111:
+        if is_shim(rel) and not path.stat().st_mode & 0o111:
             print(f"not executable: {path.relative_to(repo)} — the harness spawns it directly")
             status = 1
     return status
