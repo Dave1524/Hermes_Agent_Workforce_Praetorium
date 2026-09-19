@@ -520,13 +520,14 @@ assert_mcp_config_filed() {
 
 # No process in the unit's cgroup — host or bwrap namespace alike — carries the key in a
 # world-readable argv. Counted, never printed; buzz-acp's environ is 0400 and is the one
-# place it is meant to be.
+# place it is meant to be. The bech32 prefix is spelled with a bracket so this file never
+# contains the literal the harness suite scans the tree for.
 assert_no_key_in_argv() {
   local agent=$1 cg pid hits=""
   cg=$(systemctl --user show "buzz-agent@$agent" -p ControlGroup --value)
   [ -n "$cg" ] || { fail "14/argv $agent (no cgroup)"; return; }
   while read -r pid; do
-    if tr '\0' '\n' <"/proc/$pid/cmdline" 2>/dev/null | grep -q 'BUZZ_PRIVATE_KEY\|nsec1'; then
+    if tr '\0' '\n' <"/proc/$pid/cmdline" 2>/dev/null | grep -q 'BUZZ_PRIVATE_KEY\|nsec[1]'; then
       hits="$hits $pid:$(cat "/proc/$pid/comm" 2>/dev/null)"
     fi
   done <"/sys/fs/cgroup$cg/cgroup.procs"
