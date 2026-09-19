@@ -101,9 +101,12 @@ memory, untouched by this change). The after figure from `context-cost.py` needs
 turn on the new wrapper and is recorded on the first one, together with the first receipt's
 `skills.offered` per agent (criterion 8's live half).
 
-One finding the plan had wrong: the `claude` child does **not** exist only mid-turn — marcus's
-lingered 11 minutes after `end_turn`. Gate 14 is right to read it opportunistically and skip
-out loud; "no child" still does not mean "no session".
+One finding the plan had wrong: the `claude` child does **not** exist only mid-turn — it is
+the ACP **session** (one per channel or DM conversation), alive until buzz-acp rotates it:
+measured 2026-09-19 07:03Z, marcus 4 / claudius 3 / trajan 3 children 10-11.5 h old at
+~280 MB RSS each, 3.1 GB fleet-wide; `--idle-timeout 900` ends a silent *turn*, and nothing
+evicts an idle session. Gate 14 is right to read it opportunistically and skip out loud; "no
+child" still does not mean "no session", and "a child" does not mean "a turn".
 
 **First turns, 2026-09-18 21:34–21:49 CEST (marcus, DM).** Receipt 1: `skills.offered` ==
 manifest. Receipt 2 (weekly-review): `invoked: ["weekly-review"]` — and `read: []` for a turn
