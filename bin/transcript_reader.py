@@ -1,8 +1,11 @@
 """The Claude Code transcript's last turn: everything after the last human prompt.
 
 A human prompt is a `user` record whose content is text — a string, or text blocks with no
-tool_result — that is neither `isMeta` (the harness talking to itself) nor a sidechain. The
-turn is every record after it: assistant messages carry the usage (one message can span
+tool_result — that is neither `isMeta` (the harness talking to itself) nor a sidechain. One
+`isMeta` record is a turn start all the same: a scheduled fire (`turnOrigin: scheduled`), the
+session's own CronCreate or /loop re-prompting it. Until 2026-09-19 it folded into the last
+owner prompt, so claudius's one-shot cron was receipted under Dave's event — a self-scheduled
+turn must be its own turn, with nobody behind it. The turn is every record after it: assistant messages carry the usage (one message can span
 several records that share `message.id`, so usage is counted per id, last record wins) and
 the tool calls; the `user` records that follow carry their results. Reuses
 bin/skill_telemetry.py's record reader; its tool_use reader drops the block id a result is
@@ -31,8 +34,14 @@ def _text_of(content: Any) -> str | None:
     return "\n".join(texts) if texts else None
 
 
+def is_scheduled(record: dict[str, Any]) -> bool:
+    return record.get("turnOrigin") == interaction_turn.SELF_SCHEDULED
+
+
 def is_human_prompt(record: dict[str, Any]) -> bool:
-    if record.get("type") != "user" or record.get("isMeta") or record.get("isSidechain"):
+    if record.get("type") != "user" or record.get("isSidechain"):
+        return False
+    if record.get("isMeta") and not is_scheduled(record):
         return False
     message = record.get("message")
     return isinstance(message, dict) and _text_of(message.get("content")) is not None
@@ -76,7 +85,8 @@ def read(path: pathlib.Path, session_id: str) -> interaction_turn.Turn:
         return interaction_turn.Turn(run_id=f"{session_id}-no-prompt", note="no human prompt in the transcript")
     prompt = records[prompt_index]
     turn = interaction_turn.Turn(run_id=f"{session_id}-{prompt.get('uuid')}", prompt=_text_of(prompt["message"]["content"]),
-                                 started_at=interaction_turn.iso_seconds(prompt.get("timestamp")))
+                                 started_at=interaction_turn.iso_seconds(prompt.get("timestamp")),
+                                 origin=interaction_turn.SELF_SCHEDULED if is_scheduled(prompt) else None)
     usage_by_message: dict[str, dict[str, Any]] = {}
     pending: dict[str, str] = {}
     last_assistant: dict[str, Any] | None = None

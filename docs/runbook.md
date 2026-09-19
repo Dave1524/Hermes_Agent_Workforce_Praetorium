@@ -686,6 +686,7 @@ one agent, confirm it is up, then move to the next; do not restart all five at o
 | Did the running process read the config, and do the credential halves match? | `~/.config/buzz-team/check-loaded.sh` | by hand; reports `STALE` / `BADAUTH` |
 | Is a deployed settings file, shim or wrapper newer than the oldest live `claude` session that should have read it? | `verify-fleet.sh` gate 7 (`7/fresh-config`, since 2026-09-19) | by hand; a deploy without a restart is red here |
 | Can an agent actually **complete a turn**? | `fleet-turn-check.service` | hourly, on the box |
+| Is a session **re-prompting itself** — more than 3 turns an hour with `origin = scheduled` (CronCreate, `/loop`) and no relay event behind them? | `fleet-turn-check.service` gate 5 over the receipts, through `bin/turn_rate.py` | hourly, on the box; alerts like any FAIL |
 
 The split is not arbitrary. Rows 1–3 are decidable from a checkout, so they belong in the PR
 gate. Rows 4–5 need live `/proc`, a live relay and the deny-listed tree — running them from a
@@ -800,7 +801,16 @@ delist: `schedule` stays in the session's listing, and an agent that tries it re
 in the settings file drops all thirteen and leaves the pointer skills — and **Dave decided
 against it (2026-09-19): the bundled skills stay**, `loop` included; only the cloud-scheduling
 pair is denied, so a future release that adds a bundled skill adds it to the agents too, and
-that is the accepted cost. Claudius's 10:19Z DM reply of that day named the full list.
+that is the accepted cost. What stays open is the *in-session* scheduler — `CronCreate`, what
+`/loop` runs on — which claudius proved the same afternoon with a one-shot that fired at
+14:21Z. Its fire lands in the transcript as an `isMeta` user record with
+`turnOrigin: scheduled`; since 2026-09-19 `bin/transcript_reader.py` starts a turn there, so
+the receipt begins at the fire, carries no handoff and says `origin: scheduled` (before that
+it folded into Dave's last prompt and was receipted under his event). The alarm on the effect
+is `fleet-turn-check.sh` gate 5: more than `FLEET_UNOWNED_MAX` (3) such turns in
+`FLEET_RATE_WINDOW_MIN` (60) minutes is a FAIL — a deny on the tool would leave Bash, which
+does the same and survives the session. Claudius's 10:19Z DM reply of that day named the
+full list.
 The `shared:*` plugin skills on the three coders are likewise outside `offered`.
 
 The loop for a change here is the S1 loop above with one step in front: edit the manifest,

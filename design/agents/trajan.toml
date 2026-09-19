@@ -47,7 +47,7 @@ status = "standing"
 suite    = ["tests/test_fleet_turn_check.sh"]
 skills   = []
 trigger = "hourly (+2min jitter)"
-what = "Proves every hour that each chat agent can still finish a turn, the one signal that saw the four-day outage."
+what = "Proves every hour that each chat agent can still finish a turn, the one signal that saw the four-day outage; since 2026-09-19 also that no session is re-prompting itself (gate 5: receipts with origin = scheduled, over the limit)."
 guards = "Without it an agent that cannot complete a turn looks alive on every other fleet signal."
 alerted = true
 in_repo = true                   # backported from /etc 2026-09-02 (brief 2). The UNIT came
