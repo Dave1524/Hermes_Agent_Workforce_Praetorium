@@ -706,6 +706,7 @@ asserts = [
   "connector-deny-complete",         # every claude.ai connector the account exposes (a MEASURED fixture, both directions) is denied in the base
   "plugins-match-manifest",          # enabledPlugins in each rendered settings file is exactly the manifest's plugins: the shared coding-standards plugin on trajan, marcus, aurelian; none on claudius, none possible on codex
   "managed-settings-paths-only",     # etc/claude-code/managed-settings.json is the base's twelve Read/Edit credential-path rules and nothing else — it binds Dave's sessions and the runners too
+  "wrapper-mcp-config-to-file",      # the adapter's --mcp-config <json> (bridge env, BUZZ_PRIVATE_KEY inlined) is written 0600 under $XDG_RUNTIME_DIR and replaced by the path; a path passes through; an unwritable dir refuses; the launch script clears the previous process's files
 ]
 why_no_workflow = """
 S1 capability isolation is fleet state — what each buzz-agent@* session is offered — and it

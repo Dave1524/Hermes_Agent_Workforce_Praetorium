@@ -319,4 +319,29 @@ PY
 assert 'exactly the twelve Read/Edit path rules, no hooks, no connector or Skill denies' "is_empty managed_problems"
 [ -n "$managed_problems" ] && printf '%s\n' "$managed_problems" | sed 's/^/      /'
 
+echo '--- 11. the private key leaves the claude argv: --mcp-config <json> becomes a 0600 runtime file (::wrapper-mcp-config-to-file) ---'
+# claude-agent-acp inlines the bridge's env — BUZZ_PRIVATE_KEY included — in the JSON it
+# passes as --mcp-config, and /proc/<pid>/cmdline is world-readable. Behavioural, through a
+# stub claude that records its argv; CLAUDE_WRAPPER_BREW exists for exactly this.
+W="$TMP/w"; mkdir -p "$W/brew" "$W/run" "$W/home/.config/buzz-team" "$W/home/agent-workforce/skills/t/.claude-plugin"
+echo '{"name":"praetorium-t"}' > "$W/home/agent-workforce/skills/t/.claude-plugin/plugin.json"
+: > "$W/home/.config/buzz-team/agent-settings-t.json"
+printf '#!/bin/sh\nfor a in "$@"; do printf "%%s\\n" "$a"; done > "$STUB_OUT"\n' > "$W/brew/claude"; chmod +x "$W/brew/claude"
+run_wrapper() { HOME="$W/home" XDG_RUNTIME_DIR="$W/run" CLAUDE_WRAPPER_BREW="$W/brew" BUZZ_AGENT_NAME=t STUB_OUT="$W/argv" sh "$WRAPPER" "$@"; }
+run_wrapper --output-format stream-json --mcp-config '{"mcpServers":{"x":{"env":{"BUZZ_PRIVATE_KEY":"SECRET"}}}}' --setting-sources=user --session-id=abc
+assert 'the stub ran and its argv carries no key' "[ -s '$W/argv' ] && ! grep -q SECRET '$W/argv'"
+assert 'the --mcp-config value is the runtime file, named by agent and session' \
+  "grep -A1 -x -- '--mcp-config' '$W/argv' | tail -1 | grep -qx '$W/run/buzz-team/mcp-t-abc.json'"
+assert 'the file holds the JSON verbatim, mode 0600' \
+  "[ \"\$(stat -c %a '$W/run/buzz-team/mcp-t-abc.json')\" = 600 ] && grep -qx '{\"mcpServers\":{\"x\":{\"env\":{\"BUZZ_PRIVATE_KEY\":\"SECRET\"}}}}' '$W/run/buzz-team/mcp-t-abc.json'"
+assert 'every other argument passes through in order, the isolating flags still last' \
+  "[ \"\$(tr '\\n' ' ' < '$W/argv')\" = '--output-format stream-json --mcp-config $W/run/buzz-team/mcp-t-abc.json --setting-sources=user --session-id=abc --strict-mcp-config --setting-sources= --settings $W/home/.config/buzz-team/agent-settings-t.json --plugin-dir $W/home/agent-workforce/skills/t ' ]"
+run_wrapper --output-format stream-json --mcp-config /some/file.json --session-id=def
+assert 'a --mcp-config that is already a path is left alone' "grep -A1 -x -- '--mcp-config' '$W/argv' | tail -1 | grep -qx /some/file.json && [ ! -e '$W/run/buzz-team/mcp-t-def.json' ]"
+chmod 500 "$W/run/buzz-team"; probe=$(run_wrapper --mcp-config '{"a":1}' --session-id=ghi 2>&1); rc=$?; chmod 700 "$W/run/buzz-team"
+assert "an unwritable runtime dir refuses (exit $rc) rather than passing the JSON through" \
+  "[ '$rc' = 1 ] && grep -q 'refusing to pass it in argv' <<<\"\$probe\" && [ ! -e '$W/run/buzz-team/mcp-t-ghi.json' ]"
+assert 'the launch script clears the agent'"'"'s files from the previous process' \
+  "grep -q 'rm -f \"\${XDG_RUNTIME_DIR:-/run/user/\$(id -u)}/buzz-team/mcp-\${BUZZ_AGENT_NAME:-}-\"\*.json' '$BT/buzz-acp-launch.sh'"
+
 exit $fail
