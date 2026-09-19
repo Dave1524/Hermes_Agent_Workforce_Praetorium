@@ -745,6 +745,13 @@ message and shell commands naming a `SKILL.md` on codex. `bin/scorecard.sh` fold
 the T3.3 table beside the S2 `cost.log` figures, so "offered but never read" is answerable
 per surface.
 
+**Claude Code's bundled skills are in every listing and outside the manifest** — `init`,
+`simplify`, `loop`, `schedule`, `security-review` and the rest ship inside the binary, so
+`--setting-sources=` cannot drop them and the receipt's `offered` (namespace-filtered) never
+lists them. One is denied in the base settings (`Skill(schedule)`, 2026-09-19): it creates
+claude.ai cloud scheduled runs from inside an agent session, which is scheduling the box
+does not own. Claudius's 10:19Z DM reply of that day named the full list.
+
 The loop for a change here is the S1 loop above with one step in front: edit the manifest,
 `bin/fleet_capabilities.py render`, then `bin/deploy_buzz_team.sh`, restart the agent, and
 `verify-fleet.sh`. A change to the vault's skill `description` is
