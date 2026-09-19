@@ -97,8 +97,10 @@ proc_last_setting_sources() {
        END { print last }' "/proc/$1/cmdline" 2>/dev/null
 }
 # The claude session processes of a unit: only the SDK's own child carries
-# --permission-prompt-tool. There is none between turns, so a caller must treat an empty
-# result as "nothing to read", never as proof.
+# --permission-prompt-tool. Each one IS a session (one per channel or DM conversation) and
+# lives until buzz-acp rotates it — measured 2026-09-19, 10-11 h old, ~280 MB each — so
+# "a child exists" is not "a turn is live", and a fresh unit has none until its first
+# turn: a caller must treat an empty result as "nothing to read", never as proof.
 session_pids() {
   local cg pid
   cg=$(systemctl --user show "buzz-agent@$1" -p ControlGroup --value)
@@ -493,7 +495,42 @@ assert_capability_isolation() {
       fi
     done
     check "" "$bad" "14/session $agent no MCP child but the bridge"
+    assert_mcp_config_filed "$agent" "$spid"
   done
+  for agent in "${AGENTS[@]}"; do
+    is_running "$agent" && assert_no_key_in_argv "$agent"
+  done
+}
+
+# The adapter inlines the bridge's env — BUZZ_PRIVATE_KEY included — in the --mcp-config
+# JSON; the wrapper files it 0600 under $XDG_RUNTIME_DIR/buzz-team/ and passes the path
+# (2026-09-19). Read the path, the mode and the server NAMES; never the file.
+assert_mcp_config_filed() {
+  local agent=$1 spid=$2 cfg mode names
+  cfg=$(proc_arg_after "$spid" --mcp-config)
+  case "$cfg" in
+    "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/buzz-team/mcp-$agent-"*.json) ok "14/mcp-config $agent is a runtime file" ;;
+    *) fail "14/mcp-config $agent is a runtime file (got '${cfg:0:40}')"; return ;;
+  esac
+  mode=$(stat -c %a "$cfg" 2>/dev/null)
+  check 600 "$mode" "14/mcp-config $agent mode"
+  names=$(jq -r '.mcpServers | keys | join(",")' "$cfg" 2>/dev/null)
+  check "buzz-team-mcp-$agent" "$names" "14/mcp-config $agent names only the bridge"
+}
+
+# No process in the unit's cgroup — host or bwrap namespace alike — carries the key in a
+# world-readable argv. Counted, never printed; buzz-acp's environ is 0400 and is the one
+# place it is meant to be.
+assert_no_key_in_argv() {
+  local agent=$1 cg pid hits=""
+  cg=$(systemctl --user show "buzz-agent@$agent" -p ControlGroup --value)
+  [ -n "$cg" ] || { fail "14/argv $agent (no cgroup)"; return; }
+  while read -r pid; do
+    if tr '\0' '\n' <"/proc/$pid/cmdline" 2>/dev/null | grep -q 'BUZZ_PRIVATE_KEY\|nsec1'; then
+      hits="$hits $pid:$(cat "/proc/$pid/comm" 2>/dev/null)"
+    fi
+  done <"/sys/fs/cgroup$cg/cgroup.procs"
+  check "" "$hits" "14/argv $agent no process names the private key"
 }
 
 # Every unit names its own bridge shim with --mcp-command; the shim declares the families it
