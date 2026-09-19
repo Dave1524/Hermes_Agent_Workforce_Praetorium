@@ -20,7 +20,8 @@
       "mcp__claude_ai_Figma",
       "mcp__claude_ai_Eden",
       "mcp__claude_ai_Claude_Docs",
-      "Skill(schedule)"
+      "Skill(schedule)",
+      "RemoteTrigger"
     ]
   },
   "hooks": {

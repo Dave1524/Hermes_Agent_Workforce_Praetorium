@@ -17,7 +17,9 @@ bin/deploy_buzz_team.sh, drift-checked like every adopted file):
                                 server name is the file stem, so the tools are
                                 mcp__buzz-team-mcp-<name>__*. Every harness gets one.
   agent-settings-<name>.json    claude-agent-acp harness only: the base agent-settings.json
-                                (secret-path denies, connector denies, Stop receipt hook)
+                                (secret-path denies, connector denies, the cloud-scheduling deny
+                                — Skill(schedule) plus the RemoteTrigger tool it drives —
+                                and the Stop receipt hook)
                                 plus tools_deny plus a deny for every tool of a bridge
                                 family the shim does not advertise, plus enabledPlugins
                                 for the manifest's plugins. Belt to the shim's braces on

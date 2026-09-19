@@ -683,7 +683,8 @@ one agent, confirm it is up, then move to the next; do not restart all five at o
 | Does the wrapper file the adapter's `--mcp-config` JSON instead of passing it, do the coders' settings enable the shared plugin, and is the managed file the base's path denies and nothing else? | `tests/test_fleet_capabilities.sh` sections 3, 10, 11 | `bin/verify.sh`, anywhere |
 | Is `/etc/claude-code/managed-settings.json` the committed render? | `bin/check_deploy_drift.sh` (eighth comparison) | `bin/verify.sh`, box-gated |
 | Are the three harness packages current on npm? | `check-loaded.sh` `INFO` rows from `bin/adapter_versions.py` | by hand; never red |
-| Did the running process read the config, and do the credential halves match? | `~/.config/buzz-agents/check-loaded.sh` | by hand; reports `STALE` / `BADAUTH` |
+| Did the running process read the config, and do the credential halves match? | `~/.config/buzz-team/check-loaded.sh` | by hand; reports `STALE` / `BADAUTH` |
+| Is a deployed settings file, shim or wrapper newer than the oldest live `claude` session that should have read it? | `verify-fleet.sh` gate 7 (`7/fresh-config`, since 2026-09-19) | by hand; a deploy without a restart is red here |
 | Can an agent actually **complete a turn**? | `fleet-turn-check.service` | hourly, on the box |
 
 The split is not arbitrary. Rows 1–3 are decidable from a checkout, so they belong in the PR
@@ -710,7 +711,8 @@ workflow entry's `skills` + `skills_mechanism` (`acp-wrapper` or `codex-home`). 
 `bin/fleet_capabilities.py render` writes, and `check` proves committed == rendered:
 
 - `buzz-team/agent-settings-<name>.json` (four, Claude harness only) = the base
-  `agent-settings.json` (connector deny + the Stop receipt hook) ∪ `tools_deny` ∪ the tool
+  `agent-settings.json` (connector deny, the cloud-scheduling deny, the Stop receipt hook)
+  ∪ `tools_deny` ∪ the tool
   names of every bridge family the agent is *not* given, under his own namespace.
 - `buzz-team/buzz-team-mcp-<name>` (five), a two-line shim that execs
   `buzz-team-mcp.py --agent <name> --tools <families>`. The unit passes `--mcp-command
@@ -784,11 +786,22 @@ per surface.
 
 **Claude Code's bundled skills are in every listing and outside the manifest** — `init`,
 `simplify`, `loop`, `schedule`, `security-review` and the rest ship inside the binary, so
-`--setting-sources=` cannot drop them and the receipt's `offered` (namespace-filtered) never
-lists them. One is denied in the base settings (`Skill(schedule)`, 2026-09-19): it creates
-claude.ai cloud scheduled runs from inside an agent session, which is scheduling the box
-does not own. Claudius's 10:19Z DM reply of that day named the full list. The `shared:*`
-plugin skills on the three coders are likewise outside `offered`.
+`--setting-sources=` cannot drop them and the receipt's `offered` and `invoked` (both
+namespace-filtered) never list them — a blocked attempt leaves no receipt trace. One is
+denied in the base settings (`Skill(schedule)`, 2026-09-19): it creates claude.ai cloud
+scheduled runs from inside an agent session, which is scheduling the box does not own. The
+skill is only the instructions; the capability is the deferred `RemoteTrigger` tool it
+loads through `ToolSearch`, and with the skill alone denied that tool was still loadable
+and callable under `bypassPermissions` (measured the same day, `#58`'s review) — so the base
+denies both names, and `tests/test_fleet_guards.sh::schedule-deny` pins both in the base
+and in every deployed per-agent file. A scoped deny blocks at call time and does not
+delist: `schedule` stays in the session's listing, and an agent that tries it reads
+"blocked by permission rules". The class-level lever exists — `disableBundledSkills: true`
+in the settings file drops all thirteen and leaves the pointer skills — and is not adopted:
+it would also take `code-review`, `simplify` and `security-review` from the three coders,
+a decision not yet made; `loop` (in-session recurrence with no receipt or Control Room
+row) is the other open one. Claudius's 10:19Z DM reply of that day named the full list.
+The `shared:*` plugin skills on the three coders are likewise outside `offered`.
 
 The loop for a change here is the S1 loop above with one step in front: edit the manifest,
 `bin/fleet_capabilities.py render`, then `bin/deploy_buzz_team.sh`, restart the agent, and

@@ -116,6 +116,21 @@ unit_start_epoch() {
   [ -n "$stamp" ] && date -d "$stamp" +%s
 }
 
+# Start of the oldest live claude session, empty when the unit has none. The files a session
+# reads at its own spawn (settings, shim, wrapper) are stale against this, not the unit start:
+# a unit with no session has loaded none of them yet, and the next session reads the new file.
+oldest_session_epoch() {
+  local pid etimes started now oldest=""
+  now=$(date +%s)
+  for pid in $(session_pids "$1"); do
+    etimes=$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ')
+    [ -n "$etimes" ] || continue
+    started=$((now - etimes))
+    { [ -z "$oldest" ] || [ "$started" -lt "$oldest" ]; } && oldest=$started
+  done
+  printf '%s' "$oldest"
+}
+
 assert_units_active() {
   local agent state
   for agent in "${AGENTS[@]}"; do
@@ -269,7 +284,7 @@ assert_charter() {
 # Covers the files this gate owns. Staleness of <agent>.env / <agent>.prompt is
 # check-loaded.sh's assertion — one owner per check.
 assert_no_stale_config() {
-  local agent started pid codex_home file stale
+  local agent started session_started pid codex_home file stale
   for agent in "${AGENTS[@]}"; do
     if ! is_running "$agent"; then
       skip "7/fresh-config $agent (unit not running — no start time to compare against)"
@@ -286,10 +301,21 @@ assert_no_stale_config() {
       [ -f "$file" ] || continue
       [ "$(stat -c %Y "$file")" -gt "$started" ] && stale="$stale ${file##*/}"
     done
+    # A deploy of these without a restart read green here until 2026-09-19 (#58's deny sat
+    # undeployed for a day while 7 and 14 said ok). Codex sessions carry no
+    # --permission-prompt-tool, so augustus's shim is not covered — gate 15 probes it live.
+    session_started=$(oldest_session_epoch "$agent")
+    if [ -n "$session_started" ]; then
+      for file in "$TEAM_DIR/agent-settings-$agent.json" "$TEAM_DIR/buzz-team-mcp-$agent" \
+        "$TEAM_DIR/claude-agent-wrapper.sh"; do
+        [ -f "$file" ] || continue
+        [ "$(stat -c %Y "$file")" -gt "$session_started" ] && stale="$stale ${file##*/}"
+      done
+    fi
     if [ -z "$stale" ]; then
       ok "7/fresh-config $agent"
     else
-      fail "7/fresh-config $agent (newer than unit start:$stale)"
+      fail "7/fresh-config $agent (newer than the unit or its oldest session:$stale)"
     fi
   done
 }

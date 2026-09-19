@@ -40,6 +40,7 @@ path    = "tests/test_fleet_guards.sh"
 owner   = "fleet"
 asserts = [
   "connector-deny",                  # marcus, claudius: outward connectors denied for agent sessions
+  "schedule-deny",                   # the four Claude agents: Skill(schedule) and RemoteTrigger denied, deployed and rendered
   "augustus-no-claude-connectors",   # augustus: same rule, different mechanism — codex harness
   "deny-superset",                   # the strict file can never be laxer than ~/.claude/settings.json
   "vault-push-guard",                # trajan: the pre-push guard, in every vault clone on this box

@@ -105,6 +105,12 @@ That gate is machine-level and stays machine-level; see docs/runbook.md § S1.
 # enforced = false means it is stated policy that nothing currently prevents.
 
 [[must_not]]
+rule     = "create or run claude.ai cloud routines from a session"
+enforced = true
+why      = "agent-settings.json denies Skill(schedule) and the RemoteTrigger tool it drives; the box's scheduling is the systemd timer fleet, receipted and owned"
+test     = "tests/test_fleet_guards.sh::schedule-deny"
+
+[[must_not]]
 rule     = "execute anything — no commits, no sends"
 enforced = false
 why      = "the pin is unattestable by construction; it is charter prose, and an INCONCLUSIVE verdict is correct behaviour rather than a fault. The write half of the old wording ('no writes') is enforced since 2026-09-18 — see the next two rules; Bash stays, so a commit or a send through it is still prose"

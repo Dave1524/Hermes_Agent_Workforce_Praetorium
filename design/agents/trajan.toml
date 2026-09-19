@@ -391,6 +391,12 @@ in_repo  = true
 # enforced = false means it is stated policy that nothing currently prevents.
 
 [[must_not]]
+rule     = "create or run claude.ai cloud routines from a session"
+enforced = true
+why      = "agent-settings.json denies Skill(schedule) and the RemoteTrigger tool it drives; the box's scheduling is the systemd timer fleet, receipted and owned"
+test     = "tests/test_fleet_guards.sh::schedule-deny"
+
+[[must_not]]
 rule     = "push the vault main branch"
 enforced = true
 why      = "the vault-main-push-guard pre-push hook is installed in BOTH vault clones on this box as of 2026-09-01 (canonical, and boxsafe which had none until today). Both clauses of the previous why were wrong: this box does hold a canonical push credential, and the boxsafe hook it named did not exist. What the hook enforces is that an unexplained main push cannot happen SILENTLY — it is friction and a record, not a boundary, since GitHub evaluates this box key as a ruleset bypass actor and --no-verify walks past the hook"
