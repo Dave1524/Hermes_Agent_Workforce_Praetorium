@@ -716,6 +716,20 @@ buzz-team/verify-fleet.sh gates 14 and 15 read the live processes.
 """
 
 [[suite]]
+path    = "tests/test_adapter_versions.sh"
+owner   = "fleet"
+asserts = [
+  "adapter-versions-compare",        # bin/adapter_versions.py names installed vs npm-latest for exactly the three fleet packages, from fixtures; stale is a word in the line, exit 0; only an unreadable installed list is exit 1
+  "adapter-versions-info-row",       # check-loaded.sh renders one INFO row per package on the whole-fleet invocation and never a verdict from it — an undeployed script is itself an INFO row
+]
+why_no_workflow = """
+The harness versions are fleet state that no timer changes: claudius's 2026-09-18 research
+found claude-agent-acp 0.64.0 against 0.79.0 published and codex-acp 1.1.9 against 1.12.0
+with nothing on the box saying so. The watch is a row in check-loaded.sh; the upgrade is the
+canary procedure in docs/runbook.md and needs a turn from Dave per agent to prove.
+"""
+
+[[suite]]
 path    = "tests/test_interaction_receipt.sh"
 owner   = "fleet"
 asserts = [
