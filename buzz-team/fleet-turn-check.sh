@@ -15,6 +15,8 @@
 #     Anchoring alone reported augustus's 19-20 Aug errors as live on 31 Aug.
 #   * Print the boundary of every window examined, and which bound produced it.
 #   * Name a quiet unit out loud; absence of attempts is not evidence of health.
+#   * Count self-scheduled turns from the receipts, never from the journal: a
+#     session that re-prompts itself (CronCreate, /loop) logs nothing either.
 #   * Exit non-zero on failure so OnFailure=agent-alert@%n.service fires.
 
 set -uo pipefail
@@ -31,6 +33,14 @@ STATE=${FLEET_STATE_FILE:-/home/dave/logs/fleet-turn-check.state}
 # CPU burned between two runs that counts as "this agent did real work". One real
 # marcus turn measured ~40s; an idle unit ticks a heartbeat and costs milliseconds.
 CPU_WORK_NS=${FLEET_CPU_WORK_NS:-5000000000}
+# Gate 5: receipts every interactive turn leaves (bin/interaction_receipt.py), read by the
+# deployed bin/turn_rate.py. More than UNOWNED_MAX self-scheduled turns inside the window
+# is a loop. One one-shot reminder never trips it; a /loop at 15-minute cadence does within
+# the hour.
+RECEIPTS=${FLEET_RECEIPT_ROOT:-/home/dave/agent-workforce/var/workflow-receipts}
+TURN_RATE=${FLEET_TURN_RATE:-/home/dave/agent-workforce/bin/turn_rate.py}
+RATE_WINDOW_MIN=${FLEET_RATE_WINDOW_MIN:-60}
+UNOWNED_MAX=${FLEET_UNOWNED_MAX:-3}
 
 fail=0
 note() { printf '%s\n' "$*"; }
@@ -173,6 +183,42 @@ elif [ -n "$silent" ]; then
   fail_ "unwired:$silent"
 else
   pass_ "all $checked agent_propose.sh unit(s) carry OnFailure="
+fi
+
+# ---------------------------------------------------------------- gate 5
+# A session re-prompting itself. Claude Code's in-session scheduler (CronCreate, what
+# /loop runs on) is open to every Claude agent by decision (2026-09-19: the bundled
+# skills stay), and a recurring job re-runs a full turn -- the whole static prompt -- until
+# the session rotates, with no timer, contract or Control Room row owning it. Denying the
+# tool would leave Bash, which does the same and survives the session; so the alarm is on
+# the effect. Every turn leaves a receipt whose `origin` says what woke it, and a turn the
+# session's own scheduler woke is `scheduled`. Owner-driven turns never count against the
+# limit, however many; a receipt from before the origin field is `unknown` and informational.
+gate 5 "no-unowned-recurrence (receipts per unit, origin=scheduled, last ${RATE_WINDOW_MIN}m, max ${UNOWNED_MAX})"
+if [ -z "${units:-}" ]; then
+  fail_ "no units to read receipts for (gate 3 found none)"
+elif [ ! -f "$TURN_RATE" ]; then
+  fail_ "$TURN_RATE is not deployed -- the rate cannot be read"
+else
+  names=""
+  for u in $units; do n=${u#buzz-agent@}; names="$names ${n%.service}"; done
+  info_ "window = last ${RATE_WINDOW_MIN}m by ended_at; receipts under $RECEIPTS"
+  # $names is a deliberate word list.
+  # shellcheck disable=SC2086
+  if ! rate_out=$(python3 "$TURN_RATE" --receipts "$RECEIPTS" --window-min "$RATE_WINDOW_MIN" $names 2>&1); then
+    fail_ "turn_rate.py exited non-zero: ${rate_out:0:200}"
+    rate_out=""
+  fi
+  while IFS=$'\t' read -r name total unowned unknown ids; do
+    [ -n "$name" ] || continue
+    case $unowned in ''|*[!0-9]*) fail_ "$name: unreadable rate line: $name $total $unowned"; continue ;; esac
+    if [ "$unowned" -gt "$UNOWNED_MAX" ]; then
+      fail_ "$name: RECURRING -- $unowned self-scheduled turn(s) in the window (max $UNOWNED_MAX), $total in all; a cron or /loop is re-prompting the session"
+      info_ "  run ids: $ids"
+    else
+      pass_ "$name: $total turn(s) in the window, $unowned self-scheduled, $unknown of unknown origin"
+    fi
+  done <<<"$rate_out"
 fi
 
 printf '\n== fleet-turn-check %s ==\n' "$([ $fail -eq 0 ] && echo PASS || echo FAIL)"

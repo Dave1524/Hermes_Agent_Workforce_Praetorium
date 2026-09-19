@@ -136,6 +136,24 @@ echo '--- gate 4: its own discovery pattern refuses an empty set ---'
 assert 'finding zero agent_propose.sh units is itself a failure' \
   "grep -A2 'if \\[ \"\\\$checked\" -eq 0 \\]' '$SCRIPT' | grep -q 'discovery pattern itself is broken'"
 
+echo '--- gate 5: self-scheduled recurrence is read from receipts, never the journal (::turn-check-recurrence) ---'
+# A session re-prompting itself (CronCreate, /loop) logs nothing, exactly like a completed
+# turn; the receipt's origin field is the only trace. The gate must read that field through
+# the reader tests/test_turn_rate.sh proves, count only the self-scheduled column against
+# the limit, and go red on it — an owner talking to an agent all afternoon is not a loop.
+assert 'it reads the receipts through bin/turn_rate.py' "grep -q 'turn_rate.py' '$SCRIPT'"
+assert 'the reader is deployed-tree code, not a copy in this script' \
+  "grep -q 'TURN_RATE=.*agent-workforce/bin/turn_rate.py' '$SCRIPT'"
+# Conditions with literal `$` and nested quotes go in a function, per the note above.
+alarm_is_unowned_column() { grep -qF 'if [ "$unowned" -gt "$UNOWNED_MAX" ]' "$SCRIPT"; }
+missing_reader_fails() { grep -A1 -F 'if [ ! -f "$TURN_RATE" ]' "$SCRIPT" | grep -q 'fail_'; }
+assert 'the alarm is the self-scheduled column, not the total' "alarm_is_unowned_column"
+assert 'exceeding it is a FAIL that names the unit and the run ids' \
+  "grep -A1 'RECURRING' '$SCRIPT' | grep -q 'run ids'"
+assert 'a missing reader is a FAIL, not a gate that reads nothing and passes' "missing_reader_fails"
+assert 'the window and the receipt root are printed with the verdicts' \
+  "grep -q 'window = last \\\${RATE_WINDOW_MIN}m' '$SCRIPT'"
+
 echo '--- the unit and the registry agree about what execs what ---'
 assert 'the unit ExecStarts the adopted script by its box path' \
   "grep -qE '^ExecStart=.*/\\.config/buzz-team/fleet-turn-check\\.sh' '$UNIT'"

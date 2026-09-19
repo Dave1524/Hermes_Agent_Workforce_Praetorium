@@ -27,6 +27,12 @@ INBOUND_EVENT = re.compile(r"<buzz-event\b[^>]*>.*?^Event ID:\s*([0-9a-f]{64})\s
 INBOUND_SENDER = re.compile(r"<buzz-event\b[^>]*>.*?^From:\s*(\S+)", re.DOTALL | re.MULTILINE)
 SILENCE = ("no message published to Buzz in this turn — deliberate silence or a reply that "
            "never published; the transcript cannot tell which")
+# What woke a turn. `relay` is a <buzz-event> (the handoff names it); `scheduled` is the
+# session's own CronCreate / loop fire, no relay event behind it; `unknown` is a prompt the
+# transcript records without either.
+SELF_SCHEDULED = "scheduled"
+ORIGIN_RELAY = "relay"
+ORIGIN_UNKNOWN = "unknown"
 
 
 @dataclasses.dataclass
@@ -48,6 +54,7 @@ class Turn:
     note: str | None = None
     error: str | None = None
     skills: dict[str, Any] | None = None
+    origin: str | None = None
 
 
 def is_send(command: str) -> bool:

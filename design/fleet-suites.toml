@@ -750,10 +750,26 @@ asserts = [
   "codex-notify-missing-rollout-unavailable", # no rollout: a receipt with usage unavailable and the reason naming the missing rollout
   "codex-notify-never-fails",                 # malformed payload, wrong type, no CODEX_HOME, no unit: exit 0, empty stdout, one log line, no env value logged
   "receipt-reads-back-valid",                 # every receipt validates and control_room_api lists it as valid
+  "interaction-relay-origin",                 # a <buzz-event> woke the turn: handoff names it, origin = relay
+  "interaction-scheduled-origin",             # the session's own CronCreate / loop fire (isMeta, turnOrigin=scheduled) is its own turn: starts at the fire, no handoff, origin = scheduled, only its own usage
 ]
 why_no_workflow = """
 It tests the turn-end hook shared by the five buzz-agent@* rows over synthetic transcripts and
 a synthetic rollout. The interactive contract is one file for five units; so is its suite.
+"""
+
+[[suite]]
+path    = "tests/test_turn_rate.sh"
+owner   = "fleet"
+asserts = [
+  "turn-rate-by-origin",       # per agent: total turns in the window, the self-scheduled ones by run id; a receipt older than the window is not in it
+  "turn-rate-legacy-origin",   # a receipt without the origin field is relay by its handoff or unknown, never self-scheduled
+  "turn-rate-never-fails",     # no receipt directory is a line of zeros; a file that does not parse is skipped and named, the rest still read
+]
+why_no_workflow = """
+The reader behind fleet-turn-check.sh gate 5 (2026-09-19), which is trajan's workflow and has
+its own structural suite. The counting is the part a suite can run — synthetic receipts, a
+pinned clock — so it lives in its own file and the gate reads it from the deployed tree.
 """
 
 [[suite]]

@@ -148,6 +148,37 @@ class StopHookTest(unittest.TestCase):
         self.assertEqual(self.box.receipt_files(), [])
         self.assertIn("heartbeat", self.box.log_text())
 
+    def test_relay_event_is_the_origin(self):
+        # (::interaction-relay-origin) — a <buzz-event> woke the turn: handoff names it and
+        # the receipt says origin = relay.
+        done = self.box.stop_hook("transcript-relay.jsonl")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        got = self.box.read(f"buzz-agent@marcus/{SESSION}-a-3.json")
+        self.assertEqual(receipt.validate(got), [])
+        self.assertEqual(got["origin"], "relay")
+        self.assertEqual(got["handoff"], {"actor": "Dave_VPC", "event": EVENT, "recipient": "marcus"})
+        self.assertEqual(got["started_at"], "2026-09-19T14:13:39Z")
+
+    def test_scheduled_fire_is_its_own_turn(self):
+        # (::interaction-scheduled-origin) — the session's own CronCreate / loop fire lands as
+        # an isMeta user record with turnOrigin=scheduled. It starts a turn of its own: the
+        # receipt begins at the fire, carries no handoff (nobody sent it) and says so in
+        # origin, and counts only its own usage. Until 2026-09-19 it folded into the owner
+        # prompt before it and was receipted under Dave's event (claudius, 14:21Z).
+        done = self.box.stop_hook("transcript-scheduled.jsonl")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(self.box.receipt_files(), [f"buzz-agent@marcus/{SESSION}-a-5.json"])
+        got = self.box.read(f"buzz-agent@marcus/{SESSION}-a-5.json")
+        self.assertEqual(receipt.validate(got), [])
+        self.assertEqual(got["origin"], "scheduled")
+        self.assertIsNone(got["handoff"])
+        self.assertEqual(got["started_at"], "2026-09-19T14:21:00Z")
+        self.assertEqual(got["ended_at"], "2026-09-19T14:21:10Z")
+        self.assertEqual(got["terminal"]["outcome"], "artifact")
+        self.assertEqual(got["artifact"]["uri"], f"nostr:event:{'e2' * 32}")
+        self.assertEqual(got["usage"]["output_tokens"], 34)
+        self.box.reads_back_valid("buzz-agent@marcus", f"{SESSION}-a-5")
+
     def test_usage_is_summed_over_the_turn(self):
         # (::interaction-usage-summed) — three assistant messages after the prompt, one of them
         # split over two records that share message.id and usage (counted once); the earlier

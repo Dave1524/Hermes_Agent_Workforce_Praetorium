@@ -37,18 +37,27 @@ missed hour is caught up on the next boot. The service is `Type=oneshot`.
   how the newest agent silently stops being covered.
 - Per-unit CPU counters, compared against the previous run's `~/logs/fleet-turn-check.state`
   (`fleet-turn-check.sh:30`). Absent or unwritable state degrades to "CPU deltas unavailable
-  this run" (`:85`) and the run still decides on the other signals.
+  this run" (`:95`) and the run still decides on the other signals.
+- The interaction receipts under `~/agent-workforce/var/workflow-receipts/buzz-agent@<name>/`
+  (gate 5, since 2026-09-19), read through the deployed `bin/turn_rate.py`: every turn's
+  `origin` says what woke it, and more than `FLEET_UNOWNED_MAX` (3) turns in
+  `FLEET_RATE_WINDOW_MIN` (60) minutes with `origin = scheduled` — the session's own
+  CronCreate or `/loop` re-prompting it — is a FAIL naming the unit and the run ids. Owner
+  turns are counted and never alarmed on. The in-session scheduler is open to the Claude
+  agents by decision (2026-09-19: the bundled skills stay); this gate is the alarm on its
+  effect, and it also sees a Bash loop that re-prompts the session the same way — but not one
+  that never does.
 
 ## Outputs
 
 - **Verdict** — the last line of the run's journal is `== fleet-turn-check PASS ==` or
-  `== fleet-turn-check FAIL ==` (`fleet-turn-check.sh:178`), preceded by one line per failed
+  `== fleet-turn-check FAIL ==` (`fleet-turn-check.sh:224`), preceded by one line per failed
   assertion naming the unit and the signal.
 - **Alert** — on FAIL the unit exits non-zero, `OnFailure` starts
   `agent-alert@fleet-turn-check.service.service`, and `bin/agent_alert.sh` appends to
   `~/logs/agent-alert.log` and delivers to #ops with a receipt in
   `~/logs/delivery-receipts.jsonl` (`job = agent-alert@fleet-turn-check.service.service`).
-- **State** — `~/logs/fleet-turn-check.state`, rewritten each run (`:157`); an input to the next
+- **State** — `~/logs/fleet-turn-check.state`, rewritten each run (`:167`); an input to the next
   run, not an artifact anyone reads.
 - **Beneficiary:** Dave — the one person who can re-authenticate a fleet whose OAuth refresh
   has died, which is the failure this job exists to see.
@@ -64,11 +73,11 @@ missed hour is caught up on the next boot. The service is `Type=oneshot`.
 ## Decline conditions
 
 none — a deterministic check has nothing to decline. A run that cannot write its state file
-says so and still decides (`:85`).
+says so and still decides (`:95`).
 
 ## Side effects
 
-- Rewrites `~/logs/fleet-turn-check.state` (`:157`).
+- Rewrites `~/logs/fleet-turn-check.state` (`:167`).
 - On FAIL: one alert delivery and one `~/logs/agent-alert.log` line, throttled by
   `bin/agent_alert.sh`.
 - Nothing else. The script never starts, stops or restarts a unit.
@@ -116,8 +125,15 @@ no executor sets `AGENT_RUN_STARTED_AT` for it; the timer's own `LastTriggerUSec
   receipt exists in the same hour as the FAIL, which the throttle never suppresses on a
   transition into failure. A FAIL that persists for a day produces one receipt per day, and
   that is correct.
-- **State file unwritable.** CPU deltas are skipped and said so (`:85`); the run still decides.
+- **State file unwritable.** CPU deltas are skipped and said so (`:95`); the run still decides.
   Not a failure of this contract.
+- **A loop slower than the limit is not seen.** Four self-scheduled turns an hour trips gate
+  5; three do not. A `/loop` at 20-minute cadence runs unalarmed. The limit is a knob
+  (`FLEET_UNOWNED_MAX`), and the receipts still record every fire for anyone reading the
+  Control Room.
+- **Receipts from before the `origin` field read as `relay` or `unknown`,** never as
+  self-scheduled — claudius's 14:21Z one-shot of 2026-09-19 is under Dave's event for good.
+  Receipts are not rewritten; the gate judges from the deploy onward.
 - **The alert receipt match is by hour.** `delivery-receipts.jsonl` carries UTC `ts` and the
   timer stamp is epoch; the check compares the `YYYY-MM-DDTHH` prefix. A FAIL at :59 alerted at
   the next :00 reads as unalerted for one sweep. Accepted as a light-contract approximation.

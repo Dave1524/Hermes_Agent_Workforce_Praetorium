@@ -131,9 +131,19 @@ def handoff_of(turn: interaction_turn.Turn, agent: str | None) -> dict[str, Any]
     return {"actor": interaction_turn.inbound_sender_in(turn.prompt), "event": event, "recipient": agent}
 
 
+def origin_of(turn: interaction_turn.Turn, handoff: dict[str, Any] | None) -> str:
+    """What woke the turn: the session's own scheduler if the transcript says so, else the
+    relay event the handoff names, else nothing the transcript records. bin/turn_rate.py
+    counts the first kind — the loop alarm in fleet-turn-check.sh gate 5."""
+    if turn.origin:
+        return turn.origin
+    return interaction_turn.ORIGIN_RELAY if handoff else interaction_turn.ORIGIN_UNKNOWN
+
+
 def build_receipt(unit: str, turn: interaction_turn.Turn) -> dict[str, Any]:
     terminal, uri = interaction_turn.interaction_outcome(turn)
     agent = unit.partition("@")[2] or None
+    handoff = handoff_of(turn, agent)
     now = interaction_turn.iso_seconds(workflow_receipt.iso_utc())
     started = turn.started_at or now
     ended = turn.ended_at or now
@@ -156,7 +166,8 @@ def build_receipt(unit: str, turn: interaction_turn.Turn) -> dict[str, Any]:
         "skills": turn.skills or workflow_receipt.unavailable_skills(),
         "next_action": {"actor": None, "action": None},
         "parent_run_id": None,
-        "handoff": handoff_of(turn, agent),
+        "handoff": handoff,
+        "origin": origin_of(turn, handoff),
     }
     if uri:
         receipt["artifact"] = {"uri": uri}
