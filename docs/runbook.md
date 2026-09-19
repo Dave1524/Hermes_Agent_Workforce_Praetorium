@@ -797,10 +797,10 @@ denies both names, and `tests/test_fleet_guards.sh::schedule-deny` pins both in 
 and in every deployed per-agent file. A scoped deny blocks at call time and does not
 delist: `schedule` stays in the session's listing, and an agent that tries it reads
 "blocked by permission rules". The class-level lever exists — `disableBundledSkills: true`
-in the settings file drops all thirteen and leaves the pointer skills — and is not adopted:
-it would also take `code-review`, `simplify` and `security-review` from the three coders,
-a decision not yet made; `loop` (in-session recurrence with no receipt or Control Room
-row) is the other open one. Claudius's 10:19Z DM reply of that day named the full list.
+in the settings file drops all thirteen and leaves the pointer skills — and **Dave decided
+against it (2026-09-19): the bundled skills stay**, `loop` included; only the cloud-scheduling
+pair is denied, so a future release that adds a bundled skill adds it to the agents too, and
+that is the accepted cost. Claudius's 10:19Z DM reply of that day named the full list.
 The `shared:*` plugin skills on the three coders are likewise outside `offered`.
 
 The loop for a change here is the S1 loop above with one step in front: edit the manifest,
