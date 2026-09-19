@@ -100,6 +100,16 @@ assert "per-agent settings files are deployed (found $n_agent_files)" "[ '$n_age
 for family in mcp__claude_ai_Gmail mcp__claude_ai_Eden mcp__claude_ai_Claude_Docs; do
   assert "$family is denied in every deployed per-agent file" "denied_in_every_agent_file '$family'"
 done
+
+echo '--- cloud scheduling is denied for agent sessions (::schedule-deny) ---'
+# The bundled /schedule skill only instructs the model to load the deferred RemoteTrigger
+# tool (claude.ai routines: list/create/run) through ToolSearch; denying the skill alone left
+# the tool loadable and callable — measured 2026-09-19 under bypassPermissions. Both names,
+# or neither is a deny.
+for rule in 'Skill(schedule)' RemoteTrigger; do
+  assert "$rule is denied for agent sessions" "denied_in_strict '$rule'"
+  assert "$rule is denied in every deployed per-agent file" "denied_in_every_agent_file '$rule'"
+done
 assert 'the agent wrapper exists' "[ -f '$WRAPPER' ]"
 # Without the exec bit the SDK reports "exists but failed to launch", which reads as a
 # broken install rather than an unenforced policy.

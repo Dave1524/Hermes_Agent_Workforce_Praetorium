@@ -679,7 +679,12 @@ one agent, confirm it is up, then move to the next; do not restart all five at o
 | Does each agent's rendered capability set (settings file, shim, wrapper flags, aurelian's denies) still equal its manifest? | `tests/test_fleet_capabilities.sh` | `bin/verify.sh`, anywhere |
 | Is the deployed wrapper the strict one, and does every deployed per-agent settings file carry the base deny? | `tests/test_fleet_guards.sh` | `bin/verify.sh`, box-gated |
 | Is each live session wired to its own settings, skills and bridge shim, and does each shim offer exactly its manifest's families — from the host and, for augustus, inside his namespace? | `verify-fleet.sh` gates 14 and 15 | by hand |
-| Did the running process read the config, and do the credential halves match? | `~/.config/buzz-agents/check-loaded.sh` | by hand; reports `STALE` / `BADAUTH` |
+| Does any process in a unit's cgroup carry the agent's private key in its argv, and is the `claude` child's `--mcp-config` a 0600 runtime file naming only the bridge? | `verify-fleet.sh` gate 14 (`14/argv`, `14/mcp-config`) | by hand |
+| Does the wrapper file the adapter's `--mcp-config` JSON instead of passing it, do the coders' settings enable the shared plugin, and is the managed file the base's path denies and nothing else? | `tests/test_fleet_capabilities.sh` sections 3, 10, 11 | `bin/verify.sh`, anywhere |
+| Is `/etc/claude-code/managed-settings.json` the committed render? | `bin/check_deploy_drift.sh` (eighth comparison) | `bin/verify.sh`, box-gated |
+| Are the three harness packages current on npm? | `check-loaded.sh` `INFO` rows from `bin/adapter_versions.py` | by hand; never red |
+| Did the running process read the config, and do the credential halves match? | `~/.config/buzz-team/check-loaded.sh` | by hand; reports `STALE` / `BADAUTH` |
+| Is a deployed settings file, shim or wrapper newer than the oldest live `claude` session that should have read it? | `verify-fleet.sh` gate 7 (`7/fresh-config`, since 2026-09-19) | by hand; a deploy without a restart is red here |
 | Can an agent actually **complete a turn**? | `fleet-turn-check.service` | hourly, on the box |
 
 The split is not arbitrary. Rows 1–3 are decidable from a checkout, so they belong in the PR
@@ -706,7 +711,8 @@ workflow entry's `skills` + `skills_mechanism` (`acp-wrapper` or `codex-home`). 
 `bin/fleet_capabilities.py render` writes, and `check` proves committed == rendered:
 
 - `buzz-team/agent-settings-<name>.json` (four, Claude harness only) = the base
-  `agent-settings.json` (connector deny + the Stop receipt hook) ∪ `tools_deny` ∪ the tool
+  `agent-settings.json` (connector deny, the cloud-scheduling deny, the Stop receipt hook)
+  ∪ `tools_deny` ∪ the tool
   names of every bridge family the agent is *not* given, under his own namespace.
 - `buzz-team/buzz-team-mcp-<name>` (five), a two-line shim that execs
   `buzz-team-mcp.py --agent <name> --tools <families>`. The unit passes `--mcp-command
@@ -726,6 +732,39 @@ and `--plugin-dir ~/agent-workforce/skills/$BUZZ_AGENT_NAME`, behind the runners
 readability guard (a missing plugin dir is silent otherwise). The unit sets
 `BUZZ_AGENT_NAME=%i`; the wrapper refuses to exec without it or without its two files.
 `~/CLAUDE.md` and the shared auto-memory pool still load — they are not settings.
+
+**The private key is not in the `claude` argv (2026-09-19).** The adapter passes
+`--mcp-config <json>` with the bridge's env inlined, `BUZZ_PRIVATE_KEY` included, and
+`/proc/<pid>/cmdline` is world-readable where `environ` is not — measured on all ten live
+children. The wrapper now writes that JSON 0600 to
+`$XDG_RUNTIME_DIR/buzz-team/mcp-<agent>-<session-id>.json` and passes the path; an
+unwritable dir refuses rather than falling back; `buzz-acp-launch.sh` clears the agent's
+files at unit start. Gate 14 counts the key in every cgroup argv (host and augustus's
+namespace) and reads the filed config's server names, never its content. Claudius's research
+put this one process too high — his "non-systemd buzz-acp with `--private-key`" was his own
+`pgrep -f` matching the shell that ran it; every `buzz-acp` takes the key from env.
+
+**Managed settings carry the credential-path deny, and only that (2026-09-19).**
+`/etc/claude-code/managed-settings.json` is rendered by `bin/fleet_capabilities.py` from the
+base's twelve `Read(//…)` / `Edit(//…)` rules and root-installed by hand (the drift check's
+eighth comparison names the `sudo install` line). Claude Code applies it to every session on
+the box whatever `--setting-sources` or `--settings` say — so the deny that S1 gets by flag
+can no longer be dropped by flag, by the fleet or by a future `claude -p`. Fleet policy
+(connector denies, `Skill(schedule)`) stays out of it on purpose: the same file binds Dave's
+interactive sessions and the nine scheduled runners, which is where the research proposal
+was wrong in scope. `tests/test_fleet_capabilities.sh::managed-settings-paths-only` holds
+the line.
+
+**The shared plugin rides with whoever builds or reviews software (Dave, 2026-09-19).**
+trajan, marcus and aurelian declare `plugins = ["shared@jbuitenhuis"]`; the renderer writes
+`enabledPlugins` into their settings files, and Claude Code resolves the plugin from
+`~/.claude/plugins/installed_plugins.json` at session start — Dave's installed version, so
+his `claude plugin update` reaches them at their next session. Measured before wiring:
+under `--setting-sources=` the plugin's seven `shared:*` skills load and its SessionStart
+hook prints `# Coding Standards`; under `--strict-mcp-config` its `context7` / `linear`
+servers do **not** load, so the one-MCP-server invariant holds. claudius has no plugin
+(research); augustus cannot (codex). `shared:*` never appears in a receipt's `offered` —
+that field is the governed pointer offer.
 
 **Augustus (codex-acp)** gets his skills through
 `~/.config/codex-agents/augustus/skills/praetorium -> ~/agent-workforce/skills/augustus/skills`,
@@ -747,15 +786,48 @@ per surface.
 
 **Claude Code's bundled skills are in every listing and outside the manifest** — `init`,
 `simplify`, `loop`, `schedule`, `security-review` and the rest ship inside the binary, so
-`--setting-sources=` cannot drop them and the receipt's `offered` (namespace-filtered) never
-lists them. One is denied in the base settings (`Skill(schedule)`, 2026-09-19): it creates
-claude.ai cloud scheduled runs from inside an agent session, which is scheduling the box
-does not own. Claudius's 10:19Z DM reply of that day named the full list.
+`--setting-sources=` cannot drop them and the receipt's `offered` and `invoked` (both
+namespace-filtered) never list them — a blocked attempt leaves no receipt trace. One is
+denied in the base settings (`Skill(schedule)`, 2026-09-19): it creates claude.ai cloud
+scheduled runs from inside an agent session, which is scheduling the box does not own. The
+skill is only the instructions; the capability is the deferred `RemoteTrigger` tool it
+loads through `ToolSearch`, and with the skill alone denied that tool was still loadable
+and callable under `bypassPermissions` (measured the same day, `#58`'s review) — so the base
+denies both names, and `tests/test_fleet_guards.sh::schedule-deny` pins both in the base
+and in every deployed per-agent file. A scoped deny blocks at call time and does not
+delist: `schedule` stays in the session's listing, and an agent that tries it reads
+"blocked by permission rules". The class-level lever exists — `disableBundledSkills: true`
+in the settings file drops all thirteen and leaves the pointer skills — and **Dave decided
+against it (2026-09-19): the bundled skills stay**, `loop` included; only the cloud-scheduling
+pair is denied, so a future release that adds a bundled skill adds it to the agents too, and
+that is the accepted cost. Claudius's 10:19Z DM reply of that day named the full list.
+The `shared:*` plugin skills on the three coders are likewise outside `offered`.
 
 The loop for a change here is the S1 loop above with one step in front: edit the manifest,
 `bin/fleet_capabilities.py render`, then `bin/deploy_buzz_team.sh`, restart the agent, and
 `verify-fleet.sh`. A change to the vault's skill `description` is
 `bin/pointer_skills_sync.py render` then `bin/deploy` — see `skills/README.md`.
+
+### Harness versions — the watch and the canary (2026-09-19)
+
+`check-loaded.sh` prints one `INFO` row per package from `bin/adapter_versions.py`
+(`@agentclientprotocol/claude-agent-acp`, `@agentclientprotocol/codex-acp`,
+`@anthropic-ai/claude-code`: installed vs npm latest), never a verdict — a stale adapter is
+a decision. On 2026-09-19 it read 0.64.0 vs 0.79.0 and 1.1.9 vs 1.12.0, found by claudius's
+research with nothing on the box saying so. Upgrading is the fleet-upgrade shape
+(memory `praetorium-fleet-upgrade-shape`) on npm:
+
+1. Install the new version under a side prefix (`npm i -g --prefix ~/.local/lib/acp-<v>
+   <pkg>@<v>`); never over the global copy first.
+2. Point **aurelian** at it with a unit drop-in (`BUZZ_ACP_AGENT_COMMAND=` a shim exec'ing
+   the side copy), restart him, DM him by pubkey.
+3. On his live child read gate 14: the four flags still after `"$@"`, `--mcp-config` filed,
+   no MCP child but the bridge, no key in any argv — the seam is `CLAUDE_CODE_EXECUTABLE`,
+   read by claude-agent-acp itself (`dist/acp-agent.js:230` at 0.64.0), and if a release
+   drops it the wrapper is bypassed and gate 14 says so. Read his journal in full.
+4. Global install by rename-into-place, drop the drop-in, restart the other three when idle
+   (the child is the session; read the last `stop_reason` first). codex-acp the same way
+   with augustus as his own canary. Rollback is the side prefix.
 
 ### Three failures that are silent by construction
 

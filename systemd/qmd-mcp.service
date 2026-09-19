@@ -13,6 +13,26 @@ RestartSec=10
 # Localhost-only by default; the box itself is Tailscale-only (no public ports).
 NoNewPrivileges=true
 ProtectSystem=full
+# Sandbox (2026-09-19, from claudius's research, corrected): every line here changes no
+# behaviour for a node HTTP daemon running as dave. Deliberately absent — ProtectHome: it
+# serves and reads under /home/dave; MemoryDenyWriteExecute: node's JIT; IPAddressAllow/
+# Deny: the bind is already loopback and outbound stays open (brave: api.search.brave.com;
+# qmd: model fetches). Measure with `systemd-analyze security <unit>` before changing it.
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+CapabilityBoundingSet=
+# No PrivateDevices: the embedding models run on the iGPU through /dev/dri (gpu.conf).
 
 [Install]
 WantedBy=multi-user.target

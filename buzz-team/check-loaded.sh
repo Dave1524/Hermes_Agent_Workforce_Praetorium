@@ -146,6 +146,23 @@ check_sync() {
   fi
 }
 
+# The three packages the fleet runs on, installed against npm's latest — an INFO row each,
+# never a verdict: a stale adapter is the canary procedure in docs/runbook.md, not a defect.
+# Fleet-wide, so it runs only on the no-argument (whole fleet) invocation.
+ADAPTER_VERSIONS="${ADAPTER_VERSIONS:-$HOME/agent-workforce/bin/adapter_versions.py}"
+check_adapters() {
+  local line name installed latest verdict
+  if [[ ! -f $ADAPTER_VERSIONS ]]; then
+    report INFO adapters "not deployed: $ADAPTER_VERSIONS"
+    return
+  fi
+  # shellcheck disable=SC2086
+  while IFS=' ' read -r name installed latest verdict; do
+    [[ -n $name ]] || continue
+    report INFO "${name##*/}" "${installed#installed=} installed, ${latest#latest=} on npm — $verdict"
+  done < <(python3 "$ADAPTER_VERSIONS" ${ADAPTER_VERSIONS_ARGS:-} 2>/dev/null)
+}
+
 main() {
   HOSTED=" $(hosted_agents | tr '\n' ' ')"
   is_hosted() { [[ $HOSTED == *" $1 "* ]]; }
@@ -153,6 +170,7 @@ main() {
   names=("$@")
   if (( ${#names[@]} == 0 )); then
     mapfile -t names < <({ hosted_agents; provisioned_ids; } | sort -u)
+    check_adapters
   fi
 
   for name in "${names[@]}"; do

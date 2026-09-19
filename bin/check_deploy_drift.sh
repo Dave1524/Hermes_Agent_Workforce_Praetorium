@@ -103,6 +103,10 @@ BUZZ_TREE="${DRIFT_BUZZ:-$HOME/.config/buzz-team}"
 # writes — sudo does, at land time — so both are compared here against source.
 BROKER_LIB="${DRIFT_BROKER_LIB:-/usr/local/lib/control-room}"
 BROKER_ETC="${DRIFT_BROKER_ETC:-/etc/control-room}"
+# The managed Claude Code settings (2026-09-19): a render of the base agent settings' credential-
+# path denies that binds every session on the box, root-installed by hand like the broker.
+MANAGED_SRC="${DRIFT_MANAGED_SRC:-$REPO/etc/claude-code/managed-settings.json}"
+MANAGED_ETC="${DRIFT_MANAGED_ETC:-/etc/claude-code/managed-settings.json}"
 # THIS SCRIPT CANNOT RUN FROM THE DEPLOYED COPY OF ITSELF, and the failure is silent, so it
 # is a guard rather than a note. REPO is resolved from $0, so a copy exec'd out of the
 # runtime tree sets SRC_BIN to that same tree and compares it with itself — the bin half
@@ -682,6 +686,22 @@ else
       report broker "allowlist render failed: $(tr '\n' ' ' <"$render_err")"
     fi
     rm -f "$render_err"
+  fi
+fi
+
+# --- root-installed managed settings <-> etc/claude-code/managed-settings.json -------------
+# The eighth comparison. /etc/claude-code/managed-settings.json is the one deny no
+# --setting-sources or --settings can drop, so it binds Dave's sessions and the runners as
+# well as the fleet; the source is rendered by bin/fleet_capabilities.py and installed with
+# sudo. Same predicate as the broker: on the SOURCE.
+if [ ! -f "$MANAGED_SRC" ]; then
+  info "no $MANAGED_SRC — the root-installed managed settings are not compared"
+else
+  echo "managed settings: $MANAGED_SRC <-> $MANAGED_ETC"
+  if [ ! -f "$MANAGED_ETC" ]; then
+    report managed "source-only: managed-settings.json is not installed at $MANAGED_ETC (sudo install -D -o root -g root -m 0644 $MANAGED_SRC $MANAGED_ETC)"
+  elif ! cmp -s "$MANAGED_SRC" "$MANAGED_ETC"; then
+    report managed "content differs: managed-settings.json (root copy is stale — re-run the install line)"
   fi
 fi
 

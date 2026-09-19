@@ -25,6 +25,7 @@ tools        = "claude-code-builtins"                     # the builtin family; 
 tools_deny   = []# builtins withheld from this session; [] = the whole family
 bridge_tools = ["qmd", "notion", "brave"]# families the bridge shim advertises: qmd (4), notion (7, via broker), brave (4, via brave-mcp.service)
 mcp          = ["buzz-team-mcp"]# the ONE MCP server a session loads (--strict-mcp-config); qmd and brave sit behind it as mcp__buzz-team-mcp-<name>__*
+plugins      = ["shared@jbuitenhuis"]# Claude Code plugins enabled in the session (enabledPlugins in agent-settings-<name>.json); coding standards for whoever builds or reviews software (Dave, 2026-09-19). Its MCP servers are dropped by --strict-mcp-config.
 notes       = """
 S1 capability isolation (2026-09-18): CLAUDE_CODE_EXECUTABLE points buzz-agent@.service at
 ~/.config/buzz-team/claude-agent-wrapper.sh, which appends --strict-mcp-config,
@@ -164,6 +165,12 @@ rule     = "send email or any outward message"
 enforced = true
 why      = "~/.config/buzz-team/agent-settings.json denies mcp__claude_ai_{Gmail,Microsoft_365,Google_Drive,Figma} for every claude-agent-acp session, reached via CLAUDE_CODE_EXECUTABLE; the box holds no other outward credential"
 test     = "tests/test_fleet_guards.sh::connector-deny"
+
+[[must_not]]
+rule     = "create or run claude.ai cloud routines from a session"
+enforced = true
+why      = "agent-settings.json denies Skill(schedule) and the RemoteTrigger tool it drives; the box's scheduling is the systemd timer fleet, receipted and owned"
+test     = "tests/test_fleet_guards.sh::schedule-deny"
 
 [[must_not]]
 rule     = "write the vault outside _inbox/agents/**"

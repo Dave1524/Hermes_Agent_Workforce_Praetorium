@@ -40,6 +40,7 @@ path    = "tests/test_fleet_guards.sh"
 owner   = "fleet"
 asserts = [
   "connector-deny",                  # marcus, claudius: outward connectors denied for agent sessions
+  "schedule-deny",                   # the four Claude agents: Skill(schedule) and RemoteTrigger denied, deployed and rendered
   "augustus-no-claude-connectors",   # augustus: same rule, different mechanism — codex harness
   "deny-superset",                   # the strict file can never be laxer than ~/.claude/settings.json
   "vault-push-guard",                # trajan: the pre-push guard, in every vault clone on this box
@@ -704,12 +705,29 @@ asserts = [
   "bridge-filter-matches-manifest",  # each shim spawned as the harness spawns it: tools/list is its manifest's families and a call into a withheld family is refused by the bridge itself
   "aurelian-deny-as-declared",       # aurelian: Edit/Write/NotebookEdit and the seven notion_* denied under his namespace; Bash/Read/Glob/Grep stay; no other Claude agent withholds a builtin
   "connector-deny-complete",         # every claude.ai connector the account exposes (a MEASURED fixture, both directions) is denied in the base
+  "plugins-match-manifest",          # enabledPlugins in each rendered settings file is exactly the manifest's plugins: the shared coding-standards plugin on trajan, marcus, aurelian; none on claudius, none possible on codex
+  "managed-settings-paths-only",     # etc/claude-code/managed-settings.json is the base's twelve Read/Edit credential-path rules and nothing else — it binds Dave's sessions and the runners too
+  "wrapper-mcp-config-to-file",      # the adapter's --mcp-config <json> (bridge env, BUZZ_PRIVATE_KEY inlined) is written 0600 under $XDG_RUNTIME_DIR and replaced by the path; a path passes through; an unwritable dir refuses; the launch script clears the previous process's files
 ]
 why_no_workflow = """
 S1 capability isolation is fleet state — what each buzz-agent@* session is offered — and it
 is scheduled by nothing. This suite reads SOURCE (manifests, rendered artefacts, wrapper,
 unit) and runs anywhere; tests/test_fleet_guards.sh reads the deployed copies and
 buzz-team/verify-fleet.sh gates 14 and 15 read the live processes.
+"""
+
+[[suite]]
+path    = "tests/test_adapter_versions.sh"
+owner   = "fleet"
+asserts = [
+  "adapter-versions-compare",        # bin/adapter_versions.py names installed vs npm-latest for exactly the three fleet packages, from fixtures; stale is a word in the line, exit 0; only an unreadable installed list is exit 1
+  "adapter-versions-info-row",       # check-loaded.sh renders one INFO row per package on the whole-fleet invocation and never a verdict from it — an undeployed script is itself an INFO row
+]
+why_no_workflow = """
+The harness versions are fleet state that no timer changes: claudius's 2026-09-18 research
+found claude-agent-acp 0.64.0 against 0.79.0 published and codex-acp 1.1.9 against 1.12.0
+with nothing on the box saying so. The watch is a row in check-loaded.sh; the upgrade is the
+canary procedure in docs/runbook.md and needs a turn from Dave per agent to prove.
 """
 
 [[suite]]

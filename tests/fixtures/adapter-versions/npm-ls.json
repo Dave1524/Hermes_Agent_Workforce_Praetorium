@@ -1,0 +1,9 @@
+{
+  "name": "lib",
+  "dependencies": {
+    "@agentclientprotocol/claude-agent-acp": {"version": "0.64.0"},
+    "@agentclientprotocol/codex-acp": {"version": "1.1.9"},
+    "@anthropic-ai/claude-code": {"version": "2.1.278"},
+    "corepack": {"version": "0.34.0"}
+  }
+}

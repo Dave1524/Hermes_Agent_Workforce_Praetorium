@@ -29,6 +29,7 @@ tools        = "claude-code-builtins"                     # the builtin family; 
 tools_deny   = ["Edit", "Write", "NotebookEdit"]# builtins withheld from this session; [] = the whole family
 bridge_tools = ["qmd", "brave"]# families the bridge shim advertises: qmd (4), notion (7, via broker), brave (4, via brave-mcp.service)
 mcp          = ["buzz-team-mcp"]# the ONE MCP server a session loads (--strict-mcp-config); qmd and brave sit behind it as mcp__buzz-team-mcp-<name>__*
+plugins      = ["shared@jbuitenhuis"]# Claude Code plugins enabled in the session (enabledPlugins in agent-settings-<name>.json); coding standards for whoever builds or reviews software (Dave, 2026-09-19). Its MCP servers are dropped by --strict-mcp-config.
 notes       = """
 He is a ONE-WAY SINK: his rules admit all five other identities plus Dave, and none of
 theirs admit him, so a verdict he publishes is accepted by the relay and dropped at every
@@ -102,6 +103,12 @@ That gate is machine-level and stays machine-level; see docs/runbook.md § S1.
 
 # Capability prohibitions. enforced = true means a mechanism blocks it today;
 # enforced = false means it is stated policy that nothing currently prevents.
+
+[[must_not]]
+rule     = "create or run claude.ai cloud routines from a session"
+enforced = true
+why      = "agent-settings.json denies Skill(schedule) and the RemoteTrigger tool it drives; the box's scheduling is the systemd timer fleet, receipted and owned"
+test     = "tests/test_fleet_guards.sh::schedule-deny"
 
 [[must_not]]
 rule     = "execute anything — no commits, no sends"

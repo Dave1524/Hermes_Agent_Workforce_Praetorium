@@ -105,6 +105,7 @@ FX="$TMP/fx"
 mkdir -p "$FX/bin" "$FX/design"
 cp -r "$REPO_ROOT/design/agents" "$FX/design/"
 cp -r "$BT" "$FX/buzz-team"
+cp -r "$REPO_ROOT/etc" "$FX/etc"
 cp "$RENDER" "$FX/bin/"
 assert 'the copied tree checks clean first' "python3 '$RENDER' check --repo '$FX' >/dev/null"
 python3 - "$FX/buzz-team/agent-settings-aurelian.json" <<'PY'
@@ -162,10 +163,22 @@ for m in sorted((repo / "design" / "agents").glob("*.toml")):
     extra = set(deny) - set(base_deny)
     if extra != expected:
         print(f"{name}: extra denies {sorted(extra ^ expected)} disagree with the manifest")
+    plugins = {n: True for n in i.get("plugins") or []} or None
+    if s.get("enabledPlugins") != plugins:
+        print(f"{name}: enabledPlugins {s.get('enabledPlugins')} != manifest plugins {plugins}")
 PY
 )
-assert 'every Claude agent'"'"'s settings file is base + exactly its manifest'"'"'s denies' "is_empty superset_problems"
+assert 'every Claude agent'"'"'s settings file is base + exactly its manifest'"'"'s denies and plugins' "is_empty superset_problems"
 [ -n "$superset_problems" ] && printf '%s\n' "$superset_problems" | sed 's/^/      /'
+# The plugin decision itself (Dave, 2026-09-19): whoever builds or reviews software carries
+# the shared coding-standards plugin; the researcher does not, and codex cannot.
+plugin_of() { python3 -c 'import sys,tomllib; print(",".join(tomllib.load(open(sys.argv[1],"rb"))["surfaces"]["interactive"].get("plugins") or []))' "$REPO_ROOT/design/agents/$1.toml"; }
+for a in trajan marcus aurelian; do
+  assert "$a declares the shared plugin (::plugins-match-manifest)" "[ \"\$(plugin_of $a)\" = shared@jbuitenhuis ]"
+done
+for a in claudius augustus; do
+  assert "$a declares no plugin" "[ -z \"\$(plugin_of $a)\" ]"
+done
 
 echo '--- 4. the wrapper'"'"'s flags come after "$@", so they win (::wrapper-flags-after-args) ---'
 # The adapter emits --setting-sources=user,project,local and no --strict-mcp-config; for a
@@ -282,5 +295,53 @@ undenied=$(comm -23 <(LC_ALL=C sort <<<"$fixture_list") <(printf '%s\n' "$base_c
 stale=$(comm -13 <(LC_ALL=C sort <<<"$fixture_list") <(printf '%s\n' "$base_connectors") | tr '\n' ' ')
 assert "every measured connector is denied in the base (${undenied:-none missing})" "is_empty undenied"
 assert "and no denied connector is absent from the measured list (${stale:-none stale})" "is_empty stale"
+
+echo '--- 10. the managed settings file is the base'"'"'s secret-path denies and nothing else (::managed-settings-paths-only) ---'
+# /etc/claude-code/managed-settings.json binds EVERY Claude Code session on the box — Dave's
+# interactive ones and the scheduled runners too — whatever --setting-sources or --settings
+# say. So it carries the one deny that must survive any flag (the six credential paths) and
+# none of the fleet policy that belongs to the agents alone.
+MANAGED="$REPO_ROOT/etc/claude-code/managed-settings.json"
+assert 'the file is committed' "[ -f '$MANAGED' ]"
+managed_problems=$(python3 - "$MANAGED" "$BT/agent-settings.json" <<'PY'
+import json, sys
+managed = json.load(open(sys.argv[1])); base = json.load(open(sys.argv[2]))
+want = [r for r in base["permissions"]["deny"] if r.startswith(("Read(//", "Edit(//"))]
+got = managed.get("permissions", {}).get("deny")
+if got != want:
+    print(f"deny differs from the base's path rules: {got} != {want}")
+if set(managed) != {"permissions"} or set(managed["permissions"]) != {"deny"}:
+    print(f"carries more than permissions.deny: {sorted(managed)} / {sorted(managed['permissions'])}")
+if len(want) != 12:
+    print(f"the base names {len(want)} path rules, not the six paths x Read/Edit")
+PY
+)
+assert 'exactly the twelve Read/Edit path rules, no hooks, no connector or Skill denies' "is_empty managed_problems"
+[ -n "$managed_problems" ] && printf '%s\n' "$managed_problems" | sed 's/^/      /'
+
+echo '--- 11. the private key leaves the claude argv: --mcp-config <json> becomes a 0600 runtime file (::wrapper-mcp-config-to-file) ---'
+# claude-agent-acp inlines the bridge's env — BUZZ_PRIVATE_KEY included — in the JSON it
+# passes as --mcp-config, and /proc/<pid>/cmdline is world-readable. Behavioural, through a
+# stub claude that records its argv; CLAUDE_WRAPPER_BREW exists for exactly this.
+W="$TMP/w"; mkdir -p "$W/brew" "$W/run" "$W/home/.config/buzz-team" "$W/home/agent-workforce/skills/t/.claude-plugin"
+echo '{"name":"praetorium-t"}' > "$W/home/agent-workforce/skills/t/.claude-plugin/plugin.json"
+: > "$W/home/.config/buzz-team/agent-settings-t.json"
+printf '#!/bin/sh\nfor a in "$@"; do printf "%%s\\n" "$a"; done > "$STUB_OUT"\n' > "$W/brew/claude"; chmod +x "$W/brew/claude"
+run_wrapper() { HOME="$W/home" XDG_RUNTIME_DIR="$W/run" CLAUDE_WRAPPER_BREW="$W/brew" BUZZ_AGENT_NAME=t STUB_OUT="$W/argv" sh "$WRAPPER" "$@"; }
+run_wrapper --output-format stream-json --mcp-config '{"mcpServers":{"x":{"env":{"BUZZ_PRIVATE_KEY":"SECRET"}}}}' --setting-sources=user --session-id=abc
+assert 'the stub ran and its argv carries no key' "[ -s '$W/argv' ] && ! grep -q SECRET '$W/argv'"
+assert 'the --mcp-config value is the runtime file, named by agent and session' \
+  "grep -A1 -x -- '--mcp-config' '$W/argv' | tail -1 | grep -qx '$W/run/buzz-team/mcp-t-abc.json'"
+assert 'the file holds the JSON verbatim, mode 0600' \
+  "[ \"\$(stat -c %a '$W/run/buzz-team/mcp-t-abc.json')\" = 600 ] && grep -qx '{\"mcpServers\":{\"x\":{\"env\":{\"BUZZ_PRIVATE_KEY\":\"SECRET\"}}}}' '$W/run/buzz-team/mcp-t-abc.json'"
+assert 'every other argument passes through in order, the isolating flags still last' \
+  "[ \"\$(tr '\\n' ' ' < '$W/argv')\" = '--output-format stream-json --mcp-config $W/run/buzz-team/mcp-t-abc.json --setting-sources=user --session-id=abc --strict-mcp-config --setting-sources= --settings $W/home/.config/buzz-team/agent-settings-t.json --plugin-dir $W/home/agent-workforce/skills/t ' ]"
+run_wrapper --output-format stream-json --mcp-config /some/file.json --session-id=def
+assert 'a --mcp-config that is already a path is left alone' "grep -A1 -x -- '--mcp-config' '$W/argv' | tail -1 | grep -qx /some/file.json && [ ! -e '$W/run/buzz-team/mcp-t-def.json' ]"
+chmod 500 "$W/run/buzz-team"; probe=$(run_wrapper --mcp-config '{"a":1}' --session-id=ghi 2>&1); rc=$?; chmod 700 "$W/run/buzz-team"
+assert "an unwritable runtime dir refuses (exit $rc) rather than passing the JSON through" \
+  "[ '$rc' = 1 ] && grep -q 'refusing to pass it in argv' <<<\"\$probe\" && [ ! -e '$W/run/buzz-team/mcp-t-ghi.json' ]"
+assert 'the launch script clears the agent'"'"'s files from the previous process' \
+  "grep -q 'rm -f \"\${XDG_RUNTIME_DIR:-/run/user/\$(id -u)}/buzz-team/mcp-\${BUZZ_AGENT_NAME:-}-\"\*.json' '$BT/buzz-acp-launch.sh'"
 
 exit $fail

@@ -27,6 +27,32 @@ measurements, queue spent), `augustus.toml` retirement comment, and `design/arch
 
 **OPEN — widened 2026-09-04; full write-up in `.claude/briefs/w19-campaign-retirement-residue.md`.** Opened as "two override envs outlive their units" (`~/.config/agent-workforce/content_strategy.env`, 16 lines, and `faceless_content.env`, 11). That was the visible tip. The retirement commit `1bc6a4c` touched exactly two files — `config/fleet-units.tsv` and `design/agents/augustus.toml` — **because those are the two the repo had a check for**: `tests/test_fleet_ownership.sh` failed in the manifest->list direction until the `.tsv` was re-materialised, and nothing else failed, so nothing else was touched. Eleven pieces of residue survive, and the five in `bin/` and `profiles/` form a closed, deployed, reachable chain (env -> `run_{content_strategy,faceless_content}_cc.sh` -> `run_standing_research_topic_cc.sh` -> the two task profiles), with `augustus.toml`'s `[surfaces.scheduled]` still `present = true` over zero workflows (`:33`) and its `augustus-content` note still describing a 01:30 lock collision with a unit the same commit deleted (`:78`). **`design/workflow-registry.md` is referenced by no test and no script** — verified by grep over `tests/` and `bin/` — so its rows `:77-78` still read `keep` with live triggers. That is the generalisable part and it is one level up from W17: a retirement is as complete as the repo's joins force it to be, and no more; a registry nobody joins against is prose, and prose does not get retired. The cleanup is **not piecemeal** — `bin/check_deploy_drift.sh:334` reports a runtime-only `bin/` file unconditionally while only the content loop consults `design/deploy-exclusions.toml` (`:392`), so deleting the three `bin/` scripts is hard red with no declarable exemption and needs `bin/deploy --prune`, which cannot be aimed and clears every entry in `design/deploy-exclusions.toml` (eleven since T6.2). The `design/` and `profiles/` half can land alone and green. Items 1-2 stay Dave-only: the config path is deny-listed, so no check here can enumerate it and the only instrument is a human running `ls`.
 
+### W21 — Per-agent Linux accounts for the Buzz fleet — OPEN, not scheduled
+
+*Opened: 2026-09-19, from claudius's 2026-09-18 research (proposal 5 of 5, sized L there,
+named not built there too).*
+
+Every `buzz-agent@*` unit runs as `dave`, so an agent's shell can read whatever Dave can
+minus the deny-list — the deny-list, the bwrap namespace (augustus) and the managed
+settings are all *policy on one account*. Separate accounts would make it *the kernel's*
+policy. Three things it collides with, each a precondition rather than a detail:
+
+1. **The control broker's trust model** — `control-room-broker.socket` is `root:control-room
+   0660` reachable only by `control-room.service`, the runtimes table names user units of
+   `dave`, and the receipts land under `dave`'s `var/`. A second account means a second
+   allowlist row shape and a broker that can `systemctl --user -M <user>@`.
+2. **The shared memory pool and cwd** — the four Claude agents run with cwd `/home/dave` so
+   they share `~/.claude/projects/-home-dave/memory/` with Dave's own `~` sessions (by
+   design, the team-wide layer) and read `~/CLAUDE.md`. Another home is another pool.
+3. **Ownership every runner assumes** — `~/vault` (a symlink into `dave`'s checkout),
+   `~/agent-workforce/` (the deployed tree, `dave`-owned, receipts written into it), the
+   Notion broker socket under `dave`'s `$XDG_RUNTIME_DIR`, and `qmd-mcp`'s index cache.
+
+**Not before** the key is out of every argv (done 2026-09-19) and the managed path deny is
+in (same day): those close the two exposures an account split would otherwise be reached
+for first. When it is picked up, aurelian is the canary (no scheduled work, read-only
+declared) and the first artefact is the broker change, not the unit.
+
 ### W20 — Scheduled Buzz workflows cannot wake an agent — CLOSED 2026-09-10
 
 *Opened: 2026-09-07, Dave-reported. Closed by T0.3.*

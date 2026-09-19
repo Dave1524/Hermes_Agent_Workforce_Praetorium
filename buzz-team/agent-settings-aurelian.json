@@ -21,6 +21,7 @@
       "mcp__claude_ai_Eden",
       "mcp__claude_ai_Claude_Docs",
       "Skill(schedule)",
+      "RemoteTrigger",
       "Edit",
       "Write",
       "NotebookEdit",
@@ -45,5 +46,8 @@
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "shared@jbuitenhuis": true
   }
 }

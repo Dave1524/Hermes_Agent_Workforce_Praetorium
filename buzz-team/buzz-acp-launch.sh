@@ -10,4 +10,7 @@ if [ -r "$TEAM" ]; then
   export BUZZ_ACP_TEAM_INSTRUCTIONS
 fi
 
+# Every session of the previous process is dead; its MCP config files (written by
+# claude-agent-wrapper.sh, one per session) go with it.
+rm -f "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/buzz-team/mcp-${BUZZ_AGENT_NAME:-}-"*.json
 exec "$HOME/.local/bin/buzz-acp" "$@"

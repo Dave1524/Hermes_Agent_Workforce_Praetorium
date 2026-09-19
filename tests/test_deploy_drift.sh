@@ -84,6 +84,8 @@ fixture() {
   # every clean() above still holds. Pointed at the real /usr/local/lib and /etc, it would not.
   mkdir -p "$root/broker_lib" "$root/broker_etc"
   export DRIFT_BROKER_LIB="$root/broker_lib" DRIFT_BROKER_ETC="$root/broker_etc"
+  # The managed Claude Code settings, likewise: no source file until group 18, so inert.
+  export DRIFT_MANAGED_SRC="$root/managed_src.json" DRIFT_MANAGED_ETC="$root/managed_etc.json"
   # ONE owner for the content-tree half of the fixture env. Four call sites need it — drift()
   # and the three inline invocations that each override a single other var — and it was four
   # copies of the same literal until W17, which is the shape this suite exists to catch one
@@ -914,5 +916,22 @@ printf '#!/usr/bin/env python3\nimport sys\nsys.exit("boom")\n' > "$root/src_bin
 cp "$root/src_bin/control_broker_allowlist.py" "$root/run_bin/control_broker_allowlist.py"
 capture
 assert 'a render failure is a finding carrying the stderr' "saw 'DRIFT \[broker\] allowlist render failed: boom'"
+echo "--- 18. root-installed managed Claude Code settings ---"
+# One file, root-installed by hand, binding every Claude Code session on the box: a missing
+# or stale copy means the credential-path deny is back to being a per-flag courtesy.
+fixture
+capture
+assert 'with no managed-settings source the section is inert, in one info line' \
+  "saw 'info: no .*managed_src.json' && ! saw 'DRIFT \[managed\]'"
+printf '{"permissions": {"deny": []}}\n' > "$root/managed_src.json"
+capture
+assert 'source with no root copy is source-only, naming the install line' \
+  "saw 'DRIFT \[managed\] source-only: managed-settings.json' && saw 'sudo install -D -o root -g root -m 0644'"
+cp "$root/managed_src.json" "$root/managed_etc.json"
+capture
+assert 'root copy present and equal is clean' clean
+printf '{"permissions": {"deny": ["x"]}}\n' > "$root/managed_etc.json"
+capture
+assert 'root copy that differs is named' "saw 'DRIFT \[managed\] content differs: managed-settings.json'"
 rm -rf "$root"
 exit $fail

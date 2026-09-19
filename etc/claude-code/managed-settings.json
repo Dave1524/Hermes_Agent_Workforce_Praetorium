@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(//home/dave/.confidential.img)",
+      "Edit(//home/dave/.confidential.img)",
+      "Read(//home/dave/ENCRYPTION_RECOVERY.md)",
+      "Edit(//home/dave/ENCRYPTION_RECOVERY.md)",
+      "Read(//home/dave/.ssh/**)",
+      "Edit(//home/dave/.ssh/**)",
+      "Read(//home/dave/.config/agent-workforce/**)",
+      "Edit(//home/dave/.config/agent-workforce/**)",
+      "Read(//home/dave/.config/buzz-agents/**)",
+      "Edit(//home/dave/.config/buzz-agents/**)",
+      "Read(//home/dave/.config/google-docs-mcp/**)",
+      "Edit(//home/dave/.config/google-docs-mcp/**)"
+    ]
+  }
+}
