@@ -120,7 +120,9 @@ probe() {
   fi
   while read -r f; do
     [ -n "$f" ] || continue
-    if printf '%s' "$help" | grep -q -- "$f"; then
+    # A here-string, not a pipe: `grep -q` exits on its first match, SIGPIPEs the
+    # writer, and under pipefail a flag that IS in --help reads as gone.
+    if grep -q -- "$f" <<<"$help"; then
       echo "  ok flag: $f"
     else
       echo "  FAIL flag: $f is gone from --help — this release would crash-loop the fleet"

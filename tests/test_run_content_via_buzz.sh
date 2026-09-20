@@ -191,6 +191,31 @@ assert 'the send carried --mention with augustus pubkey' \
 assert 'the send addressed the content channel' \
   "grep 'messages send' '$STUB_ARGV' | grep -q -- \"--channel $CHANNEL\""
 
+echo '--- a leading @mention does not hide the sentinel (2026-09-19) ---'
+# The harness tells every agent to @mention the delegator when it reports a result, and
+# the trigger tells augustus the line must BEGIN with `DECLINE:`. He cannot obey both in
+# one fixed order: on 2026-09-18 he wrote `DECLINE: @PRAETORIUM ...` (matched), on
+# 2026-09-19 `@PRAETORIUM DECLINE: ...`, and a valid decline was recorded as a failed run.
+# The mention is presentation the harness demands; the sentinel is the contract.
+reset_case
+event "$AUGUSTUS" "@PRAETORIUM DECLINE: no Picked rows; 13 Idea rows already queued"
+run_dispatch; rc=$?
+assert 'DECLINE: behind a leading mention exits 0' "[ $rc -eq 0 ]"
+assert 'and is reported as an owned decline' "grep -q 'augustus declined' '$WORK/out'"
+assert 'and never as an unknown sentinel' "! grep -qi 'no sentinel matched' '$WORK/out'"
+
+reset_case
+event "$AUGUSTUS" "nostr:npub1praetorium @PRAETORIUM RUN-FAILED: published_corpus exited 2"
+run_dispatch; rc=$?
+assert 'a failure sentinel behind mentions is still a failure (exit 1)' "[ $rc -eq 1 ]"
+assert 'and takes its own table row' "grep -qi 'could not complete a mandatory step' '$WORK/out'"
+
+reset_case
+event "$AUGUSTUS" "@PRAETORIUM nothing tonight, DECLINE: is not where the contract puts it"
+run_dispatch; rc=$?
+assert 'a sentinel that is not first after the mention does not match' "[ $rc -eq 1 ]"
+assert 'and is reported as no sentinel matched' "grep -qi 'no sentinel matched' '$WORK/out'"
+
 echo '--- the FOURTH outcome: augustus replied that he could not read the skill ---'
 # Three outcomes were specified: board moved (0), DECLINE: (0), asked and silent (1). A
 # section name that no longer resolves in the vault SKILL.md is none of them. Before this

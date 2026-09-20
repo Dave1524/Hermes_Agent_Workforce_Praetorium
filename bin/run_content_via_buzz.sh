@@ -179,9 +179,21 @@ sentinel_reply() {  # sentinel_reply <since-epoch> <prefix> -> "<event-id> <line
   json=$("$HELPER" "$IDENTITY" messages get --channel "$channel" \
            --since "$1" --limit 50 2>/dev/null) || return 1
   printf '%s' "$json" | python3 -c '
-import json, sys
+import json, re, sys
 
 author, since, prefix = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+# The harness makes him @mention the delegator when he reports; the contract makes the
+# line begin with the sentinel. He has written both orders (2026-09-18 vs 2026-09-19),
+# so the mention is skipped before the prefix test. Only mentions, only leading ones.
+LEADING_MENTION = re.compile(r"^(?:@\S+|nostr:npub1\S+)\s+")
+
+def after_mentions(line):
+    while True:
+        m = LEADING_MENTION.match(line)
+        if not m:
+            return line
+        line = line[m.end():]
+
 try:
     events = json.load(sys.stdin)
 except ValueError:
@@ -193,8 +205,9 @@ for event in events if isinstance(events, list) else []:
         # The empty prefix, used by the any-reply read at the deadline, matches every
         # line including blank ones, and would report an empty string as the reply that
         # ended the wait. (No apostrophes here: this block is inside a single-quoted -c.)
-        if line.strip() and line.strip().startswith(prefix):
-            sys.stdout.write(event.get("id", "") + " " + line.strip() + "\n")
+        line = line.strip()
+        if line and after_mentions(line).startswith(prefix):
+            sys.stdout.write(event.get("id", "") + " " + line + "\n")
             sys.exit(0)
 sys.exit(1)
 ' "$augustus" "$1" "$2"
