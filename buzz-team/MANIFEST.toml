@@ -217,14 +217,15 @@ why = "tails a live agent turn"
 [[excluded]]
 path = "TEAM.md"
 kind = "prose"
-sha256 = "723cca4ba9ee4c4828913f1859bfabedda012e07cb3bb93b94f244c65472e40d"
+sha256 = "26cd3a4555d4cea50b62cbcb5cbe4389beda94c928cc0151439809fc769959ad"
 why = """
 Read by every agent as team instructions (buzz-acp-launch.sh exports it as
 BUZZ_ACP_TEAM_INSTRUCTIONS). It is the largest prose surface in this tree, the one most
 likely to accrete client detail as the team's working agreements grow, and this repo is
 public. Checked for client content 2026-09-03, again 2026-09-07 after the hop-token and
-workflow-grant sections were added, and 2026-09-18 after the "Reading the web" section
-(the brave_* tools and the query boundary); it has none — that is the reason this is a standing-risk
+workflow-grant sections were added, 2026-09-18 after the "Reading the web" section
+(the brave_* tools and the query boundary), and 2026-09-22 after the "delivery is a wake"
+section (route and agent names, counts, dates — no client string); it has none — that is the reason this is a standing-risk
 boundary rather than a leak finding. Re-read it before every pin bump: the pin proves the bytes
 changed as recorded, never that what they say is safe to publish.
 
