@@ -142,6 +142,22 @@ Name it after the pointer it is about; `tests/test_agent_config_eval.sh::eval-ca
 joins the two. Then `--record` and commit the baseline in the same change: a case with no
 recorded score is a pass mark nobody measured, and the gate calls it `UNBASELINED` and goes red.
 
+**Two kinds of case, and the suffix is what tells them apart.** A `<pointer>-fires` case asks
+whether the skill still fires for the phrase its description says triggers it. A
+`<pointer>-must-not-fire` case asks the opposite — that it stays out of an adjacent ask — and
+`bin/agent_config_eval_compare.py` flips the verdict for it: baselined at 0.000, a **rise** is
+red (`OVERFIRED`) and a fall is reported. The direction rides on the case name and not on a
+field in the baseline, because `--record` rewrites that file wholesale from the measured scores:
+a field would be dropped on the first re-record and the case would silently become a floor
+again. Write the off-trigger prompt *adjacent* to the skill's subject — a control the model gets
+right on topic alone measures nothing.
+
+**Coverage is joined in both directions.** Every pointer has a `-fires` case and every owner
+offering pointers has at least one ceiling case
+(`tests/test_agent_config_eval.sh::every-pointer-has-eval`); every case names a pointer its owner
+really has (`::eval-case-names-skill`). A pointer with no case is a skill this suite would never
+notice going quiet, which is the T3.3 blind spot one pointer at a time.
+
 **The verdict is regression, not an absolute mark** — `bin/fleet_eval.sh:13-20`'s reasoning
 applies unchanged. An improvement is reported and the baseline is left alone; re-recording it is
 a commit that says why, never something the weekly run does to its own pass mark.
@@ -173,10 +189,36 @@ root is not discovered, with no warning and no error — and it scores **0.000**
 still present and readable; the loader simply does not see them, which is exactly the class of
 failure that is silent on this box today.
 
+### What the first full measurement found — MEASURED 2026-09-22, claude-opus-5, runs 3
+
+All 13 pointers and all 4 ceiling cases, 51 runs. Three results worth keeping:
+
+- **Every ceiling case scored 0.000.** No skill fired on an adjacent off-trigger ask, so the
+  discrimination half of the suite starts clean.
+- **`trajan/test-driven-development-fires` scored 0.000 — the skill never fired**, three runs of
+  three, `Skill called 0x`, reproduced in a second run of that case alone. The prompt is the
+  canonical trigger its own description names ("Use when implementing any feature … Activates
+  when tempted to write code first"). This is the T3.3 class caught in the act rather than
+  inferred from telemetry, and it is **recorded as measured, not tuned until green** — tuning the
+  prompt would measure the prompt. Fixing it is the vault's `08_skills/` text, not this repo's.
+- **`claudius/investment-research-fires` and `trajan/spec-to-code-enforcement-fires` scored
+  0.333** — one run in three.
+
+The last two points are the same defect at different depths, and the gate now names it. A verdict
+is `score < baseline - tolerance`, so at `runs: 3` (tolerance ⅓) anything recorded at 0.333 or
+below has nothing left to fall to: green every week, and unable to go red for any reason. Three
+of seventeen were born that way. `tests/test_agent_config_eval.sh::baselined-case-can-go-red`
+makes that state legal only while the baseline entry carries a `notes` saying so, and
+`--record` carries a `notes` forward rather than remeasuring it away.
+
 ### Cost
 
 Measured on the first case: `max_turns: 2`, `allowed_tools: [Skill]`, the Skill call on turn 1,
-**~4s and ~$0.081 a run** on `claude-opus-5`, so ~$0.24 a case at `runs: 3`. The eval child's cwd
+**~4s and ~$0.081 a run** on `claude-opus-5`, so ~$0.24 a case at `runs: 3` and **~$4 for a full
+17-case record** at `-j 4`. The weekly timer adds one more case for the negative control, not one
+more owner: `--self-check` runs a single `-fires` case broken, against a baseline filtered to that
+case — against the whole file the owner's other cases come back `MISSING` and the control would
+go red for a reason that is not the one it exists to prove. The eval child's cwd
 is deliberately outside `$HOME` — under it, `~/CLAUDE.md` (46 KB) and the shared memory pool load
 into *every* run, which both inflates that figure and means the eval measures Dave's machine
 instructions instead of the pointer descriptions under test. The runner refuses a `TMPDIR` inside

@@ -1,0 +1,18 @@
+# Does claudius still fire investment-research for the phrase the vault's description says triggers it?
+# The shape and the measured cost of a case are documented once, on
+# claudius/evals/meeting-prep-fires/case.yaml; skills/README.md says how to add one.
+schema_version: "1.1"
+name: investment-research-fires
+runs: 3
+execution:
+  prompt: |
+    /investment-research distil the latest bull case on TSMC into the reasoning graph.
+  max_turns: 2
+  timeout_seconds: 180
+  allowed_tools: [Skill]
+graders:
+  - name: fires-investment-research
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:[\w-]+:)?investment-research"'
+    weight: 1

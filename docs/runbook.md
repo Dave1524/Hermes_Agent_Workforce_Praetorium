@@ -188,13 +188,15 @@ runs only when the branch diff touches `skills/`, `CLAUDE.md`, `.claude/settings
 `AGENT_CONFIG_EVAL_LIVE=1` forces it and also enables the negative control;
 `AGENT_CONFIG_EVAL_LIVE=0` opts out entirely.
 
-**Adding a case.** `skills/<owner>/evals/<pointer>-<what>/case.yaml`, beside `skills/` and
-never inside it — and never at `skills/evals/`, which `owner_dirs` would read as a sixth
+**Adding a case.** `skills/<owner>/evals/<pointer>-fires/case.yaml` — or
+`<pointer>-must-not-fire` for the ceiling half — beside `skills/` and never inside it — and never at `skills/evals/`, which `owner_dirs` would read as a sixth
 owner. Name it after the pointer; the gate joins the two. Then `--record` and commit the
 baseline in the same change: a case with no recorded score is a pass mark nobody measured,
 and the gate calls it `UNBASELINED` and goes red.
 
-**Reading a red run.** `REGRESSION` names the case and the score it fell from. `MISSING` means
+**Reading a red run.** `REGRESSION` names the case and the score it fell from. `OVERFIRED` is
+its mirror: a `<pointer>-must-not-fire` case, baselined at 0.000, where the skill fired on an
+off-trigger ask — for those the verdict is flipped, and a rise is the bad news. `MISSING` means
 a baselined case is gone from the tree. `UNBASELINED` means a case landed without `--record`.
 Exit **2** is none of these — it is a runner error (a bad flag, no credential, a `TMPDIR`
 inside `$HOME`) and never a verdict about the fleet.

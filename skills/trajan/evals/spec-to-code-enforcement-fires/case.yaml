@@ -1,0 +1,18 @@
+# Does trajan still fire spec-to-code-enforcement for the phrase the vault's description says triggers it?
+# The shape and the measured cost of a case are documented once, on
+# claudius/evals/meeting-prep-fires/case.yaml; skills/README.md says how to add one.
+schema_version: "1.1"
+name: spec-to-code-enforcement-fires
+runs: 3
+execution:
+  prompt: |
+    Audit this module against its spec and tell me what is missing or over-built.
+  max_turns: 2
+  timeout_seconds: 180
+  allowed_tools: [Skill]
+graders:
+  - name: fires-spec-to-code-enforcement
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:[\w-]+:)?spec-to-code-enforcement"'
+    weight: 1

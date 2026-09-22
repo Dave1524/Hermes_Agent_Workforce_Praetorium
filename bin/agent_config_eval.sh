@@ -49,6 +49,7 @@ ROOT="$(cd "$BIN_DIR/.." && pwd)"
 SKILLS_ROOT="${AGENT_CONFIG_EVAL_SKILLS:-$ROOT/skills}"
 BASELINE="${AGENT_CONFIG_EVAL_BASELINE:-$SKILLS_ROOT/evals-baseline.json}"
 MODEL="${AGENT_CONFIG_EVAL_MODEL:-claude-opus-5}"
+CONCURRENCY="${AGENT_CONFIG_EVAL_CONCURRENCY:-4}"
 # Only used to answer --changed-since, so a scratch repo can be pointed at it in a test.
 REPO="${AGENT_CONFIG_EVAL_REPO:-$ROOT}"
 LOG_ROOT="${AGENT_CONFIG_EVAL_LOG_ROOT:-$HOME/logs/agent-config-eval}"
@@ -106,6 +107,19 @@ if [ -n "$CHANGED_SINCE" ]; then
   fi
   say "watched paths changed since $CHANGED_SINCE:"
   say "$hits" | sed 's/^/  /'
+  # A CHANGE UNDER ONE OWNER'S TREE IS SCORED AGAINST THAT OWNER. Every other watched path —
+  # CLAUDE.md, the settings deny, the hooks, the user skill surface — is shared by all of
+  # them, so any hit outside skills/<owner>/ widens it back to the whole tree. This is the
+  # difference between a ~$1 gate and a ~$4 one on a branch that touched one pointer, and it
+  # narrows only what a run MEASURES: the comparator scopes MISSING to the owners present in
+  # the results, so a partial run is honest rather than quiet. An explicit --owner wins.
+  if [ ${#OWNERS[@]} -eq 0 ]; then
+    changed_owners="$(printf '%s\n' "$hits" | sed -n 's|^skills/\([^/]*\)/.*|\1|p' | sort -u)"
+    if [ -n "$changed_owners" ] && [ "$(printf '%s\n' "$hits" | grep -cv '^skills/')" -eq 0 ]; then
+      mapfile -t OWNERS < <(printf '%s\n' "$changed_owners")
+      say "scoped to the owners whose trees changed: ${OWNERS[*]}"
+    fi
+  fi
 fi
 
 # --- preconditions ---------------------------------------------------------------------
@@ -172,14 +186,19 @@ MARKER="$WORKDIR/started"
 : >"$MARKER"
 
 # --- one owner, one eval, one result file -----------------------------------------------
-# $1 = owner, $2 = plugin source dir, $3 = label used for the result filename.
+# $1 = owner, $2 = plugin source dir, $3 = label used for the result filename, $4 = optional
+# case-name glob, which the negative control uses to buy its red with one case instead of all.
 eval_tree() {
-  local owner=$1 src=$2 label=$3 work="$TMPROOT/$3" out="$TMPROOT/$3.json"
+  local owner=$1 src=$2 label=$3 only=${4:-} work="$TMPROOT/$3" out="$TMPROOT/$3.json"
   cp -r "$src" "$work" || return 2
   rm -rf "$work/evals/results"
-  local args=(. --trust-plugin --no-publish --ablation none --threshold 0
+  # -j 4 and not 8: every run is a full `claude` child on the same claude.ai login the five
+  # buzz-agent@* units and the nine scheduled runners share, so the ceiling here is that rate
+  # limit rather than this box. Results and the report keep case order whatever it is set to.
+  local args=(. --trust-plugin --no-publish --ablation none --threshold 0 -j "$CONCURRENCY"
               --model "$MODEL" --json "$out")
   [ -n "$RUNS" ] && args+=(--runs "$RUNS")
+  [ -n "$only" ] && args+=(--case "$only")
   ( cd "$work" && claude plugin eval "${args[@]}" ) >"$TMPROOT/$label.log" 2>&1
   if [ ! -s "$out" ]; then
     echo "agent_config_eval: $owner produced no result JSON:" >&2
@@ -195,6 +214,10 @@ for owner in "${OWNERS[@]}"; do
   say "evaluating $owner …"
   out="$(eval_tree "$owner" "$SKILLS_ROOT/$owner" "$owner")" || exit 2
   RESULTS+=("$out")
+  # The raw JSON outlives TMPROOT here or nowhere: it carries costUsd, turns and the trace
+  # path per run, which is everything a red row cannot tell you and the one moment they can
+  # still be read. The scorecard's `Full run:` line points at this directory.
+  cp "$out" "$WORKDIR/$owner.json" 2>/dev/null || true
 done
 
 compare_args=(--baseline "$BASELINE")
@@ -237,25 +260,45 @@ fi
 # Thursday. Get me ready for it.") scored 1.000 over two runs against BOTH descriptions. For
 # a skill whose NAME already matches the request, the description is not what decides. See
 # skills/README.md for what that does and does not say about T3.3.
+#
+# IT BUYS ITS RED WITH ONE CASE, NOT ONE OWNER. The control is the same whichever `-fires`
+# case carries it, and every owner now holds four or five, so running the whole tree broken
+# would spend four times the runs for the same one-bit answer. It is compared against a
+# baseline filtered to exactly the case it ran: against the whole file, the owner's other
+# baselined cases come back MISSING and the run is red for a reason that is not the one this
+# control exists to prove — a broken tree that still fired would pass on the MISSING rows
+# alone. Filtered, the only thing that can make it red is the score.
 SELF_CHECK_STATUS=""
 if [ "$SELF_CHECK" -eq 1 ]; then
   sc_owner="${OWNERS[0]}"
-  say "self-check: evaluating $sc_owner with its skills where the loader cannot see them …"
+  sc_case="$(ls -d "$SKILLS_ROOT/$sc_owner"/evals/*-fires 2>/dev/null | head -1)"
+  sc_case="$(basename "${sc_case:-}")"
+  [ -n "$sc_case" ] && [ "$sc_case" != "." ] || {
+    echo "agent_config_eval: $sc_owner has no *-fires case to run the control on" >&2; exit 2; }
+  say "self-check: evaluating $sc_owner/$sc_case with its skills where the loader cannot see them …"
   cp -r "$SKILLS_ROOT/$sc_owner" "$TMPROOT/broken-src" || exit 2
   rm -rf "$TMPROOT/broken-src/evals/results"
   for d in "$TMPROOT/broken-src/skills"/*/; do
     [ -d "$d" ] || continue
     mv "$d" "$TMPROOT/broken-src/$(basename "$d")" || exit 2
   done
-  broken="$(eval_tree "$sc_owner" "$TMPROOT/broken-src" broken)" || exit 2
-  if python3 "$COMPARE" "$broken" --baseline "$BASELINE" >"$WORKDIR/self-check.psv" 2>&1; then
+  broken="$(eval_tree "$sc_owner" "$TMPROOT/broken-src" broken "$sc_case")" || exit 2
+  cp "$broken" "$WORKDIR/self-check.json" 2>/dev/null || true
+  sc_baseline="$TMPROOT/self-check-baseline.json"
+  python3 - "$BASELINE" "$sc_owner/$sc_case" >"$sc_baseline" <<'PY' || exit 2
+import json, pathlib, sys
+b = json.loads(pathlib.Path(sys.argv[1]).read_text())
+b["cases"] = {k: v for k, v in (b.get("cases") or {}).items() if k == sys.argv[2]}
+json.dump(b, sys.stdout)
+PY
+  if python3 "$COMPARE" "$broken" --baseline "$sc_baseline" >"$WORKDIR/self-check.psv" 2>&1; then
     SELF_CHECK_STATUS="FAIL"
-    echo "agent_config_eval: SELF-CHECK FAILED — $sc_owner scored clean with no skill the" >&2
-    echo "                   loader can reach, so this suite cannot see a silent empty tree." >&2
+    echo "agent_config_eval: SELF-CHECK FAILED — $sc_owner/$sc_case scored clean with no skill" >&2
+    echo "                   the loader can reach, so this suite cannot see a silent empty tree." >&2
     cat "$WORKDIR/self-check.psv" >&2
-  elif ! grep -q "^case/$sc_owner/" "$WORKDIR/self-check.psv"; then
+  elif ! grep -q "^case/$sc_owner/$sc_case|FAIL" "$WORKDIR/self-check.psv"; then
     SELF_CHECK_STATUS="FAIL"
-    echo "agent_config_eval: SELF-CHECK FAILED — red, but no row names a $sc_owner case." >&2
+    echo "agent_config_eval: SELF-CHECK FAILED — red, but not on $sc_owner/$sc_case." >&2
     cat "$WORKDIR/self-check.psv" >&2
   else
     SELF_CHECK_STATUS="PASS"

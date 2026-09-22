@@ -1,0 +1,19 @@
+# CEILING CASE: weekly-review must stay OUT of this one. The `-must-not-fire` suffix flips the
+# verdict in bin/agent_config_eval_compare.py — baselined at 0.000, a rise is red. The prompt
+# is deliberately ADJACENT to the skill's subject; a control the model gets right on topic
+# alone would measure nothing.
+schema_version: "1.1"
+name: weekly-review-must-not-fire
+runs: 3
+execution:
+  prompt: |
+    How many weeks are left in this quarter?
+  max_turns: 2
+  timeout_seconds: 180
+  allowed_tools: [Skill]
+graders:
+  - name: stays-out-of-weekly-review
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:[\w-]+:)?weekly-review"'
+    weight: 1

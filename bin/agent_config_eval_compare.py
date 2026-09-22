@@ -11,7 +11,8 @@ change — and a suite that goes red for reasons nobody chose is muted within a 
 runner passes --threshold 0 and the verdict is made here, against the score measured when the
 case was added.
 
-FOUR VERDICTS, AND TWO OF THEM ARE THE INTERESTING ONES:
+FOUR VERDICTS ON A CASE THAT ASKS WHETHER A SKILL FIRES, AND TWO OF THEM ARE THE
+INTERESTING ONES:
 
   REGRESSION   score fell below the baseline by more than the tolerance.  red
   IMPROVED     score rose above it by more than the tolerance.            reported, not red,
@@ -28,6 +29,20 @@ MISSING IS SCOPED TO THE OWNERS PRESENT IN THE RESULTS. `--owner claudius` is a 
 partial run; every other owner's cases are not missing, they were not asked for. Scoping by
 owner is what lets a partial run be honest instead of noisy.
 
+A CASE NAMED `…-must-not-fire` IS A CEILING, AND THE VERDICT FLIPS. Every verdict above
+reads a fall as the bad news, which is right for a case asking "does the skill still fire"
+and exactly backwards for one asking "does it stay out of the way". A negative case
+baselines at 0.000, so under the floor rule a run where the skill fired every time would
+score 1.000 and be reported as IMPROVED — the failure it exists to catch, printed as good
+news. The direction is carried by the case NAME rather than a field in the baseline
+because --record rewrites that file wholesale from the measured scores: a field would be
+dropped on the first re-record and the case would silently become a floor again, which is
+the same fail-open shape as reading the owner off the case list. The name survives, because
+it is the key.
+
+  OVERFIRED     a ceiling case rose above its recorded score.               red
+  QUIETER       a ceiling case fell below it.                               reported
+
 THE TOLERANCE IS 1/runs, AND THE EPSILON UNDER IT IS NOT DECORATION. At runs=3 a score is
 quantised to 0, 1/3, 2/3 or 1, so one flaky run of three IS a 1/3 drop and the tolerance
 exists to absorb exactly one. But 2/3 computes as 0.6666666666666666 while 1 - 1/3 computes
@@ -42,6 +57,7 @@ import pathlib
 import sys
 
 EPS = 1e-9
+CEILING_SUFFIX = "-must-not-fire"
 
 
 def read_result(path):
@@ -104,19 +120,36 @@ def main():
     tolerance = args.tolerance if args.tolerance is not None else (1.0 / runs if runs else 0.0)
 
     if args.record:
+        # SCORES ARE REMEASURED; A `notes` A HUMAN WROTE IS CARRIED FORWARD. --record rewrites
+        # this file wholesale, which is right for everything it measures and wrong for the one
+        # thing it cannot: the sentence saying why a case is baselined where it is. A case
+        # whose recorded score is inside the tolerance of the floor can never go red again
+        # (at runs=3, anything at or below 0.333), and tests/test_agent_config_eval.sh makes
+        # that state legal only when a `notes` declares it — so dropping the note here would
+        # turn every re-record into a red the re-recorder then "fixes" by rewriting the note
+        # from memory, or worse, deleting the case.
+        previous = {}
+        try:
+            previous = (json.loads(pathlib.Path(args.baseline).read_text()).get("cases") or {})
+        except (OSError, ValueError):
+            pass
         baseline = {
             "_comment": (
                 "Recorded by bin/agent_config_eval.sh --record. A score here is the measured "
                 "behaviour when the case was added, not a target: bin/agent_config_eval_compare.py "
-                "reports a fall below it and leaves a rise alone. Re-record only as a deliberate "
-                "commit that says why."
+                "reports a fall below it and leaves a rise alone — or the reverse, for a case "
+                "named `…-must-not-fire`. Re-record only as a deliberate commit that says why."
             ),
             "measured": datetime.date.today().isoformat(),
             "claude": sorted(versions)[0] if versions else "",
             "model": sorted(models)[0] if models else "",
             "runs": runs,
             "tolerance": round(tolerance, 6),
-            "cases": {k: {"score": v} for k, v in sorted(measured.items())},
+            "cases": {
+                k: ({"score": v, "notes": previous[k]["notes"]}
+                    if (previous.get(k) or {}).get("notes") else {"score": v})
+                for k, v in sorted(measured.items())
+            },
         }
         pathlib.Path(args.baseline).write_text(json.dumps(baseline, indent=2) + "\n")
         # A --record run that printed only "recorded N cases" would hide the scores it just
@@ -157,11 +190,24 @@ def main():
             continue
 
         base = float(base)
-        if score + EPS < base - tolerance:
+        rose = score > base + tolerance + EPS
+        fell = score + EPS < base - tolerance
+        if key.endswith(CEILING_SUFFIX):
+            if rose:
+                failed = True
+                print(f"case/{key}|FAIL|{score:.3f}|OVERFIRED — a ceiling case, was "
+                      f"{base:.3f}, tolerance {tolerance:.3f}")
+            elif fell:
+                print(f"case/{key}|PASS|{score:.3f}|QUIETER — ceiling was {base:.3f}; "
+                      f"baseline left alone, re-record deliberately")
+            else:
+                print(f"case/{key}|PASS|{score:.3f}|ceiling {base:.3f} ± {tolerance:.3f}")
+            continue
+        if fell:
             failed = True
             print(f"case/{key}|FAIL|{score:.3f}|REGRESSION — was {base:.3f}, "
                   f"tolerance {tolerance:.3f}")
-        elif score > base + tolerance + EPS:
+        elif rose:
             print(f"case/{key}|PASS|{score:.3f}|IMPROVED — was {base:.3f}; baseline left "
                   f"alone, re-record deliberately")
         else:

@@ -1,0 +1,18 @@
+# Does marcus still fire weekly-review for the phrase the vault's description says triggers it?
+# The shape and the measured cost of a case are documented once, on
+# claudius/evals/meeting-prep-fires/case.yaml; skills/README.md says how to add one.
+schema_version: "1.1"
+name: weekly-review-fires
+runs: 3
+execution:
+  prompt: |
+    Weekly review — what did I accomplish this week?
+  max_turns: 2
+  timeout_seconds: 180
+  allowed_tools: [Skill]
+graders:
+  - name: fires-weekly-review
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:[\w-]+:)?weekly-review"'
+    weight: 1

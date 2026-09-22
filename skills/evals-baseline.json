@@ -1,12 +1,63 @@
 {
-  "_comment": "Recorded by bin/agent_config_eval.sh --record. A score here is the measured behaviour when the case was added, not a target: bin/agent_config_eval_compare.py reports a fall below it and leaves a rise alone. Re-record only as a deliberate commit that says why.",
+  "_comment": "Recorded by bin/agent_config_eval.sh --record. A score here is the measured behaviour when the case was added, not a target: bin/agent_config_eval_compare.py reports a fall below it and leaves a rise alone \u2014 or the reverse, for a case named `\u2026-must-not-fire`. Re-record only as a deliberate commit that says why.",
   "measured": "2026-09-22",
   "claude": "2.1.278",
   "model": "claude-opus-5",
   "runs": 3,
   "tolerance": 0.333333,
   "cases": {
+    "augustus/blog-engine-fires": {
+      "score": 1.0
+    },
+    "augustus/linkedin-content-engine-fires": {
+      "score": 1.0
+    },
+    "augustus/linkedin-content-engine-must-not-fire": {
+      "score": 0.0
+    },
+    "augustus/linkedin-review-fires": {
+      "score": 1.0
+    },
+    "claudius/investment-research-fires": {
+      "score": 0.3333333333333333,
+      "notes": "MEASURED 2026-09-22: 0.333, fires 1 run in 3. Inside the tolerance of the floor at runs=3, so this case cannot go red \u2014 it is coverage that the pointer is reachable at all, not a check. Raise runs here before treating a drop as news."
+    },
     "claudius/meeting-prep-fires": {
+      "score": 1.0
+    },
+    "claudius/meeting-prep-must-not-fire": {
+      "score": 0.0
+    },
+    "claudius/prospect-research-fires": {
+      "score": 1.0
+    },
+    "marcus/agent-inbox-sync-fires": {
+      "score": 1.0
+    },
+    "marcus/post-call-capture-fires": {
+      "score": 1.0
+    },
+    "marcus/weekly-review-fires": {
+      "score": 1.0
+    },
+    "marcus/weekly-review-must-not-fire": {
+      "score": 0.0
+    },
+    "trajan/spec-to-code-enforcement-fires": {
+      "score": 0.3333333333333333,
+      "notes": "MEASURED 2026-09-22: 0.333, fires 1 run in 3. Same standing as claudius/investment-research-fires: recorded, not falsifiable at runs=3."
+    },
+    "trajan/systematic-debugging-fires": {
+      "score": 1.0
+    },
+    "trajan/systematic-debugging-must-not-fire": {
+      "score": 0.0
+    },
+    "trajan/test-driven-development-fires": {
+      "score": 0.0,
+      "notes": "MEASURED 2026-09-22: 0.000 \u2014 the skill NEVER fired, 3 runs of 3, `Skill called 0x`, reproduced in a second run of the case alone. This is the T3.3 class caught in the act, not a broken case: the prompt (\"Implement a retry wrapper around the HTTP client.\") is the canonical trigger the pointer's own description names. Recorded as measured rather than tuned until green \u2014 tuning the prompt would measure the prompt. Fixing it is the vault's 08_skills/ text, out of scope for T8.4."
+    },
+    "trajan/verification-before-completion-fires": {
       "score": 1.0
     }
   }

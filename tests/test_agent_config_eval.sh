@@ -28,6 +28,13 @@ FIXTURES="$REPO_ROOT/tests/fixtures/agent-config-eval"
 RUNNER="$REPO_ROOT/bin/agent_config_eval.sh"
 COMPARE="$REPO_ROOT/bin/agent_config_eval_compare.py"
 CREDENTIALS="${AGENT_CONFIG_EVAL_CREDENTIALS:-$HOME/.claude/.credentials.json}"
+# The suffix that makes a case a CEILING — "does this skill stay out of the way" rather than
+# "does it still fire". Read out of the comparator rather than restated here: it is one
+# convention with two readers, and a second copy is a convention that can drift silently into
+# a gate asserting the opposite of what the verdict does.
+CEILING="$(python3 -c "
+import pathlib, re
+print(re.search(r'CEILING_SUFFIX = \"([^\"]+)\"', pathlib.Path('$COMPARE').read_text()).group(1))")"
 
 # shellcheck source=tests/box_precondition.sh
 . "$REPO_ROOT/tests/box_precondition.sh"
@@ -86,6 +93,28 @@ malformed_cases() {
     grep -q '^ *- *name:' "$f" || { echo "$owner/$name: no named grader"; continue; }
     grep -q '^ *type:' "$f" || echo "$owner/$name: a grader carries no type"
   done < <(case_pairs)
+}
+
+# Pointers with no `<pointer>-fires` case, one per line.
+uncovered_pointers() {
+  local d owner p
+  for d in "$SKILLS_ROOT"/*/skills/*/; do
+    [ -d "$d" ] || continue
+    p="$(basename "$d")"
+    owner="$(basename "$(dirname "$(dirname "$d")")")"
+    [ -f "$SKILLS_ROOT/$owner/evals/$p-fires/case.yaml" ] || echo "$owner/$p: no $p-fires case"
+  done
+}
+
+# Owners that offer pointers but no case asserting a skill STAYS OUT of an off-trigger ask.
+owners_without_ceiling() {
+  local d owner
+  for d in "$SKILLS_ROOT"/*/skills/; do
+    [ -d "$d" ] || continue
+    owner="$(basename "$(dirname "$d")")"
+    compgen -G "$SKILLS_ROOT/$owner/evals/*$CEILING/case.yaml" >/dev/null \
+      || echo "$owner: no *$CEILING case"
+  done
 }
 
 unjoined_cases() {
@@ -170,6 +199,19 @@ assert "--record writes the score it just measured" \
 import json,sys
 b=json.load(open('$TMP/scratch-baseline.json'))
 sys.exit(0 if b['cases']['claudius/meeting-prep-fires']['score']==1.0 else 1)\""
+# A notes is the one thing in this file --record cannot remeasure, and the gate above makes
+# an unfalsifiable case legal only while it carries one. Dropping it on re-record would turn
+# every re-record into a red the re-recorder "fixes" by rewriting the note from memory.
+cp "$FIXTURES/baseline.json" "$TMP/rec-baseline.json"
+assert "--record carries a human-written notes forward" \
+       "python3 -c \"
+import json,pathlib
+p=pathlib.Path('$TMP/rec-baseline.json')
+b=json.loads(p.read_text()); k=next(iter(b['cases']))
+b['cases'][k]['notes']='measured, and not falsifiable at runs=3'
+p.write_text(json.dumps(b))\" \
+        && python3 '$COMPARE' '$FIXTURES/result-equal.json' --baseline '$TMP/rec-baseline.json' --record >/dev/null \
+        && grep -q 'not falsifiable at runs=3' '$TMP/rec-baseline.json'"
 assert "--record prints the scores it froze, not just a count" \
        "grep -q 'case/claudius/meeting-prep-fires|PASS|1.000|recorded' '$TMP/record.psv'"
 
@@ -219,6 +261,13 @@ assert "a change under .claude/briefs/ does not" \
        "scratch_repo_says .claude/briefs/x.md | grep -q 'no watched path changed'"
 assert "a change to an unrelated file does not" \
        "scratch_repo_says docs/runbook.md | grep -q 'no watched path changed'"
+# Scoping is what keeps the gate's cost proportional to the change, and it may only ever
+# narrow what is MEASURED: the comparator scopes MISSING to the owners in the results, so a
+# partial run stays honest. A shared path widens it back to everyone.
+assert "a change under one owner's tree is scored against that owner alone" \
+       "[ \"\$(scratch_repo_says skills/claudius/skills/x/SKILL.md | sed -n 's/^would evaluate: //p')\" = claudius ]"
+assert "a change to a shared path scores every owner with cases" \
+       "[ \"\$(scratch_repo_says CLAUDE.md | sed -n 's/^would evaluate: //p')\" = \"\$(case_pairs | cut -f1 | sort -u | xargs)\" ]"
 
 echo "8. the runner refuses a temp root inside \$HOME"   # (::temp-root-outside-home)
 # Not a warning: a run under $HOME loads ~/CLAUDE.md and the shared memory pool into every
@@ -231,17 +280,78 @@ assert "a TMPDIR under \$HOME is exit 2 — a runner error, never a verdict abou
        "[ '$home_code' = 2 ]"
 assert "and it says why, naming \$HOME" "grep -q 'is inside .HOME' '$TMP/home.out'"
 
+echo "9. a ceiling case flips the verdict"   # (::ceiling-case-flips-the-verdict)
+# A `…-must-not-fire` case asks the opposite question, so the floor rule reads its failure as
+# good news: baselined at 0.000, a run where the skill fired every time scores 1.000 and
+# prints IMPROVED. The direction rides on the case NAME because --record rewrites the
+# baseline wholesale — a field in that file would not survive the first re-record.
+ceiling_baseline="$TMP/ceiling-baseline.json"
+cat >"$ceiling_baseline" <<'JSON'
+{"measured": "2026-09-20", "claude": "2.1.278", "model": "claude-opus-5", "runs": 3,
+ "tolerance": 0.1, "cases": {"claudius/meeting-prep-must-not-fire": {"score": 0.0}}}
+JSON
+run_ceiling() {
+  python3 "$COMPARE" "$FIXTURES/result-ceiling-$1.json" --baseline "$ceiling_baseline" \
+          >"$TMP/ceiling-$1.psv" 2>&1
+  echo $?
+}
+assert "a ceiling case that stayed quiet passes" "[ \"\$(run_ceiling clean)\" = 0 ]"
+assert "a ceiling case that fired is RED, not IMPROVED" "[ \"\$(run_ceiling fired)\" = 1 ]"
+assert "the red row says OVERFIRED and names the case" \
+       "grep -q 'meeting-prep-must-not-fire|FAIL|1.000|OVERFIRED' '$TMP/ceiling-fired.psv'"
+assert "and it is never reported as an improvement" \
+       "! grep -q IMPROVED '$TMP/ceiling-fired.psv'"
+
+echo "10. every pointer is covered, in both directions"   # (::every-pointer-has-eval)
+# Group 2 proves every case names a real pointer. This is the other direction, and it is the
+# one that decides what the gate can see at all: a pointer with no case is a skill this suite
+# would never notice going quiet — which is exactly the T3.3 blind spot, one pointer at a time.
+assert "every pointer has a <pointer>-fires case" \
+       "[ -z \"\$(uncovered_pointers)\" ] || { uncovered_pointers; false; }"
+assert "every owner offering pointers also asserts one STAYS OUT of an off-trigger ask" \
+       "[ -z \"\$(owners_without_ceiling)\" ] || { owners_without_ceiling; false; }"
+# A ceiling recorded above zero is a pass mark that permits the misfire it exists to catch.
+assert "every ceiling case is baselined at 0.000" \
+       "python3 -c \"
+import json,sys
+cases=json.load(open('$BASELINE'))['cases']
+bad=[k for k,v in cases.items() if k.endswith('$CEILING') and v['score'] != 0.0]
+if bad: print('\\n'.join(bad))
+sys.exit(1 if bad else 0)\""
+
+echo "11. every recorded case can still go red"   # (::baselined-case-can-go-red)
+# THE FAIL-OPEN THIS SUITE IS MOST LIKELY TO GROW. A verdict is `score < baseline - tolerance`,
+# so at runs=3 (tolerance 1/3) a case baselined at 0.333 or 0.000 has nothing below it to fall
+# to: it is recorded, it is green every week, and no change to the fleet can ever make it red.
+# Three of the seventeen were in that state the day they were measured — two firing 1 run in 3
+# and one (trajan/test-driven-development-fires) never firing at all, which is the T3.3 class
+# caught in the act. That is a finding to record, not a case to tune until it passes, so the
+# rule is not "must be falsifiable" but "must SAY so": a `notes` on the baseline entry. The
+# comparator carries notes across --record for exactly this reason.
+assert "an unfalsifiable case carries a notes saying why" \
+       "python3 -c \"
+import json,sys
+b=json.load(open('$BASELINE'))
+tol=float(b['tolerance']); bad=[]
+for key,v in sorted(b['cases'].items()):
+    score=float(v['score'])
+    room = (1.0 - score) if key.endswith('$CEILING') else score
+    if room <= tol + 1e-9 and not v.get('notes'):
+        bad.append(f'{key}: {score:.3f} leaves no room outside a tolerance of {tol:.3f}, and no notes')
+if bad: print('\\n'.join(bad))
+sys.exit(1 if bad else 0)\""
+
 # --- live groups: a real credential, spent only when the answer could have changed ---------
 LIVE="${AGENT_CONFIG_EVAL_LIVE:-}"
 if [ "$LIVE" = "0" ]; then
-  echo "9. live eval — opted out (AGENT_CONFIG_EVAL_LIVE=0)"
+  echo "12. live eval — opted out (AGENT_CONFIG_EVAL_LIVE=0)"
 elif box_only_with 'the claude.ai login the live eval spends' "$CREDENTIALS"; then
   if [ "$LIVE" = "1" ] || [ -n "$("$RUNNER" --changed-since "${AGENT_CONFIG_EVAL_BASE:-origin/main}" --dry-run 2>/dev/null | grep 'would evaluate')" ]; then
-    echo "9. the live tree still fires its skills"   # (::live-eval-clean)
+    echo "12. the live tree still fires its skills"   # (::live-eval-clean)
     assert "a clean run of the real tree is exit 0 against the real baseline" \
            "'$RUNNER' --quiet"
     if [ "$LIVE" = "1" ]; then
-      echo "10. an unreachable skill tree turns the suite red"   # (::broken-skill-turns-red)
+      echo "13. an unreachable skill tree turns the suite red"   # (::broken-skill-turns-red)
       # The negative control, opt-in because it doubles the run's cost. It replays the trap
       # tests/test_pointer_skills.sh:17-19 measured: a skill directory at the plugin root is
       # not discovered, silently. --self-check requires that red and then requires the clean
@@ -250,7 +360,7 @@ elif box_only_with 'the claude.ai login the live eval spends' "$CREDENTIALS"; th
              "'$RUNNER' --self-check --quiet"
     fi
   else
-    echo "9. live eval — no watched path changed since ${AGENT_CONFIG_EVAL_BASE:-origin/main}, not spending a run"
+    echo "12. live eval — no watched path changed since ${AGENT_CONFIG_EVAL_BASE:-origin/main}, not spending a run"
   fi
 fi
 
