@@ -717,6 +717,22 @@ buzz-team/verify-fleet.sh gates 14 and 15 read the live processes.
 """
 
 [[suite]]
+path    = "tests/test_review_rubric.sh"
+owner   = "fleet"
+asserts = [
+  "rubric-adopted",             # buzz-team/aurelian-calibration.md is a repo file with one MANIFEST.toml [[adopted]] entry (read_by and why non-empty) and no [[excluded]] row left behind
+  "rubric-version-line",        # the repo copy carries the `**version: N**` line verify-fleet.sh gate 12 greps on the box, and the H1's `— vN` names the same N — the pair a bump moves together
+]
+why_no_workflow = """
+The calibration pack is the review policy behind every ship-dev-plan.js land and the
+instruction aurelian reads for every verdict (T8.3). No timer runs it and no manifest row
+can claim it: the land step is a Workflow-tool script, not a unit, and aurelian's own row
+is a runtime. Byte-identity with the deployed copy is bin/check_deploy_drift.sh's; the
+version gate on the box is buzz-team/verify-fleet.sh gate 12; this suite reads SOURCE and
+runs anywhere. Each check is proven to bite on a mutated copy before it is credited.
+"""
+
+[[suite]]
 path    = "tests/test_adapter_versions.sh"
 owner   = "fleet"
 asserts = [
