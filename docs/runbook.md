@@ -201,21 +201,39 @@ a baselined case is gone from the tree. `UNBASELINED` means a case landed withou
 Exit **2** is none of these — it is a runner error (a bad flag, no credential, a `TMPDIR`
 inside `$HOME`) and never a verdict about the fleet.
 
+**`REPORTED, not gated` is a row that cannot go red, and it is not a mute button.** A baseline
+entry carrying `gate: false` is still measured, still scored, still printed with its movement
+and still delivered — it simply cannot fail the run. Four cases carry it as of 2026-09-22:
+three that swing by a whole tolerance step between identical runs of an unchanged tree, and
+`trajan/test-driven-development-fires`, which does not fire at all. Every one must carry a
+`notes` saying why, and `tests/test_agent_config_eval.sh::baselined-case-can-go-red` also
+refuses a case recorded inside the tolerance of its own floor or ceiling — where nothing is
+left to fall to — unless it declares itself this way. Read those rows; a skill that stopped
+firing entirely will sit in one quietly.
+
 **Re-recording is a deliberate commit.** `--record` is the only writer of the baseline, and no
 scheduled run passes it. A model rollout that moves every score is read first and re-recorded
 by hand with a message that says why; a job that bumps its own pass mark is measuring nothing.
-If the weekly run proves noisy, raise `runs` in the case file — never the tolerance, which
-defaults to `1/runs` and is sized to absorb exactly one flaky run of three.
+If the weekly run proves noisy, the two honest levers are raising `runs` in the case file (at
+roughly four times the cost per run) and marking the specific case `gate: false` with a
+`notes`. **Never the tolerance**, which defaults to `1/runs`, is sized to absorb exactly one
+flaky run of three, and is stored as an exact float on purpose — rounding it to six places
+puts `base - tolerance` at 3.3e-7 instead of 0.0 and makes that one absorbed run red anyway.
 
-**The negative control is not optional and not decorative.** `--self-check` re-runs the first
-owner with every skill directory moved from `<plugin>/skills/<name>/` to `<plugin>/<name>/` —
+**The negative control is not optional and not decorative.** `--self-check` re-runs a single
+`-fires` case with every skill directory moved from `<plugin>/skills/<name>/` to `<plugin>/<name>/` —
 the trap `tests/test_pointer_skills.sh:17-19` measured, where a skill at a plugin root is not
 discovered with no warning and no error — and requires that run to be **red** before the clean
 run's green is trusted. It scores 0.000. A behavioural gate that has never been seen to fail
 has proven nothing.
 
-**What it costs.** ~4s and ~$0.081 a run on `claude-opus-5` at `max_turns: 2`, so ~$0.24 a
-case at `runs: 3`. The eval always runs on a **copy outside `$HOME`**: `claude plugin eval`
+**What it costs.** MEASURED 2026-09-22: ~4s and ~$0.081 a run on `claude-opus-5` at
+`max_turns: 2`, so ~$0.24 a case at `runs: 3` and **~$4.1 for the full 17-case tree** at
+`-j 4`, about 5 minutes wall. The weekly timer adds one case for the control, not one owner:
+**~$4.4**. The change-gated verify group costs whatever the branch touched — one owner's tree
+is ~$1. `AGENT_CONFIG_EVAL_LIVE=1` runs the whole tree plus the control through a single
+`--self-check`; groups 12 and 13 deliberately share that one invocation, because the control
+already contains the clean run a separate group-12 pass would buy again. The eval always runs on a **copy outside `$HOME`**: `claude plugin eval`
 writes `<plugin>/evals/results/`, which auto-sync would commit within 15 minutes, and the eval
 child's cwd decides whether `~/CLAUDE.md` (46 KB) and the shared memory pool load into every
 run. A `TMPDIR` inside `$HOME` is refused rather than warned about — the wrong measurement

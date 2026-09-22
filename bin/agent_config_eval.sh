@@ -153,6 +153,24 @@ if [ "$DRY_RUN" -eq 1 ]; then
   exit 0
 fi
 
+TMPROOT="$(mktemp -d "${TMPDIR:-/tmp}/agent-config-eval.XXXXXX")" || exit 2
+trap 'rm -rf "$TMPROOT"' EXIT
+# See note 2 in the header. This is the check that keeps the measurement honest, so it is a
+# refusal and not a warning — a run under $HOME produces a number, and the number is wrong.
+#
+# IT RUNS BEFORE THE LOCK, AND THAT ORDER IS THE POINT. The lock's answer is `exit 0, skipping`
+# — correct for a run that is merely late, and fail-open for one that could never have been
+# valid: a unit with a bad TMPDIR would read as a clean skip for as long as anything else held
+# the lock, which on a box where nine runners and five agents share one login is not a rare
+# window. Configuration is refused on its own terms; scheduling is decided afterwards. Found
+# 2026-09-22 by running two suites at once and watching the $HOME refusal turn into an exit 0.
+case "$(readlink -f "$TMPROOT")/" in
+  "$HOME"/*)
+    echo "agent_config_eval: temp root $TMPROOT is inside \$HOME — every eval child would" >&2
+    echo "                   load ~/CLAUDE.md and the shared memory pool. Unset TMPDIR." >&2
+    exit 2 ;;
+esac
+
 # Non-blocking, like fleet_eval: every case run is a full `claude` child on the same login as
 # five Buzz agents and nine runners, so two overlapping suites are a rate-limit collision and
 # not extra information.
@@ -161,17 +179,6 @@ if ! flock -n 9; then
   echo "agent_config_eval: another run holds $LOCK — skipping" >&2
   exit 0
 fi
-
-TMPROOT="$(mktemp -d "${TMPDIR:-/tmp}/agent-config-eval.XXXXXX")" || exit 2
-# See note 2 in the header. This is the check that keeps the measurement honest, so it is a
-# refusal and not a warning — a run under $HOME produces a number, and the number is wrong.
-case "$(readlink -f "$TMPROOT")/" in
-  "$HOME"/*)
-    echo "agent_config_eval: temp root $TMPROOT is inside \$HOME — every eval child would" >&2
-    echo "                   load ~/CLAUDE.md and the shared memory pool. Unset TMPDIR." >&2
-    rm -rf "$TMPROOT"; exit 2 ;;
-esac
-trap 'rm -rf "$TMPROOT"' EXIT
 
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 RUN_TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"

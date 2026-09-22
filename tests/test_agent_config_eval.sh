@@ -331,6 +331,23 @@ rmdir "$HOME/.cache/agent-config-eval-test" 2>/dev/null
 assert "a TMPDIR under \$HOME is exit 2 — a runner error, never a verdict about the fleet" \
        "[ '$home_code' = 2 ]"
 assert "and it says why, naming \$HOME" "grep -q 'is inside .HOME' '$TMP/home.out'"
+# A CONTENDED LOCK MUST NOT DOWNGRADE THAT REFUSAL TO A SKIP. The lock answers `exit 0,
+# skipping`, which is right for a run that is merely late and fail-open for one that could
+# never have been valid — a unit with a bad TMPDIR would read as clean for as long as anything
+# else held the lock. Found 2026-09-22 by running two suites at once: this assertion failed,
+# and the defect it found was the runner's ordering, not the test's. Configuration is refused
+# on its own terms; scheduling is decided afterwards.
+held="$TMP/held.lock"
+exec 8>"$held"
+flock -n 8 || { echo "  FAIL: could not take the scratch lock"; fail=$((fail + 1)); }
+mkdir -p "$HOME/.cache/agent-config-eval-test"
+TMPDIR="$HOME/.cache/agent-config-eval-test" AGENT_CONFIG_EVAL_LOCK="$held" \
+  "$RUNNER" --owner claudius >"$TMP/home-locked.out" 2>&1
+locked_code=$?
+rmdir "$HOME/.cache/agent-config-eval-test" 2>/dev/null
+exec 8>&-
+assert "the \$HOME refusal still wins while another run holds the lock" \
+       "[ '$locked_code' = 2 ]"
 
 echo "9. a ceiling case flips the verdict"   # (::ceiling-case-flips-the-verdict)
 # A `…-must-not-fire` case asks the opposite question, so the floor rule reads its failure as

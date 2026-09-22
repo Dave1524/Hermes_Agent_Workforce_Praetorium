@@ -46,7 +46,7 @@
     },
     "trajan/spec-to-code-enforcement-fires": {
       "score": 0.3333333333333333,
-      "notes": "MEASURED 2026-09-22: 0.333, 0.333, 0.000 across three full runs of the unchanged tree. Same standing as claudius/investment-research-fires \u2014 reported, not gated.",
+      "notes": "MEASURED 2026-09-22: 0.333, 0.333, 0.000 across three full runs of the unchanged tree, and 0.667 on a fourth the same day. Observed spread is two full tolerance steps wide (0.000-0.667) with nothing changing between runs, which is the widest of the four reported cases. Same standing as claudius/investment-research-fires - reported, not gated.",
       "gate": false
     },
     "trajan/systematic-debugging-fires": {
