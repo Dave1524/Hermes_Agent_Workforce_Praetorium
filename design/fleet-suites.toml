@@ -797,3 +797,22 @@ why_no_workflow = """
 It scans the whole gate set for two retired runtimes. A residue claim over every file cannot
 be credited to any one workflow.
 """
+
+# The box's `gh` identity (T8.2). Nothing schedules it: bin/gh_app.sh is what the
+# ship-dev-plan land phase and the Control Room's proposal PRs call so a PR is opened and
+# merged by praetorium-vault-writer[bot] and approved by Dave1524 — one login cannot do both.
+[[suite]]
+path    = "tests/test_gh_app.sh"
+owner   = "fleet"
+asserts = [
+  "argv-passthrough",         # every argument reaches gh in order, the empty one included
+  "token-env-only",           # the minted token is in gh's environment, never its argv
+  "token-not-printed",        # and never on the wrapper's stdout or stderr
+  "empty-token-refuses",      # a helper that mints nothing is exit 2 before gh runs
+  "missing-helper-refuses",   # so is a helper path that does not exist
+]
+why_no_workflow = """
+It asserts a credential seam, not a job's output: the token must reach exactly one process
+and no file, log or argv. That property changes only when someone edits the wrapper, which is
+when bin/verify.sh runs this.
+"""
