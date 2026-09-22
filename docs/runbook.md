@@ -224,6 +224,31 @@ rsync -a ~/dev/agent-workforce/profiles/ ~/agent-workforce/profiles/
 rsync -a ~/dev/agent-workforce/docs/ ~/agent-workforce/docs/
 ```
 
+## Ship rails hook (T8.1)
+
+`.claude/settings.json` runs `.claude/hooks/ship_rails.py` as a `PreToolUse` hook on every
+`Bash`, `Write`, `Edit` and `MultiEdit` call, so the ship-dev-plan `RAILS` that were prose are
+refusals: editing an **existing** test (`tests/**` on `origin/main`, falling back to `main`,
+then `HEAD`), `bin/verify.sh`, `bin/check_deploy_drift.sh` or the hook itself — by tool or by a
+Bash write shape (redirect, `sed -i`, `tee`, `mv`, `rm`, `cp` onto it, `git checkout --`,
+`bash -c "…"`); `--no-verify` and `git commit -n`; `git add -A` / `--all`; `bin/deploy --prune`;
+and `systemctl start|stop|restart|enable|disable|…`. A refusal is one stderr line naming the
+rail; the helper's docstring and `tests/test_ship_rails.py` are the full table.
+
+Not refused, on purpose: a test file new on the branch (TDD on the suite you are writing),
+`bin/deploy` and `bin/deploy --dry-run --prune` (the rsync preview), `git fetch --prune`,
+`systemctl show|status|is-active|list-unit-files|daemon-reload`, and every command the ship and
+land prompts issue on a clean task (`rails-ship-dev-plan-pass-through` pins that list).
+
+**Override, edit rails only:** `SHIP_RAILS_OVERRIDE="<reason>" claude` in the launching shell
+lifts the test and gate-script rails and appends one line per lifted edit to
+`.git/ship_rails_overrides.log` (the main `.git/` even from a worktree); an override whose
+record cannot be written is refused. The command rails ignore it — a command Dave wants run is
+run from a terminal. Consequence: a `t.deploy` land step's `sudo systemctl restart` now stops at
+the systemctl rail and is Dave's hand. Measured 2026-09-22: the hook fired in the very session
+that wired it, on the next `Bash` call — there is no launch boundary to hide behind, and the
+auto-sync sweep that lands a new suite on `origin/main` makes it an *existing* test mid-task.
+
 ## Control Room (T5.3)
 
 **URL:** `http://praetorium:8787/` (MagicDNS) or `http://100.86.82.16:8787/` — from the tailnet

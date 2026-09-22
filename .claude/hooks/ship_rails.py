@@ -145,9 +145,9 @@ def redirect_targets(seg: list[str]) -> list[str]:
     targets = []
     for index, token in enumerate(seg):
         match = REDIRECT.match(token)
-        rest = token[match.end():] if match else "&"
-        if rest.startswith("&"):
+        if not match or token[match.end():].startswith("&"):
             continue
+        rest = token[match.end():]
         targets.append(rest or (seg[index + 1] if index + 1 < len(seg) else ""))
     return targets
 

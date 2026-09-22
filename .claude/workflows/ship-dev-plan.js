@@ -72,7 +72,8 @@ const RAILS = `Rails, non-negotiable: never restart, stop, enable or disable any
 never run buzz agents / buzz-admin generate-key; never read ~/.ssh, ~/.config/agent-workforce, ~/.config/buzz-agents,
 ~/.confidential.img, ~/ENCRYPTION_RECOVERY.md; never pass --no-verify; never run bin/deploy --prune; never git add -A;
 never edit bin/verify.sh, bin/check_deploy_drift.sh or any existing test to make something green.
-Always run bash bin/verify.sh with output redirected to a file, then read it with grep/tail; it is 200 KB.`
+Always run bash bin/verify.sh with output redirected to a file, then read it with grep/tail; it is 200 KB.
+The first four rails and the test/gate-script rail are also enforced by the PreToolUse hook in .claude/settings.json (T8.1); a refusal names the rail — report it, do not route around it.`
 
 function shipPrompt(id, t, baseline) {
   const gateLine = t.shipsRed
