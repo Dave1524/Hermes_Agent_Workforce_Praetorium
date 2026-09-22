@@ -972,6 +972,31 @@ Because git rewrites `FETCH_HEAD` even when a fetch fails, the guard keeps its o
 Run `~/agent-workforce/bin/backup_config.sh`, then pull the tarball to the Mac:
 `scp praetorium:~/agent-workforce/backups/<latest>.tar.gz ~/backups/praetorium/`
 
+## GitHub identity — the box is the App (T8.2)
+
+Two GitHub identities touch this repo and they must stay split: **Dave1524** approves, the
+GitHub App **`praetorium-vault-writer`** authors, pushes and merges. GitHub refuses
+self-approval, so a PR opened by the same login that merges it can never show an approver —
+which is what `main` protection requires. The App is installed on this repo and the vault
+(`GET /installation/repositories` → 2, MEASURED 2026-09-22) with `contents: write`,
+`pull_requests: write`; its config is `~/.config/agent-workforce/vault_app.env` + `keys/vault_app.pem`
+(the name predates the second repo).
+
+- **git** pushes as the App through the repo-local credential helper pair, the same two
+  lines the vault clone carries. Not in git (`.git/config`); set once per clone, and a
+  worktree inherits it:
+  ```
+  git config --local credential.https://github.com.helper ''
+  git config --local --add credential.https://github.com.helper '!python3 /home/dave/.local/bin/github_app_credential.py'
+  ```
+  The empty first line clears the global `gh auth git-credential` helper, which would
+  otherwise answer first as Dave1524. Check: `git config --local --get-all credential.https://github.com.helper`.
+- **gh** runs as the App through `bin/gh_app.sh <gh args>`: it mints an installation token
+  through the same helper and hands it to `gh` as `GH_TOKEN`, in the environment only — never
+  argv, never stdout. Empty or missing helper is exit 2 before `gh` runs
+  (`tests/test_gh_app.sh`). A bare `gh` stays Dave1524, which is right for reading and wrong
+  for opening or merging a PR.
+
 ## Rebuild checklist (fresh Ubuntu → working box)
 
 1. Install Ubuntu Server LTS headless; create user `dave`; enable SSH (NUC-02/03 pattern).
