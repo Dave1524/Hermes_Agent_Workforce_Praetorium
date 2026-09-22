@@ -182,6 +182,29 @@ assert "an improvement is reported and does not rewrite the baseline" \
        "grep -q 'IMPROVED' '$TMP/improve.psv' && \
         diff -q '$FIXTURES/baseline.json' '$FIXTURES/baseline.json' >/dev/null"
 
+# gate:false is the field that decides whether a red row can exist at all, so it is asserted
+# on the same fixture that produces a REGRESSION without it.
+gate_false_baseline="$TMP/gate-false-baseline.json"
+python3 -c "
+import json,pathlib
+b=json.loads(pathlib.Path('$FIXTURES/baseline.json').read_text())
+b['cases']['claudius/meeting-prep-fires']['gate']=False
+b['cases']['claudius/meeting-prep-fires']['notes']='measured, and too noisy at runs=3'
+pathlib.Path('$gate_false_baseline').write_text(json.dumps(b))"
+python3 "$COMPARE" "$FIXTURES/result-drop.json" --baseline "$gate_false_baseline" >"$TMP/gate-false.psv" 2>&1
+gate_false_code=$?   # captured here, not inside assert, which has a $? of its own
+assert "the same drop that is a REGRESSION is not red once gate:false is declared" \
+       "[ '$gate_false_code' = 0 ]"
+assert "and the row still reports the score and says it was not gated" \
+       "grep -q 'meeting-prep-fires|PASS|0.333|REPORTED, not gated' '$TMP/gate-false.psv'"
+assert "--record carries gate:false forward, not just the notes" \
+       "python3 '$COMPARE' '$FIXTURES/result-equal.json' --baseline '$gate_false_baseline' --record >/dev/null \
+        && python3 -c \"
+import json,sys
+sys.exit(0 if json.load(open('$gate_false_baseline'))['cases']['claudius/meeting-prep-fires']['gate'] is False else 1)\""
+# The tolerance a --record writes must not be prettier than the one it measured: 1/3 stored as
+# 0.333333 puts `base - tolerance` at 3.3e-7 instead of 0.0, and the one flaky run of three
+# the tolerance exists to absorb comes back REGRESSION. Measured live, 2026-09-22.
 echo "5. --record is the only writer of a baseline"   # (::compare-record-writes)
 cp "$FIXTURES/baseline.json" "$TMP/scratch-baseline.json"
 python3 "$COMPARE" "$FIXTURES/result-improve.json" --baseline "$TMP/scratch-baseline.json" >/dev/null 2>&1
@@ -219,6 +242,25 @@ echo "6. the tolerance absorbs exactly one flaky run of three"   # (::compare-to
 # 2/3 computes as 0.6666666666666666 and 1 - 1/3 as 0.6666666666666667, so a bare comparison
 # makes ONE flaky run red — the tolerance absorbing nothing at precisely the value it is
 # sized for. This group is the reason the comparator slackens every comparison by an epsilon.
+# $1 = baseline path, $2 = measured score, $3 = the score to baseline it at. Exit code only.
+quantised_against() {
+  python3 - "$1" "$2" "$3" "$TMP/qa-result.json" <<'PY'
+import json, pathlib, sys
+baseline, score, base, result = pathlib.Path(sys.argv[1]), float(sys.argv[2]), float(sys.argv[3]), pathlib.Path(sys.argv[4])
+b = json.loads(baseline.read_text())
+b["cases"] = {"claudius/c-fires": {"score": base}}
+baseline.write_text(json.dumps(b))
+result.write_text(json.dumps({
+    "claudeVersion": "2.1.278",
+    "suite": {"root": "/tmp/x/claudius", "modelOverride": "claude-opus-5",
+              "plugins": [{"name": "praetorium-claudius"}]},
+    "cases": [{"name": "c-fires", "aggregates": {"score": score},
+               "arms": {"with": [{"score": 1}, {"score": 1}, {"score": 0}]}}]}))
+PY
+  python3 "$COMPARE" "$TMP/qa-result.json" --baseline "$1" >"$TMP/qa.psv" 2>&1
+  echo $?
+}
+
 quantised() {
   python3 - "$TMP" "$1" <<'PY'
 import json, pathlib, sys
@@ -238,6 +280,16 @@ PY
 }
 assert "one flaky run of three is absorbed"  "[ \"\$(quantised 0.6666666666666666)\" = 0 ]"
 assert "two flaky runs of three are red"     "[ \"\$(quantised 0.3333333333333333)\" = 1 ]"
+
+# And the tolerance a --record WRITES has to survive the same arithmetic.
+python3 "$COMPARE" "$FIXTURES/result-equal.json" --baseline "$TMP/tol-baseline.json" --record >/dev/null 2>&1
+assert "a recorded tolerance is exact, not rounded into a false red" \
+       "python3 -c \"
+import json,sys
+sys.exit(0 if json.load(open('$TMP/tol-baseline.json'))['tolerance'] == 1/3 else 1)\""
+assert "so a case baselined at 1/3 that scores 0 is absorbed, not called a REGRESSION" \
+       "[ \"\$(quantised_against '$TMP/tol-baseline.json' 0.0 0.3333333333333333)\" = 0 ]"
+
 
 echo "7. the change gate watches agent config and not prose"   # (::watched-paths-trigger)
 scratch_repo_says() {
@@ -319,16 +371,15 @@ bad=[k for k,v in cases.items() if k.endswith('$CEILING') and v['score'] != 0.0]
 if bad: print('\\n'.join(bad))
 sys.exit(1 if bad else 0)\""
 
-echo "11. every recorded case can still go red"   # (::baselined-case-can-go-red)
+echo "11. every recorded case either carries a verdict or says it does not"   # (::baselined-case-can-go-red)
 # THE FAIL-OPEN THIS SUITE IS MOST LIKELY TO GROW. A verdict is `score < baseline - tolerance`,
 # so at runs=3 (tolerance 1/3) a case baselined at 0.333 or 0.000 has nothing below it to fall
-# to: it is recorded, it is green every week, and no change to the fleet can ever make it red.
-# Three of the seventeen were in that state the day they were measured — two firing 1 run in 3
-# and one (trajan/test-driven-development-fires) never firing at all, which is the T3.3 class
-# caught in the act. That is a finding to record, not a case to tune until it passes, so the
-# rule is not "must be falsifiable" but "must SAY so": a `notes` on the baseline entry. The
-# comparator carries notes across --record for exactly this reason.
-assert "an unfalsifiable case carries a notes saying why" \
+# to: recorded, green every week, unable to go red for any reason. The mirror is a case that
+# goes red for no reason anyone chose — measured three times over on 2026-09-22, three of the
+# thirteen `-fires` cases swung by a third or more between identical runs of an unchanged tree.
+# Both are silent defects in a gate, and the answer to both is the same: SAY SO. `gate: false`
+# plus a `notes` makes a case report-only, and the comparator carries both across --record.
+assert "a case that cannot carry a verdict declares gate:false and says why" \
        "python3 -c \"
 import json,sys
 b=json.load(open('$BASELINE'))
@@ -336,10 +387,29 @@ tol=float(b['tolerance']); bad=[]
 for key,v in sorted(b['cases'].items()):
     score=float(v['score'])
     room = (1.0 - score) if key.endswith('$CEILING') else score
-    if room <= tol + 1e-9 and not v.get('notes'):
-        bad.append(f'{key}: {score:.3f} leaves no room outside a tolerance of {tol:.3f}, and no notes')
+    if room > tol + 1e-9:
+        continue
+    if v.get('gate') is False and v.get('notes'):
+        continue
+    bad.append(f'{key}: {score:.3f} leaves no room outside a tolerance of {tol:.3f}, and no gate:false + notes')
 if bad: print('\\n'.join(bad))
 sys.exit(1 if bad else 0)\""
+# The other direction: gate:false is a declaration, never a quiet mute. Anything wearing it
+# must say why, and something must still be gated or the suite asserts nothing at all.
+assert "every gate:false carries a notes" \
+       "python3 -c \"
+import json,sys
+c=json.load(open('$BASELINE'))['cases']
+bad=[k for k,v in c.items() if v.get('gate') is False and not v.get('notes')]
+if bad: print('\\n'.join(bad))
+sys.exit(1 if bad else 0)\""
+assert "and most cases are still gated" \
+       "python3 -c \"
+import json,sys
+c=json.load(open('$BASELINE'))['cases']
+gated=[k for k,v in c.items() if v.get('gate') is not False]
+print(f'{len(gated)} of {len(c)} cases carry a verdict')
+sys.exit(0 if len(gated) > len(c) / 2 else 1)\""
 
 # --- live groups: a real credential, spent only when the answer could have changed ---------
 LIVE="${AGENT_CONFIG_EVAL_LIVE:-}"
@@ -347,17 +417,41 @@ if [ "$LIVE" = "0" ]; then
   echo "12. live eval — opted out (AGENT_CONFIG_EVAL_LIVE=0)"
 elif box_only_with 'the claude.ai login the live eval spends' "$CREDENTIALS"; then
   if [ "$LIVE" = "1" ] || [ -n "$("$RUNNER" --changed-since "${AGENT_CONFIG_EVAL_BASE:-origin/main}" --dry-run 2>/dev/null | grep 'would evaluate')" ]; then
-    echo "12. the live tree still fires its skills"   # (::live-eval-clean)
-    assert "a clean run of the real tree is exit 0 against the real baseline" \
-           "'$RUNNER' --quiet"
+    # ONE live invocation answers both groups, and which one it is depends on the mode.
+    #
+    # --self-check ALREADY CONTAINS THE CLEAN RUN. It evaluates the whole tree, then the
+    # one-case broken control, and is exit 0 only when the first was green and the second
+    # red. So asserting group 12 with its own separate run would buy a second full eval —
+    # 51 more model children, ~$4 — for an answer this run already carries. Measured
+    # 2026-09-22: the clean tree is 51 children and the control 3.
+    #
+    # The change-gated mode does not run the control at all, and that is deliberate rather
+    # than thrift: --changed-since scopes to the owners whose trees actually changed, which
+    # is the difference between a ~$1 gate and a ~$4 one on a branch that touched one owner.
+    # The control does not scope — it is a fixed one-case probe of the harness, the same
+    # answer every time — so it belongs to the forced mode and the weekly timer, which is
+    # exactly where systemd/agent-config-eval.service puts it.
     if [ "$LIVE" = "1" ]; then
+      live_out="$TMP/live-self-check.out"
+      "$RUNNER" --self-check >"$live_out" 2>&1
+      live_rc=$?
+      echo "12. the live tree still fires its skills"   # (::live-eval-clean)
+      assert "a clean run of the real tree reports no regression against the real baseline" \
+             "grep -q '^\*\*no regression\*\*' '$live_out'"
+      assert "and not one case row came back FAIL" \
+             "! grep -q '| FAIL |' '$live_out'"
       echo "13. an unreachable skill tree turns the suite red"   # (::broken-skill-turns-red)
-      # The negative control, opt-in because it doubles the run's cost. It replays the trap
-      # tests/test_pointer_skills.sh:17-19 measured: a skill directory at the plugin root is
-      # not discovered, silently. --self-check requires that red and then requires the clean
-      # tree to be green, so a red cannot be the harness having a bad morning.
-      assert "--self-check is exit 0, meaning the broken tree WAS red and the clean one green" \
-             "'$RUNNER' --self-check --quiet"
+      # The negative control replays the trap tests/test_pointer_skills.sh:17-19 measured: a
+      # skill directory at the plugin root is not discovered, silently. Requiring the broken
+      # tree red AND the clean one green in the same run is what stops a red being read as
+      # the harness having a bad morning.
+      assert "the negative control passed — the broken tree WAS red" \
+             "grep -q 'Negative control.*\*\*PASS\*\*' '$live_out'"
+      assert "and --self-check is exit 0 overall" "[ '$live_rc' = 0 ]"
+    else
+      echo "12. the live tree still fires its skills"   # (::live-eval-clean)
+      assert "a clean run of the changed owners is exit 0 against the real baseline" \
+             "'$RUNNER' --quiet --changed-since '${AGENT_CONFIG_EVAL_BASE:-origin/main}'"
     fi
   else
     echo "12. live eval — no watched path changed since ${AGENT_CONFIG_EVAL_BASE:-origin/main}, not spending a run"

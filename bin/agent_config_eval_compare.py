@@ -43,6 +43,18 @@ it is the key.
   OVERFIRED     a ceiling case rose above its recorded score.               red
   QUIETER       a ceiling case fell below it.                               reported
 
+`gate: false` ON A BASELINE ENTRY MAKES A CASE REPORT-ONLY, AND IT IS NOT A MUTE BUTTON. Some
+skills fire reproducibly and some do not, and at runs=3 the difference is not a matter of
+opinion: measured three times over on 2026-09-22, nine of the thirteen `-fires` cases scored
+1.000 every run and three swung by a third or more between identical runs of an unchanged
+tree — one of them 1.000, 1.000, 0.333, which the floor rule correctly called a REGRESSION and
+which was noise. A suite that goes red for reasons nobody chose is muted within a week, and
+the honest alternative to muting the whole thing is to say per case which ones carry a
+verdict. A `gate: false` case is still measured, still printed with its score and its
+movement, and still delivered in the scorecard; it simply cannot fail the run. Raising `runs`
+until those cases are stable is the other answer and costs about four times as much per run —
+this one is reversible by deleting a line.
+
 THE TOLERANCE IS 1/runs, AND THE EPSILON UNDER IT IS NOT DECORATION. At runs=3 a score is
 quantised to 0, 1/3, 2/3 or 1, so one flaky run of three IS a 1/3 drop and the tolerance
 exists to absorb exactly one. But 2/3 computes as 0.6666666666666666 while 1 - 1/3 computes
@@ -133,6 +145,13 @@ def main():
             previous = (json.loads(pathlib.Path(args.baseline).read_text()).get("cases") or {})
         except (OSError, ValueError):
             pass
+
+        def annotations(key):
+            kept = {}
+            for field in ("gate", "notes"):
+                if field in (previous.get(key) or {}):
+                    kept[field] = previous[key][field]
+            return kept
         baseline = {
             "_comment": (
                 "Recorded by bin/agent_config_eval.sh --record. A score here is the measured "
@@ -144,12 +163,14 @@ def main():
             "claude": sorted(versions)[0] if versions else "",
             "model": sorted(models)[0] if models else "",
             "runs": runs,
-            "tolerance": round(tolerance, 6),
-            "cases": {
-                k: ({"score": v, "notes": previous[k]["notes"]}
-                    if (previous.get(k) or {}).get("notes") else {"score": v})
-                for k, v in sorted(measured.items())
-            },
+            # NOT round(…, 6). 1/3 rounded to 0.333333 leaves `base - tolerance` at 3.3e-7
+            # instead of 0.0, which is 333x the epsilon below — so a case baselined at 1/3 and
+            # measured at 0.000, exactly the one flaky run the tolerance is sized to absorb,
+            # came back REGRESSION. Measured live 2026-09-22 on
+            # claudius/investment-research-fires. The prettier number defeated the guard the
+            # docstring above spends a paragraph on.
+            "tolerance": tolerance,
+            "cases": {k: {"score": v, **annotations(k)} for k, v in sorted(measured.items())},
         }
         pathlib.Path(args.baseline).write_text(json.dumps(baseline, indent=2) + "\n")
         # A --record run that printed only "recorded N cases" would hide the scores it just
@@ -192,6 +213,11 @@ def main():
         base = float(base)
         rose = score > base + tolerance + EPS
         fell = score + EPS < base - tolerance
+        if (base_cases[key] or {}).get("gate") is False:
+            moved = "moved" if rose or fell else "steady"
+            print(f"case/{key}|PASS|{score:.3f}|REPORTED, not gated — {moved} against "
+                  f"{base:.3f}; see the baseline's notes")
+            continue
         if key.endswith(CEILING_SUFFIX):
             if rose:
                 failed = True

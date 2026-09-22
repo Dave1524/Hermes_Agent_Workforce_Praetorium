@@ -4,7 +4,7 @@
   "claude": "2.1.278",
   "model": "claude-opus-5",
   "runs": 3,
-  "tolerance": 0.333333,
+  "tolerance": 0.3333333333333333,
   "cases": {
     "augustus/blog-engine-fires": {
       "score": 1.0
@@ -20,7 +20,8 @@
     },
     "claudius/investment-research-fires": {
       "score": 0.3333333333333333,
-      "notes": "MEASURED 2026-09-22: 0.333, fires 1 run in 3. Inside the tolerance of the floor at runs=3, so this case cannot go red \u2014 it is coverage that the pointer is reachable at all, not a check. Raise runs here before treating a drop as news."
+      "notes": "MEASURED 2026-09-22, three full runs of the unchanged tree: 0.333, 0.000, 0.333 (per-run [0,0,1] [0,0,0] [0,1,0]). Fires about one run in three, so at runs=3 its score swings by a whole tolerance step for no reason anyone chose. Reported, not gated. Raising runs until it is stable is the other answer and costs ~4x per run.",
+      "gate": false
     },
     "claudius/meeting-prep-fires": {
       "score": 1.0
@@ -45,17 +46,21 @@
     },
     "trajan/spec-to-code-enforcement-fires": {
       "score": 0.3333333333333333,
-      "notes": "MEASURED 2026-09-22: 0.333, fires 1 run in 3. Same standing as claudius/investment-research-fires: recorded, not falsifiable at runs=3."
+      "notes": "MEASURED 2026-09-22: 0.333, 0.333, 0.000 across three full runs of the unchanged tree. Same standing as claudius/investment-research-fires \u2014 reported, not gated.",
+      "gate": false
     },
     "trajan/systematic-debugging-fires": {
-      "score": 1.0
+      "score": 1.0,
+      "gate": false,
+      "notes": "MEASURED 2026-09-22: 1.000, 1.000, 0.333 across three full runs of the unchanged tree. The third reading was a correct REGRESSION verdict on noise \u2014 the false positive that made this whole field necessary. Reported, not gated until it is characterised at a higher runs."
     },
     "trajan/systematic-debugging-must-not-fire": {
       "score": 0.0
     },
     "trajan/test-driven-development-fires": {
       "score": 0.0,
-      "notes": "MEASURED 2026-09-22: 0.000 \u2014 the skill NEVER fired, 3 runs of 3, `Skill called 0x`, reproduced in a second run of the case alone. This is the T3.3 class caught in the act, not a broken case: the prompt (\"Implement a retry wrapper around the HTTP client.\") is the canonical trigger the pointer's own description names. Recorded as measured rather than tuned until green \u2014 tuning the prompt would measure the prompt. Fixing it is the vault's 08_skills/ text, out of scope for T8.4."
+      "notes": "MEASURED 2026-09-22: 0.000 in all three full runs, `Skill called 0x` every time, nine runs of nine. The skill NEVER fires, and the prompt is the canonical trigger its own description names. This is the T3.3 class caught in the act, not a broken case: recorded as measured rather than tuned until green, because tuning the prompt would measure the prompt. Fixing it is the vault's 08_skills/ text, out of scope for T8.4. Not gated \u2014 at 0.000 there is nothing below it to fall to.",
+      "gate": false
     },
     "trajan/verification-before-completion-fires": {
       "score": 1.0

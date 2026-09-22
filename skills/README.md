@@ -63,6 +63,13 @@ Frozen in `design/archive/open-decisions-closed-2026-09-07.md`. This table is jo
 tree in both directions by `tests/test_pointer_skills.sh::allocation-matches-readme`, so it
 cannot rot into prose.
 
+**This file may hold exactly one markdown table.** `readme_pairs`
+(`tests/test_pointer_skills.sh:147`) reads every `|`-leading line in this README as an
+allocation row, so a second table anywhere below is parsed as more pointers and the join goes
+red naming rows that were never meant to be pointers. Measured 2026-09-22, by writing one.
+It fails closed, which is the cheap direction — but write tabular data further down as a
+fenced block, the way the eval measurements below are.
+
 | owner | pointers |
 |---|---|
 | augustus | `linkedin-content-engine`, `linkedin-review`, `blog-engine` |
@@ -123,7 +130,7 @@ Everything above this section is asserted **deterministically**, and the header 
 well-formed, each runner names its owner's tree by explicit path, the guard makes a missing tree
 fatal, drift keeps deployed equal to source. Each link is checkable. What the chain exists to
 produce — the model actually firing the skill — was asserted nowhere, which is how T3.3's zero
-sat unexplained for three days after its cause had already been fixed.
+went three days without anyone being able to say whether it was still true, let alone why.
 
 `bin/agent_config_eval.sh` is the missing half, and the only thing on this box that spends model
 tokens to answer a question about itself.
@@ -191,25 +198,45 @@ failure that is silent on this box today.
 
 ### What the first full measurement found — MEASURED 2026-09-22, claude-opus-5, runs 3
 
-All 13 pointers and all 4 ceiling cases, 51 runs. Three results worth keeping:
+**Three** full runs of the unchanged tree, 17 cases each. Per case, per run:
 
-- **Every ceiling case scored 0.000.** No skill fired on an adjacent off-trigger ask, so the
-  discrimination half of the suite starts clean.
-- **`trajan/test-driven-development-fires` scored 0.000 — the skill never fired**, three runs of
-  three, `Skill called 0x`, reproduced in a second run of that case alone. The prompt is the
-  canonical trigger its own description names ("Use when implementing any feature … Activates
-  when tempted to write code first"). This is the T3.3 class caught in the act rather than
-  inferred from telemetry, and it is **recorded as measured, not tuned until green** — tuning the
-  prompt would measure the prompt. Fixing it is the vault's `08_skills/` text, not this repo's.
-- **`claudius/investment-research-fires` and `trajan/spec-to-code-enforcement-fires` scored
-  0.333** — one run in three.
+```
+                                          run A   run B   run C
+the 9 other -fires cases                  1.000   1.000   1.000
+the 4 -must-not-fire cases                0.000   0.000   0.000
+claudius/investment-research-fires        0.333   0.000   0.333
+trajan/spec-to-code-enforcement-fires     0.333   0.333   0.000
+trajan/systematic-debugging-fires         1.000   1.000   0.333
+trajan/test-driven-development-fires      0.000   0.000   0.000
+```
 
-The last two points are the same defect at different depths, and the gate now names it. A verdict
-is `score < baseline - tolerance`, so at `runs: 3` (tolerance ⅓) anything recorded at 0.333 or
-below has nothing left to fall to: green every week, and unable to go red for any reason. Three
-of seventeen were born that way. `tests/test_agent_config_eval.sh::baselined-case-can-go-red`
-makes that state legal only while the baseline entry carries a `notes` saying so, and
-`--record` carries a `notes` forward rather than remeasuring it away.
+Three things follow, and all three are now in the design rather than in a paragraph.
+
+**Nine of thirteen pointers fire every single run, and every ceiling holds.** That is the part
+that gates, and it is the majority of the tree.
+
+**`trajan/test-driven-development-fires` never fires — nine runs of nine, `Skill called 0x`.**
+The prompt is the canonical trigger its own description names ("Use when implementing any
+feature … Activates when tempted to write code first"). This is the T3.3 class caught in the act
+rather than inferred from telemetry, and it is **recorded as measured, not tuned until green** —
+tuning the prompt would measure the prompt. Fixing it is the vault's `08_skills/` text.
+
+**Three cases swing by a whole tolerance step between identical runs.** Run C called
+`systematic-debugging` a `REGRESSION` against a baseline of 1.000, correctly by the rule and
+wrongly about the world: nothing had changed. A gate that goes red for reasons nobody chose is
+muted within a week — the same argument `bin/fleet_eval.sh:13-20` makes, arriving from the other
+direction. So the baseline entry for each of those four carries **`gate: false` and a `notes`**:
+still measured, still printed with its score and its movement, still in the scorecard, and
+unable to fail the run. 13 of 17 cases carry a verdict.
+`tests/test_agent_config_eval.sh::baselined-case-can-go-red` will not let that be quiet — a case
+that cannot carry a verdict (one recorded inside the tolerance of its floor or ceiling, where
+there is nothing left to fall to) is legal only while it declares `gate: false` **with** a
+`notes`, and every `gate: false` must carry one. `--record` carries both forward rather than
+remeasuring them away.
+
+**Raising `runs` is the other answer, and it is Dave's call, not the suite's.** At `runs: 9`
+those three would likely stabilise and everything would gate — at about four times the cost per
+run. Deleting a `gate: false` line is how that decision gets made.
 
 ### Cost
 
