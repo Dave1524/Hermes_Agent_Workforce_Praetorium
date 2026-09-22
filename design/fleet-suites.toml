@@ -722,6 +722,7 @@ owner   = "fleet"
 asserts = [
   "rubric-adopted",             # buzz-team/aurelian-calibration.md is a repo file with one MANIFEST.toml [[adopted]] entry (read_by and why non-empty) and no [[excluded]] row left behind
   "rubric-version-line",        # the repo copy carries the `**version: N**` line verify-fleet.sh gate 12 greps on the box, and the H1's `— vN` names the same N — the pair a bump moves together
+  "land-reads-repo-rubric",     # ship-dev-plan.js's land step computes calibration_digest = sha256sum buzz-team/aurelian-calibration.md and names the ~/.config/buzz-team path nowhere
 ]
 why_no_workflow = """
 The calibration pack is the review policy behind every ship-dev-plan.js land and the
