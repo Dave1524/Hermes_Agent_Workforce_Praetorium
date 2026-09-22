@@ -54,6 +54,7 @@
 #
 #unit	scope	status	owner	kind
 agent-buzz-acp-update	system	standing	trajan	timer
+agent-config-eval	system	standing	trajan	timer
 agent-drift-check	system	standing	trajan	timer
 agent-inbox-sync	system	standing	trajan	timer
 agent-proposal	system	standing	claudius	timer

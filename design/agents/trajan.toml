@@ -97,6 +97,47 @@ the intended quiet second signal via `systemctl --failed`, and it clears on the 
 run. Do not "fix" this.
 """
 
+[[workflows]]
+unit = "agent-config-eval"
+contract = "design/contracts/agent-config-eval.md"
+surface = "platform"
+status = "standing"
+suite    = ["tests/test_agent_config_eval.sh"]
+skills   = []
+trigger = "weekly Sat 08:07 (+90s jitter)"
+what = "Checks every week that the agents' skills still fire for the phrases that should trigger them."
+alerted = false                  # DELIBERATE, not a gap — see notes
+in_repo = true
+notes = """
+THE ONLY WORKFLOW ON THIS BOX THAT SPENDS MODEL TOKENS TO CHECK THE BOX. Every case run is a
+full `claude` child on the same claude.ai login as the five buzz-agent@* units and the nine
+scheduled runners, which is why it is weekly, why the slot is a Saturday clear of the working
+week, and why bin/agent_config_eval.sh takes a non-blocking flock rather than queueing.
+
+WHY IT IS NOT alerted. Same rule as fleet-eval two entries up, and for the same reason: the
+exit code is the product — 1 means a case scored below the baseline recorded when it was
+added — and `--deliver` has already posted the scorecard to #ops by then. OnFailure= as well
+would give one problem two notifications on two surfaces. The non-zero exit is the intended
+quiet second signal via `systemctl --failed`, and it clears on the next green run.
+
+WHAT THE TIMER ADDS OVER THE VERIFY GATE, which runs the same runner with --changed-since on
+any branch touching skills/, CLAUDE.md, .claude/settings.json, .claude/hooks/ or
+.claude/skills/: the class with no diff at all. A model rollout or a harness change moves
+behaviour while every file stays byte-identical, so nothing change-gated can fire on it. That
+is this entry's whole marginal value, and it is why a red here is re-recorded by hand after
+reading it, never auto-bumped.
+
+IT CARRIES ITS OWN NEGATIVE CONTROL. ExecStart passes --self-check, which re-runs the first
+owner with every skill directory moved to the plugin root — the trap
+tests/test_pointer_skills.sh:17-19 measured, where a skill at a plugin root is not discovered
+with no warning and no error — and requires that run to be RED before trusting the green one.
+A behavioural gate that has never been seen to fail has proven nothing.
+
+It declares no `requires`. It reads the skills tree and spends a login; no unit has to be up
+for it to answer, and detecting that a skill has stopped firing is its job rather than a
+precondition of it.
+"""
+
 # local-tier-eval retired 2026-09-18 via Control Room proposal 20260918T080741Z-retire-local-tier-eval-d15791 (branch control-room/retire-local-tier-eval-20260918T080741Z): The local inference tier is retired with Ollama and Hermes (Dave, 2026-09-18): nothing local runs any more, so there is no model to score. Artifacts: receipts=keep notion=keep inbox=keep. Record: design/retired-workflows.toml.
 
 [[workflows]]

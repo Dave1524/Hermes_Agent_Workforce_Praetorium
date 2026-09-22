@@ -1,0 +1,31 @@
+# Weekly, not daily: the subject is agent CONFIGURATION, which changes when someone changes
+# it — and a branch that changes it is already caught by the verify gate, which runs the same
+# runner with --changed-since. What this timer adds is the class no diff can trigger: a model
+# rollout or a harness change that moves behaviour while every file stays byte-identical.
+# Daily would re-measure an unchanged config six extra times a week, on a shared rate limit,
+# at a real per-run cost.
+#
+# Sat 08:07 is chosen, not arbitrary:
+#   * Saturday keeps the run clear of the working week, so the ~51-child suite the coverage
+#     card will grow into never competes with Dave's own sessions or the five Buzz agents;
+#   * :07 past the hour is clear of the every-15m auto-sync (:00/:15/:30/:45), qmd-refresh
+#     (:20/:50) and inbox-sync (:01/:31) — a lock collision costs the run, since the runner
+#     skips rather than queues;
+#   * 08:07 and not 07:07, which is fleet-eval's slot, and not 07:00, which is scorecard's
+#     (Mon, +5min jitter). The two eval units share the ops delivery route, so an hour apart
+#     keeps a red Saturday from arriving as two #ops posts at once.
+#
+# Persistent=true: a week the box was asleep is a week of unmeasured drift, and a late run
+# still reports it. RandomizedDelaySec stays small — the point of a fixed slot is to stay out
+# of the other timers' way, and wide jitter would walk back into them.
+[Unit]
+Description=Run the agent-config eval weekly
+
+[Timer]
+OnCalendar=Sat *-*-* 08:07:00
+RandomizedDelaySec=90s
+AccuracySec=1min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
