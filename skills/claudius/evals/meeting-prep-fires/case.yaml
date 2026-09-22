@@ -1,0 +1,35 @@
+# Does claudius still FIRE meeting-prep when Dave uses the vault's own trigger phrase?
+#
+# T3.3 measured zero pointer-skill invocations across 48 runs while `skills_offered=` listed
+# three per owner every time. The credible cause (skills/README.md) was the pointer
+# DESCRIPTIONS, not the wiring — the one link in the chain no deterministic gate can reach.
+# This case is that link, and the incident it replays is real: until 400e7ef (2026-09-18)
+# this pointer read "Prepare for a meeting from what the vault already knows." with the
+# vault's "Use when Dave says 'prep for meeting with [company/person]'" dropped.
+#
+# THE COMPANY IS FICTITIOUS ON PURPOSE. A real pipeline name would make the run's behaviour
+# depend on what the vault happens to say about that account this week; the question here is
+# whether the trigger phrase reaches the skill, not what the skill then finds.
+#
+# allowed_tools IS [Skill] ALONE, and max_turns is 2. The pointer body sends the agent to
+# ~/vault/08_skills/meeting-prep/, which the eval scaffold seals, so granting Read would buy
+# turns that cannot succeed. Measured 2026-09-22 on claude-opus-5: the Skill call lands on
+# turn 1, every run ends "Reached maximum number of turns (2)", and the grader passes anyway
+# — the error string is the shape of the budget, not a failure. 3 turns, ~4s, ~$0.08 a run.
+schema_version: "1.1"
+name: meeting-prep-fires
+runs: 3
+execution:
+  prompt: |
+    Prep for meeting with Kestrel Cold Logistics.
+  max_turns: 2
+  timeout_seconds: 180
+  allowed_tools: [Skill]
+graders:
+  - name: fires-meeting-prep
+    type: tool_used
+    tool: Skill
+    # The pointer may render namespaced (praetorium-claudius:meeting-prep) or bare depending
+    # on how the plugin was loaded, so the optional prefix is matched rather than assumed.
+    input_match: '"skill"\s*:\s*"(?:[\w-]+:)?meeting-prep"'
+    weight: 1

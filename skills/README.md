@@ -115,3 +115,69 @@ skills, and no suite in this repo spends model tokens. What is asserted instead 
 every link of which is checkable: the tree is well-formed, each runner names its owner's tree
 by explicit path, the guard makes a missing tree fatal, and drift keeps deployed equal to
 source.
+
+## Behavioural evals (T8.4)
+
+Everything above this section is asserted **deterministically**, and the header of
+`tests/test_pointer_skills.sh` is explicit that this is a chain and not a verdict: the tree is
+well-formed, each runner names its owner's tree by explicit path, the guard makes a missing tree
+fatal, drift keeps deployed equal to source. Each link is checkable. What the chain exists to
+produce — the model actually firing the skill — was asserted nowhere, which is how T3.3's zero
+sat unexplained for three days after its cause had already been fixed.
+
+`bin/agent_config_eval.sh` is the missing half, and the only thing on this box that spends model
+tokens to answer a question about itself.
+
+```
+bin/agent_config_eval.sh                       # score every owner's cases against the baseline
+bin/agent_config_eval.sh --owner claudius      # one owner
+bin/agent_config_eval.sh --self-check          # …and prove the suite can still go red
+bin/agent_config_eval.sh --changed-since origin/main   # the verify gate's own entry point
+bin/agent_config_eval.sh --record              # re-record the baseline. A deliberate commit.
+```
+
+**Adding a case.** Create `skills/<owner>/evals/<pointer>-<what>/case.yaml` — beside `skills/`,
+never inside it, and never at `skills/evals/`, which `owner_dirs` would read as a sixth owner.
+Name it after the pointer it is about; `tests/test_agent_config_eval.sh::eval-case-names-skill`
+joins the two. Then `--record` and commit the baseline in the same change: a case with no
+recorded score is a pass mark nobody measured, and the gate calls it `UNBASELINED` and goes red.
+
+**The verdict is regression, not an absolute mark** — `bin/fleet_eval.sh:13-20`'s reasoning
+applies unchanged. An improvement is reported and the baseline is left alone; re-recording it is
+a commit that says why, never something the weekly run does to its own pass mark.
+
+### What a green run does and does not say — MEASURED 2026-09-22, claude 2.1.278, claude-opus-5
+
+The brief for this work assumed the T3.3 incident would make the negative control: restore
+claudius's pre-`400e7ef` `meeting-prep` description — `Prepare for a meeting from what the vault
+already knows.`, with the vault's `Use when Dave says 'prep for meeting with [company/person]'`
+triggers dropped — and watch the case go red. **It does not.** The paraphrased description scored
+**1.000 over three runs**, and a second prompt written to avoid the word "meeting" entirely ("I've
+got a call with Kestrel Cold Logistics on Thursday. Get me ready for it.") scored **1.000 over two
+runs against both descriptions**.
+
+The reading: for a skill whose **name** already matches the request, the description is not what
+decides. `meeting-prep` is named for what the user is asking for, so the trigger text is
+redundant; the pointers where a description carries real load are the ones whose names do *not*
+match how Dave would phrase the request. That does not make the 2026-09-18 re-render wrong — the
+description is still the only text a model sees before loading a skill, and mirroring the vault's
+is still right — but it does mean **a paraphrased description is not a demonstrated cause of
+T3.3's zero**, and this section supersedes the sentence above that calls it a credible one.
+The likelier cause is the other half the brief already named and put out of scope: the scheduled
+job prompts do not use the trigger phrasing at all.
+
+So the negative control is a different mutation, and a better one: every skill directory moved
+from `<plugin>/skills/<name>/` to `<plugin>/<name>/`. That is the trap
+`tests/test_pointer_skills.sh:17-19` measured on claude 2.1.267 — a skill directory at a plugin
+root is not discovered, with no warning and no error — and it scores **0.000**. Every file is
+still present and readable; the loader simply does not see them, which is exactly the class of
+failure that is silent on this box today.
+
+### Cost
+
+Measured on the first case: `max_turns: 2`, `allowed_tools: [Skill]`, the Skill call on turn 1,
+**~4s and ~$0.081 a run** on `claude-opus-5`, so ~$0.24 a case at `runs: 3`. The eval child's cwd
+is deliberately outside `$HOME` — under it, `~/CLAUDE.md` (46 KB) and the shared memory pool load
+into *every* run, which both inflates that figure and means the eval measures Dave's machine
+instructions instead of the pointer descriptions under test. The runner refuses a `TMPDIR` inside
+`$HOME` rather than warning about it, because the wrong measurement still produces a number.

@@ -1,0 +1,13 @@
+{
+  "_comment": "Recorded by bin/agent_config_eval.sh --record. A score here is the measured behaviour when the case was added, not a target: bin/agent_config_eval_compare.py reports a fall below it and leaves a rise alone. Re-record only as a deliberate commit that says why.",
+  "measured": "2026-09-22",
+  "claude": "2.1.278",
+  "model": "claude-opus-5",
+  "runs": 3,
+  "tolerance": 0.333333,
+  "cases": {
+    "claudius/meeting-prep-fires": {
+      "score": 1.0
+    }
+  }
+}

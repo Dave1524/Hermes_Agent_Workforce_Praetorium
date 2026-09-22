@@ -1,0 +1,13 @@
+{
+  "_comment": "FIXTURE baseline for tests/test_agent_config_eval.sh. Not skills/evals-baseline.json: the score is 2/3 and the tolerance is 0.1 so equal/drop/improve are three separable verdicts. The 1/runs quantisation edge is asserted against a baseline the suite generates instead, because pinning it here would freeze the arithmetic the tolerance exists to absorb.",
+  "measured": "2026-09-20",
+  "claude": "2.1.278",
+  "model": "claude-opus-5",
+  "runs": 3,
+  "tolerance": 0.1,
+  "cases": {
+    "claudius/meeting-prep-fires": {
+      "score": 0.6666666666666666
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+ "schemaVersion": 1,
+ "claudeVersion": "2.1.278",
+ "startedAt": "2026-09-22T15:25:17.036Z",
+ "durationSeconds": 11,
+ "costUsd": 0.11610650000000002,
+ "partial": false,
+ "suite": {
+  "root": "/tmp/agent-config-eval.FIXTURE/claudius",
+  "ablation": "none",
+  "modelOverride": "claude-opus-5",
+  "threshold": 0,
+  "concurrency": 1,
+  "plugins": [
+   {
+    "name": "praetorium-claudius",
+    "version": "0.1.0",
+    "path": "/tmp/agent-config-eval.FIXTURE/claudius"
+   }
+  ]
+ },
+ "cases": [],
+ "aggregates": {
+  "casesTotal": 0,
+  "casesPassed": 0,
+  "overallScore": 0,
+  "overallPassRate": 0
+ }
+}

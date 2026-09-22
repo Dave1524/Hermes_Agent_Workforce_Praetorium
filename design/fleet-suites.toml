@@ -816,3 +816,32 @@ It asserts a credential seam, not a job's output: the token must reach exactly o
 and no file, log or argv. That property changes only when someone edits the wrapper, which is
 when bin/verify.sh runs this.
 """
+
+# The agent-config eval (T8.4). It has no workflow in PR1 — the timer arrives in PR2 — but it
+# would not be claimed by one even then for the same reason test_fleet_guards.sh is not: its
+# subject is the agents' configuration, not the output of a scheduled job. It is the only suite
+# in this repo that spends model tokens, and its two live groups are the only assertions here
+# that can answer "does a skill still fire", which the deterministic chain in
+# tests/test_pointer_skills.sh reaches only by proxy.
+[[suite]]
+path    = "tests/test_agent_config_eval.sh"
+owner   = "fleet"
+asserts = [
+  "eval-case-wellformed",        # every case.yaml: name == its directory, a prompt, a typed named grader
+  "eval-case-names-skill",       # each case is joined to a pointer its owner really has
+  "baseline-measured-dated",     # the baseline is dated, model-pinned, and joined to the tree both ways
+  "compare-regression-red",      # all four verdicts on fixtures: regression, improved, missing, unbaselined
+  "compare-record-writes",       # --record is the only writer, and it stamps what it measured
+  "compare-tolerance-quantised", # 1/runs absorbs one flaky run of three and not two
+  "watched-paths-trigger",       # the change gate watches agent config, never .claude/briefs/
+  "temp-root-outside-home",      # a TMPDIR under $HOME is refused, not warned about
+  "live-eval-clean",             # box, change-gated: the real tree still fires its skills
+  "broken-skill-turns-red",      # the negative control — an unreachable skill tree IS red
+]
+why_no_workflow = """
+Its subject is the agents' configuration — the pointer descriptions, the instruction layer,
+the settings deny, the harness hooks — and not the artifact of any one job. PR2 adds a weekly
+timer so drift with no diff (a model rollout, a harness change) is still caught, and that
+entry claims this suite too; both claims are a union in tests/test_workflow_coverage.py, and
+the `asserts` join above only reads this file, so the anchors stay joined either way.
+"""

@@ -18,3 +18,8 @@ var/opencode-observability/
 
 # graft's local graph cache — regenerable, not committed (run `graft build`).
 /graft/
+
+# The eval tool writes <plugin>/evals/results/ per run. The runner evaluates a COPY outside
+# $HOME so the checkout is never written, but agent-workforce-auto-sync.timer commits any dirty
+# tree within 15 minutes, so this is the belt behind that brace.
+skills/*/evals/results/
