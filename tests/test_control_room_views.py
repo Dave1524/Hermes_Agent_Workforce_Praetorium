@@ -27,8 +27,8 @@ import control_room_static as static  # noqa: E402
 import control_room_views as views  # noqa: E402
 import control_room_view_workflow as view_workflow  # noqa: E402
 
-STANDING_ENTRIES = 31   # MEASURED 2026-09-22 (T8.4 added agent-config-eval)
-LOGICAL_WORKFLOWS = 30
+STANDING_ENTRIES = 30   # MEASURED 2026-09-22 (T8.4 added agent-config-eval)
+LOGICAL_WORKFLOWS = 29
 ROW = re.compile(r'<tr[^>]*\bdata-workflow="([^"]+)"[^>]*>(.*?)</tr>', re.DOTALL)
 CSP = "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'"
 
@@ -166,7 +166,6 @@ class RequiresRows(ServedCase):  # (::control-room-requires)
         for id_ in guarded:
             self.assertEqual(rows[id_]["role"], "system-workflow", id_)
             self.assertRegex(rows[id_]["guards"], r"^[^\n]+\.$")
-        self.assertIsNone(rows["agent-workforce-auto-sync"]["guards"])
 
 
 class ExceptionsDefault(ServedCase):  # (::control-room-exceptions-default)

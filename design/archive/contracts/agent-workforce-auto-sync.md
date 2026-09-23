@@ -1,3 +1,5 @@
+> RETIRED 2026-09-23 — Control Room proposal 20260923T144036Z-retire-agent-workforce-auto-sync-ecc487; the workflow no longer exists. Kept as history for T5.4's evidence.
+
 # Contract: agent-workforce-auto-sync
 
 Read on 2026-09-11 from `systemd/agent-workforce-auto-sync.{service,timer}` and `bin/auto-sync`.
