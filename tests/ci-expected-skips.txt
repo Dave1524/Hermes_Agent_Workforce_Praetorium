@@ -103,3 +103,5 @@ SKIP: test_pointer_skills.sh — the vault the pointer skills name (absent: ~/va
 SKIP: test_pointer_skills.sh — the vault the pointer skills mirror (absent: ~/vault/08_skills)
 SKIP: test_retired_residue.sh — the installed units and home tree a checkout cannot carry (absent: ~/agent-workforce/bin ~/.config/systemd/user)
 SKIP: test_workflow_retirements.sh — the deployed trees a live residue scan reads (absent: ~/agent-workforce/bin ~/agent-workforce/systemd)
+SKIP: test_vault_credential.sh — the canonical vault clone and its installed hooks (absent: ~/dev/Obsidian_AI_Operating_System/.git)
+SKIP: test_vault_symlink_unrecorded.sh — the installed units, qmd config and vault worktrees (absent: ~/.config/qmd/index.yml ~/agent-worktrees)
