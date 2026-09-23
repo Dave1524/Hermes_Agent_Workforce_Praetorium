@@ -42,6 +42,7 @@ from control_room_fixture import FakeSystemd  # noqa: E402
 os.environ["PATH"] = f"{FIXTURES / 'bin'}:{os.environ.get('PATH', '')}"
 os.environ["FAKE_CALENDAR"] = str(FIXTURES / "calendar.json")
 os.environ.pop("FAKE_GH_FAIL", None)
+os.environ["CONTROL_ROOM_GH"] = "gh"
 
 
 def _git(cwd: pathlib.Path, *args: str) -> str:
@@ -267,7 +268,7 @@ class GitGuard(TempState):
         repo = self._repo()
         config = (self.state / "gitconfig").read_text()
         for line in ("[user]", "name = Fixture Author", "email = fixture@example.invalid",
-                     '[credential "https://github.com"]', "helper = !/usr/bin/gh auth git-credential",
+                     '[credential "https://github.com"]', "helper = !python3 /home/dave/.local/bin/github_app_credential.py",
                      "[push]", "default = nothing", "[advice]", "detachedHead = false", "[core]", "hooksPath = /dev/null"):
             self.assertIn(line, config)
         self.assertTrue((self.state / "repo.git" / "HEAD").exists())

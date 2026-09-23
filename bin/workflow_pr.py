@@ -40,6 +40,11 @@ DEFAULT_AUTHOR = "Praetorium Control Room <dave.hamelink@vantagepointconsulting.
 STAGES = ("preview", "submit", "list")
 
 
+def gh_command() -> str:
+    """gh as the GitHub App (bin/gh_app.sh), so a proposal PR is one Dave can approve."""
+    return os.environ.get("CONTROL_ROOM_GH") or str(pathlib.Path(__file__).with_name("gh_app.sh"))
+
+
 def utc_now() -> dt.datetime:
     return dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
 
@@ -103,8 +108,9 @@ class Worker:
         for tool in ("git", "gh", "systemd-analyze"):
             lines.append(("ok", f"{tool} on PATH: {shutil.which(tool)}") if shutil.which(tool) else ("fail", f"{tool} not on PATH"))
         if shutil.which("gh"):
-            code, _, err = self._gh(["auth", "status"], log=None)
-            lines.append(("ok", "gh auth status") if code == 0 else ("fail", f"gh auth status exited {code}: {err.strip()[:200]}"))
+            code, out, err = self._gh(["api", "/installation/repositories", "-q", ".total_count"], log=None)
+            lines.append(("ok", f"gh as the App: installation lists {out.strip()} repo(s)") if code == 0
+                         else ("fail", f"gh as the App ({gh_command()}) exited {code}: {err.strip()[:200]}"))
         tz = self.tz_reader()
         lines.append(("ok", f"timezone {tz['name']} ({tz['source']})"))
         return lines
@@ -319,7 +325,7 @@ class Worker:
         env = {**self.git._env(), "GH_NO_UPDATE_NOTIFIER": "1", "GH_PROMPT_DISABLED": "1"}
         started = time.monotonic()
         try:
-            done = subprocess.run(["gh", *args], capture_output=True, text=True, env=env, timeout=prgit.TRANSFER_TIMEOUT_SECONDS)
+            done = subprocess.run([gh_command(), *args], capture_output=True, text=True, env=env, timeout=prgit.TRANSFER_TIMEOUT_SECONDS)
             code, out, err = done.returncode, done.stdout, done.stderr
         except (OSError, subprocess.TimeoutExpired) as exc:
             code, out, err = 127, "", str(exc)
