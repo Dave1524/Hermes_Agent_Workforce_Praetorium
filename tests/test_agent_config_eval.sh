@@ -340,6 +340,45 @@ sys.exit(0 if json.load(open('$TMP/tol-baseline.json'))['tolerance'] == 1/3 else
 assert "so a case baselined at 1/3 that scores 0 is absorbed, not called a REGRESSION" \
        "[ \"\$(quantised_against '$TMP/tol-baseline.json' 0.0 0.3333333333333333)\" = 0 ]"
 
+# A TREE WITH MIXED `runs` GETS ITS TOLERANCE PER CASE, NOT ONE FIGURE FOR ALL OF THEM. Once
+# trajan's two repaired cases moved to runs=5 (2026-09-23), a single global tolerance was wrong
+# whichever end it came from: 1/5 makes one flaky run of a runs=3 case a REGRESSION, and 1/3
+# absorbs a real 0.2 drop on a runs=5 case. Both fixtures below share one baseline file.
+# $1 = case key, $2 = recorded runs, $3 = measured score, $4 = recorded score.
+mixed_runs() {
+  python3 - "$TMP" "$1" "$2" "$3" "$4" <<'PYEOF'
+import json, pathlib, sys
+tmp, key, runs, score, base = (pathlib.Path(sys.argv[1]), sys.argv[2],
+                               int(sys.argv[3]), float(sys.argv[4]), float(sys.argv[5]))
+(tmp / "mixed-baseline.json").write_text(json.dumps({
+    "measured": "2026-09-23", "claude": "2.1.278", "model": "claude-opus-5",
+    "runs": 5, "tolerance": 1.0 / 3.0,
+    "cases": {key: {"score": base, "runs": runs}}}))
+(tmp / "mixed-result.json").write_text(json.dumps({
+    "claudeVersion": "2.1.278",
+    "suite": {"root": "/tmp/x/claudius", "modelOverride": "claude-opus-5",
+              "plugins": [{"name": "praetorium-claudius"}]},
+    "cases": [{"name": key.split("/", 1)[1], "aggregates": {"score": score},
+               "arms": {"with": [{"score": 1}] * runs}}]}))
+PYEOF
+  python3 "$COMPARE" "$TMP/mixed-result.json" --baseline "$TMP/mixed-baseline.json" \
+    >"$TMP/mixed.psv" 2>&1
+  echo $?
+}
+assert "a runs=3 case keeps its 1/3 tolerance in a tree whose highest runs is 5" \
+       "[ \"\$(mixed_runs claudius/c-fires 3 0.6666666666666666 1.0)\" = 0 ]"
+assert "and a runs=5 case is held to 1/5, not to the file's coarser figure" \
+       "[ \"\$(mixed_runs claudius/c-fires 5 0.6 1.0)\" = 1 ]"
+assert "the red row quotes the tolerance it actually used" \
+       "grep -q 'tolerance 0.200' '$TMP/mixed.psv'"
+python3 "$COMPARE" "$FIXTURES/result-equal.json" --baseline "$TMP/runs-baseline.json" \
+  --record >/dev/null 2>&1
+assert "--record writes each case's own runs beside its score" \
+       "python3 -c \"
+import json,sys
+c=json.load(open('$TMP/runs-baseline.json'))['cases']
+sys.exit(0 if c and all('runs' in v for v in c.values()) else 1)\""
+
 
 echo "7. the change gate watches agent config and not prose"   # (::watched-paths-trigger)
 scratch_repo_says() {

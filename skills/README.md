@@ -247,11 +247,20 @@ Three things follow, and all three are now in the design rather than in a paragr
 **Nine of thirteen pointers fire every single run, and every ceiling holds.** That is the part
 that gates, and it is the majority of the tree.
 
-**`trajan/test-driven-development-fires` never fires — nine runs of nine, `Skill called 0x`.**
-The prompt is the canonical trigger its own description names ("Use when implementing any
-feature … Activates when tempted to write code first"). This is the T3.3 class caught in the act
-rather than inferred from telemetry, and it is **recorded as measured, not tuned until green** —
-tuning the prompt would measure the prompt. Fixing it is the vault's `08_skills/` text.
+**Two of the four moving cases were broken cases, not findings — corrected 2026-09-23.**
+`trajan/test-driven-development-fires` read 0.000 nine runs of nine, and this section said the
+fix was the vault's `08_skills/` text. **That was wrong**, and it was wrong in the way this file
+is least able to catch: a confident cause written from a score, with the trace already deleted.
+Both trajan cases asked for work on an artefact the empty sandbox does not contain — "the HTTP
+client", a spec and a module — and both spent their budget looking for it. They now carry the
+artefact in the prompt, the runner grants `--allow-tools Write`, and they read **0.400** (twice,
+five runs each) and **1.000** (5 of 5). See § What the eval sandbox is, and the baseline's notes
+on both cases for what the remaining 0.400 measures.
+
+What survives of the original reading: the 0.000 was real, it was reproducible, and no amount of
+re-running it would have explained it. What does not: the cause. **A cause is not measured until
+the trace is read** — one `--keep-temp` run, about $0.30, against the several paid runs and one
+planned vault change the wrong cause bought.
 
 **Three cases swing by a whole tolerance step between identical runs.** Run C called
 `systematic-debugging` a `REGRESSION` against a baseline of 1.000, correctly by the rule and
@@ -269,6 +278,14 @@ remeasuring them away.
 **Raising `runs` is the other answer, and it is Dave's call, not the suite's.** At `runs: 9`
 those three would likely stabilise and everything would gate — at about four times the cost per
 run. Deleting a `gate: false` line is how that decision gets made.
+
+**The tolerance is per case, because `runs` is.** A case sets its own `runs`, and 1/runs is the
+size of one flaky run *of that case*. The moment the tree went mixed — the two repaired trajan
+cases at 5, everything else at 3 — a single global figure was wrong from whichever end it came:
+1/5 makes one flaky run of a runs=3 case a REGRESSION, and 1/3 absorbs a real 0.2 drop on a
+runs=5 one. `--record` writes each case's `runs` beside its score and the comparator derives the
+tolerance from it; the file-level `tolerance` remains only as the fallback for an entry recorded
+before this, and is the coarsest of them so an unlabelled case is never falsely red.
 
 ### Cost
 

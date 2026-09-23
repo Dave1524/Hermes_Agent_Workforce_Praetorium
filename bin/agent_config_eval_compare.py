@@ -125,11 +125,22 @@ def main():
         if model:
             models.add(model)
         for case, score, runs in cases:
-            measured[f"{owner}/{case}"] = score
+            measured[f"{owner}/{case}"] = (score, runs)
             runs_seen.add(runs)
 
+    # TOLERANCE IS PER CASE, BECAUSE `runs` IS. A case sets its own runs in its case.yaml, and
+    # 1/runs is the size of one flaky run OF THAT CASE — 0.333 at runs=3, 0.200 at runs=5. A
+    # single global figure is wrong in both directions the moment the tree is mixed: taken from
+    # the highest runs it makes one flaky run of a runs=3 case a REGRESSION (a false red, the
+    # thing gate:false exists to stop), and taken from the lowest it absorbs a real 0.2 drop on
+    # a runs=5 case (fail-open, which certifies nothing). Both were live here the moment the
+    # two trajan cases moved to runs=5 on 2026-09-23.
+    #
+    # The recorded global stays as the FALLBACK for a case with no recorded runs, and it is the
+    # coarsest of them, because an unlabelled case must never be falsely red.
     runs = max(runs_seen) if runs_seen else 3
-    tolerance = args.tolerance if args.tolerance is not None else (1.0 / runs if runs else 0.0)
+    tolerance = (args.tolerance if args.tolerance is not None
+                 else (1.0 / min(runs_seen) if runs_seen else 0.0))
 
     if args.record:
         # SCORES ARE REMEASURED; A `notes` A HUMAN WROTE IS CARRIED FORWARD. --record rewrites
@@ -170,13 +181,14 @@ def main():
             # claudius/investment-research-fires. The prettier number defeated the guard the
             # docstring above spends a paragraph on.
             "tolerance": tolerance,
-            "cases": {k: {"score": v, **annotations(k)} for k, v in sorted(measured.items())},
+            "cases": {k: {"score": v[0], "runs": v[1], **annotations(k)}
+                      for k, v in sorted(measured.items())},
         }
         pathlib.Path(args.baseline).write_text(json.dumps(baseline, indent=2) + "\n")
         # A --record run that printed only "recorded N cases" would hide the scores it just
         # froze into the pass mark, which is the one moment they are worth reading.
-        for key, score in sorted(measured.items()):
-            print(f"case/{key}|PASS|{score:.3f}|recorded")
+        for key, (score, case_runs) in sorted(measured.items()):
+            print(f"case/{key}|PASS|{score:.3f}|recorded over {case_runs} runs")
         print(f"baseline|PASS|{len(measured)}|recorded {args.baseline} "
               f"(measured {baseline['measured']}, model {baseline['model']}, runs {runs})")
         return 0
@@ -188,14 +200,19 @@ def main():
         return 1
 
     base_cases = baseline.get("cases") or {}
+    fallback_tolerance = tolerance
     if baseline.get("tolerance") is not None and args.tolerance is None:
-        tolerance = float(baseline["tolerance"])
+        fallback_tolerance = float(baseline["tolerance"])
 
     failed = False
     for key in sorted(set(measured) | set(base_cases)):
         owner = key.split("/", 1)[0]
-        score = measured.get(key)
-        base = (base_cases.get(key) or {}).get("score")
+        score = (measured.get(key) or (None, None))[0]
+        entry = base_cases.get(key) or {}
+        base = entry.get("score")
+        case_runs = entry.get("runs")
+        tolerance = (args.tolerance if args.tolerance is not None
+                     else (1.0 / case_runs if case_runs else fallback_tolerance))
 
         if base is None:
             failed = True
