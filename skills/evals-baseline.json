@@ -1,0 +1,85 @@
+{
+  "_comment": "Recorded by bin/agent_config_eval.sh --record. A score here is the measured behaviour when the case was added, not a target: bin/agent_config_eval_compare.py reports a fall below it and leaves a rise alone \u2014 or the reverse, for a case named `\u2026-must-not-fire`. Re-record only as a deliberate commit that says why.",
+  "measured": "2026-09-23",
+  "claude": "2.1.280",
+  "model": "claude-opus-5",
+  "runs": 5,
+  "tolerance": 0.3333333333333333,
+  "cases": {
+    "augustus/blog-engine-fires": {
+      "score": 1.0,
+      "runs": 3
+    },
+    "augustus/linkedin-content-engine-fires": {
+      "score": 1.0,
+      "runs": 3
+    },
+    "augustus/linkedin-content-engine-must-not-fire": {
+      "score": 0.0,
+      "runs": 3
+    },
+    "augustus/linkedin-review-fires": {
+      "score": 1.0,
+      "runs": 3
+    },
+    "claudius/investment-research-fires": {
+      "score": 0.0,
+      "runs": 3,
+      "gate": false,
+      "notes": "MEASURED 2026-09-22, three full runs of the unchanged tree: 0.333, 0.000, 0.333 (per-run [0,0,1] [0,0,0] [0,1,0]); 2026-09-23 read 0.000. Fires about one run in three, so at runs=3 its score swings by a whole tolerance step for no reason anyone chose. Reported, not gated. A CANDIDATE FOR THE SAME REPAIR the two trajan cases got on 2026-09-23: its prompt names 'the reasoning graph', an artefact the empty eval sandbox does not contain, and it runs at max_turns 2. Not yet measured that way \u2014 treat this as a hypothesis, which is exactly what the superseded note on test-driven-development-fires was not."
+    },
+    "claudius/meeting-prep-fires": {
+      "score": 1.0,
+      "runs": 3
+    },
+    "claudius/meeting-prep-must-not-fire": {
+      "score": 0.0,
+      "runs": 3
+    },
+    "claudius/prospect-research-fires": {
+      "score": 1.0,
+      "runs": 3
+    },
+    "marcus/agent-inbox-sync-fires": {
+      "score": 1.0,
+      "runs": 3
+    },
+    "marcus/post-call-capture-fires": {
+      "score": 1.0,
+      "runs": 3
+    },
+    "marcus/weekly-review-fires": {
+      "score": 1.0,
+      "runs": 3
+    },
+    "marcus/weekly-review-must-not-fire": {
+      "score": 0.0,
+      "runs": 3
+    },
+    "trajan/spec-to-code-enforcement-fires": {
+      "score": 1.0,
+      "runs": 5,
+      "notes": "GATED AGAIN 2026-09-23, after 1.000 over five runs (5 of 5). It was gate:false from 2026-09-22 on a spread of 0.333/0.333/0.000/0.667 \u2014 measured on a case with the same absent-artefact defect as test-driven-development-fires: it asked the model to validate code against a spec and supplied neither. Both now sit in the prompt, with a deliberate mismatch in each direction. The reason the gate was off is named and gone, so the gate is back on; the old spread is not evidence about this case."
+    },
+    "trajan/systematic-debugging-fires": {
+      "score": 1.0,
+      "runs": 3,
+      "gate": false,
+      "notes": "MEASURED 2026-09-22: 1.000, 1.000, 0.333 across three full runs of the unchanged tree. The third reading was a correct REGRESSION verdict on noise \u2014 the false positive that made this whole field necessary. 2026-09-23 read 1.000 again, four readings to one. Reported, not gated until it is characterised at a higher runs."
+    },
+    "trajan/systematic-debugging-must-not-fire": {
+      "score": 0.0,
+      "runs": 3
+    },
+    "trajan/test-driven-development-fires": {
+      "score": 0.4,
+      "runs": 5,
+      "gate": false,
+      "notes": "MEASURED 2026-09-23 over five runs, twice: 0.400 both times (per-run [1,0,1,0,0] and [0,0,1,1,0]). THE 0.000 RECORDED HERE ON 2026-09-22 WAS AN ARTEFACT OF THIS CASE, NOT A DEFECT IN THE VAULT'S 08_skills/ TEXT, and the note that said otherwise was wrong. The eval child runs in an empty directory; the prompt said 'Implement a retry wrapper around the HTTP client' \u2014 a definite reference to an artefact the sandbox does not contain \u2014 and the trace shows the model spending its budget looking for it. A skill whose stated moment is BEFORE writing implementation code cannot be measured where there is no code and nothing to write it with. The case now carries the client inline and the runner grants --allow-tools Write. What 0.400 measures: with the trigger condition genuinely present, the model Globs the empty repo and then either loads the skill before writing (2 of 5) or writes the module, the wrapper and the tests in one batch without it (3 of 5). The turn budget is not the cause \u2014 the decision falls at turn 2-3, well inside max_turns 6. Not gated: a genuine ~40% at runs=5 swings two tolerance steps. Characterising it at a higher runs is the next reading, and a real trigger finding is the likely answer."
+    },
+    "trajan/verification-before-completion-fires": {
+      "score": 1.0,
+      "runs": 3
+    }
+  }
+}

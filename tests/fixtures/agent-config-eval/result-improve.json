@@ -1,0 +1,124 @@
+{
+ "schemaVersion": 1,
+ "claudeVersion": "2.1.278",
+ "startedAt": "2026-09-22T15:25:17.036Z",
+ "durationSeconds": 11,
+ "costUsd": 0.11610650000000002,
+ "partial": false,
+ "suite": {
+  "root": "/tmp/agent-config-eval.FIXTURE/claudius",
+  "ablation": "none",
+  "modelOverride": "claude-opus-5",
+  "threshold": 0,
+  "concurrency": 1,
+  "plugins": [
+   {
+    "name": "praetorium-claudius",
+    "version": "0.1.0",
+    "path": "/tmp/agent-config-eval.FIXTURE/claudius"
+   }
+  ]
+ },
+ "cases": [
+  {
+   "name": "meeting-prep-fires",
+   "dir": "evals/meeting-prep-fires",
+   "source": "case_yaml",
+   "promptMarkdown": "Prep for meeting with Kestrel Cold Logistics.\n",
+   "runsPerCase": 3,
+   "timeoutSeconds": 180,
+   "maxTurns": 4,
+   "graders": [
+    {
+     "name": "fires-meeting-prep",
+     "type": "tool_used",
+     "weight": 1,
+     "config": {
+      "tool": "Skill",
+      "input_match": "\"skill\"\\s*:\\s*\"(?:[\\w-]+:)?meeting-prep\""
+     }
+    }
+   ],
+   "arms": {
+    "with": [
+     {
+      "score": 1,
+      "passed": true,
+      "turns": 5,
+      "costUsd": 0.11610650000000002,
+      "judgeCostUsd": 0,
+      "durationSeconds": 11,
+      "startedAt": "2026-09-22T15:25:17.042Z",
+      "error": "exit 1: Reached maximum number of turns (4)",
+      "tracePath": "/tmp/claude-eval-2DSJSh/out/trace.jsonl",
+      "skippedPaidGraders": false,
+      "graders": [
+       {
+        "name": "fires-meeting-prep",
+        "passed": true,
+        "weight": 1,
+        "explanation": "Skill called 1x (expected 1..\u221e)",
+        "withOnly": false,
+        "scored": true
+       }
+      ]
+     },
+     {
+      "score": 1,
+      "passed": true,
+      "turns": 5,
+      "costUsd": 0.11610650000000002,
+      "judgeCostUsd": 0,
+      "durationSeconds": 11,
+      "startedAt": "2026-09-22T15:25:17.042Z",
+      "error": "exit 1: Reached maximum number of turns (4)",
+      "tracePath": "/tmp/claude-eval-2DSJSh/out/trace.jsonl",
+      "skippedPaidGraders": false,
+      "graders": [
+       {
+        "name": "fires-meeting-prep",
+        "passed": true,
+        "weight": 1,
+        "explanation": "Skill called 1x (expected 1..\u221e)",
+        "withOnly": false,
+        "scored": true
+       }
+      ]
+     },
+     {
+      "score": 1,
+      "passed": true,
+      "turns": 5,
+      "costUsd": 0.11610650000000002,
+      "judgeCostUsd": 0,
+      "durationSeconds": 11,
+      "startedAt": "2026-09-22T15:25:17.042Z",
+      "error": "exit 1: Reached maximum number of turns (4)",
+      "tracePath": "/tmp/claude-eval-2DSJSh/out/trace.jsonl",
+      "skippedPaidGraders": false,
+      "graders": [
+       {
+        "name": "fires-meeting-prep",
+        "passed": true,
+        "weight": 1,
+        "explanation": "Skill called 1x (expected 1..\u221e)",
+        "withOnly": false,
+        "scored": true
+       }
+      ]
+     }
+    ]
+   },
+   "aggregates": {
+    "score": 1.0,
+    "passRate": 1.0
+   }
+  }
+ ],
+ "aggregates": {
+  "casesTotal": 1,
+  "casesPassed": 1,
+  "overallScore": 1.0,
+  "overallPassRate": 0
+ }
+}

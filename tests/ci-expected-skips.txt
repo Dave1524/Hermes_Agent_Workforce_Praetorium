@@ -83,12 +83,23 @@
 # first for a different question (is each pointer's description the vault's, verbatim?). Same
 # path, its own reason, so the diff shows which of the two questions a runner cannot answer.
 
+# ONE LINE ADDED 2026-09-22 (T8.4 behavioural evals): test_agent_config_eval.sh. It is the only
+# suite on this box that spends model tokens, and the credential it spends is a claude.ai login
+# that CI deliberately does not hold (.github/workflows/verify.yml carries no secrets and makes
+# zero `secrets.` references). Groups 0-8 are fixtures and run on any runner — the case files,
+# the baseline join in both directions, all four comparator verdicts, the quantisation edge, the
+# change gate and the $HOME refusal. What a runner loses is the verdict on the live tree, not
+# the check. The suite's OTHER two skips are not exemptions and are not listed here: the
+# change-gated line on the box ("no watched path changed since …") and the opt-in negative
+# control both depend on the branch diff and on an env var, so diffing them would make this file
+# a function of what a branch happens to touch.
 # T8.5 (2026-09-23): each CLAUDE.md trap that moved from prose to a test brought its box-only
 # half here — the checkers run on fixtures everywhere; only the verdict on the live box skips.
 
 SKIP: check-team-kinds.py — the live TEAM.md channel table, which is declared excluded from buzz-team/ adoption (absent: ~/.config/buzz-team/TEAM.md)
 SKIP: check_deploy_drift.sh — the deployed trees this check compares against (absent: ~/agent-workforce/bin ~/.config/systemd/user ~/.config/buzz-team)
 SKIP: live OpenCode agent contract tests (set OPENCODE_LIVE_TESTS=1 to spend model tokens)
+SKIP: test_agent_config_eval.sh — the claude.ai login the live eval spends (absent: ~/.claude/.credentials.json)
 SKIP: test_buzz_acp_update.sh — the installed buzz binaries and the unit that launches them (absent: ~/.local/bin/buzz-acp ~/.config/systemd/user/buzz-agent@.service)
 SKIP: test_check_loaded.sh — the live agent identities this classification is checked against (absent: ~/.config/buzz-agents)
 SKIP: test_content_skill_extract.sh — the vault the content job reads (absent: ~/vault/08_skills/linkedin-content-engine/SKILL.md)
@@ -99,8 +110,8 @@ SKIP: test_instruction_scaffolding.sh — the box's ~/dev project tree, which no
 SKIP: test_instruction_scaffolding.sh — the Codex home the box-root pointer resolves into (absent: ~/.codex/AGENTS.md)
 SKIP: test_instruction_size.sh — the box-root instruction file every session on this box loads (absent: ~/CLAUDE.md)
 SKIP: test_memory_index_budget.sh — the shared memory index every session on this box loads (absent: ~/.claude/projects/-home-dave/memory/MEMORY.md)
-SKIP: test_pointer_skills.sh — the vault the pointer skills name (absent: ~/vault/08_skills)
 SKIP: test_pointer_skills.sh — the vault the pointer skills mirror (absent: ~/vault/08_skills)
+SKIP: test_pointer_skills.sh — the vault the pointer skills name (absent: ~/vault/08_skills)
 SKIP: test_qmd_status.sh — the live qmd-mcp unit and its config (absent: ~/.config/qmd/index.yml /etc/systemd/system/qmd-mcp.service)
 SKIP: test_retired_residue.sh — the installed units and home tree a checkout cannot carry (absent: ~/agent-workforce/bin ~/.config/systemd/user)
 SKIP: test_workflow_retirements.sh — the deployed trees a live residue scan reads (absent: ~/agent-workforce/bin ~/agent-workforce/systemd)

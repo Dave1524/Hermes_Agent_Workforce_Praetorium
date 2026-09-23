@@ -1,0 +1,18 @@
+# Does trajan still fire verification-before-completion for the phrase the vault's description says triggers it?
+# The shape and the measured cost of a case are documented once, on
+# claudius/evals/meeting-prep-fires/case.yaml; skills/README.md says how to add one.
+schema_version: "1.1"
+name: verification-before-completion-fires
+runs: 3
+execution:
+  prompt: |
+    I think the fix is done — about to commit it and open the PR.
+  max_turns: 2
+  timeout_seconds: 180
+  allowed_tools: [Skill]
+graders:
+  - name: fires-verification-before-completion
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:[\w-]+:)?verification-before-completion"'
+    weight: 1

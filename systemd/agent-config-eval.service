@@ -1,0 +1,40 @@
+# Weekly behavioural eval of the agents' skill configuration (T8.4).
+# Deploy: sudo cp systemd/agent-config-eval.{service,timer} /etc/systemd/system/, then
+# `sudo systemctl daemon-reload`. SHIPPED DISABLED — enabling a timer is Dave's call, never
+# a task's, so there is deliberately no `enable --now` in that line.
+#
+# THIS IS THE ONE UNIT ON THIS BOX THAT SPENDS MODEL TOKENS TO CHECK ITSELF. Every case run
+# is a full `claude` child on the same claude.ai login as the five buzz-agent@* units and the
+# nine scheduled runners, so it shares their rate limit. That is why it is weekly, why the
+# slot is a Saturday, and why the runner takes a non-blocking flock instead of queueing.
+#
+# WHY A TIMER AT ALL, when the verify gate already runs it on a branch that touches a watched
+# path: a model rollout or a harness change moves behaviour with NO diff, so there is nothing
+# for a change-gated check to fire on. That class is exactly what a standing run catches, and
+# it is the only thing this timer adds over the gate.
+#
+# NO OnFailure=agent-alert@%n.service, deliberately, and design/agents/trajan.toml says
+# alerted = false for the same reason as fleet-eval: the exit code is the product (1 means
+# something moved backwards) and --deliver has already posted the scorecard to #ops. Wiring
+# the alert path as well gives one problem two notifications on two surfaces. The non-zero
+# exit stays as the quiet second signal via `systemctl --failed`, and clears on the next
+# green run. Do not "fix" this.
+[Unit]
+Description=Agent-config eval — do the agents' skills still fire?
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/home/dave/agent-workforce/skills/evals-baseline.json
+
+[Service]
+Type=oneshot
+User=dave
+# NOT /home/dave. The runner refuses a TMPDIR inside $HOME because the eval child's cwd
+# decides whether ~/CLAUDE.md and the shared memory pool load into every run; WorkingDirectory
+# is the other half of the same concern, and /tmp keeps both answers the same as the gate's.
+WorkingDirectory=/tmp
+ExecStart=/home/dave/agent-workforce/bin/agent_config_eval.sh --self-check --deliver
+# Bounded by the cases themselves (max_turns and timeout_seconds per case), so this is a
+# backstop against a hung child and not the real budget.
+TimeoutStartSec=60min
+NoNewPrivileges=true
+Nice=10
