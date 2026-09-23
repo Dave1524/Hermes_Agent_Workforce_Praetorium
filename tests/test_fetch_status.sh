@@ -13,9 +13,13 @@ SCRIPT="$REPO_ROOT/bin/praetorium-status.sh"
 
 fail=0
 assert() {
-  local desc=$1 cond=$2
+  local desc=$1 cond=$2 pf
+  pf=$(shopt -po pipefail)
+  set +o pipefail
   if eval "$cond"; then echo "  ok: $desc"; else echo "  FAIL: $desc"; fail=1; fi
+  eval "$pf"
 }
+assert 'a found pattern is never reported as a failure' "yes | grep -q y"
 
 sandbox() {
   local home; home=$(mktemp -d)

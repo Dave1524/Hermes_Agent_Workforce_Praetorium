@@ -616,6 +616,46 @@ assert_bridge_offer() {
   done
 }
 
+# Gate 16 (T8.5): interactive Codex enforces the secret deny-list at the bwrap namespace, and
+# the two ways to break that silently stay closed — a profile without network, and an admin
+# deny_read in /etc/codex/requirements.toml, which rejects augustus's danger-full-access.
+CODEX_CONFIG="$HOME/.codex/config.toml"
+CODEX_DENIED=(.ssh .config/agent-workforce .config/buzz-agents .config/google-docs-mcp
+  ENCRYPTION_RECOVERY.md .confidential.img)
+
+codex_profile_value() {
+  python3 - "$CODEX_CONFIG" "$@" <<'PY' 2>/dev/null
+import sys, tomllib
+node = tomllib.load(open(sys.argv[1], "rb"))
+for key in sys.argv[2:]:
+    node = node.get(key, {}) if isinstance(node, dict) else {}
+print(node if node != {} else "")
+PY
+}
+
+assert_codex_profile() {
+  local path
+  check praetorium "$(codex_profile_value default_permissions)" "16/codex-profile default_permissions"
+  check True "$(codex_profile_value permissions praetorium network enabled)" \
+    "16/codex-profile network enabled (a user profile does not inherit it)"
+  for path in "${CODEX_DENIED[@]}"; do
+    check deny "$(codex_profile_value permissions praetorium filesystem "$HOME/$path")" \
+      "16/codex-profile denies ~/$path"
+  done
+  if grep -qs 'deny_read' /etc/codex/requirements.toml; then
+    fail "16/codex-profile /etc/codex/requirements.toml carries deny_read (rejects augustus's danger-full-access)"
+  else
+    ok "16/codex-profile no admin deny_read in /etc/codex/requirements.toml"
+  fi
+  if ! (cd /tmp && timeout 30 codex sandbox -- ls "$HOME/dev" >/dev/null 2>&1); then
+    fail "16/codex-profile control: codex sandbox cannot read ~/dev, so the deny probe proves nothing"
+  elif (cd /tmp && timeout 30 codex sandbox -- ls "$HOME/.ssh" >/dev/null 2>&1); then
+    fail "16/codex-profile codex sandbox lists ~/.ssh"
+  else
+    ok "16/codex-profile codex sandbox is denied ~/.ssh (control ~/dev readable)"
+  fi
+}
+
 assert_units_active
 assert_harness
 assert_team_instructions
@@ -631,6 +671,7 @@ assert_calibration_pack
 assert_brave_mcp
 assert_capability_isolation
 assert_bridge_offer
+assert_codex_profile
 
 printf '\n%s\n' "----------------------------------------"
 if [ "$failures" -eq 0 ]; then

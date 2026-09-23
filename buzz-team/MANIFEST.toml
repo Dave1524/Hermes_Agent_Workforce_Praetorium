@@ -25,6 +25,7 @@
 #   than shape, it is the class most likely to accrete client detail, and
 #   Dave1524/Hermes_Agent_Workforce_Praetorium is a PUBLIC repo that
 #   agent-workforce-auto-sync.timer pushes to within 15 minutes. Stays machine-level.
+#   One prose file is adopted — aurelian-calibration.md — for the reason its entry gives (T8.3).
 #
 # The rule is stated here so the next file lands on the right side without a new decision.
 # It is a standing-risk boundary, not a leak finding: TEAM.md was read for client content
@@ -212,6 +213,26 @@ path = "watch-test.sh"
 read_by = "human"
 why = "tails a live agent turn"
 
+[[adopted]]
+path = "aurelian-calibration.md"
+read_by = "ship-dev-plan.js land step 5 (sha256sum -> calibration_digest in every archive commit); verify-fleet.sh gate 12 on the deployed copy; aurelian, as instruction"
+why = """
+The review policy that gates every land was outside the repo it gates (T8.3): the land
+step digested it from ~/.config/buzz-team/ and every archive commit recorded the digest of
+a file no commit held. This is the one prose file on the adopted side, and the rule's two
+reasons are answered rather than waived. PUBLIC repo: read in full 2026-09-22 and it
+carries no client string — tool, folder and Notion database names only; re-read it before
+every edit, as TEAM.md's pin rule demands, because a diff of the bytes never proves what
+they say is safe to publish. "A second home to drift in": the repo is now the source and
+~/.config/buzz-team/ the destination, and bin/check_deploy_drift.sh runs `cmp` in both
+directions on every verify — stronger than the pin it replaces. Adopted byte-identical
+(ADOPT WHAT IS LIVE, above): sha256 6e3b7a57… before and after, so the calibration_digest
+history is continuous across the move. Edits are commits after adoption that bump
+`**version: N**` and the H1's `vN` together (tests/test_review_rubric.sh); a rubric-editing
+task is a deploy task whose one runtime action is bin/deploy_buzz_team.sh — nothing execs
+this file, so nothing restarts.
+"""
+
 # ─── Excluded. Named, because absence cannot be told from deletion. ───────────────────
 
 [[excluded]]
@@ -244,17 +265,6 @@ a smaller surface. Note what it costs to get wrong: it opens with `buzz feed get
 agent whose BUZZ_ACP_HEARTBEAT_INTERVAL is non-zero reads back history every hour —
 which is precisely why verify-fleet.sh asserts aurelian's interval is 0 from /proc rather
 than from a unit file.
-"""
-
-[[excluded]]
-path = "aurelian-calibration.md"
-kind = "prose"
-sha256 = "6e3b7a575558f3a16cf43467d0af16a5de6ab55b4ce004bc3f7b06a39dabb9b3"
-why = """
-The calibration pin, in prose, for the one agent who executes nothing. Its correctness is
-judgement end to end — there is no mechanical symptom of a wrong version, which is the
-definition of the prose side of the rule. Adopting it would put a charter in a public repo
-and give the pin a second home to drift in.
 """
 
 [[excluded]]

@@ -220,4 +220,20 @@ else
   echo "  (skipped — see the SKIP line above)"
 fi
 
+echo "--- 4. ~/AGENTS.md is the symlink into ~/.codex/ (T8.5) ---"
+# A plain ~/AGENTS.md loads only when the workspace IS /home/dave; the $CODEX_HOME copy loads
+# from every cwd. The symlink keeps both paths one file.
+root_pointer_ok() { [ -L "$1/AGENTS.md" ] && [ "$(readlink "$1/AGENTS.md")" = .codex/AGENTS.md ]; }
+mkdir -p "$TMP/home-ok/.codex" "$TMP/home-plain"
+: > "$TMP/home-ok/.codex/AGENTS.md"
+ln -s .codex/AGENTS.md "$TMP/home-ok/AGENTS.md"
+: > "$TMP/home-plain/AGENTS.md"
+assert 'a plain-file ~/AGENTS.md is flagged'           "! root_pointer_ok '$TMP/home-plain'"
+assert 'the symlink into .codex/ is not'               "root_pointer_ok '$TMP/home-ok'"
+if box_only_with 'the Codex home the box-root pointer resolves into' "$HOME/.codex/AGENTS.md"; then
+  assert '~/AGENTS.md -> .codex/AGENTS.md on this box' "root_pointer_ok '$HOME'"
+else
+  echo "  (skipped — see the SKIP line above)"
+fi
+
 exit $fail

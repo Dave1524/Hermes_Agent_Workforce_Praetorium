@@ -2,7 +2,7 @@
 Description=qmd MCP HTTP daemon (vault memory for agents) — NUC-10
 After=network-online.target
 Wants=network-online.target
-ConditionPathExists=/home/dave/vault/.git
+ConditionPathExists=/home/dave/dev/obsidian-ai-os-boxsafe/.git
 
 [Service]
 Type=simple
