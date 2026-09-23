@@ -25,7 +25,7 @@ printf 'state=%s  mainpid=%s  since=%s\n' \
   "$(systemctl --user is-active "buzz-agent@$AGENT")" "$pid" "$SINCE"
 
 printf '\n=== buzz-acp journal ===\n'
-journalctl --user -u "buzz-agent@$AGENT" --since "$SINCE" --no-pager -o cat 2>/dev/null \
+journalctl --utc --user -u "buzz-agent@$AGENT" --since "$SINCE" --no-pager -o cat 2>/dev/null \
   | grep -viE 'presence|typing|token_count' \
   | tail -60
 

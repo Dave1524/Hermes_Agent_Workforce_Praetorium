@@ -18,9 +18,13 @@ ALERT="$REPO_ROOT/bin/agent_alert.sh"
 fail=0
 
 assert() {
-  local desc=$1 cond=$2
+  local desc=$1 cond=$2 pf
+  pf=$(shopt -po pipefail)
+  set +o pipefail
   if eval "$cond"; then echo "  ok: $desc"; else echo "  FAIL: $desc"; fail=1; fi
+  eval "$pf"
 }
+assert 'a found pattern is never reported as a failure' "yes | grep -q y"
 
 # A fixture is a state dir + a notify recorder + a journal stub. `succeeded` decides
 # whether the stub reports a completed run since the last alert, which is the only

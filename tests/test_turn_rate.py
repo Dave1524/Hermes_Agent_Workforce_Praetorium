@@ -54,7 +54,7 @@ class TurnRateTest(unittest.TestCase):
                    receipt("old", "2026-09-19T13:30:00Z", "scheduled"))
         done = self.run_tool("marcus")
         self.assertEqual(done.returncode, 0, done.stderr)
-        self.assertEqual(done.stdout, "marcus\t3\t2\t0\ts1,s2\n")
+        self.assertEqual(done.stdout, "marcus\t3\t2\t0\ts1,s2\t-\n")
 
     def test_receipts_before_the_origin_field(self):
         # (::turn-rate-legacy-origin) — a receipt with no origin key is relay when its handoff
@@ -63,7 +63,7 @@ class TurnRateTest(unittest.TestCase):
                    receipt("h1", "2026-09-19T14:30:00Z", None, {"actor": "Dave_VPC", "event": "e0" * 32, "recipient": "claudius"}),
                    receipt("n1", "2026-09-19T14:40:00Z", None, None))
         done = self.run_tool("claudius")
-        self.assertEqual(done.stdout, "claudius\t2\t0\t1\t-\n")
+        self.assertEqual(done.stdout, "claudius\t2\t0\t1\t-\t-\n")
 
     def test_missing_agent_and_broken_file(self):
         # (::turn-rate-never-fails) — an agent with no receipts is a line of zeros; a file
@@ -72,8 +72,37 @@ class TurnRateTest(unittest.TestCase):
         (self.tmp / "buzz-agent@trajan" / "broken.json").write_text("{not json")
         done = self.run_tool("aurelian", "trajan")
         self.assertEqual(done.returncode, 0)
-        self.assertEqual(done.stdout, "aurelian\t0\t0\t0\t-\ntrajan\t1\t1\t0\tt1\n")
+        self.assertEqual(done.stdout, "aurelian\t0\t0\t0\t-\t-\ntrajan\t1\t1\t0\tt1\t-\n")
         self.assertIn("broken.json", done.stderr)
+
+    def test_one_event_answered_twice(self):
+        # (::turn-rate-doubled) — two receipts naming one relay event are one mention answered
+        # twice, named by event prefix and count; two events once each, turns with no event,
+        # two receipts of one turn (same started_at), and a self-scheduled fire whose handoff
+        # still names the last inbound event, are not.
+        mention = {"actor": "Dave_VPC", "event": "ab" * 32, "recipient": "trajan"}
+        other = {"actor": "Dave_VPC", "event": "cd" * 32, "recipient": "trajan"}
+        self.write("trajan",
+                   receipt("d1", "2026-09-19T14:10:00Z", "relay", mention),
+                   receipt("d2", "2026-09-19T14:11:00Z", "relay", mention),
+                   receipt("s" * 36 + "-o1", "2026-09-19T14:20:00Z", "relay", other),
+                   dict(receipt("s" * 36 + "-o2", "2026-09-19T14:25:00Z", "relay", other), started_at="2026-09-19T14:20:00Z"),
+                   receipt("s1", "2026-09-19T14:30:00Z", "scheduled", other),
+                   receipt("s2", "2026-09-19T14:40:00Z", "scheduled"))
+        done = self.run_tool("trajan")
+        self.assertEqual(done.stdout, f"trajan\t6\t2\t0\ts1,s2\t{'ab' * 6}x2\n")
+
+    def test_two_sessions_in_one_second(self):
+        # (::turn-rate-doubled-same-second) — started_at is second-precision, so two
+        # dispatchers answering one event together share it; their sessions still differ.
+        mention = {"actor": "Dave_VPC", "event": "ef" * 32, "recipient": "marcus"}
+        head_a = "a" * 36 + "-turn1"
+        head_b = "b" * 36 + "-turn1"
+        self.write("marcus",
+                   receipt(head_a, "2026-09-19T14:10:00Z", "relay", mention),
+                   receipt(head_b, "2026-09-19T14:10:00Z", "relay", mention))
+        done = self.run_tool("marcus")
+        self.assertEqual(done.stdout, f"marcus\t2\t0\t0\t-\t{'ef' * 6}x2\n")
 
 
 if __name__ == "__main__":

@@ -59,4 +59,13 @@ done
 assert "the Notion write is unconditional (a catch-up run always finds a row already there)" \
   "grep -q 'Run this every time, including when' '$TASK' && grep -q 'already live, no action' '$TASK'"
 
+echo "--- the vault write stays Mac-side: 07_daily is read, never written (T8.5) ---"
+writes_daily() { grep -iE '07_daily' "$1" | grep -iE '(write|append|create|commit|edit|save)|>>|tee '; }
+daily_fixture=$(mktemp)
+printf -- '- Append the EOD summary to ~/vault/07_daily/logs/<date>.md\n' > "$daily_fixture"
+assert "a task line that writes 07_daily is caught" "writes_daily '$daily_fixture' >/dev/null"
+rm -f "$daily_fixture"
+assert "the task never writes 07_daily" "! writes_daily '$TASK' >/dev/null"
+assert "and carries the read-only rule" "grep -q 'Read-only everywhere except your two outputs' '$TASK'"
+
 exit $fail
