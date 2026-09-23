@@ -85,12 +85,24 @@ class TurnRateTest(unittest.TestCase):
         self.write("trajan",
                    receipt("d1", "2026-09-19T14:10:00Z", "relay", mention),
                    receipt("d2", "2026-09-19T14:11:00Z", "relay", mention),
-                   receipt("o1", "2026-09-19T14:20:00Z", "relay", other),
-                   dict(receipt("o2", "2026-09-19T14:25:00Z", "relay", other), started_at="2026-09-19T14:20:00Z"),
+                   receipt("s" * 36 + "-o1", "2026-09-19T14:20:00Z", "relay", other),
+                   dict(receipt("s" * 36 + "-o2", "2026-09-19T14:25:00Z", "relay", other), started_at="2026-09-19T14:20:00Z"),
                    receipt("s1", "2026-09-19T14:30:00Z", "scheduled", other),
                    receipt("s2", "2026-09-19T14:40:00Z", "scheduled"))
         done = self.run_tool("trajan")
         self.assertEqual(done.stdout, f"trajan\t6\t2\t0\ts1,s2\t{'ab' * 6}x2\n")
+
+    def test_two_sessions_in_one_second(self):
+        # (::turn-rate-doubled-same-second) — started_at is second-precision, so two
+        # dispatchers answering one event together share it; their sessions still differ.
+        mention = {"actor": "Dave_VPC", "event": "ef" * 32, "recipient": "marcus"}
+        head_a = "a" * 36 + "-turn1"
+        head_b = "b" * 36 + "-turn1"
+        self.write("marcus",
+                   receipt(head_a, "2026-09-19T14:10:00Z", "relay", mention),
+                   receipt(head_b, "2026-09-19T14:10:00Z", "relay", mention))
+        done = self.run_tool("marcus")
+        self.assertEqual(done.stdout, f"marcus\t2\t0\t0\t-\t{'ef' * 6}x2\n")
 
 
 if __name__ == "__main__":

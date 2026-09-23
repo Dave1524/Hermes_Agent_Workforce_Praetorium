@@ -93,11 +93,15 @@ started_after() { [ "$1" -ge "$2" ]; }
 echo "--- the reload check detects a config newer than the process ---"
 assert "a process started after the edit is current" "started_after 200 100"
 assert "a config edited after start is flagged"      "! started_after 100 200"
+assert "a process that never started is flagged"     "! started_after 0 100"
 
 echo "--- live: qmd-mcp has loaded the current index.yml ---"
 if box_only_with 'the live qmd-mcp unit and its config' \
      "$HOME/.config/qmd/index.yml" /etc/systemd/system/qmd-mcp.service; then
-  start_s=$(date -d "$(systemctl show qmd-mcp -p ExecMainStartTimestamp --value)" +%s 2>/dev/null || echo 0)
+  # An empty stamp (never started this boot) must not reach `date -d ""`, which is midnight.
+  start_raw=$(systemctl show qmd-mcp -p ExecMainStartTimestamp --value 2>/dev/null)
+  start_s=0
+  [ -n "$start_raw" ] && start_s=$(date -d "$start_raw" +%s 2>/dev/null || echo 0)
   cfg_s=$(stat -c %Y "$HOME/.config/qmd/index.yml")
   echo "  info: qmd-mcp started $start_s, index.yml mtime $cfg_s"
   assert "qmd-mcp started after the last index.yml edit (else: sudo systemctl restart qmd-mcp)" \

@@ -19,7 +19,7 @@ assert() {
   eval "$pf"
 }
 
-SYMLINK_REF='(/home/dave|%h|~|\$HOME|\$\{HOME\})/vault([/"'"'"'[:space:]]|$)'
+SYMLINK_REF='(/home/dave|%h|~|\$HOME|\$\{HOME\})/vault([/"'"'"'[:space:]:;)]|$)'
 
 # One offending file:line per line; comment lines are prose, not configuration.
 symlink_refs() {
@@ -49,8 +49,9 @@ printf 'ConditionPathExists=/home/dave/vault/.git\n' > "$TMP/abs.service"
 printf 'WorkingDirectory=%%h/vault\n'                 > "$TMP/spec.service"
 printf '    path: /home/dave/vault\n'                  > "$TMP/index.yml"
 printf 'gitdir: ~/vault/.git/worktrees/inbox\n'        > "$TMP/gitdir"
+printf 'Environment=PATH=/home/dave/vault:/usr/bin\n'   > "$TMP/path.service"
 printf '# ~/vault is the symlink\nConditionPathExists=/home/dave/dev/obsidian-ai-os-boxsafe/.git\nX=/home/dave/vaultish\n' > "$TMP/clean"
-for f in abs.service spec.service index.yml gitdir; do
+for f in abs.service spec.service index.yml gitdir path.service; do
   assert "a symlink reference in $f is named" "[ -n \"\$(symlink_refs '$TMP/$f')\" ]"
 done
 assert 'a resolved path, a comment and a longer name are not' "[ -z \"\$(symlink_refs '$TMP/clean')\" ]"
@@ -63,7 +64,10 @@ echo "--- 3. installed units, the qmd collection, worktree gitdirs (::vault-syml
 if box_only_with 'the installed units, qmd config and vault worktrees' \
      "$HOME/.config/qmd/index.yml" "$HOME/agent-worktrees"; then
   mapfile -t units < <(installed_units)
+  shopt -s nullglob
   gitdirs=("$HOME"/agent-worktrees/*/.git)
+  shopt -u nullglob
+  assert "the worktree scan found at least one gitdir pointer" "[ ${#gitdirs[@]} -gt 0 ]"
   live=$(symlink_refs "${units[@]}" "$HOME/.config/qmd/index.yml" "${gitdirs[@]}" | tr '\n' ' ')
   echo "  info: scanned ${#units[@]} installed units, the qmd config, ${#gitdirs[@]} worktree pointers"
   assert "nothing live records ~/vault (${live:-none})" "[ -z '$live' ]"

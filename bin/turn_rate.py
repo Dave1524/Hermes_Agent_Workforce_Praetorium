@@ -13,8 +13,9 @@ or /loop re-prompting it, no relay event behind it (bin/interaction_receipt.py);
 when the receipt predates the origin field and carries no handoff either. Owner turns and the
 unknowns are counted and never alarmed on: fleet-turn-check.sh reads the self_scheduled
 column. `doubled` names each relay event that woke this agent more than once in the window,
-as `<event-prefix>x<turns>` — one mention answered twice by the box. Turns are counted by
-distinct started_at, relay turns only: one prompt can end in two receipts, and a
+as `<event-prefix>x<turns>` — one mention answered twice by the box. A turn is its
+(session, started_at) — the run id's leading session uuid, so two dispatchers starting in the
+same second are still two — relay turns only: one prompt can end in two receipts, and a
 self-scheduled fire still carries the last inbound event in its handoff; neither is a second
 answer. fleet-turn-check.sh gate 6 reads the column. An agent with no receipt directory is a line of zeros, not an error — a fresh agent
 has none yet. A receipt that does not parse is skipped and named on stderr; exit 0 regardless,
@@ -81,11 +82,16 @@ def event_of(receipt: dict) -> str | None:
     return event if isinstance(event, str) and event else None
 
 
+def turn_key(receipt: dict) -> tuple:
+    session = str(receipt.get("run_id", ""))[:36]
+    return session, receipt.get("started_at")
+
+
 def doubled_events(receipts: list[dict]) -> str:
     starts: dict[str, set] = collections.defaultdict(set)
     for r in receipts:
         if event_of(r) and origin_of(r) == ORIGIN_RELAY:
-            starts[event_of(r)].add(r.get("started_at"))
+            starts[event_of(r)].add(turn_key(r))
     return ",".join(f"{event[:12]}x{len(s)}" for event, s in sorted(starts.items()) if len(s) > 1) or "-"
 
 

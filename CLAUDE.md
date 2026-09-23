@@ -121,7 +121,7 @@ Two jobs own Dave's day, both under `agent_propose.sh` with `AGENT_RUN_MODE=ops`
   + `<date>` (Daily Log).
 
 - **Notion is the artifact; the vault write stays Mac-side.** These jobs never write
-  `07_daily/`, on any branch (the daily/eod smokes assert it). The Mac's `morning-startup` /
+  `07_daily/`, on any branch (the daily/eod smokes guard the task text). The Mac's `morning-startup` /
   `eod-wrap` skills remain canonical for interactive runs.
 - **All Notion I/O goes through `bin/notion_daily.py`** (date-keyed idempotency); never
   hand-roll Notion HTTP in a task profile.

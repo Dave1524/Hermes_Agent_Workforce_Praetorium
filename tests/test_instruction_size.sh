@@ -29,11 +29,12 @@ assert() {
   eval "$pf"
 }
 
-COUNT_LITERAL='\b(two|three|four|five|six|seven|eight|nine|ten|[0-9]+) (agents|units|documents)\b'
+# One qualifier may sit between number and noun: "five `buzz-agent@*` units", "five Buzz agents".
+COUNT_LITERAL='\b(two|three|four|five|six|seven|eight|nine|ten|[0-9]+) ([^ ]+ )?(agents|units|documents)\b'
 
 bytes()          { wc -c < "$1" | tr -d ' '; }
 within()         { [ "$(bytes "$1")" -le "$2" ]; }
-count_literals() { grep -nE "$COUNT_LITERAL" "$1" | grep -v 'MEASURED' || true; }
+count_literals() { grep -niE "$COUNT_LITERAL" "$1" | grep -v 'MEASURED' || true; }
 no_literals()    { [ -z "$(count_literals "$1")" ]; }
 
 TMP="$(mktemp -d)"
@@ -49,10 +50,14 @@ assert 'a file one byte over its ceiling is flagged'     "! within '$TMP/big.md'
 assert 'a file at exactly its ceiling is not'            "within '$TMP/edge.md' 1000"
 printf 'Check the fleet: all four agents answer.\n' > "$TMP/fleet.md"
 printf 'The index holds 529 documents.\n' > "$TMP/docs.md"
-printf 'Five units active running (MEASURED 2026-09-05).\n' > "$TMP/measured.md"
+printf 'Five agents answer.\n' > "$TMP/capital.md"
+printf 'the five `buzz-agent@*` units are the Agents view\n' > "$TMP/qualified.md"
+printf 'five units active running (MEASURED 2026-09-05).\n' > "$TMP/measured.md"
 printf 'Enumerate the units; never count them in prose.\n' > "$TMP/clean.md"
 assert 'a fleet count in prose is flagged'               "! no_literals '$TMP/fleet.md'"
 assert 'a document count in prose is flagged'            "! no_literals '$TMP/docs.md'"
+assert 'a capitalised count is flagged'                "! no_literals '$TMP/capital.md'"
+assert 'a count with a qualifier before the noun is flagged' "! no_literals '$TMP/qualified.md'"
 assert 'a count on a MEASURED line is not'               "no_literals '$TMP/measured.md'"
 assert 'prose with no count is not'                      "no_literals '$TMP/clean.md'"
 
