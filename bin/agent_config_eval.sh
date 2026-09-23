@@ -131,8 +131,6 @@ if [ -n "$CHANGED_SINCE" ]; then
 fi
 
 # --- preconditions ---------------------------------------------------------------------
-command -v claude >/dev/null 2>&1 || {
-  echo "agent_config_eval: claude is not on PATH — nothing to evaluate" >&2; exit 2; }
 [ -f "$COMPARE" ] || {
   echo "agent_config_eval: comparator missing: $COMPARE" >&2; exit 2; }
 [ -d "$SKILLS_ROOT" ] || {
@@ -178,6 +176,11 @@ case "$(readlink -f "$TMPROOT")/" in
     echo "                   load ~/CLAUDE.md and the shared memory pool. Unset TMPDIR." >&2
     exit 2 ;;
 esac
+
+# Only a run that spends a model call needs the binary: --dry-run, the change gate and the
+# $HOME refusal above answer without it, which is what lets CI run them on a bare runner.
+command -v claude >/dev/null 2>&1 || {
+  echo "agent_config_eval: claude is not on PATH — nothing to evaluate" >&2; exit 2; }
 
 # Non-blocking, like fleet_eval: every case run is a full `claude` child on the same login as
 # five Buzz agents and nine runners, so two overlapping suites are a rate-limit collision and
