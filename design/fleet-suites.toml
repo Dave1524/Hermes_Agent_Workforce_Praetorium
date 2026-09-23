@@ -766,6 +766,7 @@ asserts = [
   "turn-rate-legacy-origin",   # a receipt without the origin field is relay by its handoff or unknown, never self-scheduled
   "turn-rate-never-fails",     # no receipt directory is a line of zeros; a file that does not parse is skipped and named, the rest still read
   "turn-rate-doubled",         # T8.5: a relay event that started two relay turns for one agent is named; one turn's two receipts and a scheduled fire are not
+  "turn-rate-doubled-same-second", # two sessions answering one event in the same second are two turns, not one
 ]
 why_no_workflow = """
 The reader behind fleet-turn-check.sh gate 5 (2026-09-19), which is trajan's workflow and has
