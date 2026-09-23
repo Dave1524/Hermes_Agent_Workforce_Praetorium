@@ -1,0 +1,15 @@
+{
+  "workflowName": "ship-dev-plan",
+  "args": {"tasks": ["T9.1", "T9.2"]},
+  "result": {
+    "stoppedAt": "T9.1",
+    "failingAssertion": "code review confirmed: bin/a.sh:3: fixture finding",
+    "landed": [],
+    "land": {"reviewConfirmed": ["x"]}
+  },
+  "workflowProgress": [
+    {"type": "workflow_phase", "index": 1, "title": "Ship"},
+    {"type": "workflow_agent", "label": "ship:T9.1", "state": "done", "startedAt": 1000},
+    {"type": "workflow_agent", "label": "land:T9.1", "state": "done", "startedAt": 1100}
+  ]
+}
