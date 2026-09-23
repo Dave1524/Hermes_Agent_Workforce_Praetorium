@@ -11,14 +11,13 @@ trap 'rm -rf "$TMPDIR"' EXIT
 
 fail=0
 assert() {
-  local desc=$1 cond=$2
-  if eval "$cond"; then
-    echo "  ok: $desc"
-  else
-    echo "  FAIL: $desc"
-    fail=1
-  fi
+  local desc=$1 cond=$2 pf
+  pf=$(shopt -po pipefail)
+  set +o pipefail
+  if eval "$cond"; then echo "  ok: $desc"; else echo "  FAIL: $desc"; fail=1; fi
+  eval "$pf"
 }
+assert 'a found pattern is never reported as a failure' "yes | grep -q y"
 
 # ── 1. Python syntax checks ────────────────────────────────────────────────────
 

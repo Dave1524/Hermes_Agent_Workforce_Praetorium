@@ -49,7 +49,7 @@ started_at() {
 # roster probing a dead pubkey. grep -o and tail both read to EOF, so pipefail sees no SIGPIPE.
 agent_pubkey() {
   local pk
-  pk=$(journalctl --user -u "buzz-agent@$1" -o cat 2>/dev/null \
+  pk=$(journalctl --utc --user -u "buzz-agent@$1" -o cat 2>/dev/null \
        | grep -o 'pubkey=[0-9a-f]\{64\}' | tail -1)
   [[ -n $pk ]] || return 1
   printf '%s' "${pk#pubkey=}"
@@ -101,7 +101,7 @@ last_relay_event() {
 # for. Fails closed: mid-reconnect is a ~1s window and a rerun costs nothing.
 check_connection() {
   local name=$1 started=$2 last
-  last=$(journalctl --user -u "buzz-agent@$name" --since "@$started" -o cat 2>/dev/null \
+  last=$(journalctl --utc --user -u "buzz-agent@$name" --since "@$started" -o cat 2>/dev/null \
          | last_relay_event)
   case $last in
     'connected to relay'|'autonomous reconnect succeeded')

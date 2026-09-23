@@ -119,7 +119,7 @@ else
       win_s=$look_s;  bound="last ${LOOKBACK_MIN}m"
     fi
     win=$(date -d "@$win_s" '+%Y-%m-%d %H:%M:%S')
-    errs=$(journalctl --user -u "$u" --since "$win" --no-pager 2>/dev/null \
+    errs=$(journalctl --utc --user -u "$u" --since "$win" --no-pager 2>/dev/null \
       | grep -c 'Failed to authenticate\|OAuth session expired\|reported error')
     # A COMPLETED TURN LOGS NOTHING. Measured 2026-08-31: marcus answered a DM at
     # 11:58 and left zero journal lines, and outcome="ok" has never once been
@@ -146,7 +146,7 @@ else
     fi
     if [ "$errs" -gt 0 ]; then
       fail_ "$name: ERRORED -- $errs error line(s) in window [$win, now] ($bound)"
-      journalctl --user -u "$u" --since "$win" --no-pager 2>/dev/null \
+      journalctl --utc --user -u "$u" --since "$win" --no-pager 2>/dev/null \
         | grep 'Failed to authenticate\|OAuth session expired\|reported error' | tail -2 \
         | while IFS= read -r l; do info_ "  ${l:0:150}"; done
     elif [ "$turns" -gt 0 ]; then
