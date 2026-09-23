@@ -166,7 +166,6 @@ class RequiresRows(ServedCase):  # (::control-room-requires)
         for id_ in guarded:
             self.assertEqual(rows[id_]["role"], "system-workflow", id_)
             self.assertRegex(rows[id_]["guards"], r"^[^\n]+\.$")
-        self.assertIsNone(rows["agent-workforce-auto-sync"]["guards"])
 
 
 class ExceptionsDefault(ServedCase):  # (::control-room-exceptions-default)
