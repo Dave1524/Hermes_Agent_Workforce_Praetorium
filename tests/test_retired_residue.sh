@@ -33,7 +33,7 @@ trap 'rm -rf "$TMP"' EXIT
 echo "--- 0. canaries ---"
 assert 'a found pattern is never reported as a failure' "yes | grep -q y"
 
-echo "--- 1. the checkers detect residue on fixtures ---"
+echo "--- 1. the checkers detect residue on fixtures (::retired-residue-checker) ---"
 mkdir -p "$TMP/home/.hermes" "$TMP/units" "$TMP/clean-units" "$TMP/bin" "$TMP/src"
 : > "$TMP/units/discord-bot.service"
 printf '#!/bin/sh\n' > "$TMP/bin/ollama" && chmod +x "$TMP/bin/ollama"
@@ -46,11 +46,11 @@ assert 'a vault-boxsafe reference is named'      "[ -n \"\$(stale_mirror '$TMP/s
 assert 'clean inputs name nothing' \
   "[ -z \"\$(present_paths '$TMP/home/.nothing')\$(units_named discord-bot.service '$TMP/clean-units')\$(stale_mirror '$TMP/clean-units')\" ]"
 
-echo "--- 2. the checkout ---"
+echo "--- 2. the checkout (::retired-residue-checkout) ---"
 refs=$(cd "$REPO_ROOT" && stale_mirror bin systemd buzz-team config)
 assert "no source references ~/dev/vault-boxsafe (${refs:-none})" "[ -z '$refs' ]"
 
-echo "--- 3. the live box ---"
+echo "--- 3. the live box (::retired-residue-live) ---"
 if box_only_with 'the installed units and home tree a checkout cannot carry' \
      "$HOME/agent-workforce/bin" "$HOME/.config/systemd/user"; then
   left=$(present_paths "$HOME/.hermes" "$HOME/.local/bin/hermes")

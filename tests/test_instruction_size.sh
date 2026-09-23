@@ -42,7 +42,7 @@ trap 'rm -rf "$TMP"' EXIT
 echo "--- 0. canaries ---"
 assert 'a found pattern is never reported as a failure' "yes | grep -q y"
 
-echo "--- 1. the checker detects both failure modes on fixtures ---"
+echo "--- 1. the checker detects both failure modes on fixtures (::instruction-size-checker) ---"
 head -c 1001 /dev/zero | tr '\0' x > "$TMP/big.md"
 head -c 1000 /dev/zero | tr '\0' x > "$TMP/edge.md"
 assert 'a file one byte over its ceiling is flagged'     "! within '$TMP/big.md' 1000"
@@ -64,10 +64,10 @@ report() {
     "no_literals '$f'"
 }
 
-echo "--- 2. this repo's CLAUDE.md ---"
+echo "--- 2. this repo's CLAUDE.md (::instruction-size-repo) ---"
 report "$REPO_FILE" "$REPO_MAX"
 
-echo "--- 3. the box-root ~/CLAUDE.md ---"
+echo "--- 3. the box-root ~/CLAUDE.md (::instruction-size-machine) ---"
 if box_only_with 'the box-root instruction file every session on this box loads' "$MACHINE_FILE"; then
   report "$MACHINE_FILE" "$MACHINE_MAX"
 else

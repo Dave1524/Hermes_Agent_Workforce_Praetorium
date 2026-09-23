@@ -44,7 +44,7 @@ trap 'rm -rf "$TMP"' EXIT
 echo "--- 0. canaries ---"
 assert 'a found pattern is never reported as a failure' "yes | grep -q y"
 
-echo "--- 1. the checker names every spelling of the symlink, and nothing else ---"
+echo "--- 1. the checker names every spelling of the symlink, and nothing else (::vault-symlink-checker) ---"
 printf 'ConditionPathExists=/home/dave/vault/.git\n' > "$TMP/abs.service"
 printf 'WorkingDirectory=%%h/vault\n'                 > "$TMP/spec.service"
 printf '    path: /home/dave/vault\n'                  > "$TMP/index.yml"
@@ -55,11 +55,11 @@ for f in abs.service spec.service index.yml gitdir; do
 done
 assert 'a resolved path, a comment and a longer name are not' "[ -z \"\$(symlink_refs '$TMP/clean')\" ]"
 
-echo "--- 2. unit sources in this checkout ---"
+echo "--- 2. unit sources in this checkout (::vault-symlink-source) ---"
 src=$(symlink_refs "$REPO_ROOT"/systemd/* "$REPO_ROOT"/systemd/*/* | sed "s|$REPO_ROOT/||" | tr '\n' ' ')
 assert "no unit source records ~/vault (${src:-none})" "[ -z '$src' ]"
 
-echo "--- 3. installed units, the qmd collection, worktree gitdirs ---"
+echo "--- 3. installed units, the qmd collection, worktree gitdirs (::vault-symlink-live) ---"
 if box_only_with 'the installed units, qmd config and vault worktrees' \
      "$HOME/.config/qmd/index.yml" "$HOME/agent-worktrees"; then
   mapfile -t units < <(installed_units)

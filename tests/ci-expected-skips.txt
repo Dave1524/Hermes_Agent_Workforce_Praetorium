@@ -101,6 +101,7 @@ SKIP: test_instruction_size.sh — the box-root instruction file every session o
 SKIP: test_memory_index_budget.sh — the shared memory index every session on this box loads (absent: ~/.claude/projects/-home-dave/memory/MEMORY.md)
 SKIP: test_pointer_skills.sh — the vault the pointer skills name (absent: ~/vault/08_skills)
 SKIP: test_pointer_skills.sh — the vault the pointer skills mirror (absent: ~/vault/08_skills)
+SKIP: test_qmd_status.sh — the live qmd-mcp unit and its config (absent: ~/.config/qmd/index.yml /etc/systemd/system/qmd-mcp.service)
 SKIP: test_retired_residue.sh — the installed units and home tree a checkout cannot carry (absent: ~/agent-workforce/bin ~/.config/systemd/user)
 SKIP: test_workflow_retirements.sh — the deployed trees a live residue scan reads (absent: ~/agent-workforce/bin ~/agent-workforce/systemd)
 SKIP: test_vault_credential.sh — the canonical vault clone and its installed hooks (absent: ~/dev/Obsidian_AI_Operating_System/.git)

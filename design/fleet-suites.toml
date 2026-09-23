@@ -765,6 +765,7 @@ asserts = [
   "turn-rate-by-origin",       # per agent: total turns in the window, the self-scheduled ones by run id; a receipt older than the window is not in it
   "turn-rate-legacy-origin",   # a receipt without the origin field is relay by its handoff or unknown, never self-scheduled
   "turn-rate-never-fails",     # no receipt directory is a line of zeros; a file that does not parse is skipped and named, the rest still read
+  "turn-rate-doubled",         # T8.5: a relay event that started two relay turns for one agent is named; one turn's two receipts and a scheduled fire are not
 ]
 why_no_workflow = """
 The reader behind fleet-turn-check.sh gate 5 (2026-09-19), which is trajan's workflow and has
@@ -815,4 +816,69 @@ why_no_workflow = """
 It asserts a credential seam, not a job's output: the token must reach exactly one process
 and no file, log or argv. That property changes only when someone edits the wrapper, which is
 when bin/verify.sh runs this.
+"""
+
+# T8.5 (2026-09-23): the traps both CLAUDE.md files used to carry as prose, each now a suite.
+# The prose was cut to one rule line naming its test; these are what hold the rule instead.
+[[suite]]
+path    = "tests/test_instruction_size.sh"
+owner   = "fleet"
+asserts = [
+  "instruction-size-checker",  # the checker flags an oversize file and a bare count literal on fixtures
+  "instruction-size-repo",     # this repo's CLAUDE.md is under its ceiling with no unmarked roster or document count
+  "instruction-size-machine",  # box-gated: so is the box-root ~/CLAUDE.md every session loads
+]
+why_no_workflow = """
+It bounds the instruction files every session loads. No scheduled job writes them; they
+change when someone edits them, which is when bin/verify.sh runs this.
+"""
+
+[[suite]]
+path    = "tests/test_retired_residue.sh"
+owner   = "fleet"
+asserts = [
+  "retired-residue-checker",   # each lister finds its residue on a fixture tree and nothing on a clean one
+  "retired-residue-checkout",  # no code in this checkout names the deleted ~/dev/vault-boxsafe mirror
+  "retired-residue-live",      # box-gated: no Hermes tree or binary, no ollama, no discord-bot unit, no vault-boxsafe in installed units
+]
+why_no_workflow = """
+It asserts that retired runtimes stay gone from the box. The claim covers the whole machine
+and cannot be credited to any one workflow.
+"""
+
+[[suite]]
+path    = "tests/test_suite_conventions.sh"
+owner   = "fleet"
+asserts = [
+  "conventions-checker",   # an assert() with pipefail on, one with no canary, and a journalctl without --utc are each flagged on fixtures
+  "conventions-checkout",  # every tests/*.sh assert() scopes pipefail and carries the canary; every buzz-team journalctl passes --utc
+]
+why_no_workflow = """
+It asserts conventions over the gate's own suites and the fleet's diagnostic scripts. A claim
+over every suite cannot be credited to any one of them.
+"""
+
+[[suite]]
+path    = "tests/test_vault_credential.sh"
+owner   = "fleet"
+asserts = [
+  "vault-credential-checker",  # the helper-pair and hook checkers flag every failure shape on fixtures
+  "vault-credential-live",     # box-gated: both clones push as the App, the vault pre-push guard is byte-equal to source, github-canonical is refused
+]
+why_no_workflow = """
+It asserts the box's push identity, a credential seam every writing job shares. It changes
+when someone edits a clone's config, not when a job runs.
+"""
+
+[[suite]]
+path    = "tests/test_vault_symlink_unrecorded.sh"
+owner   = "fleet"
+asserts = [
+  "vault-symlink-checker",  # every spelling of ~/vault is named on fixtures; a resolved path, a comment and a longer name are not
+  "vault-symlink-source",   # no unit source in this checkout records ~/vault
+  "vault-symlink-live",     # box-gated: no installed unit, the qmd collection config or a worktree gitdir records it
+]
+why_no_workflow = """
+It asserts that nothing surviving cutover follows the ~/vault symlink. Units, the qmd config
+and worktrees span several workflows and none owns the claim.
 """

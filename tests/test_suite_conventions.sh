@@ -46,7 +46,7 @@ trap 'rm -rf "$TMP"' EXIT
 echo "--- 0. canaries ---"
 assert 'a found pattern is never reported as a failure' "yes | grep -q y"
 
-echo "--- 1. the checkers detect both conventions broken on fixtures ---"
+echo "--- 1. the checkers detect both conventions broken on fixtures (::conventions-checker) ---"
 cat > "$TMP/bare.sh" <<'SH'
 assert() { local d=$1 c=$2; if eval "$c"; then echo ok; else fail=1; fi; }
 assert 'canary' "yes | grep -q y"
@@ -72,7 +72,7 @@ printf 'journalctl --utc --user -u x -o cat\n# journalctl in a comment\nprintf j
 assert 'a journalctl call without --utc is flagged'        "[ -n \"\$(local_time_journalctl '$TMP/local.sh')\" ]"
 assert 'with --utc, in a comment, or as a substring it is not' "[ -z \"\$(local_time_journalctl '$TMP/utc.sh')\" ]"
 
-echo "--- 2. this checkout ---"
+echo "--- 2. this checkout (::conventions-checkout) ---"
 bad=$(unconventional "$REPO_ROOT"/tests/*.sh | sed "s|$REPO_ROOT/||" | tr '\n' ' ')
 assert "every tests/*.sh assert() scopes pipefail and carries the canary (${bad:-none} do not)" "[ -z '$bad' ]"
 local_calls=$(local_time_journalctl "$REPO_ROOT"/buzz-team/*.sh | sed "s|$REPO_ROOT/||" | cut -d: -f1,2 | tr '\n' ' ')

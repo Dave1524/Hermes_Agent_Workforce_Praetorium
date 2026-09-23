@@ -40,7 +40,7 @@ fixture_repo() {
 echo "--- 0. canaries ---"
 assert 'a found pattern is never reported as a failure' "yes | grep -q y"
 
-echo "--- 1. the checkers detect each failure on fixtures ---"
+echo "--- 1. the checkers detect each failure on fixtures (::vault-credential-checker) ---"
 fixture_repo "$TMP/good" '' "$APP_HELPER"
 fixture_repo "$TMP/no-clear" "$APP_HELPER"
 fixture_repo "$TMP/dave" '!/usr/bin/gh auth git-credential'
@@ -57,7 +57,7 @@ assert 'a byte-equal installed hook passes'                 "hook_installed '$TM
 printf '# drifted\n' >> "$TMP/good/.git/hooks/pre-push"
 assert 'a drifted installed hook is flagged'                "! hook_installed '$TMP/good'"
 
-echo "--- 2. the live clones ---"
+echo "--- 2. the live clones (::vault-credential-live) ---"
 if box_only_with 'the canonical vault clone and its installed hooks' "$VAULT/.git"; then
   assert 'the canonical vault pushes as the App'           "app_helper_ok '$VAULT'"
   assert 'its pre-push guard is installed, byte-equal'     "hook_installed '$VAULT'"

@@ -5,26 +5,32 @@ Usage: turn_rate.py --receipts <root> [--window-min 60] [--now <iso>] <agent>...
 
 One TSV line per agent named on the command line:
 
-    <agent>\t<total>\t<self_scheduled>\t<unknown>\t<self-scheduled run ids, comma-joined, or ->
+    <agent>\t<total>\t<self_scheduled>\t<unknown>\t<self-scheduled run ids, or ->\t<doubled, or ->
 
 Counts every receipt under <root>/buzz-agent@<agent>/ whose ended_at falls inside the window.
 A turn is `self_scheduled` when its receipt says origin = scheduled — the session's own cron
 or /loop re-prompting it, no relay event behind it (bin/interaction_receipt.py); `unknown`
 when the receipt predates the origin field and carries no handoff either. Owner turns and the
 unknowns are counted and never alarmed on: fleet-turn-check.sh reads the self_scheduled
-column. An agent with no receipt directory is a line of zeros, not an error — a fresh agent
+column. `doubled` names each relay event that woke this agent more than once in the window,
+as `<event-prefix>x<turns>` — one mention answered twice by the box. Turns are counted by
+distinct started_at, relay turns only: one prompt can end in two receipts, and a
+self-scheduled fire still carries the last inbound event in its handoff; neither is a second
+answer. fleet-turn-check.sh gate 6 reads the column. An agent with no receipt directory is a line of zeros, not an error — a fresh agent
 has none yet. A receipt that does not parse is skipped and named on stderr; exit 0 regardless,
 because a broken file is one file and the gate must still read the other four agents.
 """
 from __future__ import annotations
 
 import argparse
+import collections
 import datetime as dt
 import json
 import pathlib
 import sys
 
 SELF_SCHEDULED = "scheduled"
+ORIGIN_RELAY = "relay"
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -50,7 +56,7 @@ def origin_of(receipt: dict) -> str:
     origin = receipt.get("origin")
     if isinstance(origin, str) and origin:
         return origin
-    return "relay" if receipt.get("handoff") else "unknown"
+    return ORIGIN_RELAY if receipt.get("handoff") else "unknown"
 
 
 def receipts_in(directory: pathlib.Path, since: dt.datetime) -> list[dict]:
@@ -69,11 +75,25 @@ def receipts_in(directory: pathlib.Path, since: dt.datetime) -> list[dict]:
     return found
 
 
+def event_of(receipt: dict) -> str | None:
+    handoff = receipt.get("handoff")
+    event = handoff.get("event") if isinstance(handoff, dict) else None
+    return event if isinstance(event, str) and event else None
+
+
+def doubled_events(receipts: list[dict]) -> str:
+    starts: dict[str, set] = collections.defaultdict(set)
+    for r in receipts:
+        if event_of(r) and origin_of(r) == ORIGIN_RELAY:
+            starts[event_of(r)].add(r.get("started_at"))
+    return ",".join(f"{event[:12]}x{len(s)}" for event, s in sorted(starts.items()) if len(s) > 1) or "-"
+
+
 def rate_line(agent: str, receipts: list[dict]) -> str:
     scheduled = [r for r in receipts if origin_of(r) == SELF_SCHEDULED]
     unknown = sum(1 for r in receipts if origin_of(r) == "unknown")
     ids = ",".join(str(r.get("run_id")) for r in scheduled) or "-"
-    return f"{agent}\t{len(receipts)}\t{len(scheduled)}\t{unknown}\t{ids}"
+    return f"{agent}\t{len(receipts)}\t{len(scheduled)}\t{unknown}\t{ids}\t{doubled_events(receipts)}"
 
 
 def main(argv: list[str]) -> int:
