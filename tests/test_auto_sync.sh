@@ -17,6 +17,10 @@ set -euo pipefail
 assert 'a found pattern is never reported as a failure' "yes | grep -q y"
 
 SYNC="$REPO_ROOT/bin/auto-sync"
+# Every group below except the override ones assumes the 4h default.
+unset AUTO_SYNC_OFF_MAIN_GRACE_HOURS
+
+hours_ago() { printf '@%s +0000' $(( $(date +%s) - $1 * 3600 )); }
 
 # state -> a fixture root whose ./work is a clone of ./origin.git carrying its own bin/auto-sync.
 make_sync_fixture() {
@@ -66,6 +70,25 @@ make_sync_fixture() {
                     git -C "$work/nested" commit -q -m "nested base" ;;
     off_branch)     git -C "$work" checkout -q -b agents/2026-09-03-something
                     printf 'edited\n' >> "$work/tracked.md" ;;
+    # The reflog entry is what dates the departure, and it is stamped with the committer date,
+    # so GIT_COMMITTER_DATE is how a fixture leaves main hours ago without waiting hours.
+    off_branch_stale)
+                    GIT_COMMITTER_DATE="$(hours_ago 9)" git -C "$work" checkout -q -b feat/stale
+                    printf 'edited\n' >> "$work/tracked.md" ;;
+    off_branch_unknown)
+                    git -C "$work" checkout -q -b feat/unknown
+                    git -C "$work" reflog expire --expire=now --all
+                    printf 'edited\n' >> "$work/tracked.md" ;;
+    # Left main long ago, came back, left again just now: the NEWEST departure is the clock.
+    off_branch_returned)
+                    GIT_COMMITTER_DATE="$(hours_ago 6)" git -C "$work" checkout -q -b feat/again
+                    GIT_COMMITTER_DATE="$(hours_ago 6)" git -C "$work" checkout -q main
+                    git -C "$work" checkout -q feat/again ;;
+    # Left main long ago for one branch, hopped to another just now: time off MAIN is the
+    # clock, not time on the current branch.
+    off_branch_hopped)
+                    GIT_COMMITTER_DATE="$(hours_ago 5)" git -C "$work" checkout -q -b feat/first
+                    git -C "$work" checkout -q -b feat/second ;;
     # origin rewritten under the clone: pull --ff-only cannot fast-forward.
     diverged)       local other="$root/other"
                     git clone -q "$origin" "$other"
@@ -88,14 +111,76 @@ run_sync() { # root -> rc, output in $root/run.log
 
 origin_head() { git -C "$1/origin.git" rev-parse main; }
 
-echo "--- auto-sync: refuses off the primary branch ---"
-# The one refusal that keeps a feature branch from being force-marched onto main by a timer.
-root=$(make_sync_fixture off_branch); before=$(origin_head "$root")
+run_off_branch() { # state [VAR=value...] -> root; rc in $root/rc, both heads before in $root/before
+  local root rc=0; root=$(make_sync_fixture "$1"); shift
+  printf '%s %s\n' "$(git -C "$root/work" rev-parse HEAD)" "$(origin_head "$root")" > "$root/before"
+  env "$@" bash "$root/work/bin/auto-sync" > "$root/run.log" 2>&1 || rc=$?
+  echo "$rc" > "$root/rc"
+  echo "$root"
+}
+
+nothing_synced() { # root -> no local commit, origin untouched, and the fixture's edit still dirty
+  local local_before origin_before
+  read -r local_before origin_before < "$1/before"
+  [ "$(git -C "$1/work" rev-parse HEAD)" = "$local_before" ] \
+    && [ "$(origin_head "$1")" = "$origin_before" ] \
+    && git -C "$1/work" status --porcelain | grep -qx ' M tracked.md'
+}
+
+echo "--- auto-sync: off main INSIDE the grace window skips quietly ---"
+# The refusal keeps a feature branch from being force-marched onto main by a timer, and it still
+# holds. What changed is the page: a branch checked out a minute ago is a session at work, not a
+# fault, so the run exits 0 and OnFailure never fires. 7 such alerts reached Dave on 2026-09-18.
+root=$(run_off_branch off_branch)
+assert 'exits 0, so OnFailure=agent-alert@ does not fire' "[ \"\$(cat '$root/rc')\" = 0 ]"
+assert 'names the branch it found (a verdict with no name is a second search)' \
+  "grep -q 'not on main (current: agents/2026-09-03-something) for 0h0[0-9]m (since ' '$root/run.log'"
+assert 'says it is inside the default 4h window' "grep -q 'inside the 4h grace window' '$root/run.log'"
+assert 'in exactly one journal line' "[ \"\$(wc -l < '$root/run.log')\" = 1 ]"
+assert 'and syncs nothing: no commit, origin untouched, the edit still dirty' "nothing_synced '$root'"
+
+echo "--- auto-sync: off main PAST the grace window alerts ---"
+root=$(run_off_branch off_branch_stale)
+assert 'exits non-zero, so OnFailure=agent-alert@ fires' "[ \"\$(cat '$root/rc')\" != 0 ]"
+assert 'names the branch and how long it has been off main' \
+  "grep -q 'not on main (current: feat/stale) for 9h0[0-9]m (since ' '$root/run.log'"
+assert 'and the window it overran' "grep -q 'past the 4h grace window. Refusing to sync.' '$root/run.log'"
+assert 'and syncs nothing' "nothing_synced '$root'"
+
+echo "--- auto-sync: off main with NO record of since when alerts ---"
+# Unsure is loud. An expired or missing HEAD reflog could hide a branch forgotten for a week.
+root=$(run_off_branch off_branch_unknown)
+assert 'exits non-zero' "[ \"\$(cat '$root/rc')\" != 0 ]"
+assert 'names the branch and says git cannot date the departure' \
+  "grep -q 'not on main (current: feat/unknown), and the HEAD reflog has no usable' '$root/run.log'"
+assert 'and syncs nothing' "nothing_synced '$root'"
+
+echo "--- auto-sync: the clock is the NEWEST departure from main, measured off MAIN ---"
+root=$(make_sync_fixture off_branch_returned)
 rc=$(run_sync "$root")
-assert 'exits non-zero on a non-main branch' "[ '$rc' != 0 ]"
-assert 'names the branch it found (an alert with no name is a second search)' \
-  "grep -q 'not on main (current: agents/2026-09-03-something)' '$root/run.log'"
-assert 'and origin is untouched' "[ \"\$(origin_head '$root')\" = '$before' ]"
+assert 'left 6h ago, came back, left again now: inside the window' "[ '$rc' = 0 ]"
+root=$(make_sync_fixture off_branch_hopped)
+rc=$(run_sync "$root")
+assert 'left main 5h ago, switched branch now: past the window all the same' "[ '$rc' != 0 ]"
+assert 'naming the branch it is on now and the time off main' \
+  "grep -q 'not on main (current: feat/second) for 5h0[0-9]m' '$root/run.log'"
+
+echo "--- auto-sync: AUTO_SYNC_OFF_MAIN_GRACE_HOURS moves the window ---"
+root=$(run_off_branch off_branch_stale AUTO_SYNC_OFF_MAIN_GRACE_HOURS=10)
+assert '10: a 9h-old departure is inside it' "[ \"\$(cat '$root/rc')\" = 0 ]"
+assert 'and the line reports the window in force' "grep -q 'inside the 10h grace window' '$root/run.log'"
+# bash arithmetic reads a leading zero as octal and `08` is not octal: the comparison errors,
+# and an errored test inside `if` is simply false, which is the quiet branch.
+root=$(run_off_branch off_branch_stale AUTO_SYNC_OFF_MAIN_GRACE_HOURS=08)
+assert '08 is eight hours, not an octal error: a 9h-old departure is past it' \
+  "[ \"\$(cat '$root/rc')\" != 0 ] && grep -q 'past the 8h grace window' '$root/run.log'"
+root=$(run_off_branch off_branch AUTO_SYNC_OFF_MAIN_GRACE_HOURS=0)
+assert '0: alerts at once, the pre-grace behaviour' "[ \"\$(cat '$root/rc')\" != 0 ]"
+root=$(run_off_branch off_branch AUTO_SYNC_OFF_MAIN_GRACE_HOURS=4h)
+assert 'not a whole number: refuses loudly rather than guess' "[ \"\$(cat '$root/rc')\" != 0 ]"
+assert 'and says which setting is wrong' \
+  "grep -q \"AUTO_SYNC_OFF_MAIN_GRACE_HOURS='4h' is not a whole number of hours\" '$root/run.log'"
+assert 'and syncs nothing' "nothing_synced '$root'"
 
 echo "--- auto-sync: refuses when it cannot fast-forward ---"
 # A diverged origin means someone pushed from elsewhere. Merging here unattended would put a

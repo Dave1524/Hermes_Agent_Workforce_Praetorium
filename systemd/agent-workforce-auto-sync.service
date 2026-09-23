@@ -10,14 +10,27 @@
 # copy is not — so this unit must invoke the source path (same path the retired
 # cron prompt used).
 #
-# WHY IT ALERTS (OnFailure -> Buzz ops, then retries every ~15 min): bin/auto-sync
-# does a `git pull --ff-only origin main`, so this unit fails whenever local `main`
-# has DIVERGED from origin/main. Cause is always commits made directly on local
-# main and left unpushed while origin advanced (e.g. a merged PR) — auto-sync
-# refuses to auto-merge/rebase by design. It only handles small updates it commits
-# and pushes itself; significant work belongs on a branch/worktree, never lingering
-# unpushed on main. Fix: in /home/dave/dev/agent-workforce run
-# `git rebase origin/main && git push origin main`. First hit 2026-07-23.
+# WHY IT ALERTS (OnFailure -> agent-alert@ -> Buzz ops; bin/agent_alert.sh sends one
+# notification per failure episode plus a 24h reminder, and the timer retries every
+# ~15 min). bin/auto-sync exits 1 on three repo states, each one a human resolves:
+#
+# 1. The checkout has been OFF MAIN longer than the grace window
+#    (AUTO_SYNC_OFF_MAIN_GRACE_HOURS, default 4; 0 alerts at once), or git cannot say
+#    since when (no usable `checkout: moving from main` entry in the HEAD reflog).
+#    Inside the window the run syncs nothing, logs one line naming the branch and the
+#    time off main, and exits 0 — no alert. The refusal is what keeps `git add -A`
+#    off branch work; the window is what stops a session at work from paging Dave.
+#    Fix: finish or park the branch and `git checkout main` here. Better, do branch
+#    work in a worktree, which never moves this checkout. To change the window, set
+#    Environment=AUTO_SYNC_OFF_MAIN_GRACE_HOURS=<n> in a drop-in.
+# 2. Local main has DIVERGED from origin/main, so `git pull --ff-only origin main`
+#    fails. Cause is always commits made directly on local main and left unpushed
+#    while origin advanced (e.g. a merged PR) — auto-sync refuses to auto-merge/rebase
+#    by design. Fix: in /home/dave/dev/agent-workforce run
+#    `git rebase origin/main && git push origin main`. First hit 2026-07-23. (An
+#    unreachable origin fails the same pull; the next tick retries.)
+# 3. `git add -A` staged a nested repository (a worktree or stray clone under this
+#    tree) as a gitlink. Fix: add the path to .gitignore or .git/info/exclude.
 #
 # Deploy: sudo cp both unit files + agent-alert@.service to /etc/systemd/system/,
 #         then `sudo systemctl daemon-reload && sudo systemctl enable --now
