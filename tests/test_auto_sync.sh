@@ -73,7 +73,7 @@ make_sync_fixture() {
     # The reflog entry is what dates the departure, and it is stamped with the committer date,
     # so GIT_COMMITTER_DATE is how a fixture leaves main hours ago without waiting hours.
     off_branch_stale)
-                    GIT_COMMITTER_DATE="$(hours_ago 5)" git -C "$work" checkout -q -b feat/stale
+                    GIT_COMMITTER_DATE="$(hours_ago 9)" git -C "$work" checkout -q -b feat/stale
                     printf 'edited\n' >> "$work/tracked.md" ;;
     off_branch_unknown)
                     git -C "$work" checkout -q -b feat/unknown
@@ -143,7 +143,7 @@ echo "--- auto-sync: off main PAST the grace window alerts ---"
 root=$(run_off_branch off_branch_stale)
 assert 'exits non-zero, so OnFailure=agent-alert@ fires' "[ \"\$(cat '$root/rc')\" != 0 ]"
 assert 'names the branch and how long it has been off main' \
-  "grep -q 'not on main (current: feat/stale) for 5h0[0-9]m (since ' '$root/run.log'"
+  "grep -q 'not on main (current: feat/stale) for 9h0[0-9]m (since ' '$root/run.log'"
 assert 'and the window it overran' "grep -q 'past the 4h grace window. Refusing to sync.' '$root/run.log'"
 assert 'and syncs nothing' "nothing_synced '$root'"
 
@@ -166,9 +166,14 @@ assert 'naming the branch it is on now and the time off main' \
   "grep -q 'not on main (current: feat/second) for 5h0[0-9]m' '$root/run.log'"
 
 echo "--- auto-sync: AUTO_SYNC_OFF_MAIN_GRACE_HOURS moves the window ---"
-root=$(run_off_branch off_branch_stale AUTO_SYNC_OFF_MAIN_GRACE_HOURS=6)
-assert '6h: a 5h-old departure is inside it' "[ \"\$(cat '$root/rc')\" = 0 ]"
-assert 'and the line reports the window in force' "grep -q 'inside the 6h grace window' '$root/run.log'"
+root=$(run_off_branch off_branch_stale AUTO_SYNC_OFF_MAIN_GRACE_HOURS=10)
+assert '10: a 9h-old departure is inside it' "[ \"\$(cat '$root/rc')\" = 0 ]"
+assert 'and the line reports the window in force' "grep -q 'inside the 10h grace window' '$root/run.log'"
+# bash arithmetic reads a leading zero as octal and `08` is not octal: the comparison errors,
+# and an errored test inside `if` is simply false, which is the quiet branch.
+root=$(run_off_branch off_branch_stale AUTO_SYNC_OFF_MAIN_GRACE_HOURS=08)
+assert '08 is eight hours, not an octal error: a 9h-old departure is past it' \
+  "[ \"\$(cat '$root/rc')\" != 0 ] && grep -q 'past the 8h grace window' '$root/run.log'"
 root=$(run_off_branch off_branch AUTO_SYNC_OFF_MAIN_GRACE_HOURS=0)
 assert '0: alerts at once, the pre-grace behaviour' "[ \"\$(cat '$root/rc')\" != 0 ]"
 root=$(run_off_branch off_branch AUTO_SYNC_OFF_MAIN_GRACE_HOURS=4h)

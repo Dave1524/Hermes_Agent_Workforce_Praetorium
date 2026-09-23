@@ -37,6 +37,8 @@ if [[ "$branch" != "$PRIMARY" ]]; then
         echo "$off_primary, and AUTO_SYNC_OFF_MAIN_GRACE_HOURS='$GRACE_HOURS' is not a whole number of hours. Refusing to sync." >&2
         exit 1
     fi
+    # Base 10 forced: bash reads `08` as bad octal, and a failed (( )) test takes the quiet branch.
+    GRACE_HOURS=$(( 10#$GRACE_HOURS ))
     now=$(date +%s)
     left_at=$(left_primary_at) || left_at=""
     if ! [[ $left_at =~ ^[0-9]+$ ]] || (( left_at > now )); then

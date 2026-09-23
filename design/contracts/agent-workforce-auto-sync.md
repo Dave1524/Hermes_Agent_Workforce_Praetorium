@@ -6,11 +6,11 @@ A light contract (T4.4). Written while the fleet was paused
 checks report that as "not loaded or never fired", which is the correct answer.
 
 **This job commits and pushes whatever is in the working tree of `~/dev/agent-workforce` on
-`main`, every fifteen minutes** (`bin/auto-sync:86`, `git add -A`). That is its purpose and its
+`main`, every fifteen minutes** (`bin/auto-sync:88`, `git add -A`). That is its purpose and its
 hazard in one line: an interactive session that leaves half-finished work on `main` has it
 published under an `Auto-sync:` subject within a quarter of an hour. Work on a branch; the job
 syncs no branch but `main` — off it, it skips quietly for a grace window and then refuses
-(`:29-53`).
+(`:29-55`).
 
 ## Identity
 
@@ -41,19 +41,19 @@ syncs no branch but `main` — off it, it skips quietly for a grace window and t
 - **State change** — `main` fast-forwarded from origin, then every pending path committed
   (`Auto-sync: <UTC>`) and pushed. A clean tree is a no-op.
 - **Verdict line** — one journal line per run, `auto-sync: working tree clean. Nothing to do.`
-  (`:79`) or `auto-sync: pushed main at <short sha>` (`:117`); off `main` inside the grace
+  (`:81`) or `auto-sync: pushed main at <short sha>` (`:119`); off `main` inside the grace
   window, `auto-sync: not on main (current: <branch>) for <h>h<mm>m (since <UTC>), inside the
-  <n>h grace window. Skipping; nothing committed.` and exit 0 (`:51-52`). The refusals (`not on
+  <n>h grace window. Skipping; nothing committed.` and exit 0 (`:53-54`). The refusals (`not on
   main` past the window, with no reflog entry to date the departure, or with a malformed window;
   `could not fast-forward`; `REFUSING to sync — nested repositories staged as gitlinks`) go to
-  stderr and exit 1 (`:36-49`, `:56-58`, `:104-110`).
+  stderr and exit 1 (`:36-51`, `:58-60`, `:106-112`).
 - **Beneficiary:** the deployed tree and the Mac — both consume `origin/main`, which this keeps
   within fifteen minutes of the box's edits.
 - **Next actor:** nobody on OK; Dave on a refusal.
 - **Next action:** on `not on main` past the window, finish or park the branch and check out
   `main` (the refusal is correct, not a fault — and branch work belongs in a worktree, which
   never moves this checkout); on `could not fast-forward`, rebase by hand; on gitlinks, add the
-  nested repo to `.git/info/exclude` (`:107-109`).
+  nested repo to `.git/info/exclude` (`:109-111`).
 - **Benefit hypothesis:** no edit made on this box is ever unpublished for longer than a
   quarter of an hour, and nothing is ever force-pushed to get there.
 - **Benefit signal:** `Unknown`. Pushes are visible in `git log origin/main` as `Auto-sync:`
@@ -63,16 +63,16 @@ syncs no branch but `main` — off it, it skips quietly for a grace window and t
 
 Off `main` for less than `AUTO_SYNC_OFF_MAIN_GRACE_HOURS` (default 4; `0` never skips) since
 the newest `checkout: moving from main` entry in the HEAD reflog: the run syncs nothing, logs
-the verdict line above and exits 0 (`:29-53`). A session that switched this checkout to a
+the verdict line above and exits 0 (`:29-55`). A session that switched this checkout to a
 feature branch is a fault only once it is forgotten; paging on every tick of the first hours
 sent 7 alerts on 2026-09-18 alone. Everything else that stops the sync is a refusal (exit 1),
-a failure by design, so that the alert says *which* repo state needs a human (`:36-49`,
-`:56-58`, `:104-110`) — including "cannot tell since when", which is loud on purpose.
+a failure by design, so that the alert says *which* repo state needs a human (`:36-51`,
+`:58-60`, `:106-112`) — including "cannot tell since when", which is loud on purpose.
 
 ## Side effects
 
 - Commits with `git add -A` — honours `.gitignore` and `.git/info/exclude`, nothing else
-  (`:70-72`). A file the deny-list withholds from agents is not withheld from this job; it is
+  (`:72-74`). A file the deny-list withholds from agents is not withheld from this job; it is
   kept out by never being written into the repo.
 - Push to `origin main`. Never `--force`, never a branch.
 
@@ -111,10 +111,10 @@ Two checks, both `sweep`.
   to hold uncommitted work must move to a branch first; there is no "pause" short of
   disabling the timer, and that is what the 2026-09-11 fleet pause did.
 - **New-only trees looked clean until 2026-09-03.** `git diff` misses untracked files;
-  `git status --porcelain` is now the test (`:63-80`, W16). Do not "simplify" it back.
+  `git status --porcelain` is now the test (`:65-82`, W16). Do not "simplify" it back.
 - **A nested checkout becomes a gitlink.** A worktree or stray clone under the repo would be
   committed as a submodule pointer with no `.gitmodules`; the job refuses and names the path
-  (`:88-110`).
+  (`:90-112`).
 - **Offline.** `git fetch` fails, `set -e` exits 1, alert. The next tick retries; nothing is
   lost, and the tree is untouched.
 - **The grace clock restarts on every return to `main`.** It measures time since the newest
