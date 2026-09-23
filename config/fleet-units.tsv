@@ -58,7 +58,6 @@ agent-config-eval	system	standing	trajan	timer
 agent-drift-check	system	standing	trajan	timer
 agent-inbox-sync	system	standing	trajan	timer
 agent-proposal	system	standing	claudius	timer
-agent-workforce-auto-sync	system	standing	trajan	timer
 augustus-content	system	standing	augustus	timer
 bd-followup-drafts	system	standing	claudius	timer
 bd-stall-radar	system	standing	claudius	timer

@@ -42,3 +42,23 @@ run_markers = []
 artifact_retention = { receipts = "keep", notion = "keep", inbox = "keep", note = "Scorecards and history.psv under ~/logs/local-tier-eval are archived to ~/OUTBOX/local-tier-eval-logs-retired-2026-09-18.tgz" }
 residue_cleared_on = "2026-09-18"
 env_removed_attested = false
+
+[[retired]]
+id = "agent-workforce-auto-sync"
+units = ["agent-workforce-auto-sync"]
+owner = "trajan"
+scope = "system"
+retired_on = "2026-09-23"
+reason = "T8.2: main becomes protected; a push to main is refused, so a dirty-tree sweep to main has no purpose left"
+proposal = "20260923T144036Z-retire-agent-workforce-auto-sync-ecc487"
+branch = "control-room/retire-agent-workforce-auto-sync-20260923T144036Z"
+pr = ""
+runners = []
+profiles = []
+contract = "design/archive/contracts/agent-workforce-auto-sync.md"
+suites = ["tests/test_auto_sync.sh"]
+env_override = ""
+run_markers = []
+artifact_retention = { receipts = "keep", notion = "keep", inbox = "keep", note = "auto-sync pushed straight to main; under protection every change is an App-authored PR" }
+residue_cleared_on = ""
+env_removed_attested = false
