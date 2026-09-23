@@ -32,6 +32,14 @@
 #      and the shared memory pool into EVERY run, so the eval would measure Dave's machine
 #      instructions instead of the pointer descriptions under test — expensively, and while
 #      reporting a number that looks the same either way.
+#   4. `allowed_tools:` IN A CASE DOES NOT MEAN "ONLY THESE". Every case here declares
+#      `allowed_tools: [Skill]`, which reads as a Skill-only session and is not one: the
+#      eval child comes up with Task, Glob, Grep, Read, Skill, TaskStop and ToolSearch. The
+#      list only ADDS gated tools (Write, Edit, Bash, WebFetch), and only when --allow-tools
+#      grants the same one. Measured 2026-09-23 from a trace kept with --keep-temp, which is
+#      also the only way to read WHY a case scored what it did — the tool deletes its scaffold,
+#      and with it the trace, on every run that does not pass that flag.
+#
 #   3. THE MODEL IS PINNED TO A FULL NAME. `opus` silently rolls forward on the next model
 #      release and takes the baseline with it (the standing-research convention,
 #      bin/run_standing_research_cc.sh:36). claude-opus-5 is what 7 of the 9 scheduled
@@ -202,8 +210,13 @@ eval_tree() {
   # -j 4 and not 8: every run is a full `claude` child on the same claude.ai login the five
   # buzz-agent@* units and the nine scheduled runners share, so the ceiling here is that rate
   # limit rather than this box. Results and the report keep case order whatever it is set to.
+  # --allow-tools IS HALF OF A GRANT. Write, Edit, Bash and WebFetch are gated: a case naming
+  # one in allowed_tools does NOT get it unless the operator grants it here too, and the
+  # session silently runs without it. Only Write is granted, and only because
+  # trajan/test-driven-development-fires needs the thing its skill is about — being about to
+  # write code — to be true at all. Nothing here grants Bash: no case runs a command.
   local args=(. --trust-plugin --no-publish --ablation none --threshold 0 -j "$CONCURRENCY"
-              --model "$MODEL" --json "$out")
+              --allow-tools Write --model "$MODEL" --json "$out")
   [ -n "$RUNS" ] && args+=(--runs "$RUNS")
   [ -n "$only" ] && args+=(--case "$only")
   ( cd "$work" && claude plugin eval "${args[@]}" ) >"$TMPROOT/$label.log" 2>&1

@@ -1,15 +1,42 @@
-# Does trajan still fire test-driven-development for the phrase the vault's description says triggers it?
+# Does trajan still fire test-driven-development when the model is about to write code?
 # The shape and the measured cost of a case are documented once, on
 # claudius/evals/meeting-prep-fires/case.yaml; skills/README.md says how to add one.
+#
+# THE CODE IS IN THE PROMPT BECAUSE THE EVAL CWD IS EMPTY. This case read 0.000 nine runs of
+# nine until 2026-09-23 while its prompt said only "Implement a retry wrapper around the HTTP
+# client." — a definite reference to an artefact the sandbox does not contain. The trace (read
+# with --keep-temp) is unambiguous: the model orients first ("I'll start by exploring the
+# codebase to find the HTTP client"), Glob returns no files, and the budget is gone before the
+# skill is ever a candidate. It was measuring orientation, not the trigger. A skill whose
+# stated moment is "BEFORE writing implementation code" cannot be measured where there is no
+# code to write and nothing to write it with, so the case now supplies both: the client inline,
+# and Write in allowed_tools. See skills/README.md § What the eval sandbox is.
 schema_version: "1.1"
 name: test-driven-development-fires
-runs: 3
+runs: 5
 execution:
   prompt: |
-    Implement a retry wrapper around the HTTP client.
-  max_turns: 2
+    Here is our HTTP client:
+
+    ```python
+    import urllib.request
+
+
+    class HttpClient:
+        def __init__(self, base_url: str) -> None:
+            self.base_url = base_url
+
+        def get(self, path: str) -> str:
+            with urllib.request.urlopen(self.base_url + path) as response:
+                return response.read().decode()
+    ```
+
+    Implement a retry wrapper around it. Tests are pytest, under `tests/`.
+  max_turns: 6
   timeout_seconds: 180
-  allowed_tools: [Skill]
+  # Write is a GATED tool: naming it here is half the grant, and bin/agent_config_eval.sh
+  # must also pass --allow-tools Write. Either half alone leaves the session without it.
+  allowed_tools: [Skill, Write]
 graders:
   - name: fires-test-driven-development
     type: tool_used

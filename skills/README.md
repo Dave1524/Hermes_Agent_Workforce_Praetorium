@@ -196,6 +196,38 @@ root is not discovered, with no warning and no error — and it scores **0.000**
 still present and readable; the loader simply does not see them, which is exactly the class of
 failure that is silent on this box today.
 
+### What the eval sandbox is — MEASURED 2026-09-23, claude 2.1.278
+
+A case's prompt is not run against this repo, this box, or anything the skill's description
+describes. It is run against an **empty directory**: `<temp>/home/cwd`, an initialised git repo
+with no files in it. Three consequences, each of which cost a wrong diagnosis before it was
+measured:
+
+**`allowed_tools:` adds, it does not restrict.** Every case here declares `allowed_tools:
+[Skill]`, which reads as a Skill-only session and is not one — the eval child comes up with
+`Task`, `Glob`, `Grep`, `Read`, `Skill`, `TaskStop` and `ToolSearch` whatever the list says. The
+list is consulted only for the **gated** tools (`Write`, `Edit`, `Bash`, `WebFetch`, `mcp__*`),
+and naming one there is only half the grant: `bin/agent_config_eval.sh` must pass
+`--allow-tools <tool>` as well. Either half alone leaves the session without it, silently.
+
+**A prompt may not refer to anything it does not carry.** "Implement a retry wrapper around the
+HTTP client" names an artefact the sandbox does not contain, so the model opens by looking for
+it — `Glob`, no hits, budget spent. It is measuring orientation, not the trigger. A case for a
+skill whose moment is *before writing code* has to supply both halves of that moment: the code,
+inline in the prompt, and a tool that can write.
+
+**`--keep-temp` is the only way to read a miss.** Without it the tool unlinks its temp root on
+exit, `tracePath` in the result JSON points at nothing, and a 0.000 is an unexplained number.
+`trajan/test-driven-development-fires` sat at 0.000 for nine runs of nine and was written up as a
+vault-description defect on exactly that evidence; one trace read with the flag falsified it.
+Read the trace before writing down a cause.
+
+**`scaffold_script` does not execute here.** The bundle's schema accepts the key — under
+`execution:`, at top level, as `scaffold:` or `script:` — and nothing runs: no marker file, no
+diagnostic, not even on a body whose only statement is `exit 3`. It would be the right fix for
+the empty directory (seed the repo, leave the prompt alone); until it works, the artefact goes in
+the prompt. Recorded as measured, not worked around quietly.
+
 ### What the first full measurement found — MEASURED 2026-09-22, claude-opus-5, runs 3
 
 **Three** full runs of the unchanged tree, 17 cases each. Per case, per run:

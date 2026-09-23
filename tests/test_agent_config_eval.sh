@@ -95,6 +95,54 @@ malformed_cases() {
   done < <(case_pairs)
 }
 
+# Gated tools need BOTH halves, and each half alone is silent. `allowed_tools:` in a case does
+# not restrict anything — the eval child comes up with Task/Glob/Grep/Read/Skill/TaskStop/
+# ToolSearch whatever the list says — it only ADDS Write, Edit, Bash, WebFetch or an mcp__ tool,
+# and only when the runner passes --allow-tools for the same one. A case that names Write and a
+# runner that does not grant it produces a session with no Write and a score that looks like a
+# finding about the skill: that is exactly how trajan/test-driven-development-fires read 0.000
+# for nine runs. Checked in both directions, because a grant no case asks for silently widens
+# every session in the tree. Comment lines are stripped first — a grant in prose is not a grant.
+ungranted_gated_tools() {
+  python3 - "$SKILLS_ROOT" "$RUNNER" <<'PYEOF'
+import pathlib, re, sys
+
+GATED = re.compile(r"^(Write|Edit|Bash|WebFetch|mcp__)")
+skills, runner = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+
+code = "\n".join(l for l in runner.read_text().splitlines() if not l.lstrip().startswith("#"))
+granted = {t for t in re.findall(r"--allow-tools\s+(\S+)", code) if GATED.match(t)}
+
+asked = {}
+for case in sorted(skills.glob("*/evals/*/case.yaml")):
+    label = "%s/%s" % (case.parts[-4], case.parts[-2])
+    text = case.read_text()
+    m = re.search(r"^\s*allowed_tools:\s*(.*)$", text, re.M)
+    if not m:
+        continue
+    rest = m.group(1).strip()
+    if rest.startswith("["):
+        names = [n.strip().strip("\"'") for n in rest.strip("[]").split(",")]
+    else:
+        names = []
+        for line in text[m.end():].splitlines():
+            s = line.strip()
+            if s.startswith("- "):
+                names.append(s[2:].strip().strip("\"'"))
+            elif s:
+                break
+    for n in names:
+        if n and GATED.match(n):
+            asked.setdefault(n, []).append(label)
+
+for tool in sorted(set(asked) - granted):
+    for label in asked[tool]:
+        print("%s: allowed_tools names %s, which %s does not --allow-tools" % (label, tool, runner.name))
+for tool in sorted(granted - set(asked)):
+    print("%s grants --allow-tools %s and no case asks for it" % (runner.name, tool))
+PYEOF
+}
+
 # Pointers with no `<pointer>-fires` case, one per line.
 uncovered_pointers() {
   local d owner p
@@ -135,6 +183,8 @@ echo "1. case files are well-formed"   # (::eval-case-wellformed)
 assert "at least one eval case exists" "[ \"\$(case_pairs | wc -l)\" -ge 1 ]"
 assert "every case.yaml carries name==dir, schema_version, a prompt and a named typed grader" \
        "[ -z \"\$(malformed_cases)\" ] || { malformed_cases; false; }"
+assert "every gated tool a case names is granted by the runner, and none is granted unasked" \
+       "[ -z \"\$(ungranted_gated_tools)\" ] || { ungranted_gated_tools; false; }"
 
 echo "2. every case names a pointer its owner really has"   # (::eval-case-names-skill)
 assert "each case is joined to an existing pointer, in the name and in a grader" \

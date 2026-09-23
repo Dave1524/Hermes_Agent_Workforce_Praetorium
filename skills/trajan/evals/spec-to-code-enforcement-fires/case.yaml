@@ -1,13 +1,50 @@
-# Does trajan still fire spec-to-code-enforcement for the phrase the vault's description says triggers it?
+# Does trajan still fire spec-to-code-enforcement for the phrase the vault's description names?
 # The shape and the measured cost of a case are documented once, on
 # claudius/evals/meeting-prep-fires/case.yaml; skills/README.md says how to add one.
+#
+# THE SPEC AND THE MODULE ARE IN THE PROMPT for the same reason the TDD case carries its client:
+# "Audit this module against its spec" named two artefacts the empty eval cwd does not hold, and
+# the case scored 0.333/0.333/0.000 on 2026-09-22 because a run that finds nothing to audit
+# cannot fire an auditing skill. The mismatch is deliberate — stats() is specified and missing,
+# purge_all() is implemented and unspecified — so the audit has a real finding to make.
 schema_version: "1.1"
 name: spec-to-code-enforcement-fires
-runs: 3
+runs: 5
 execution:
   prompt: |
+    Spec — `rate_limiter`:
+
+    1. `allow(key)` returns False once a key exceeds 10 calls in 60 seconds.
+    2. `reset(key)` clears one key's window.
+    3. `stats()` returns how many keys are currently tracked.
+
+    The module:
+
+    ```python
+    import time
+
+    _WINDOW = 60
+    _LIMIT = 10
+    _calls: dict[str, list[float]] = {}
+
+
+    def allow(key: str) -> bool:
+        now = time.time()
+        hits = [t for t in _calls.get(key, []) if now - t < _WINDOW]
+        _calls[key] = hits + [now]
+        return len(hits) < _LIMIT
+
+
+    def reset(key: str) -> None:
+        _calls.pop(key, None)
+
+
+    def purge_all() -> None:
+        _calls.clear()
+    ```
+
     Audit this module against its spec and tell me what is missing or over-built.
-  max_turns: 2
+  max_turns: 6
   timeout_seconds: 180
   allowed_tools: [Skill]
 graders:
