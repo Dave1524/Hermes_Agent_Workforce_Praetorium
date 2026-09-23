@@ -14,7 +14,14 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SCRIPT="$REPO_ROOT/bin/ops-view.sh"
 
 fail=0
-assert() { local d=$1 c=$2; if eval "$c"; then echo "  ok: $d"; else echo "  FAIL: $d"; fail=1; fi; }
+assert() {
+  local d=$1 c=$2 pf
+  pf=$(shopt -po pipefail)
+  set +o pipefail
+  if eval "$c"; then echo "  ok: $d"; else echo "  FAIL: $d"; fail=1; fi
+  eval "$pf"
+}
+assert 'a found pattern is never reported as a failure' "yes | grep -q y"
 
 sandbox() {
   local h; h=$(mktemp -d)

@@ -119,7 +119,7 @@ else
       win_s=$look_s;  bound="last ${LOOKBACK_MIN}m"
     fi
     win=$(date -d "@$win_s" '+%Y-%m-%d %H:%M:%S')
-    errs=$(journalctl --user -u "$u" --since "$win" --no-pager 2>/dev/null \
+    errs=$(journalctl --utc --user -u "$u" --since "$win" --no-pager 2>/dev/null \
       | grep -c 'Failed to authenticate\|OAuth session expired\|reported error')
     # A COMPLETED TURN LOGS NOTHING. Measured 2026-08-31: marcus answered a DM at
     # 11:58 and left zero journal lines, and outcome="ok" has never once been
@@ -146,7 +146,7 @@ else
     fi
     if [ "$errs" -gt 0 ]; then
       fail_ "$name: ERRORED -- $errs error line(s) in window [$win, now] ($bound)"
-      journalctl --user -u "$u" --since "$win" --no-pager 2>/dev/null \
+      journalctl --utc --user -u "$u" --since "$win" --no-pager 2>/dev/null \
         | grep 'Failed to authenticate\|OAuth session expired\|reported error' | tail -2 \
         | while IFS= read -r l; do info_ "  ${l:0:150}"; done
     elif [ "$turns" -gt 0 ]; then
@@ -209,7 +209,7 @@ else
     fail_ "turn_rate.py exited non-zero: ${rate_out:0:200}"
     rate_out=""
   fi
-  while IFS=$'\t' read -r name total unowned unknown ids; do
+  while IFS=$'\t' read -r name total unowned unknown ids _doubled; do
     [ -n "$name" ] || continue
     case $unowned in ''|*[!0-9]*) fail_ "$name: unreadable rate line: $name $total $unowned"; continue ;; esac
     if [ "$unowned" -gt "$UNOWNED_MAX" ]; then
@@ -217,6 +217,27 @@ else
       info_ "  run ids: $ids"
     else
       pass_ "$name: $total turn(s) in the window, $unowned self-scheduled, $unknown of unknown origin"
+    fi
+  done <<<"$rate_out"
+fi
+
+# ---------------------------------------------------------------- gate 6
+# One mention answered twice. The same receipts, the doubled column: a relay event that
+# started more than one turn for one agent is a second dispatcher for that pubkey on this box.
+# A Mac-side Desktop head answering the same mention writes no receipt here, so this gate
+# sees box-side doubles only; that one shows only as a doubled reply in the channel.
+gate 6 "no-doubled-turn (receipts per unit, one turn per relay event, last ${RATE_WINDOW_MIN}m)"
+if [ -z "${rate_out:-}" ]; then
+  fail_ "no rate lines to read (gate 5 produced none)"
+else
+  while IFS=$'\t' read -r name _ _ _ _ doubled; do
+    [ -n "$name" ] || continue
+    if [ -z "${doubled:-}" ]; then
+      fail_ "$name: no doubled column -- the deployed turn_rate.py predates gate 6"
+    elif [ "$doubled" != "-" ]; then
+      fail_ "$name: DOUBLED -- one relay event started more than one turn: $doubled"
+    else
+      pass_ "$name: one turn per relay event"
     fi
   done <<<"$rate_out"
 fi

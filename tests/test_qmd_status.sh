@@ -5,12 +5,18 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SCRIPT="$REPO_ROOT/bin/praetorium-status.sh"
+# shellcheck source=tests/box_precondition.sh
+. "$REPO_ROOT/tests/box_precondition.sh"
 
 fail=0
 assert() {
-  local desc=$1 cond=$2
+  local desc=$1 cond=$2 pf
+  pf=$(shopt -po pipefail)
+  set +o pipefail
   if eval "$cond"; then echo "  ok: $desc"; else echo "  FAIL: $desc"; fail=1; fi
+  eval "$pf"
 }
+assert 'a found pattern is never reported as a failure' "yes | grep -q y"
 
 # ── Sandbox: scratch $HOME + stub PATH so the script never touches the real
 # systemd units, qmd index, tailscale, or the live qmd daemon on :8765 ──
@@ -79,5 +85,29 @@ IFS=: read -r rcB outB <<<"$(run_scenario "$hB" "$sB" 7)"
 assert "exits 0" "[ '$rcB' = 0 ]"
 assert "endpoint unreachable" "grep -q -- 'endpoint : http://127.0.0.1:8765/mcp (unreachable)' '$outB'"
 assert "no profile line" "! grep -q -- 'claudius qmd' '$outB'"
+
+# qmd-mcp reads index.yml only at start, and its instruction blurb is rendered then too; a
+# config newer than the process means every MCP consumer is told the old posture (T8.5).
+started_after() { [ "$1" -ge "$2" ]; }
+
+echo "--- the reload check detects a config newer than the process ---"
+assert "a process started after the edit is current" "started_after 200 100"
+assert "a config edited after start is flagged"      "! started_after 100 200"
+assert "a process that never started is flagged"     "! started_after 0 100"
+
+echo "--- live: qmd-mcp has loaded the current index.yml ---"
+if box_only_with 'the live qmd-mcp unit and its config' \
+     "$HOME/.config/qmd/index.yml" /etc/systemd/system/qmd-mcp.service; then
+  # An empty stamp (never started this boot) must not reach `date -d ""`, which is midnight.
+  start_raw=$(systemctl show qmd-mcp -p ExecMainStartTimestamp --value 2>/dev/null)
+  start_s=0
+  [ -n "$start_raw" ] && start_s=$(date -d "$start_raw" +%s 2>/dev/null || echo 0)
+  cfg_s=$(stat -c %Y "$HOME/.config/qmd/index.yml")
+  echo "  info: qmd-mcp started $start_s, index.yml mtime $cfg_s"
+  assert "qmd-mcp started after the last index.yml edit (else: sudo systemctl restart qmd-mcp)" \
+    "started_after '$start_s' '$cfg_s'"
+else
+  echo "  (skipped — see the SKIP line above)"
+fi
 
 exit $fail

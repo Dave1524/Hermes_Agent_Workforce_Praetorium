@@ -2,275 +2,161 @@
 
 ## What this is
 The box-side operational home for the AI agent workforce running on this machine:
-orchestration config, cron/scheduling, inbox/approval tooling, agent profiles.
-This is a separate repo from the vault clones (`../Obsidian_AI_Operating_System/` canonical, `../obsidian-ai-os-boxsafe/` legacy mirror) — this one holds *how the agents run*,
-the vault holds *what they know*.
+orchestration config, scheduling, inbox/approval tooling, agent profiles. The vault clones
+(`../Obsidian_AI_Operating_System/` canonical, `../obsidian-ai-os-boxsafe/` legacy mirror) hold
+*what the agents know*; this repo holds *how they run*.
+
+A trap this file used to narrate is now an assertion in `bin/verify.sh`; each rule below names
+its test. `tests/test_instruction_size.sh` holds this file to a size ceiling that only goes down.
 
 ## Roster
 
-**This section owns the personas and their job wiring. It does not own the live Buzz fleet,
-and never did.** Two rosters exist on this box for two different runtimes that share only the
-persona charters: the personas below, which own the unattended systemd timer fleet in this
-repo, and the **`buzz-agent@*` units**, the interactive chat surface, which the machine-level
-`~/CLAUDE.md` owns. Until 2026-09-05 both files described "the fleet" without saying which
-one, so a reader landing on either took it for the whole roster — and this one was short by an
-agent, having never mentioned aurelian. He has a manifest (`design/agents/aurelian.toml`) and
-owns no scheduled work; that is the correct answer rather than an omission. Until 2026-09-14
-(T6.1) this section was a table of **Hermes profiles**; those are deleted, and the roster is
-the manifests.
-
-Neither list is authoritative for *membership*. A roster in prose is a snapshot, and this is
-machine state with a live reader:
+**This section owns the personas and their job wiring, not the live Buzz fleet** — that is
+the `buzz-agent@*` units, owned by `~/CLAUDE.md`. Two runtimes, sharing only the persona
+charters. Membership is machine state; enumerate it, never count it in prose
+(`test_instruction_size.sh` refuses a count literal here):
 
 ```
-systemctl --user list-units 'buzz-agent@*' --all    # the chat fleet — five units on 2026-09-05
+systemctl --user list-units 'buzz-agent@*' --all    # the chat fleet
 ls design/agents/                                   # the personas — one manifest each
 ```
 
 - Box name: **Praetorium**. Keep the Roman-emperor convention for any additional agent profiles.
-- **A persona is `design/agents/<name>.toml`** — marcus, claudius, augustus, trajan, aurelian: the
-  single normative statement of what each owns and may do (`design/agent-model.md`). The model
-  a scheduled job runs on is the `--model` in its `bin/run_*_cc.sh`; the model a Buzz agent runs
-  on is its unit's env. Read the runbook's Job wiring table, not a persona list, to answer
-  "what runs tonight".
-- **Hermes and Ollama are off the box (2026-09-18, Dave's decision).** The four persona
-  profiles went 2026-09-14 (T6.1; record: `design/archive/hermes-profiles-2026-09-14.md`);
-  the two remaining uses — the `hermes` CLI as the Discord delivery leg in `bin/deliver.sh`,
-  and the `base0` / `leantest` profiles over `qwen3-64k` on Ollama for `local-tier-eval` —
-  went with the runtimes: `local-tier-eval` and `ttm-pool-drain` are retired
-  (`design/retired-workflows.toml`, PRs #50 and #51), `~/.hermes` is archived under
-  `~/OUTBOX/` and Ollama is uninstalled. `tests/test_hermes_residue.sh` scans for both
-  names with an empty live set. There is no local inference tier any more.
-- **Vespasianus / `trading_researcher` was never built** — treat that roster row as lapsed, not
-  pending. PolyScalper research is not staffed on the box.
-- Per-profile Discord identities were never built: `discord-bot.service` is staged in
-  `~/deploy-staging/` only, not installed or enabled. The live chat surface is **Buzz** (see the
-  machine-level `~/CLAUDE.md`), and since 2026-09-18 Buzz is the only delivery surface too —
-  the Discord leg left with Hermes, and this box sends nothing to Discord.
+- **A persona is `design/agents/<name>.toml`** — the single normative statement of what each owns
+  and may do (`design/agent-model.md`). The model a scheduled job runs on is the `--model` in its
+  `bin/run_*_cc.sh`; a Buzz agent's is its unit's env. "What runs tonight" is the runbook's Job
+  wiring table, not a persona list.
+- **Hermes, Ollama and Discord are off the box (2026-09-18).** No local inference tier, no
+  Discord delivery; Buzz is the only surface. `tests/test_hermes_residue.sh` (the tree) and
+  `tests/test_retired_residue.sh` (the live box, `discord-bot.service` included) keep it so.
 
 ## Hard constraints (short form)
 - **Vault data is in-bubble.** The box sits inside Dave's private trust zone (the same zone as
-  Notion and Discord): the whole working vault is on the mirror — client names, deals,
-  priorities, daily logs — and agents may reason over all of it. `_confidential/` is the one
-  data quarantine (never published, tripwired in the publish script). De-identification
-  applies only to what *leaves* the bubble — outward-destined drafts, Brave queries, fetched
-  URLs. See `docs/data_boundary.md`. (2026-07-08 open-bubble posture.)
+  Notion): the whole working vault is on the mirror — client names, deals, priorities, daily
+  logs — and agents may reason over all of it. `_confidential/` is the one data quarantine
+  (never published, tripwired in the publish script). De-identification applies only to what
+  *leaves* the bubble — outward-destined drafts, Brave queries, fetched URLs. See
+  `docs/data_boundary.md`.
 - **The one hard gate is outward action.** No email, no social, no messaging humans from this
   box — it holds no outward credentials, ever. Anything for the outside world is a draft Dave
-  sends. Notion and Discord are inside the bubble, not outward.
-- **Canonical vault access: the box pushes as a GitHub App, and `main` refuses it.** Since
-  2026-09-11 the canonical clone's credential helper is `~/.local/bin/github_app_credential.py`
-  (source `00_system/tools/github_app_credential.py` in the vault; config
-  `~/.config/agent-workforce/vault_app.env`): an installation token over HTTPS, an actor the
-  `main` ruleset does not bypass, so `agents/<date>-<slug>` branches push and a `main` push is
-  refused server-side. The SSH alias `github-canonical` → `keys/canonical_deploy` that this
-  bullet described until 2026-09-17 is **dead**: `ssh -T git@github-canonical` answers
-  `Permission denied (publickey)` (measured 2026-09-17; re-run it rather than trusting this
-  line). Push with `git push origin HEAD:agents/…` from `~/dev/Obsidian_AI_Operating_System`
-  or a worktree of it. From 2026-09-05 to 09-17 this bullet said the deploy key was
-  write-enabled and bypassed the ruleset — true when written, and the reason the App exists.
+  sends. Notion is inside the bubble, not outward.
+- **Canonical vault access: the box pushes as a GitHub App, and `main` refuses it.** The canonical
+  clone's credential helper is `~/.local/bin/github_app_credential.py` (config
+  `~/.config/agent-workforce/vault_app.env`); push `git push origin HEAD:agents/…` from
+  `~/dev/Obsidian_AI_Operating_System` or a worktree of it. The SSH alias `github-canonical` is
+  dead. `tests/test_vault_credential.sh` asserts the helper, the local `pre-push` guard and the
+  refused alias.
 - **Vault writes go through `agents`, never `main`.** Any proposal to the vault is committed to
   the box-safe repo's `agents` branch/inbox. `main` is machine-published from the Mac — never
   hand-write or merge into it from here.
 - **Publishing is Mac-side only.** Never run `publish_boxsafe.sh` from this box.
 - **Inference is remote only.** Generative agent work runs on remote APIs (the Claude
   subscription for the scheduled runners and the Buzz fleet; OpenRouter where a job still
-  names it). The charter-scoped local tier (Ollama on the Arc iGPU, for mechanical
-  classification/summarization) was permitted from 2026-07 and **removed 2026-09-18** with
-  Ollama itself — nothing runs locally, and the LLM egress boundary in `docs/data_boundary.md`
-  governs every call. The vault's `local_inference_charter.md` is history, not policy.
+  names it); the LLM egress boundary in `docs/data_boundary.md` governs every call.
 - **Secrets are a separate tree.** `~/.config/agent-workforce/` holds credentials (deploy key,
   mode 600) and is NOT this repo. Never `git add` anything from that path into this repo.
 
 ## Where things live
-- `../Obsidian_AI_Operating_System/` — canonical vault clone; shared memory/context.
-  Propose on `agents/<date>-<slug>` branches, never `main`. (Legacy mirror
-  `../obsidian-ai-os-boxsafe/` retires at cutover.)
+- `../Obsidian_AI_Operating_System/` — canonical vault clone; propose on `agents/<date>-<slug>`
+  branches, never `main`. (Legacy mirror `../obsidian-ai-os-boxsafe/` retires at cutover.)
 - `~/.config/agent-workforce/` — secrets + per-job override envs (mode 600). Outside git entirely.
 - This repo (`~/dev/agent-workforce/`) — **source of truth** for orchestration config, systemd
-  unit sources, agent task profiles, inbox/approval tooling.
-  **`agent-workforce-auto-sync.timer` fires every 15 min** and runs `bin/auto-sync`:
-  `git add -A` → commit → `git push origin main`. Any dirty tree here reaches `origin/main`
-  within 15 minutes under a generic `Auto-sync:` message, sweeping unrelated WIP along with
-  it. Commit your own work **immediately** after editing — before deploying, before the
-  verify gate — or the message explaining *why* is lost. For a long batch, stop the timer
-  first and restart it after.
-  **It pushes only what it commits itself.** `bin/auto-sync:41-42` prints
-  `working tree clean. Nothing to do.` and exits 0 — before the `git push origin main` at
-  `:76` — so a commit you made by hand on an otherwise clean tree is never pushed by this
-  job. It is not lost: the next tick that finds the tree dirty sweeps it along under *that*
-  tick's generic message. It is simply not published until then, so **push your own commits
-  yourself**. Measured 2026-09-07 — the timer was restarted after a batch, fired
-  immediately, logged `Nothing to do`, and `origin/main` stayed a commit behind. The
-  sentence above is what makes this easy to miss: "any dirty tree reaches `origin/main`" is
-  true, and says nothing at all about a clean one.
+  unit sources, agent task profiles, inbox/approval tooling. Commit **and push** your own work
+  yourself: `agent-workforce-auto-sync.timer`, when enabled, sweeps a dirty tree to `main` under
+  a generic message and never pushes a clean one (`tests/test_auto_sync.sh`).
 - `skills/` — the **pointer-skill tree** (T3.1). One plugin per owner
   (`skills/<owner>/.claude-plugin/plugin.json`, `skills/<owner>/skills/<name>/SKILL.md`); every
-  `SKILL.md` is a few lines naming its canonical vault path, **never a copy** — the vault owns
-  the text. Shipped by `bin/deploy` and compared by `bin/check_deploy_drift.sh` like any other
-  content tree, and loaded by the nine scheduled runners with `--plugin-dir` at an explicit
-  path in the **deployed** tree, never from `~/.claude/skills/`. Two traps it is built around,
-  both measured: a skill directory at a plugin root is silently not discovered, and a
-  `--plugin-dir` path that does not exist is silent too — exit 0, no diagnostic, no skills —
-  which is why each runner proves the manifest readable before it execs. `skills/README.md`
-  owns the allocation, joined to the tree by `tests/test_pointer_skills.sh`.
-- `~/agent-workforce/` — **deployed runtime copy** (no git) that systemd actually execs. Do not
-  treat it as canonical. Deploy with **`bin/deploy`** — additive by default; `--dry-run` to
-  preview, `--prune` to also drop files deleted from source. Runtime state (`logs/`, `var/`,
-  `backups/`) is never touched. **Nothing deploys automatically:** edit source without
-  running this and the runtime keeps executing the old code — that is how this tree fell 6
-  days behind and kept serving the retired de-identification posture (NUC-44).
-  Job wiring map: `docs/runbook.md` § Job wiring (NUC-28).
+  `SKILL.md` names its canonical vault path, **never a copy**. Shipped by `bin/deploy`, loaded by
+  the scheduled runners with `--plugin-dir` at an explicit path in the **deployed** tree. A skill
+  dir at a plugin root and a missing `--plugin-dir` are both silent, so each runner proves its
+  manifest readable before it execs (`tests/test_pointer_skills.sh`; allocation in
+  `skills/README.md`).
+- `~/agent-workforce/` — **deployed runtime copy** (no git) that systemd actually execs. Deploy
+  with **`bin/deploy`** (additive; `--dry-run` to preview, `--prune` to drop deleted files; never
+  touches `logs/`, `var/`, `backups/`). **Nothing deploys automatically** — the drift check in
+  the gate is what says so. Job wiring map: `docs/runbook.md` § Job wiring.
 - `~/agent-workforce/var/workflow-receipts/<workflow_id>/<run_id>.json` — **run receipts**
-  (T5.1, 2026-09-11), written by `bin/contract_exec.py` and read by `bin/control_room_api.py`;
-  the shape is `bin/workflow_receipt.py`, one owner for writer and reader. One receipt per run,
-  and it carries **exactly one** terminal outcome — `artifact`, `decline`, `failed` or
-  `skipped` — derived from the contract's check results and the run's own attempt log, never
-  defaulted to success: a receipt with no outcome cannot be written. `usage` and `cost` are
-  `measured` or `unavailable`, and `unavailable` is a value the Control Room renders, not an
-  absence — its token and amount fields are null, never 0. Four producers write it (T5.2,
-  2026-09-15), decided by what systemd execs: `bin/agent_propose.sh` (its own run, every
-  exit path), `bin/content_change_dispatch.sh` (its tick, handing the child its run ids),
-  `bin/receipt_sweep.py` (every other standing timer, from systemd's record, under
-  `workflow-receipt-sweep.timer` — shipped disabled, enabled and firing daily 05:50 since
-  before 2026-09-17) and `bin/interaction_receipt.py` (each
-  `buzz-agent@*` turn, from the Claude Code Stop hook or codex `notify`);
-  `tests/test_receipt_coverage.sh` proves every standing row has exactly one. A run that
-  receipts itself cannot decide its contract's `when=sweep` checks (delivery starts after
-  the receipt; a lock skip is only visible from outside), so it records them
-  `not_applicable: vantage` and the **next sweep amends that receipt** — runs exactly those
-  checks, folds them in by id, turns it `failed` on a failed one and never the reverse, and
-  stamps `swept` so it happens once (T7.3, 2026-09-17; `contract_exec.py --amend`). Until
-  then the sweep skipped every existing receipt and those checks were decided by nobody. A failed
-  receipt whose defect is already fixed is **closed, not rewritten**: `bin/receipt_close.py`
-  adds a `closed` block (who, when, why) and every reader looks past it (T7.5; runbook
-  § Control Room "Closing a reviewed failure"). Not to be confused with the two other
-  "receipt" files: `bin/delivery_receipt.py` (Buzz delivery,
-  JSONL) and `bin/run_record.sh` (`cost.log` records).
-- `control-room.service` — the **Control Room** (T5.3, 2026-09-14), serving
-  `http://praetorium:8787/` from `bin/control_room_api.py` + `bin/control_room_ui/`. Reads only;
-  binds the Tailscale address only (`bin/control_room_serve.sh` refuses to start without one);
-  reads `design/` from the **source checkout** because `bin/deploy` never ships it. Not a
-  manifest workflow — no timer, no contract, no manifest row. Runbook § Control Room.
-  Since T5.3e (2026-09-16) `/` lands on the single-page app: source in `ui/control-room/`,
-  served from its **committed build** `bin/control_room_ui/app/`, rebuilt only by
-  `bin/control_room_build_ui.sh` and stamped by `BUILD.json`, which
-  `tests/test_control_room_spa.sh` recomputes — edit the source without rebuilding and the
-  gate is red. The server-rendered pages remain as the no-JS fallback.
-  Since T5.3f (2026-09-16) every row carries a **role** derived from its `surface` —
-  `agent-workflow`, `system-workflow`, `agent-runtime` — the Workflows page is two sections
-  and never lists a runtime, and the five `buzz-agent@*` units are the **Agents** view
-  (`/app/agents`, `/api/v1/agents`). A manifest entry's `requires`
-  names the units it cannot run without (`bin/workflow_requires.py`; grammar in
-  `design/agent-model.md` §4): the row shows each one's live state with a tri-state
-  `satisfied`, an enabled workflow with one known down is a `dependency-down` exception, and
-  `bin/agent_propose.sh` refuses the run at pre-flight — unknown
-  (bus unreachable) is never a refusal. `guards` is a declared one-sentence field on platform
-  entries only, rendered as a chip and an amber dialog notice, never a refusal.
-  Since T5.3g (2026-09-16) the agent page carries **Start / Stop / Restart agent now** — the
-  session verbs on the user unit through the same broker, allowlisted under a `runtimes`
-  table, receipted under `receipts/buzz-agent@<name>/`; the unit file's enable state is shown
-  as `boot: …` and never changed from the screen. The broker reads a fixed property list and
-  never runs `systemctl status` or reads `ExecStart`/`Environment` (the agent's private key
-  is in the process argv). Required-by is a notice, not a refusal. Runbook § Control Room
-  controls § Runtime controls.
-- `control-room-broker.socket` + `control-room-broker@.service` — the **control broker**
-  (T5.3a, 2026-09-14) behind the screen's pause / resume / run now / retry / stop and, since
-  T5.3g, the runtimes' start / stop / restart: a root-owned
-  unix socket (`/run/control-room-broker.sock`, `root:control-room 0660`) that only
-  `control-room.service` can reach, executing the **root-owned copy**
-  `/usr/local/lib/control-room/control_broker.py` of `bin/control_broker.py` against the
-  root-owned allowlist `/etc/control-room/allowlist.json` (rendered by
-  `bin/control_broker_allowlist.py` from the manifests, unit files and contracts), receipting
-  every outcome under `/var/lib/control-room/receipts/`. Both root files are compared by the
-  drift check and installed by hand. Never widen the socket group, add dave to it, exec the
-  source copy or add a sudoers line — each is this design's `--no-verify`. Runbook § Control
-  Room controls. The fleet stays off until Dave's first live resume.
-- **Schedule changes and retirements are `control-room/*` pull requests, never edits** (T5.3b,
-  2026-09-15). `Change schedule…` / `Retire…` on the screen — or `bin/workflow_pr.py` from a
-  shell — build the branch in a bare clone under `/var/lib/control-room-proposals/repo.git`
-  (the `control-room.service.d/proposals.conf` drop-in), preview it with a check bundle, and
-  open the PR only from a byte-identical preview token; the box's checkout, the runtime tree,
-  `/etc` and `main` are never written. The retire half is fail-closed by
-  `design/retired-workflows.toml` + `bin/workflow_retire_residue.py --live`:
-  `tests/test_workflow_retirements.sh` stays red after a merge until Dave's hand has cleared the
-  residue and `workflow_pr.py clear <id>` stamps the entry. Runbook § Control Room proposals.
+  (T5.1), shape owned by `bin/workflow_receipt.py`. One receipt per run with **exactly one**
+  terminal outcome — `artifact`, `decline`, `failed` or `skipped` — never defaulted to success.
+  `usage` and `cost` are `measured` or `unavailable` (null fields, never 0). Four producers:
+  `bin/agent_propose.sh`, `bin/content_change_dispatch.sh`, `bin/receipt_sweep.py`
+  (`workflow-receipt-sweep.timer`, every other standing timer) and `bin/interaction_receipt.py`
+  (each `buzz-agent@*` turn); `tests/test_receipt_coverage.sh` proves every standing row has
+  one. `when=sweep` checks a run cannot decide are recorded `not_applicable: vantage` and the
+  next sweep amends them once (`contract_exec.py --amend`, `tests/test_receipt_sweep.sh`). A
+  failed receipt whose defect is fixed is **closed, not rewritten**: `bin/receipt_close.py`.
+  Not to be confused with `bin/delivery_receipt.py` (Buzz delivery) or `bin/run_record.sh`
+  (`cost.log`).
+- `control-room.service` — the **Control Room**, `http://praetorium:8787/` from
+  `bin/control_room_api.py` + `bin/control_room_ui/`. Reads only; binds the Tailscale address
+  only; reads `design/` from the **source checkout** (`bin/deploy` never ships it). Not a
+  manifest workflow. `/` is the SPA: source `ui/control-room/`, served from its **committed
+  build** `bin/control_room_ui/app/`, rebuilt only by `bin/control_room_build_ui.sh`
+  (`tests/test_control_room_spa.sh` is red on an unbuilt source edit). Rows carry a **role**
+  (`agent-workflow`, `system-workflow`, `agent-runtime`); the `buzz-agent@*` units are the
+  **Agents** view. A manifest entry's `requires` names units it cannot run without
+  (`bin/workflow_requires.py`): a known-down dependency is a `dependency-down` exception and a
+  pre-flight refusal in `agent_propose.sh`; unknown is never a refusal. `guards` is a declared
+  notice, never a refusal. The agent page's Start / Stop / Restart are session verbs only; the
+  broker never reads `ExecStart`/`Environment` (the agent key is in the argv). Runbook § Control
+  Room.
+- `control-room-broker.socket` + `control-room-broker@.service` — the **control broker** behind
+  every screen action: a root-owned socket (`/run/control-room-broker.sock`,
+  `root:control-room 0660`) only `control-room.service` reaches, executing the **root-owned copy**
+  `/usr/local/lib/control-room/control_broker.py` against `/etc/control-room/allowlist.json`
+  (rendered by `bin/control_broker_allowlist.py`), receipting under
+  `/var/lib/control-room/receipts/`. Both root files are drift-checked and installed by hand.
+  Never widen the socket group, add dave to it, exec the source copy or add a sudoers line —
+  each is this design's `--no-verify`.
+- **Schedule changes and retirements are `control-room/*` pull requests, never edits.** The
+  screen or `bin/workflow_pr.py` builds the branch in a bare clone under
+  `/var/lib/control-room-proposals/repo.git` and opens the PR only from a byte-identical preview
+  token. Retirement is fail-closed: `tests/test_workflow_retirements.sh` stays red after a merge
+  until Dave has cleared the residue and `workflow_pr.py clear <id>` stamps it.
 
 ## Daily rhythm jobs (NUC-45)
-Two jobs own Dave's day and run unattended on this box, both under `agent_propose.sh`
-with `AGENT_RUN_MODE=ops`:
+Two jobs own Dave's day, both under `agent_propose.sh` with `AGENT_RUN_MODE=ops`:
 - **`praetorium-daily-plan.timer`** — Mon-Fri 06:00 → `<date> — Daily Plan` row in Notion.
 - **`praetorium-eod-summary.timer`** — daily 22:15 → `<date> — EOD Summary` (Daily Plans)
   + `<date>` (Daily Log).
 
-Rules that are easy to get wrong:
 - **Notion is the artifact; the vault write stays Mac-side.** These jobs never write
-  `07_daily/logs/`, on any branch. The Mac's `morning-startup` / `eod-wrap` skills remain
-  canonical for interactive runs — the box profiles are a port, not a replacement.
-- **All Notion I/O goes through `bin/notion_daily.py`**, which owns the date-keyed
-  idempotency: a re-run updates the row and replaces its body instead of stacking a
-  second one. Never hand-roll HTTP against the Notion API in a task profile.
-- **`bin/vault_sync_guard.sh` is the single owner of "is the mirror current?"** —
-  `sync` for `qmd-refresh.service`, `check` as the pre-flight for both jobs. A stale or
-  dirty mirror must produce a loud refusal, never a confident wrong briefing. Details and
-  the failure table: `docs/runbook.md` § Daily rhythm jobs.
+  `07_daily/`, on any branch (the daily/eod smokes guard the task text). The Mac's `morning-startup` /
+  `eod-wrap` skills remain canonical for interactive runs.
+- **All Notion I/O goes through `bin/notion_daily.py`** (date-keyed idempotency); never
+  hand-roll Notion HTTP in a task profile.
+- **`bin/vault_sync_guard.sh` owns "is the mirror current?"** — `sync` for
+  `qmd-refresh.service`, `check` as pre-flight. A stale or dirty mirror is a loud refusal.
+  Runbook § Daily rhythm jobs.
 
-## Research pipeline jobs (2026-07-30 Opus 5 migration)
-Three research/knowledge jobs run unattended on headless Claude Code, pinned to **Opus 5**
-(the full model name, not the `opus` alias — an alias silently rolls forward on the next
-model release):
+## Research pipeline jobs
+Headless Claude Code pinned to a **full model name**, never an alias (the smokes assert it):
 - **`agent-proposal.timer`** — Mon-Fri 04:30 → standing research (`AGENT_JOB_OVERRIDES` →
-  `standing_research.env` → `bin/run_standing_research_cc.sh`). Replaces the
-  hermes/claudius-on-OpenRouter path, which was hard-down for ten days on HTTP 402
-  "Insufficient credits" while reading as a clean decline.
-- **`raw-ingest.timer`** — Tue-Sat 03:00 → diffs `05_knowledge/raw/` against
-  `00_system/ingest_log.md` and proposes one distillation per unprocessed source (ahead of
-  the 04:30 standing research run, so research sees freshly-ingested knowledge same day).
-- **`knowledge-digest.timer`** — Sun 09:00 → reports what `05_knowledge/` / `11_entities/`
-  learned in the last 7 days (git-log delta), distinct from `weekly-pre-assembly`'s
-  activity pre-read.
+  `standing_research.env` → `bin/run_standing_research_cc.sh`).
+- **`raw-ingest.timer`** — Tue-Sat 03:00 → one distillation proposal per unprocessed
+  `05_knowledge/raw/` source not in `00_system/ingest_log.md`.
+- **`knowledge-digest.timer`** — Sun 09:00 → what `05_knowledge/` / `11_entities/` learned in the
+  last 7 days.
 
-Rules that are easy to get wrong:
-- **These jobs write only `_inbox/agents/**`; every vault change they describe is a
-  proposal for Mac-side promotion, never a direct write to `main`.** This is a rule the
-  jobs keep, not one the credentials enforce — see "Canonical vault access is a rule you
-  keep" above. Until 2026-09-05 this line cited the box's supposed lack of a canonical
-  credential as the reason, which made a discipline look like a guarantee.
-- **A run must produce either a dated proposal or an explicit `DECLINE:` sentinel.**
-  `bin/proposal_or_decline.sh <slug>` (wired as `AGENT_VERIFY_CMD`) fails any run that
-  produces neither, so a dead run can never again log as a clean NOPROPOSAL.
-- **Contradiction flagging (Mechanism A)** is a standing instruction across all three
-  profiles: a source that contradicts an existing `05_knowledge/` claim gets named, both
-  sides cited, under `## Contradictions` — never silently superseded.
+- **These jobs write only `_inbox/agents/**`**; every vault change they describe is a proposal
+  for Mac-side promotion. A rule the jobs keep, not one the credentials enforce.
+- **A run produces a dated proposal or an explicit `DECLINE:` sentinel** —
+  `bin/proposal_or_decline.sh <slug>` (`AGENT_VERIFY_CMD`) fails any run with neither.
+- **Contradictions are named, never silently superseded** — both sides cited under
+  `## Contradictions`, in all three profiles.
 
-## BD follow-up drafts (2026-07-30)
-**`bd-followup-drafts.timer`** — monthly, second Monday 09:37 (since 2026-09-11; Sun-Thu
-23:30 before that), headless Claude Code pinned to `claude-opus-5`, half an hour after the
-weekly `bd-stall-radar` (Mon 09:07) so each pack consumes that morning's fresh radar output.
-It writes up to 10 copy-paste-ready drafts (5 while it was nightly) for every **Dave-owed** BD next
-action — the union of radar stalls, Client Pipeline rows past their `Next action date`, and
-due BD-scoped Task Inbox rows — into
+## BD follow-up drafts
+**`bd-followup-drafts.timer`** — monthly, second Monday 09:37, half an hour after the weekly
+`bd-stall-radar` (Mon 09:07). Up to 10 copy-paste-ready drafts for every **Dave-owed** BD next
+action (radar stalls, pipeline rows past `Next action date`, due BD Task Inbox rows) into
 `_inbox/agents/YYYY-MM-DD_bd-followup-drafts.md`, delivered to the Buzz `bd` channel by
-`bin/deliver_report.sh`. The radar flags and stops; this job writes the text. It exists
-because three overdue sends sat `Planned` in the Task Inbox for five straight days — the
-missing artifact was the message, not the task row.
+`bin/deliver_report.sh`. The radar flags; this job writes the text.
 
-Rules that are easy to get wrong:
-- **No draft asserts elapsed time or silence.** No "I haven't heard back", no "it's been
-  three weeks". Pipeline `Last contact` is known-unreliable — outbound email and LinkedIn
-  leave no trace on this box (ProActive read 82d when the real touch was 6d). Every draft
-  grounds in the last *substantive, evidenced* exchange from the vault, and anything that
-  cannot be confirmed surfaces as an `⚠ Unverified:` line rather than a confident opener.
-- **Both BD jobs are Stage `Prospect` only (Dave, 2026-09-11).** Qualified / Proposal /
-  Active are the accounts he is working; the radar and the drafts pack exist to surface the
-  BD work that is *not* being done. The radar also flags never-contacted Prospect rows, and
-  the pack ranks most-overdue first with no stage tier — the old revenue-proximity ranking
-  filled the 5-cap with active accounts every run (`bd_stall_radar_kernel.py`
-  `IN_SCOPE_STAGES`, `profiles/bd_followup_drafts_cc_task.md` steps 1 and 3).
-- **Drafts are send material, not vault changes.** The pack carries
-  `target: none`, so it is never promoted into the vault by the inbox tooling, and the job
-  never writes Notion pipeline state — `Stage` / `Last contact` / `Next action date` stay
-  Dave's call from the Mac, identical to the stall radar's boundary.
+- **No draft asserts elapsed time or silence** — pipeline `Last contact` is unreliable; ground
+  in the last evidenced exchange, and surface anything unconfirmed as `⚠ Unverified:`.
+- **Both BD jobs are Stage `Prospect` only** (`bd_stall_radar_kernel.py` `IN_SCOPE_STAGES`).
+- **Drafts are send material** — `target: none`, never promoted into the vault; the job never
+  writes Notion pipeline state.
 
 ## Verification
 Run: `bash bin/verify.sh` from the repo root.
@@ -278,35 +164,18 @@ Gate = bash syntax check + shellcheck (error-severity, must be clean) over every
 `bin/`, **plus `bin/check_deploy_drift.sh`**, plus any test scripts under `tests/*.sh` if
 present. Full shellcheck output (style/info) is printed but does not fail the gate.
 
-**The drift check inverts the usual loop, and that is the one thing to know before editing.**
-It compares source against what is actually deployed — `bin/` against `~/agent-workforce/bin/`,
-`systemd/` against `/etc/systemd/system/`, `systemd/user/` against `~/.config/systemd/user/` —
-in both membership directions. So **adding or editing a `bin/` script makes the gate red until
-`bin/deploy` runs**: the loop here is edit → deploy → verify → commit, not edit → verify →
-commit. Details and the failure table: `docs/runbook.md` § Deploy ordering.
+**The drift check inverts the usual loop.** It compares source against what is deployed —
+`bin/` against `~/agent-workforce/bin/`, `systemd/` against `/etc/systemd/system/`,
+`systemd/user/` against `~/.config/systemd/user/` — so editing a `bin/` script makes the gate
+red until `bin/deploy` runs: edit → deploy → verify → commit. On a feature branch that adds a
+`bin/` script or a unit the gate cannot be green; report the drift, do not soften the check.
+Off the box it skips out loud, diffed against `tests/ci-expected-skips.txt`. Runbook § Deploy
+ordering.
 
-Two consequences that look like bugs and are not:
-- **On a feature branch the gate cannot be green** if the branch adds a `bin/` script or a
-  unit, because deploying an unmerged branch to the live runtime is not something to do
-  casually and installing a unit needs `sudo`. Report the drift; do not soften the check.
-- **Off the box the check skips**, out loud, and CI diffs that skip line against
-  `tests/ci-expected-skips.txt`. A suite that starts or stops skipping fails CI rather than
-  quietly changing what "green" means.
+**Never end a pipeline in an early-exiting reader while `pipefail` is on** — `grep -q` SIGPIPEs
+its producer and a found pattern reports 141. Every suite's `assert()` scopes `pipefail` off and
+carries the `yes | grep -q y` canary (`tests/test_suite_conventions.sh`). Upstream proposal:
+https://github.com/jessebuitenhuis/claude-plugin/issues/12.
 
-**Never end a pipeline in an early-exiting reader while `pipefail` is on.** `grep -q` and
-`head` exit the moment they succeed, so the upstream stage dies of SIGPIPE and the pipeline
-reports 141 — a failure verdict for a pattern that *was* found. In a boolean condition that
-inverts twice over: a true assertion fails, and a negated one (`! producer | grep -q X`)
-passes without reading anything. It reads as an intermittent red under load and as permanent
-false confidence the rest of the time; it cost this gate one run in seven until 2026-08-09,
-while quietly disabling every `no artifact attached`-style assertion in the suite. `pipefail`
-describes data-producing pipelines, not conditions, so `assert()` scopes it off; the sites
-outside an assert drop the early exit instead (`grep … >/dev/null`) or the pipe. Each suite
-carries `yes | grep -q y` as a deterministic canary for the regression.
-
-Corollary for any flaky gate here: establish **which direction it degrades** before fixing
-it. A check that fails closed costs a rerun; one that fails open has been certifying nothing,
-and the assertions that were silently passing are the expensive half of the bug.
-
-Proposed upstream as a generic standard:
-https://github.com/jessebuitenhuis/claude-plugin/issues/12 — drop this local copy if it lands.
+Before fixing a flaky gate, establish **which direction it degrades**: one that fails open has
+been certifying nothing.

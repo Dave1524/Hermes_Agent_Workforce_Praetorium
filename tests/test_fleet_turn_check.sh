@@ -154,6 +154,18 @@ assert 'a missing reader is a FAIL, not a gate that reads nothing and passes' "m
 assert 'the window and the receipt root are printed with the verdicts' \
   "grep -q 'window = last \\\${RATE_WINDOW_MIN}m' '$SCRIPT'"
 
+echo '--- gate 6: one relay event answered twice is read from the same receipts (::turn-check-doubled) ---'
+# bin/turn_rate.py's sixth column names each event that started two turns for one agent
+# (tests/test_turn_rate.py proves it). The gate must alarm on that column, name the event,
+# and refuse to pass on an empty read.
+doubled_is_sixth_column() { grep -qF "read -r name _ _ _ _ doubled" "$SCRIPT"; }
+empty_read_fails() { grep -A1 -F 'if [ -z "${rate_out:-}" ]' "$SCRIPT" | grep -q 'fail_'; }
+assert 'gate 6 exists under its name' "grep -q 'gate 6 \"no-doubled-turn' '$SCRIPT'"
+assert 'it alarms on the doubled column' "doubled_is_sixth_column"
+assert 'a doubled event is a FAIL that names it' "grep -q 'DOUBLED -- one relay event' '$SCRIPT'"
+assert 'no rate lines is a FAIL, not an empty pass' "empty_read_fails"
+assert 'a reader without the column is a FAIL, not a pass' "grep -q 'predates gate 6' '$SCRIPT'"
+
 echo '--- the unit and the registry agree about what execs what ---'
 assert 'the unit ExecStarts the adopted script by its box path' \
   "grep -qE '^ExecStart=.*/\\.config/buzz-team/fleet-turn-check\\.sh' '$UNIT'"

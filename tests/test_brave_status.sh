@@ -8,14 +8,13 @@ SCRIPT="$REPO_ROOT/bin/praetorium-status.sh"
 
 fail=0
 assert() {
-  local desc=$1 cond=$2
-  if eval "$cond"; then
-    echo "  ok: $desc"
-  else
-    echo "  FAIL: $desc"
-    fail=1
-  fi
+  local desc=$1 cond=$2 pf
+  pf=$(shopt -po pipefail)
+  set +o pipefail
+  if eval "$cond"; then echo "  ok: $desc"; else echo "  FAIL: $desc"; fail=1; fi
+  eval "$pf"
 }
+assert 'a found pattern is never reported as a failure' "yes | grep -q y"
 
 # ── Sandbox: scratch $HOME + a stub PATH so the script never touches real
 # systemd units, qmd index/daemon, tailscale, or the real brave-mcp.env ──

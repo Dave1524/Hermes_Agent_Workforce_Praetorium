@@ -15,7 +15,7 @@ clean() {
 }
 
 if [ $# -eq 0 ]; then
-  journalctl --user $UNITS -f -o with-unit | clean
+  journalctl --utc --user $UNITS -f -o with-unit | clean
 else
-  journalctl --user $UNITS --since "$1" --no-pager -o with-unit | clean
+  journalctl --utc --user $UNITS --since "$1" --no-pager -o with-unit | clean
 fi

@@ -13,7 +13,7 @@ Description=qmd vault pull + re-index + embed — NUC-10
 # days while every health check read green. The guard keeps genuine offline soft (exit 0,
 # reindex what we have) and makes a rejected fast-forward a hard failure that alerts.
 After=network-online.target
-ConditionPathExists=/home/dave/vault/.git
+ConditionPathExists=/home/dave/dev/obsidian-ai-os-boxsafe/.git
 OnFailure=agent-alert@%n.service
 
 [Service]

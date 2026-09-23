@@ -36,7 +36,7 @@ missed hour is caught up on the next boot. The service is `Type=oneshot`.
   (design rule 1 in the script header). A unit that appears is checked; a hardcoded list is
   how the newest agent silently stops being covered.
 - Per-unit CPU counters, compared against the previous run's `~/logs/fleet-turn-check.state`
-  (`fleet-turn-check.sh:30`). Absent or unwritable state degrades to "CPU deltas unavailable
+  (`fleet-turn-check.sh:32`). Absent or unwritable state degrades to "CPU deltas unavailable
   this run" (`:95`) and the run still decides on the other signals.
 - The interaction receipts under `~/agent-workforce/var/workflow-receipts/buzz-agent@<name>/`
   (gate 5, since 2026-09-19), read through the deployed `bin/turn_rate.py`: every turn's
@@ -47,11 +47,16 @@ missed hour is caught up on the next boot. The service is `Type=oneshot`.
   agents by decision (2026-09-19: the bundled skills stay); this gate is the alarm on its
   effect, and it also sees a Bash loop that re-prompts the session the same way — but not one
   that never does.
+- The same receipts (gate 6, since 2026-09-23, T8.5): one relay event that started more than
+  one relay turn for one agent in the window — distinct `started_at`, so two receipts of one
+  turn are one — is a FAIL naming the agent and the event prefix. It sees a second dispatcher
+  **on this box** only; a Mac-side Desktop head answering the same mention writes no receipt
+  here. A deployed `turn_rate.py` without the column is a FAIL, not a pass.
 
 ## Outputs
 
 - **Verdict** — the last line of the run's journal is `== fleet-turn-check PASS ==` or
-  `== fleet-turn-check FAIL ==` (`fleet-turn-check.sh:224`), preceded by one line per failed
+  `== fleet-turn-check FAIL ==` (`fleet-turn-check.sh:245`), preceded by one line per failed
   assertion naming the unit and the signal.
 - **Alert** — on FAIL the unit exits non-zero, `OnFailure` starts
   `agent-alert@fleet-turn-check.service.service`, and `bin/agent_alert.sh` appends to
