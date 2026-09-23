@@ -27,8 +27,8 @@ ls design/agents/                                   # the personas — one manif
   `bin/run_*_cc.sh`; a Buzz agent's is its unit's env. "What runs tonight" is the runbook's Job
   wiring table, not a persona list.
 - **Hermes, Ollama and Discord are off the box (2026-09-18).** No local inference tier, no
-  Discord delivery; Buzz is the only surface. `tests/test_hermes_residue.sh` asserts the tree and
-  the live paths stay clean, including that `discord-bot.service` is installed nowhere.
+  Discord delivery; Buzz is the only surface. `tests/test_hermes_residue.sh` (the tree) and
+  `tests/test_retired_residue.sh` (the live box, `discord-bot.service` included) keep it so.
 
 ## Hard constraints (short form)
 - **Vault data is in-bubble.** The box sits inside Dave's private trust zone (the same zone as
