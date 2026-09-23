@@ -4,14 +4,52 @@
 set -euo pipefail
 
 PRIMARY="main"
+# How long the checkout may sit off $PRIMARY before the refusal below alerts. 0 alerts at once.
+GRACE_HOURS="${AUTO_SYNC_OFF_MAIN_GRACE_HOURS:-4}"
 
 cd "$(dirname "$0")/.."
 
-# Only operate on the primary branch
+# Epoch of the newest HEAD-reflog entry that left $PRIMARY; prints nothing when there is none.
+# `checkout: moving from <a> to <b>` is what both `git checkout` and `git switch` write, and <a>
+# is the branch HEAD was on at that moment, so the checkout cannot have left $PRIMARY for good
+# any earlier: the answer can overstate how long it has been off $PRIMARY, never understate it.
+left_primary_at() {
+    local reflog selector message
+    reflog=$(git reflog --date=unix --format='%gd %gs' HEAD) || return 1
+    while read -r selector message; do
+        [[ $message == "checkout: moving from $PRIMARY to "* ]] || continue
+        selector=${selector#HEAD@\{}
+        printf '%s' "${selector%\}}"
+        return 0
+    done <<< "$reflog"
+}
+
+hours_minutes() { printf '%dh%02dm' $(( $1 / 3600 )) $(( $1 % 3600 / 60 )); }
+
+# Only operate on the primary branch. Off it, refusing is right but alerting is not, at first: a
+# session that switched this checkout to a feature branch is a fault only once it is forgotten.
+# So the run skips quietly for GRACE_HOURS after the checkout left $PRIMARY and alerts after
+# that. "Since when" comes from git alone; when git cannot say, the run alerts.
 branch=$(git rev-parse --abbrev-ref HEAD)
 if [[ "$branch" != "$PRIMARY" ]]; then
-    echo "auto-sync: not on $PRIMARY (current: $branch). Refusing to sync." >&2
-    exit 1
+    off_primary="auto-sync: not on $PRIMARY (current: $branch)"
+    if ! [[ $GRACE_HOURS =~ ^[0-9]+$ ]]; then
+        echo "$off_primary, and AUTO_SYNC_OFF_MAIN_GRACE_HOURS='$GRACE_HOURS' is not a whole number of hours. Refusing to sync." >&2
+        exit 1
+    fi
+    now=$(date +%s)
+    left_at=$(left_primary_at) || left_at=""
+    if ! [[ $left_at =~ ^[0-9]+$ ]] || (( left_at > now )); then
+        echo "$off_primary, and the HEAD reflog has no usable 'checkout: moving from $PRIMARY' entry to say since when. Refusing to sync." >&2
+        exit 1
+    fi
+    off_for="for $(hours_minutes $(( now - left_at ))) (since $(date -u -d "@$left_at" '+%Y-%m-%d %H:%M UTC'))"
+    if (( now - left_at >= GRACE_HOURS * 3600 )); then
+        echo "$off_primary $off_for, past the ${GRACE_HOURS}h grace window. Refusing to sync." >&2
+        exit 1
+    fi
+    echo "$off_primary $off_for, inside the ${GRACE_HOURS}h grace window. Skipping; nothing committed."
+    exit 0
 fi
 
 # Pull first to avoid trivial conflicts
