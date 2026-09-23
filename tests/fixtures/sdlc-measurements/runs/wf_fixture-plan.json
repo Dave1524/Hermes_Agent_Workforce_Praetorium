@@ -1,0 +1,8 @@
+{
+  "workflowName": "plan-dev-plan-briefs",
+  "args": {"today": "2026-09-20"},
+  "result": {"briefs": [], "stoppedAt": "T9.1", "landed": [{"id": "T9.1"}]},
+  "workflowProgress": [
+    {"type": "workflow_agent", "label": "land:T9.1", "state": "done", "startedAt": 500}
+  ]
+}

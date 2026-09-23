@@ -1,0 +1,14 @@
+{
+  "workflowName": "ship-dev-plan",
+  "args": {"tasks": ["T9.1", "T9.2"], "preShipped": {"T9.1": {"branch": "worktree-fixture-a-1"}}},
+  "result": {
+    "stoppedAt": "T9.2",
+    "failingAssertion": "land agent returned null",
+    "landed": [{"id": "T9.1", "commit": "0000000", "archive": "0000000", "plausible": []}]
+  },
+  "workflowProgress": [
+    {"type": "workflow_agent", "label": "land:T9.1", "state": "done", "startedAt": 2000},
+    {"type": "workflow_agent", "label": "ship:T9.2", "state": "done", "startedAt": 2100},
+    {"type": "workflow_agent", "label": "land:T9.2", "state": "error", "startedAt": 2200}
+  ]
+}
