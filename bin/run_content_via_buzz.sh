@@ -392,20 +392,24 @@ trigger_failures() {
     | grep -c -E 'requeueing failed batch|dead-lettering batch'
 }
 
+# Only a refusal of the ACCOUNT or the MODEL is this run's cause by construction — it refuses
+# every turn alike. Any other error in the window may be his hourly heartbeat's, not this
+# trigger's; that one is attributed through the receipt above or not at all.
 if refusal=$(codex_refusal) && [ -n "$refusal" ]; then
   IFS=$'\t' read -r r_class r_retry _ r_at r_message <<<"$refusal"
   case "$r_class" in
     quota-exhausted)
-      reason quota-exhausted "augustus's Codex plan refused the turn over its usage limit at $r_at; it resets $r_retry. Buy credits or wait; restarting him does not help." ;;
-    *)
-      reason "$r_class" "Codex refused the turn at $r_at: $r_message" ;;
+      reason quota-exhausted "augustus's Codex plan refused the turn over its usage limit at $r_at; it resets $r_retry. Buy credits or wait; restarting him does not help."
+      exit 1 ;;
+    model-unavailable)
+      reason model-unavailable "Codex refused the model at $r_at: $r_message"
+      exit 1 ;;
   esac
-  exit 1
 fi
 
 failures=$(trigger_failures)
 if [ "${failures:-0}" -gt 0 ]; then
-  reason undelivered "buzz-acp could not start a turn for the trigger — requeued or dead-lettered $failures time(s) in $AUGUSTUS_UNIT since the dispatch; his harness is failing every prompt, and his journal only says why as -32603"
+  reason undelivered "buzz-acp could not start a turn for the trigger — requeued or dead-lettered $failures time(s) in $AUGUSTUS_UNIT since the dispatch; his harness refused it, and the journal records the cause only as -32603"
   exit 1
 fi
 

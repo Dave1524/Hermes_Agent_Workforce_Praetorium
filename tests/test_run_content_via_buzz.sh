@@ -704,6 +704,12 @@ assert 'and says when it resets' "tail -1 '$WORK/out' | grep -q 'resets 2026-09-
 assert 'and that a restart does not help' "tail -1 '$WORK/out' | grep -q 'restarting him does not help'"
 assert 'and never calls it silence' "! grep -q 'no board movement and no reply' '$WORK/out'"
 
+reset_case
+printf 'harness-error\t-\t0\t2026-09-25 01:51 CEST\tstream disconnected before completion\n' >"$STUB_CODEX_LAST"
+run_dispatch; rc=$?
+assert 'an unattributable Codex error in the window (his heartbeat'"'"'s, maybe) is never this run'"'"'s cause' \
+  "[ \"\$(last_code)\" = silent ]"
+
 echo '--- a trigger buzz-acp could not hand to a turn is undelivered ---'
 # The durable fallback when Codex's log has lost the row: the journal keeps the requeues.
 # Colour codes are what buzz-acp actually writes (-o cat keeps them).
