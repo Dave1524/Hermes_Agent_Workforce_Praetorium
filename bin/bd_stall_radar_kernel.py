@@ -404,11 +404,26 @@ def classify(today):
     return deals, candidates, stalls, priorities
 
 
+def run_date(env=None):
+    """The date of this run: RUN_DATE, exported once by agent_propose.sh for every step, so the
+    proposal's filename and the checks keyed on it cannot straddle midnight. dt.date.today()
+    only when the kernel runs by hand."""
+    raw = (os.environ if env is None else env).get("RUN_DATE", "").strip()
+    if not raw:
+        return dt.date.today()
+    try:
+        return dt.date.fromisoformat(raw)
+    except ValueError:
+        print(f"[warn] RUN_DATE={raw!r} is not YYYY-MM-DD — dating this run by the clock instead",
+              file=sys.stderr)
+        return dt.date.today()
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true", help="classify and print; write no files")
     args = ap.parse_args()
-    today = dt.date.today()
+    today = run_date()
 
     deals, candidates, stalls, priorities = classify(today)
 

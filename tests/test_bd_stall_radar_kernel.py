@@ -173,6 +173,14 @@ check("nothing under ~/.hermes is read or created", not (home / ".hermes").exist
 lines2, _, _ = with_state([_row("2026-09-10", ["X"])], _append_then_read)
 check("an existing file gains one line, keeps the rest", len(lines2) == 2 and "X" in lines2[0])
 
+print("--- run date: RUN_DATE, never the clock, when the runner exported one ---")
+# (::kernel-date-matched-the-run) agent_propose.sh exports RUN_DATE once; the kernel used to
+# take dt.date.today(), which crosses midnight ahead of it at a late slot.
+check("RUN_DATE dates the run", k.run_date({"RUN_DATE": "2026-09-21"}) == dt.date(2026, 9, 21))
+check("no RUN_DATE falls back to the clock", k.run_date({}) == dt.date.today())
+check("a malformed RUN_DATE falls back to the clock rather than crashing the run",
+      k.run_date({"RUN_DATE": "21-09-2026"}) == dt.date.today())
+
 print("--- run summary: the kernel writes its own audit lines beside the state ---")
 # (::radar-summary-is-kernel-written)
 summary = k.summary_lines(list(range(88)), stalls + stalls, stalls, "some priorities", TODAY)

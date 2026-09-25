@@ -216,20 +216,25 @@ Ids are the stable names; `## Known failure modes` references them, never the nu
    [ -z "$hits" ]
    ```
 
-7. **The file the kernel wrote is dated for this run.** The kernel takes its date from
-   `dt.date.today()`; everything else on the path takes it from `RUN_DATE`, exported once at
-   `agent_propose.sh:317`. At a slot near midnight, with jitter and retries, those two can
-   disagree (dormant at 09:07, live at the old 23:00) — and
-   when they do, every check keyed on `RUN_DATE` reports a missing artifact for a file that
-   exists under tomorrow's name.
+7. **The kernel dated its run the way the runner did.** The kernel takes its date from
+   `RUN_DATE`, exported once at `agent_propose.sh:317`, and falls back to `dt.date.today()`
+   only when it runs by hand. Before 2026-09-25 it always used the clock, and at a slot near
+   midnight, with jitter and retries, the two disagreed (live at the old 23:00) — every check
+   keyed on `RUN_DATE` then reported a missing artifact for a file that existed under
+   tomorrow's name. The evidence is the kernel's own summary line, which carries the date it
+   used. It is never the agent's reply: on 2026-09-21 Claudius ended his reply by pointing at
+   last week's unactioned `2026-09-17_bd-stall-radar.md`, an earlier version of this check took
+   the last path in the reply for the kernel's write, and a run that wrote the right file
+   was recorded as failed.
 
    ```check id=kernel-date-matched-the-run
-   wrote="$(grep -oE '_inbox/agents/[0-9]{4}-[0-9]{2}-[0-9]{2}_bd-stall-radar\.md' \
-              "$AGENT_ATTEMPT_LOG" | tail -1)"
-   [ -n "$wrote" ] || { echo "n/a: the kernel wrote no proposal this run"; exit 77; }
-   want="_inbox/agents/${RUN_DATE}_bd-stall-radar.md"
-   [ "$wrote" = "$want" ] || echo "the kernel wrote $wrote while this run is dated $RUN_DATE — dt.date.today() crossed midnight ahead of RUN_DATE"
-   [ "$wrote" = "$want" ]
+   s="$HOME/agent-workforce/var/bd-stall-radar/last-run.log"
+   fresh="$(find "$(dirname "$s")" -maxdepth 1 -name "$(basename "$s")" \
+              -newermt "@$AGENT_RUN_STARTED_AT" 2>/dev/null)"
+   [ -n "$fresh" ] || { echo "n/a: no kernel summary from this run (kernel-actually-ran decides that)"; exit 77; }
+   ran="$(sed -n 's/^bd-stall-radar (deterministic) \([0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}\) .*/\1/p' "$s" | head -1)"
+   [ "$ran" = "$RUN_DATE" ] || echo "the kernel dated its run '$ran' while this run is dated $RUN_DATE — the kernel did not take RUN_DATE"
+   [ "$ran" = "$RUN_DATE" ]
    ```
 
 8. **The run cleared the 09:37 slot.** `sweep`. On the second Monday `bd-followup-drafts`
@@ -308,15 +313,12 @@ Ids are the stable names; `## Known failure modes` references them, never the nu
   `DECLINE: no genuine new stalls` — the same line a healthy quiet week produces, delivered
   to the same forum, receipted the same way. Signals: `deal-count-was-not-zero`,
   `priorities-suppression-was-live`, `kernel-actually-ran`.
-- **Midnight rollover between the kernel and the run.** `bd_stall_radar_kernel.py` computes
-  its date with `dt.date.today()` while everything around it uses `RUN_DATE`, exported once at
-  `agent_propose.sh:317` and never recomputed. A 09:07 run cannot cross midnight, so this is
-  dormant at the current slot — it bit at the old 23:00 slot, where jitter and up to two
-  retries crossed midnight routinely, and it returns the moment the slot moves back past
-  midnight: the kernel writes tomorrow's filename into today's run, and every
-  `RUN_DATE`-keyed check reports a missing artifact that is sitting right there. Signal:
-  `kernel-date-matched-the-run`. The real fix is passing `RUN_DATE` into the kernel, which is
-  a change to `bin/`, not to this file.
+- **Midnight rollover between the kernel and the run.** Closed 2026-09-25: the kernel takes
+  `RUN_DATE` (`run_date()` in `bd_stall_radar_kernel.py`) instead of `dt.date.today()`, so its
+  filename and every `RUN_DATE`-keyed check agree however late the slot runs. It bit at the
+  old 23:00 slot, where jitter and up to two retries crossed midnight routinely. Signal, kept
+  for a kernel run without `RUN_DATE` in its environment: `kernel-date-matched-the-run`,
+  which reads the date from the kernel's own summary line, never from the agent's reply.
 - **Overrunning into the 09:37 slot.** This job's overrun is charged to its sibling:
   `bd-followup-drafts` finds the flock held, logs `SKIP: previous run still active`, exits 0
   (`agent_propose.sh:144`), and Dave gets no drafts with nothing red anywhere — for a month,
