@@ -24,7 +24,7 @@
 #   PROSE — a file read by an AGENT as instruction. Its correctness is judgement rather
 #   than shape, it is the class most likely to accrete client detail, and
 #   Dave1524/Hermes_Agent_Workforce_Praetorium is a PUBLIC repo that
-#   agent-workforce-auto-sync.timer pushes to within 15 minutes. Stays machine-level.
+#   reviewed PRs publish into. Stays machine-level.
 #   One prose file is adopted — aurelian-calibration.md — for the reason its entry gives (T8.3).
 #
 # The rule is stated here so the next file lands on the right side without a new decision.

@@ -158,7 +158,7 @@ judgement is the part a coverage figure cannot express.
 |---|---|---|---|
 | `overnight-morning-report` | marcus | standing | **real hole — highest value.** Carries the whole recurring reporting-defect class. |
 | `m1-signal-scan` | claudius | standing | **real hole.** `bin/run_m1_signal_scan_cc.sh` is in-repo and writable. |
-| `agent-workforce-auto-sync` | trajan | standing | **real hole.** `bin/auto-sync` is in-repo. Appeared in `test_local_tier_eval_score.sh` (deleted 2026-09-18) only as a `list-timers` *fixture string*. |
+| `agent-workforce-auto-sync` | trajan | retired | Retired 2026-09-23 in PR #70; this coverage-gap row is history. |
 | `overnight-pre-snapshot` | trajan | standing | **real hole.** `bin/overnight_pre_snapshot.sh` is in-repo. |
 | `fleet-turn-check` | trajan | standing | **exemption ended 2026-09-03** — the script was adopted as `buzz-team/fleet-turn-check.sh`, so the premise was gone; now covered by `tests/test_fleet_turn_check.sh` (structural: it asserts the five design rules the script's own header requires, and deliberately does not run it — gate 2 spends a real model turn) |
 | `ttm-pool-drain` | trajan | standing | **retired 2026-09-18** with Ollama (PR #50); the row is history |

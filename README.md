@@ -19,12 +19,11 @@ Box-side operational home for the AI agent workforce running on **Praetorium**, 
 
 ## Branching model
 
-- `main` – stable box-side code. Small, safe updates can be auto-committed here.
-- Feature work / new agents – do on a branch or in a local worktree, then open a PR against `main`.
-
-## Auto-sync
-
-`bin/auto-sync` runs on a cron schedule. On `main` it fast-forwards from origin, commits any dirty changes, and pushes. Keep large or risky work in a branch.
+- Work on a branch or in an isolated checkout. Open PRs through `bin/gh_app.sh` as the App.
+- Dave approves; the `gate` check must pass; the App merges the approved commit. Deploy after merge.
+- Auto-sync was retired in PR #70. Nothing commits or pushes your unfinished work automatically.
+- `python3 bin/main_protection.py --live` checks GitHub enforcement. See the runbook's
+  GitHub identity section for the remaining rollout steps.
 
 ## Verification
 
@@ -42,4 +41,3 @@ Gate: bash syntax + shellcheck error-level + test suite.
 - `docs/runbook.md` – operational runbook
 - `docs/data_boundary.md` – de-identification and scope rules
 - `docs/inbox_workflow.md` – proposal and approval flow
-

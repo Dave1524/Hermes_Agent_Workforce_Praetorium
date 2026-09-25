@@ -22,15 +22,11 @@ From `CLAUDE.md`, in this order:
   `~/agent-workforce/` is the deployed runtime copy that systemd actually execs. Nothing deploys
   automatically; edit source without running `bin/deploy` and the runtime keeps running old code.
 
-## The auto-sync race — commit immediately
+## Branch and review
 
-`agent-workforce-auto-sync.timer` fires **every 15 minutes** and runs `bin/auto-sync`:
-`git add -A` → commit → `git push origin main`. Any dirty tree here reaches `origin/main` inside
-15 minutes under a generic `Auto-sync:` message, sweeping unrelated work-in-progress along with
-it. Commit your own work **immediately** after editing — before deploying, before the verify gate
-— or the message explaining why is lost. For a long batch, stop the timer first and restart it
-after. Also `git fetch origin` and compare against `origin/main` before committing; local
-checkouts here can be silently merged-and-stale.
+Follow `CLAUDE.md` § Where things live for the PR and deploy order. Auto-sync was retired in
+PR #70; do not start it. Fetch and compare with `origin/main` before committing. Commit only
+your explicit paths on a topic branch, then push that branch and open the PR as the App.
 
 ## Verification
 

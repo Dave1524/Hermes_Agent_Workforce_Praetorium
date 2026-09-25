@@ -11,15 +11,13 @@ secrets.env
 var/opencode-observability/
 
 # Agent worktrees created by the Workflow harness. Nested repositories: `git add -A` stages one
-# as a 160000 gitlink pointing at a commit that exists only in this clone. bin/auto-sync refuses
-# on that property regardless, but a refusal is a stopped sync plus a Buzz alert every 15
-# minutes — ignoring the path we KNOW about keeps the guard for the ones we do not.
+# as a 160000 gitlink pointing at a commit that exists only in this clone. Keep worktree
+# state out of explicit commits and PRs.
 .claude/worktrees/
 
 # graft's local graph cache — regenerable, not committed (run `graft build`).
 /graft/
 
 # The eval tool writes <plugin>/evals/results/ per run. The runner evaluates a COPY outside
-# $HOME so the checkout is never written, but agent-workforce-auto-sync.timer commits any dirty
-# tree within 15 minutes, so this is the belt behind that brace.
+# $HOME so the checkout is never written; keep generated eval results out of manual commits too.
 skills/*/evals/results/

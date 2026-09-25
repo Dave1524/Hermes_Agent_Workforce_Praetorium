@@ -508,8 +508,7 @@ dialogs name the enabled dependents in amber, and the consequence is the depende
 becoming a one-second BLOCKED receipt and a `dependency-down` exception — visible and cheap,
 which is why the broker stays ignorant of `requires`. The five load-bearing entries carry it:
 `workflow-incidents`, `fleet-turn-check`, `agent-drift-check`, `qmd-refresh`,
-`workflow-receipt-sweep`; `agent-workforce-auto-sync` does not, its contract already calls
-it "purpose and hazard in one line". `tests/test_workflow_coverage.py` refuses `guards` on a
+`workflow-receipt-sweep`. Auto-sync retired in PR #70. `tests/test_workflow_coverage.py` refuses `guards` on a
 non-platform entry (`guards-platform-only`) and a `guards` or standing platform `what` that
 is not one sentence — non-empty, ends with a period, no newline, no second sentence
 (`one-sentence`).
@@ -562,7 +561,7 @@ the live totals.
    to the wrong thing is the §6.1 defect in miniature, and it survives the removal of
    whatever actually held the line.
 4. **Deployed-copy convention (D1 §7.8) still holds**: units ExecStart from
-   `~/agent-workforce/bin` except auto-sync. The manifest records the source path; the
+   `~/agent-workforce/bin`. The manifest records the source path; the
    runtime reads the deployed one.
 
 ## 6. Live gaps found while writing this
