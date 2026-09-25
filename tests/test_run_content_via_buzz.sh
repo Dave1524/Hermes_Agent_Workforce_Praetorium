@@ -95,6 +95,35 @@ exit 0
 STUB
 chmod +x "$WORK/corpus.sh"
 
+# The two new vantages for naming a silence (2026-09-25), stubbed at their seams so no case
+# reads the live Codex log or the live journal. `classify` is the real classifier: the
+# runner's code for a receipt's error text must be the classifier's, not a second copy.
+cat >"$WORK/codex.sh" <<'STUB'
+#!/usr/bin/env bash
+case "$1" in
+  blocking) [ -s "$STUB_CODEX_BLOCKING" ] && { cat "$STUB_CODEX_BLOCKING"; exit 0; }
+            [ -s "$STUB_CODEX_RC" ] && exit "$(cat "$STUB_CODEX_RC")"; exit 1 ;;
+  last)     [ -s "$STUB_CODEX_LAST" ] && { cat "$STUB_CODEX_LAST"; exit 0; }; exit 1 ;;
+  classify) exec python3 "$REAL_CODEX_TURN_ERROR" "$@" ;;
+esac
+exit 2
+STUB
+chmod +x "$WORK/codex.sh"
+cat >"$WORK/journal.sh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$STUB_JOURNAL_ARGV"
+cat "$STUB_JOURNAL" 2>/dev/null
+exit 0
+STUB
+chmod +x "$WORK/journal.sh"
+export REAL_CODEX_TURN_ERROR="$REPO_ROOT/bin/codex_turn_error.py"
+export STUB_CODEX_BLOCKING="$WORK/codex_blocking"
+export STUB_CODEX_RC="$WORK/codex_rc"
+export STUB_CODEX_LAST="$WORK/codex_last"
+export STUB_JOURNAL="$WORK/journal"
+export STUB_JOURNAL_ARGV="$WORK/journal_argv"
+QUOTA_ROW=$(printf 'quota-exhausted\t2026-09-26 11:14 CEST\t1790414040\t2026-09-25 01:35 CEST\tYou have hit your usage limit. try again at Sep 26th, 2026 11:14 AM.')
+
 export STUB_ARGV="$WORK/argv.log"
 export STUB_STDIN="$WORK/sent_body"
 export STUB_SEND_RC="$WORK/send_rc"
@@ -116,6 +145,8 @@ reset_case() {
   rm -f "$STUB_DIGEST_MOVE" "$STUB_DIGEST_N" "$WORK/board.snapshot"
   rm -rf "$STUB_TURN_RECEIPTS"
   printf '[]\n' >"$STUB_EVENTS"
+  : >"$STUB_CODEX_BLOCKING"; : >"$STUB_CODEX_RC"; : >"$STUB_CODEX_LAST"
+  : >"$STUB_JOURNAL"; : >"$STUB_JOURNAL_ARGV"
 }
 
 # augustus's interaction receipt for one turn, as bin/interaction_receipt.py writes it —
@@ -151,6 +182,9 @@ run_dispatch() {  # run_dispatch [extra env assignments...]
       CONTENT_CORPUS_BIN="$WORK/corpus.sh" \
       CONTENT_BOARD_SNAPSHOT="$WORK/board.snapshot" \
       CONTENT_TURN_RECEIPTS="$STUB_TURN_RECEIPTS" \
+      CONTENT_CODEX_TURN_ERROR_BIN="$WORK/codex.sh" \
+      CONTENT_CODEX_HOME="$WORK/codex-home" \
+      CONTENT_JOURNAL_BIN="$WORK/journal.sh" \
       AGENT_BUZZ_WAIT_SECONDS="${WAIT_SECS:-2}" \
       AGENT_BUZZ_POLL_SECONDS=1 \
       "$@" bash "$RUNNER" >"$WORK/out" 2>&1
@@ -590,6 +624,130 @@ run_check "$WORK/trigger.log"; rc=$?
 assert 'a reader that cannot run is a failure, never "no receipt yet"' \
   "[ $rc -eq 1 ] && grep -q 'could not be read' '$WORK/check.out'"
 STUB_TURN_RECEIPTS="$WORK/turn-receipts"
+
+echo '--- every exit ends on a reason code, and the code says what happened (2026-09-25) ---'
+# The attempt log's last line is the run receipt's reason (propose_receipt.py), which the
+# Control Room, the alert and the morning report all read. Two Codex quota outages were both
+# recorded as "no board movement and no reply"; the morning after the second one proposed a
+# restart that could not help. Each case asserts the LAST line, because that is the reason.
+last_code() { tail -1 "$WORK/out" | grep -oE 'reason_code=[a-z-]+' | cut -d= -f2; }
+
+reset_case
+touch "$STUB_DIGEST_MOVE"
+run_dispatch; rc=$?
+assert 'a draft ends on reason_code=drafted' "[ $rc -eq 0 ] && [ \"\$(last_code)\" = drafted ]"
+
+reset_case
+event "$AUGUSTUS" "DECLINE: nothing Picked tonight"
+run_dispatch; rc=$?
+assert 'a decline ends on reason_code=declined, quoting it' \
+  "[ $rc -eq 0 ] && [ \"\$(last_code)\" = declined ] && tail -1 '$WORK/out' | grep -q 'nothing Picked tonight'"
+
+reset_case
+event "$AUGUSTUS" "SKILL-READ-FAILED: Step 3 — Draft the post"
+run_dispatch; rc=$?
+assert 'SKILL-READ-FAILED ends on reason_code=skill-read-failed' "[ $rc -eq 1 ] && [ \"\$(last_code)\" = skill-read-failed ]"
+
+reset_case
+event "$AUGUSTUS" "RUN-FAILED: published_corpus REFUSING — origin unreachable"
+run_dispatch; rc=$?
+assert 'RUN-FAILED ends on reason_code=run-failed' "[ $rc -eq 1 ] && [ \"\$(last_code)\" = run-failed ]"
+
+reset_case
+event "$AUGUSTUS" "WAT-FAILED: something nobody taught the dispatcher"
+run_dispatch; rc=$?
+assert 'an unrecognised reply ends on reason_code=replied-unrecognised, quoting it' \
+  "[ $rc -eq 1 ] && [ \"\$(last_code)\" = replied-unrecognised ] && tail -1 '$WORK/out' | grep -qF 'WAT-FAILED'"
+
+reset_case
+echo 2 >"$STUB_SEND_RC"
+run_dispatch; rc=$?
+assert 'a trigger that never landed ends on reason_code=not-dispatched' "[ $rc -eq 4 ] && [ \"\$(last_code)\" = not-dispatched ]"
+
+reset_case
+run_dispatch; rc=$?
+assert 'genuine silence ends on reason_code=silent' "[ $rc -eq 1 ] && [ \"\$(last_code)\" = silent ]"
+assert 'and still says exactly what it always said' "tail -1 '$WORK/out' | grep -q 'no board movement and no reply'"
+assert 'and it asked the journal about THIS unit, since the dispatch' \
+  "grep -q -- '-u buzz-agent@augustus.service --since @' '$STUB_JOURNAL_ARGV'"
+
+reset_case
+turn_receipt failed "$RUN_ID" "$ERROR_404"
+WAIT_SECS=30 run_dispatch; rc=$?
+assert 'a model 404 in the receipt ends on reason_code=model-unavailable (the classifier, not a copy)' \
+  "[ $rc -eq 1 ] && [ \"\$(last_code)\" = model-unavailable ]"
+
+reset_case
+turn_receipt failed "$RUN_ID" "the harness turn ended in an error: stream disconnected before completion"
+WAIT_SECS=30 run_dispatch; rc=$?
+assert 'any other receipt error ends on reason_code=harness-error' "[ $rc -eq 1 ] && [ \"\$(last_code)\" = harness-error ]"
+
+echo '--- board movement that is not a draft is named as such ---'
+reset_case
+printf 'page-1:Picked\npage-2:Idea\n' >"$STUB_DIGEST_AFTER"
+touch "$STUB_DIGEST_MOVE"
+run_dispatch; rc=$?
+assert 'a board that changed without Picked->Draft ends on reason_code=board-moved-no-draft' \
+  "[ $rc -eq 1 ] && [ \"\$(last_code)\" = board-moved-no-draft ]"
+assert 'and counts the digest lines that moved' "tail -1 '$WORK/out' | grep -q '(2 digest line(s) differ'"
+assert 'and never calls it silence' "! grep -q 'no board movement and no reply' '$WORK/out'"
+printf 'page-1:Draft\npage-2:Draft\n' >"$STUB_DIGEST_AFTER"
+
+echo '--- the Codex quota refusal: named from his Codex log, not from the silence ---'
+# 2026-09-24 23:35: the trigger went to Codex, Codex refused it over the plan's usage limit,
+# buzz-acp logged -32603 and requeued, no receipt was written, nothing was posted.
+reset_case
+printf '%s\n' "$QUOTA_ROW" >"$STUB_CODEX_LAST"
+run_dispatch; rc=$?
+assert 'a Codex usage-limit refusal ends on reason_code=quota-exhausted' "[ $rc -eq 1 ] && [ \"\$(last_code)\" = quota-exhausted ]"
+assert 'and says when it resets' "tail -1 '$WORK/out' | grep -q 'resets 2026-09-26 11:14 CEST'"
+assert 'and that a restart does not help' "tail -1 '$WORK/out' | grep -q 'restarting him does not help'"
+assert 'and never calls it silence' "! grep -q 'no board movement and no reply' '$WORK/out'"
+
+echo '--- a trigger buzz-acp could not hand to a turn is undelivered ---'
+# The durable fallback when Codex's log has lost the row: the journal keeps the requeues.
+# Colour codes are what buzz-acp actually writes (-o cat keeps them).
+reset_case
+esc=$'\033'
+{
+  printf '%s[2m2026-09-24T23:35:34Z%s[0m  %s[33mWARN%s[0m buzz_acp::queue: requeueing failed batch with backoff %s[3mchannel_id%s[0m%s[2m=%s[0m%s attempt=1 max=10\n' \
+    "$esc" "$esc" "$esc" "$esc" "$esc" "$esc" "$esc" "$esc" "$CHANNEL"
+  printf 'WARN buzz_acp::queue: requeueing failed batch with backoff channel_id=%s attempt=2 max=10\n' "$CHANNEL"
+  printf 'WARN buzz_acp::queue: requeueing failed batch with backoff channel_id=62f321f3-other attempt=1 max=10\n'
+} >"$STUB_JOURNAL"
+run_dispatch; rc=$?
+assert 'requeues of THIS channel end on reason_code=undelivered' "[ $rc -eq 1 ] && [ \"\$(last_code)\" = undelivered ]"
+assert 'counting only this channel, colour codes and all' "tail -1 '$WORK/out' | grep -q 'dead-lettered 2 time(s)'"
+
+reset_case
+printf 'WARN buzz_acp::queue: requeueing failed batch with backoff channel_id=62f321f3-other attempt=1 max=10\n' >"$STUB_JOURNAL"
+run_dispatch; rc=$?
+assert 'another channel'"'"'s requeues are not this run'"'"'s — still silent' "[ \"\$(last_code)\" = silent ]"
+
+reset_case
+printf '%s\n' "$QUOTA_ROW" >"$STUB_CODEX_LAST"
+printf 'WARN requeueing failed batch channel_id=%s attempt=1\n' "$CHANNEL" >"$STUB_JOURNAL"
+run_dispatch; rc=$?
+assert 'the Codex cause outranks the generic requeue' "[ \"\$(last_code)\" = quota-exhausted ]"
+
+echo '--- pre-flight: a quota block still in force stops the run before anyone is asked ---'
+reset_case
+printf '%s\n' "$QUOTA_ROW" >"$STUB_CODEX_BLOCKING"
+started=$(date +%s)
+WAIT_SECS=30 run_dispatch; rc=$?
+elapsed=$(( $(date +%s) - started ))
+assert 'a live quota block exits 1 at once, not at the deadline' "[ $rc -eq 1 ] && [ $elapsed -lt 10 ]"
+assert 'and ends on reason_code=quota-exhausted, not dispatched' \
+  "[ \"\$(last_code)\" = quota-exhausted ] && tail -1 '$WORK/out' | grep -q 'not dispatched'"
+assert 'and nothing was sent' "! grep -q 'messages send' '$STUB_ARGV'"
+assert 'and the board was never read' "[ ! -s '$STUB_DIGEST_N' ]"
+
+reset_case
+echo 2 >"$STUB_CODEX_RC"
+event "$AUGUSTUS" "DECLINE: nothing Picked tonight"
+run_dispatch; rc=$?
+assert 'an unreadable Codex log is unknown, and unknown is never a refusal' \
+  "[ $rc -eq 0 ] && grep -q 'messages send' '$STUB_ARGV'"
 
 echo '--- transport ownership: the dispatcher owns no transport ---'
 # bin/deliver.sh is the single owner of `buzz messages send`

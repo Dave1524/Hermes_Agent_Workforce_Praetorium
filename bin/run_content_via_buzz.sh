@@ -50,6 +50,10 @@ IDENTITY="${BUZZ_SERVICE_IDENTITY:-praetorium}"
 PROFILE="${CONTENT_TASK_PROFILE:-$HOME/agent-workforce/profiles/augustus_content_task.md}"
 TURN_RECEIPT_BIN="${CONTENT_TURN_RECEIPT_BIN:-$BIN_DIR/content_turn_receipt.py}"
 TURN_RECEIPTS="${CONTENT_TURN_RECEIPTS:-$HOME/agent-workforce/var/workflow-receipts/buzz-agent@augustus}"
+CODEX_ERROR_BIN="${CONTENT_CODEX_TURN_ERROR_BIN:-$BIN_DIR/codex_turn_error.py}"
+CODEX_HOME_DIR="${CONTENT_CODEX_HOME:-$HOME/.config/codex-agents/augustus}"
+JOURNAL_BIN="${CONTENT_JOURNAL_BIN:-journalctl}"
+AUGUSTUS_UNIT="${CONTENT_AUGUSTUS_UNIT:-buzz-agent@augustus.service}"
 JOB="${AGENT_TASK_SLUG:-augustus-content}"
 ROUTE=content
 ENTRY_POINT="${CONTENT_ENTRY_POINT:-nightly}"
@@ -62,7 +66,17 @@ poll_secs="${AGENT_BUZZ_POLL_SECONDS:-30}"
 
 log() { printf '%s run_content_via_buzz: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
 
-crash() { log "CRASH: $*"; exit "$CRASH_EXIT"; }
+# THE REASON CODE IS THE LAST LINE. propose_receipt.py takes the attempt log's last line as
+# the run receipt's reason, and the Control Room, the alert and the morning report all read
+# that reason. Every exit below therefore ends on `reason_code=<code> — <what happened>`.
+# Before codes, two Codex quota outages (2026-09-18, 09-24) both read "no board movement and
+# no reply", and the morning after the second one proposed restarting augustus.
+reason() {  # reason <code> <detail...>
+  local code=$1; shift
+  log "reason_code=$code — $*"
+}
+
+crash() { log "CRASH: $*"; reason not-dispatched "$*"; exit "$CRASH_EXIT"; }
 
 channel=$(sed -n "s/^ROUTE_${ROUTE}=//p" "$ROUTES_FILE" 2>/dev/null | tail -1 | tr -d "\"' \\r")
 augustus=$(sed -n 's/^AGENT_augustus=//p' "$AGENTS_FILE" 2>/dev/null | tail -1 | tr -d "\"' \\r")
@@ -72,6 +86,17 @@ case "$ENTRY_POINT" in
   nightly|picked-change) ;;
   *) crash "CONTENT_ENTRY_POINT must be nightly or picked-change (got '$ENTRY_POINT')" ;;
 esac
+
+# ── 0. pre-flight: can augustus take a turn at all? ──────────────────────────────────
+# A Codex usage-limit refusal reaches nothing the rest of this script reads: no receipt, no
+# post, no board write, only `-32603 Internal error` in his journal. Dispatching into it
+# spends the full wait and then records silence. Codex's own log knows, and says when it
+# resets. A read that fails is unknown, and unknown is never a refusal.
+if quota=$("$CODEX_ERROR_BIN" blocking --codex-home "$CODEX_HOME_DIR" 2>/dev/null) && [ -n "$quota" ]; then
+  IFS=$'\t' read -r _ q_retry _ q_at _ <<<"$quota"
+  reason quota-exhausted "not dispatched: augustus's Codex plan refused a turn over its usage limit at $q_at and resets $q_retry, and no model request has succeeded since. Buy credits or wait; restarting him does not help."
+  exit 1
+fi
 
 # ── 1. baseline ───────────────────────────────────────────────────────────────────
 # Taken BEFORE the trigger goes out, so the comparison cannot straddle augustus's own
@@ -252,17 +277,20 @@ sentinel_log() {  # sentinel_log <prefix> <event-id> <line>
     'SKILL-READ-FAILED:')
       log "augustus could not read the skill — $3"
       log "  (event $2) a named section did not resolve in the vault SKILL.md;"
-      log "  this is a FAILURE, not a decline. Fix the section name or the heading, not the run." ;;
+      log "  this is a FAILURE, not a decline. Fix the section name or the heading, not the run."
+      reason skill-read-failed "a named skill section did not resolve: $3 (event $2)" ;;
     'RUN-FAILED:')
       log "augustus could not complete a mandatory step — $3"
       log "  (event $2) a command the profile makes non-optional exited non-zero;"
-      log "  this is a FAILURE, not a decline. Fix what it names, not the run." ;;
+      log "  this is a FAILURE, not a decline. Fix what it names, not the run."
+      reason run-failed "a step the profile makes mandatory exited non-zero: $3 (event $2)" ;;
     'DECLINE:')
       # Recorded so content_moved.sh can pass an unmoved board without re-reading the
       # relay, and so the claim stays checkable: `buzz social event --event $2`.
       printf 'decline_event=%s\n' "$2" >>"$SNAPSHOT"
       log "owned-reply-evidences-decline run_id=$run_id entry_point=$ENTRY_POINT decline_event=$2"
-      log "augustus declined (event $2) — nothing to draft" ;;
+      log "augustus declined (event $2) — nothing to draft"
+      reason declined "$3 (event $2)" ;;
   esac
 }
 
@@ -274,6 +302,7 @@ read_for_answer() {
   if [ -n "$current" ] && page=$(picked_to_draft_transition "$current"); then
     printf 'page=%s from=Picked to=Draft\n' "$page" >>"$SNAPSHOT"
     log "content-board-transition-produced-draft run_id=$run_id entry_point=$ENTRY_POINT page=$page from=Picked to=Draft"
+    reason drafted "page $page moved Picked to Draft"
     exit 0
   fi
   for row in "${SENTINELS[@]}"; do
@@ -319,7 +348,8 @@ if [ -n "$turn" ]; then
     log "  harness or its model backend — not a decline, not silence. The receipt names it; the channel cannot."
     log "content-board-transition-produced-draft failed run_id=$run_id entry_point=$ENTRY_POINT — no pre-dispatch Picked row reached Draft"
     log "owned-reply-evidences-decline failed run_id=$run_id entry_point=$ENTRY_POINT — the turn ended before any reply"
-    log "agent-turn-ended-in-a-harness-error run_id=$run_id entry_point=$ENTRY_POINT — $turn_error"
+    code=$("$CODEX_ERROR_BIN" classify "$turn_error" 2>/dev/null) || code=""
+    reason "${code:-harness-error}" "agent-turn-ended-in-a-harness-error run_id=$run_id entry_point=$ENTRY_POINT — $turn_error"
     exit 1
   fi
 fi
@@ -333,18 +363,62 @@ fi
 if last_reply=$(sentinel_reply "$dispatch_epoch" '') && [ -n "$last_reply" ]; then
   log "content-board-transition-produced-draft failed run_id=$run_id entry_point=$ENTRY_POINT — no pre-dispatch Picked row reached Draft"
   log "owned-reply-evidences-decline failed run_id=$run_id entry_point=$ENTRY_POINT — the reply was not DECLINE:"
-  log "augustus replied and no sentinel matched — ${last_reply#* }"
   log "  (event ${last_reply%% *}) the wait ended on his reply, not on the clock."
   log "  Add this prefix as one row in SENTINELS with a message in sentinel_log. The table"
   log "  and profiles/augustus_content_task.md are pinned to each other by the verify gate."
+  reason replied-unrecognised "augustus replied and no sentinel matched — ${last_reply#* } (event ${last_reply%% *})"
   exit 1
 fi
 
 log "content-board-transition-produced-draft failed run_id=$run_id entry_point=$ENTRY_POINT — no pre-dispatch Picked row reached Draft"
 log "owned-reply-evidences-decline failed run_id=$run_id entry_point=$ENTRY_POINT — no post-dispatch Augustus DECLINE: reply"
+
+# ── 5. name the silence before recording it ───────────────────────────────────────
+# Nothing was posted and nothing moved to Draft, which is what silence looks like from the
+# channel and the board. Three other vantages can still say why, most specific first:
+#   Codex's log  — a refusal (usage limit, model 404) that fires no receipt. Its rows are
+#                  not durable: thread rows read at 08:40 on 2026-09-25 were gone by 10:50,
+#                  so it is read now, inside the run, and the answer lands in the receipt.
+#   his journal  — buzz-acp requeueing, then dead-lettering, this channel's trigger: the
+#                  turn never started. Durable, and generic about the cause.
+#   the board    — it changed, just not Picked -> Draft (an edit, a new Idea, Dave's own).
+codex_refusal() {
+  "$CODEX_ERROR_BIN" last --codex-home "$CODEX_HOME_DIR" --since "$dispatch_epoch" 2>/dev/null
+}
+
+trigger_failures() {
+  "$JOURNAL_BIN" --user -u "$AUGUSTUS_UNIT" --since "@$dispatch_epoch" --no-pager -o cat 2>/dev/null \
+    | sed 's/\x1b\[[0-9;]*m//g' | grep -F "channel_id=$channel" \
+    | grep -c -E 'requeueing failed batch|dead-lettering batch'
+}
+
+if refusal=$(codex_refusal) && [ -n "$refusal" ]; then
+  IFS=$'\t' read -r r_class r_retry _ r_at r_message <<<"$refusal"
+  case "$r_class" in
+    quota-exhausted)
+      reason quota-exhausted "augustus's Codex plan refused the turn over its usage limit at $r_at; it resets $r_retry. Buy credits or wait; restarting him does not help." ;;
+    *)
+      reason "$r_class" "Codex refused the turn at $r_at: $r_message" ;;
+  esac
+  exit 1
+fi
+
+failures=$(trigger_failures)
+if [ "${failures:-0}" -gt 0 ]; then
+  reason undelivered "buzz-acp could not start a turn for the trigger — requeued or dead-lettered $failures time(s) in $AUGUSTUS_UNIT since the dispatch; his harness is failing every prompt, and his journal only says why as -32603"
+  exit 1
+fi
+
+current=$("$DIGEST_BIN" 2>/dev/null) || current=""
+if [ -n "$current" ] && [ "$current" != "$baseline" ]; then
+  changed=$(comm -3 <(printf '%s\n' "$baseline") <(printf '%s\n' "$current") | wc -l)
+  reason board-moved-no-draft "the board changed ($changed digest line(s) differ from the pre-dispatch baseline), but no Picked row reached Draft and augustus did not reply"
+  exit 1
+fi
+
 if [ -n "$turn" ]; then
-  log "no board movement and no reply — augustus's turn ended (receipt ${turn_receipt}) without either; recording FAIL after $(( $(date +%s) - dispatch_epoch ))s, not at the ${wait_secs}s deadline"
+  reason silent "no board movement and no reply — augustus's turn ended (receipt ${turn_receipt}) without either; recording FAIL after $(( $(date +%s) - dispatch_epoch ))s, not at the ${wait_secs}s deadline"
 else
-  log "no board movement and no reply within ${wait_secs}s — recording FAIL"
+  reason silent "no board movement and no reply within ${wait_secs}s — recording FAIL"
 fi
 exit 1
