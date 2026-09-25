@@ -166,6 +166,82 @@ assert 'a doubled event is a FAIL that names it' "grep -q 'DOUBLED -- one relay 
 assert 'no rate lines is a FAIL, not an empty pass' "empty_read_fails"
 assert 'a reader without the column is a FAIL, not a pass' "grep -q 'predates gate 6' '$SCRIPT'"
 
+echo '--- gate 3 names a Codex agent'"'"'s cause, from that agent'"'"'s own Codex log (2026-09-25) ---'
+# codex-acp hands buzz-acp only `-32603 Internal error`. On 2026-09-24 this gate printed
+# "augustus: ERRORED -- 4 error line(s)" for a plan over its usage limit; the first reading was
+# "probably a one-off", and the next morning's report proposed a restart.
+assert 'the ERRORED line carries the cause when there is one' \
+  "grep -qF 'ERRORED\${cause:+ (\$cause)}' '$SCRIPT'"
+assert 'the reader is the deployed classifier, overridable like turn_rate.py' \
+  "grep -qF 'CODEX_TURN_ERROR=\${FLEET_CODEX_TURN_ERROR:-/home/dave/agent-workforce/bin/codex_turn_error.py}' '$SCRIPT'"
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/ftc.XXXXXX")
+trap 'rm -rf "$WORK"' EXIT
+sed -n '/^codex_cause() {/,/^}/p' "$SCRIPT" >"$WORK/cause.sh"
+mkdir -p "$WORK/codex/augustus" "$WORK/codex/broken"
+python3 - "$WORK/codex/augustus/logs_2.sqlite" <<'PY'
+import sqlite3, sys
+db = sqlite3.connect(sys.argv[1])
+db.execute("CREATE TABLE logs (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, ts_nanos INTEGER NOT NULL, level TEXT NOT NULL, target TEXT NOT NULL, feedback_log_body TEXT)")
+db.execute("INSERT INTO logs (ts, ts_nanos, level, target, feedback_log_body) VALUES (1790272301, 0, 'INFO', 't', ?)",
+           ("span: Turn error: You've hit your usage limit. Upgrade to Pro, or try again at Sep 26th, 2026 11:14 AM.",))
+db.commit()
+PY
+cause_for() {  # cause_for <agent> <since>
+  env CODEX_TURN_ERROR="$REPO_ROOT/bin/codex_turn_error.py" CODEX_AGENTS_HOME="$WORK/codex" TZ=Europe/Amsterdam \
+    bash -c ". '$WORK/cause.sh'; codex_cause \"\$1\" \"\$2\"" _ "$1" "$2"
+}
+assert 'a quota refusal in the window is named with its reset' \
+  "cause_for augustus 1790270000 | grep -q '^quota-exhausted until 2026-09-26 11:14 CEST, codex at '"
+assert 'nothing in the window names nothing' "[ -z \"\$(cause_for augustus 1790280000)\" ]"
+assert 'a Claude agent (no Codex home) names nothing' "[ -z \"\$(cause_for marcus 0)\" ]"
+assert 'an unreadable Codex log names nothing — unknown is never a cause' "[ -z \"\$(cause_for broken 0)\" ]"
+
+echo '--- contract check 2: a throttled repeat of an alerted episode is alerted (2026-09-25) ---'
+# The check demanded an alert receipt in the same hour as EVERY failing run; agent_alert.sh
+# throttles hourly repeats by design, so each hour of a persistent failure read "no alert
+# receipt followed it" beside a delivered alert.
+CONTRACT="$REPO_ROOT/design/contracts/fleet-turn-check.md"
+sed -n '/^   ```check id=verdict-present-and-fail-alerted/,/^   ```$/p' "$CONTRACT" | sed '1d;$d' >"$WORK/check.sh"
+assert 'the contract carries the check' "[ -s '$WORK/check.sh' ]"
+mkdir -p "$WORK/home/logs"
+T=$(date -u -d '2026-09-25 03:01:29' +%s)
+printf '#!/usr/bin/env bash\necho "@%s"\n' "$T" >"$WORK/systemctl"
+printf '#!/usr/bin/env bash\ncat "%s"\n' "$WORK/verdict" >"$WORK/journalctl"
+chmod +x "$WORK/systemctl" "$WORK/journalctl"
+receipt() { printf '{"schema": 1, "ts": "%s", "job": "agent-alert@fleet-turn-check.service.service", "route": "ops"}\n' "$1"; }
+throttled() { printf 'agent-workforce ALERT: unit fleet-turn-check.service failed at %s (failing since %s) [notification throttled: failure 9 since the last alert]\n' "$1" "$2"; }
+run_check() {
+  env -i PATH="$PATH" HOME="$WORK/home" UNIT=fleet-turn-check SYSTEMCTL="$WORK/systemctl" \
+    JOURNALCTL="$WORK/journalctl" bash "$WORK/check.sh" >"$WORK/check.out" 2>&1
+}
+set_case() {  # set_case <verdict> <receipts> <alert-log>
+  printf '%s\n' "$1" >"$WORK/verdict"
+  printf '%s' "$2" >"$WORK/home/logs/delivery-receipts.jsonl"
+  printf '%s' "$3" >"$WORK/home/logs/agent-alert.log"
+}
+set_case '== fleet-turn-check PASS ==' '' ''
+run_check; rc=$?
+assert 'a PASS verdict passes' "[ $rc -eq 0 ]"
+set_case '== fleet-turn-check FAIL ==' "$(receipt 2026-09-25T03:01:37Z)" ''
+run_check; rc=$?
+assert 'a FAIL with a receipt in the same hour passes (a transition into failure)' "[ $rc -eq 0 ]"
+set_case '== fleet-turn-check FAIL ==' "$(receipt 2026-09-24T18:00:43Z)" \
+  "$(throttled 2026-09-25T03:01:35Z 2026-09-24T18:00:41Z)"
+run_check; rc=$?
+assert 'a throttled repeat of an episode that WAS alerted passes (the 2026-09-25 case)' "[ $rc -eq 0 ]"
+assert 'and says which alert covered it' "grep -q 'alerted at 2026-09-24T18:00:43Z' '$WORK/check.out'"
+set_case '== fleet-turn-check FAIL ==' "$(receipt 2026-09-23T10:00:00Z)" \
+  "$(throttled 2026-09-25T03:01:35Z 2026-09-24T18:00:41Z)"
+run_check; rc=$?
+assert 'a throttled repeat of an episode that was NEVER alerted fails' "[ $rc -eq 1 ] && grep -q 'never receipted an alert' '$WORK/check.out'"
+set_case '== fleet-turn-check FAIL ==' "$(receipt 2026-09-24T18:00:43Z)" ''
+run_check; rc=$?
+assert 'a FAIL with neither a receipt this hour nor a throttle line fails (OnFailure broken)' \
+  "[ $rc -eq 1 ] && grep -q 'no alert receipt followed it' '$WORK/check.out'"
+set_case '' '' ''
+run_check; rc=$?
+assert 'no verdict line fails' "[ $rc -eq 1 ] && grep -q 'no verdict line' '$WORK/check.out'"
+
 echo '--- the unit and the registry agree about what execs what ---'
 assert 'the unit ExecStarts the adopted script by its box path' \
   "grep -qE '^ExecStart=.*/\\.config/buzz-team/fleet-turn-check\\.sh' '$UNIT'"

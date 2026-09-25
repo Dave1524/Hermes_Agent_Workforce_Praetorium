@@ -114,9 +114,16 @@ no executor sets `AGENT_RUN_STARTED_AT` for it; the timer's own `LastTriggerUSec
           | grep -E '^== fleet-turn-check (PASS|FAIL) ==$' | tail -1)"
    [ -n "$v" ] || { echo "no verdict line since $t"; exit 1; }
    case "$v" in *PASS*) exit 0 ;; esac
-   grep -F "\"job\": \"agent-alert@$UNIT.service.service\"" "$HOME/logs/delivery-receipts.jsonl" 2>/dev/null \
-     | tail -1 | grep -q "\"ts\": \"$(date -u -d "@${t#@}" +%Y-%m-%dT%H)" \
-     || { echo "verdict was FAIL and no alert receipt followed it"; exit 1; }
+   hour="$(date -u -d "@${t#@}" +%Y-%m-%dT%H)"
+   sent="$(grep -F "\"job\": \"agent-alert@$UNIT.service.service\"" "$HOME/logs/delivery-receipts.jsonl" 2>/dev/null \
+             | grep -oE '"ts": "[^"]+"' | cut -d'"' -f4)"
+   grep -q "^$hour" <<<"$sent" && exit 0
+   since="$(grep -F "unit $UNIT.service failed at $hour" "$HOME/logs/agent-alert.log" 2>/dev/null \
+              | grep -F 'notification throttled' | grep -oE 'failing since [0-9TZ:-]+' | tail -1 | cut -d' ' -f3)"
+   [ -n "$since" ] || { echo "verdict was FAIL and no alert receipt followed it"; exit 1; }
+   first="$(awk -v s="$since" '$0 >= s' <<<"$sent" | head -1)"
+   [ -n "$first" ] || { echo "verdict was FAIL, the repeat was throttled, and the episode failing since $since never receipted an alert"; exit 1; }
+   echo "throttled repeat: the episode failing since $since was alerted at $first"
    ```
 
 ## Known failure modes
@@ -126,10 +133,14 @@ no executor sets `AGENT_RUN_STARTED_AT` for it; the timer's own `LastTriggerUSec
   and the verdict is FAIL, not PASS — by design. A PASS therefore always covers at least one
   unit.
 - **Alert throttling hides repetition, not the first failure.** `bin/agent_alert.sh` collapses
-  hourly repeats into one notification plus a daily reminder; check 2 asks only that the alert
-  receipt exists in the same hour as the FAIL, which the throttle never suppresses on a
-  transition into failure. A FAIL that persists for a day produces one receipt per day, and
-  that is correct.
+  hourly repeats into one notification plus a daily reminder. A FAIL that persists for a day
+  produces one receipt per day, and that is correct — so check 2 passes a FAIL in either of two
+  shapes: an alert receipt in the same hour (the transition into failure, or the daily
+  reminder), or an `agent-alert.log` line for that hour marked `notification throttled` whose
+  episode (`failing since`) has a receipt at or after its start. Until 2026-09-25 it accepted
+  only the first shape, contradicting this paragraph: during Augustus's Codex quota outage
+  every hourly repeat after 20:00 CEST read "no alert receipt followed it" beside a real,
+  delivered alert.
 - **State file unwritable.** CPU deltas are skipped and said so (`:95`); the run still decides.
   Not a failure of this contract.
 - **A loop slower than the limit is not seen.** Four self-scheduled turns an hour trips gate
