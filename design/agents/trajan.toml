@@ -44,7 +44,7 @@ unit = "fleet-turn-check"
 contract = "design/contracts/fleet-turn-check.md"
 surface = "platform"
 status = "standing"
-suite    = ["tests/test_fleet_turn_check.sh"]
+suite    = ["tests/test_fleet_turn_check.sh", "tests/test_codex_turn_error.sh"]
 skills   = []
 trigger = "hourly (+2min jitter)"
 what = "Proves every hour that each chat agent can still finish a turn, the one signal that saw the four-day outage; since 2026-09-19 also that no session is re-prompting itself (gate 5: receipts with origin = scheduled, over the limit)."

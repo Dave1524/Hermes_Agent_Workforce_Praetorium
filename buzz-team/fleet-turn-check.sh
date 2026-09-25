@@ -41,6 +41,13 @@ RECEIPTS=${FLEET_RECEIPT_ROOT:-/home/dave/agent-workforce/var/workflow-receipts}
 TURN_RATE=${FLEET_TURN_RATE:-/home/dave/agent-workforce/bin/turn_rate.py}
 RATE_WINDOW_MIN=${FLEET_RATE_WINDOW_MIN:-60}
 UNOWNED_MAX=${FLEET_UNOWNED_MAX:-3}
+# Gate 3's cause for a Codex-harness agent. codex-acp hands buzz-acp only `-32603 Internal
+# error`; why (usage limit and its reset, model 404) is in that agent's own Codex log, read by
+# the deployed bin/codex_turn_error.py. On 2026-09-24 this gate said "ERRORED -- 4 error
+# line(s)" for a quota outage, the first reading of it was "probably a one-off", and the next
+# morning's report proposed a restart.
+CODEX_TURN_ERROR=${FLEET_CODEX_TURN_ERROR:-/home/dave/agent-workforce/bin/codex_turn_error.py}
+CODEX_AGENTS_HOME=${FLEET_CODEX_AGENTS_HOME:-/home/dave/.config/codex-agents}
 
 fail=0
 note() { printf '%s\n' "$*"; }
@@ -86,6 +93,17 @@ else
   fail_ "probe turn completed but did not return the sentinel"
   info_ "got: $(printf '%s' "$turn_out" | head -3)"
 fi
+
+# The newest Codex turn error in the window, as "<class>[ until <reset>]: <message>", or
+# nothing: not a Codex agent, no error logged, or the log unreadable (unknown, never a cause).
+codex_cause() {  # codex_cause <agent> <since-epoch>
+  local refusal class retry at message
+  [ -d "$CODEX_AGENTS_HOME/$1" ] || return 0
+  refusal=$(python3 "$CODEX_TURN_ERROR" last --codex-home "$CODEX_AGENTS_HOME/$1" --since "$2" 2>/dev/null) || return 0
+  IFS=$'\t' read -r class retry _ at message <<<"$refusal"
+  [ "$retry" = "-" ] && retry="" || retry=" until $retry"
+  printf '%s%s, codex at %s: %s' "$class" "$retry" "$at" "${message:0:120}"
+}
 
 # ---------------------------------------------------------------- gate 3
 # Per-agent state, enumerated FROM SYSTEMD. A hardcoded roster cannot report an
@@ -145,7 +163,8 @@ else
       turns=$(( cpu_delta >= CPU_WORK_NS ? 1 : 0 ))
     fi
     if [ "$errs" -gt 0 ]; then
-      fail_ "$name: ERRORED -- $errs error line(s) in window [$win, now] ($bound)"
+      cause=$(codex_cause "$name" "$win_s")
+      fail_ "$name: ERRORED${cause:+ ($cause)} -- $errs error line(s) in window [$win, now] ($bound)"
       journalctl --utc --user -u "$u" --since "$win" --no-pager 2>/dev/null \
         | grep 'Failed to authenticate\|OAuth session expired\|reported error' | tail -2 \
         | while IFS= read -r l; do info_ "  ${l:0:150}"; done
