@@ -436,6 +436,20 @@ ambiguous inside a DST repeat hour.
   the runner's wait on that receipt — successful turns measure 2m56s-6m07s, so the 20-minute
   deadline stays as the backstop, not the normal path. Signal: `agent-turn-did-not-error`.
   Streak to retain: three consecutive eligible runs with a valid terminal outcome.
+- **A Codex quota refusal read as silence (2026-09-18, 2026-09-24).** The plan hit its usage
+  limit. Codex refused the trigger before a turn started, so no `notify` hook fired and no
+  receipt was written. buzz-acp logged `-32603 Internal error`, requeued the trigger ten times
+  and dead-lettered it, and the runner recorded `no board movement and no reply`. The next
+  morning's report proposed restarting augustus. The cause was only in Codex's own log
+  (`$CODEX_HOME/logs_2.sqlite`), and those rows do not last: rows read at 08:40 on 09-25 were
+  gone by 10:50. Closed by reason codes. Every exit now ends on `reason_code=<code>`, which
+  becomes the receipt's reason (`propose_receipt.py` takes the last line):
+  `drafted`, `declined`, `quota-exhausted`, `model-unavailable`, `harness-error`,
+  `undelivered`, `board-moved-no-draft`, `replied-unrecognised`, `skill-read-failed`,
+  `run-failed`, `silent`, `not-dispatched`.
+  - **Quota:** named from `bin/codex_turn_error.py`, which is read inside the run while the
+    row still exists. A block still in force stops the run before dispatch.
+  - **`undelivered`:** the durable fallback. His journal keeps the requeues, though not why.
 - **Permanent fail-soft.** By contract every Notion error in the dispatcher exits 0 with state
   untouched. Correct for a blip, indistinguishable from a dead credential over a week, and
   `OnFailure` never fires either way. Signal: `dispatcher-is-not-stuck-fail-soft`.
