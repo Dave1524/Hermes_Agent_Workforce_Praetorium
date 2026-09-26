@@ -15,6 +15,10 @@
 # GROUP 2 runs the script through tests/ship_dev_plan_harness.mjs with scripted agent
 # replies and asserts each stop rule fires, that a stop ships nothing further, and that a
 # landed task's red set becomes the next task's baseline. No agent is spawned.
+#
+# A land is two runs since main was protected (T8.2): run 1 ends `awaitingApproval` with a PR
+# the App opened, run 2 names it in `approvedPR` and a merge agent lands it. Both halves and
+# every refusal of the second are scenarios here.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 
@@ -97,9 +101,23 @@ land() {  # $1 id, $2 verifyExit, $3 allRed json, $4 newRed json; $5 optional jq
   jq -nc --arg id "$1" --argjson exit "$2" --argjson allRed "$3" --argjson newRed "$4" \
     --argjson fleet "$FLEET" --argjson enabled "$ENABLED" \
     '{verifyExit:$exit, allRed:$allRed, newRed:$newRed, gateExit:0, gateVerdict:"met", gateEvidence:"",
-      reviewConfirmed:[], reviewPlausible:[], landed:true, mainHead:("main-"+$id), originMainHead:("main-"+$id),
-      archiveCommit:("arch-"+$id), fleetStart:$fleet, enabled:$enabled, failingAssertion:""}' \
+      reviewConfirmed:[], reviewPlausible:[], landed:false, mainHead:"main-0", originMainHead:"main-0",
+      archiveCommit:("arch-"+$id), fleetStart:$fleet, enabled:$enabled, failingAssertion:"",
+      awaiting:true, pr:71, headSha:("sha-"+$id)}' \
     | jq -c "${5:-.}"
+}
+merge() {  # $1 id, $2 verifyExit, $3 allRed json, $4 newRed json; $5 optional jq filter
+  jq -nc --arg id "$1" --argjson exit "$2" --argjson allRed "$3" --argjson newRed "$4" \
+    --argjson fleet "$FLEET" --argjson enabled "$ENABLED" \
+    '{reviewDecision:"APPROVED", gateConclusion:"SUCCESS", prHeadSha:("sha-"+$id), merged:true,
+      mergedBy:"praetorium-vault-writer[bot]", verifyExit:$exit, allRed:$allRed, newRed:$newRed,
+      mainHead:("main-"+$id), originMainHead:("main-"+$id), fleetStart:$fleet, enabled:$enabled, failingAssertion:""}' \
+    | jq -c "${5:-.}"
+}
+approved() {  # $1.. task ids -> the approvedPR object run 2 is launched with
+  local id out='{}'
+  for id in "$@"; do out=$(jq -c --arg id "$id" '.[$id] = {pr:71, headSha:("sha-"+$id)}' <<< "$out"); done
+  echo "$out"
 }
 two_tasks() {  # $1 id, $2 ship, $3 land, $4 id, $5 ship, $6 land — a reply may be the literal null
   jq -nc --arg i1 "$1" --argjson s1 "$2" --argjson l1 "$3" --arg i2 "$4" --argjson s2 "$5" --argjson l2 "$6" \
@@ -130,18 +148,34 @@ G13s=$(ship T1.3 finish 0 '[]');  G13l=$(land T1.3 0 '[]' '[]')
 R12s=$(ship T1.2 implement 1 "$red_aliases");   R12l=$(land T1.2 1 "$red_aliases" "$red_aliases")
 R11s=$(ship T1.1 implement 1 "$red_contracts"); R11l=$(land T1.1 1 "$red_both" "$red_contracts")
 
-# Happy path: two green tasks.
+# Happy path, run 1: the first green task opens its PR and the run returns cleanly to wait for
+# Dave. The second task is not shipped: it would be built on a main the first has not reached.
 run happy "$(args '["T6.4","T1.3"]')" "$(two_tasks T6.4 "$G64s" "$G64l" T1.3 "$G13s" "$G13l")"
-happy_landed=$(result_key '.landed | length' happy)
-happy_stopped=$(result_key '.stoppedAt // "none"' happy)
-assert 'happy path: both tasks land and nothing stops' '[ "$happy_landed" = 2 ] && [ "$happy_stopped" = none ]'
-assert 'happy path: ship, land, ship, land — one task at a time' \
-  '[ "$(field calls happy)" = "ship:T6.4,land:T6.4,ship:T1.3,land:T1.3" ]'
-assert 'ship agents run in a worktree with a schema; land agents in the main checkout' \
+assert 'run 1: nothing stops and nothing lands; the task awaits approval of the PR it opened' \
+  '[ "$(result_key ".stoppedAt // \"none\"" happy)" = none ] && [ "$(result_key ".landed | length" happy)" = 0 ] &&
+   [ "$(result_key ".awaitingApproval[0].pr" happy)" = 71 ] && [ "$(result_key ".awaitingApproval[0].headSha" happy)" = sha-T6.4 ]'
+assert 'run 1: ship, land — and no second task until the first is merged' \
+  '[ "$(field calls happy)" = "ship:T6.4,land:T6.4" ]'
+assert 'ship agents run in a worktree with a schema; land agents with a schema, isolation their own' \
   '[ "$(field call:ship:T6.4 happy)" = "{\"phase\":\"Ship\",\"isolation\":\"worktree\",\"schema\":true}" ] &&
    [ "$(field call:land:T6.4 happy)" = "{\"phase\":\"Land\",\"isolation\":null,\"schema\":true}" ]'
-assert 'a landed task records the main head the land agent measured, not the ship agent'"'"'s head' \
-  '[ "$(result_key ".landed[1].commit" happy)" = main-T1.3 ]'
+assert 'the land prompt opens the PR as the App and never pushes or merges main' \
+  "grep '^prompt:land:T6.4=' $tmp/happy.out | grep -q 'bin/gh_app.sh pr create' &&
+   ! grep '^prompt:land:T6.4=' $tmp/happy.out | grep -qE -- '--ff-only|git push origin main'"
+assert 'the land prompt forbids approving or merging its own PR' \
+  "grep '^prompt:land:T6.4=' $tmp/happy.out | grep -q 'Never approve the PR, and never merge it'"
+
+# Happy path, run 2: both approved; each is merged by its own agent, no ship and no land agent.
+run merged "$(args '["T6.4","T1.3"]' ".approvedPR = $(approved T6.4 T1.3)")" \
+  "$(jq -nc --argjson a "$(merge T6.4 0 '[]' '[]')" --argjson b "$(merge T1.3 0 '[]' '[]')" '{"land-merge:T6.4":$a, "land-merge:T1.3":$b}')"
+assert 'run 2: both approved tasks merge, one agent each, and nothing is re-shipped' \
+  '[ "$(field calls merged)" = "land-merge:T6.4,land-merge:T1.3" ] && [ "$(result_key ".landed | length" merged)" = 2 ]'
+assert 'a landed task records the main head the merge agent measured, and who merged it' \
+  '[ "$(result_key ".landed[1].commit" merged)" = main-T1.3 ] && [ "$(result_key ".landed[1].mergedBy" merged)" = "praetorium-vault-writer[bot]" ]'
+assert 'the merge prompt checks the approval, the gate check and the approved head before merging' \
+  "grep '^prompt:land-merge:T6.4=' $tmp/merged.out | grep -q 'reviewDecision is not APPROVED' &&
+   grep '^prompt:land-merge:T6.4=' $tmp/merged.out | grep -q 'prHeadSha is not sha-T6.4' &&
+   grep '^prompt:land-merge:T6.4=' $tmp/merged.out | grep -q 'bin/gh_app.sh pr merge 71'"
 meta_name=$(field meta happy | jq -r .name)
 assert 'meta.name is ship-dev-plan, the name Workflow resolves under .claude/workflows/' '[ "$meta_name" = ship-dev-plan ]'
 meta_phases=$(field meta happy | jq -r '.phases[].title' | sort -u | tr '\n' ' ')
@@ -155,22 +189,32 @@ assert 'the land prompt refuses to return on a review that did not run' \
 assert 'both prompts carry the rails' \
   "grep '^prompt:ship:T6.4=' $tmp/happy.out | grep -q 'never run bin/deploy --prune' && grep '^prompt:land:T6.4=' $tmp/happy.out | grep -q 'never run bin/deploy --prune'"
 
-# Ships-red path: T1.2 then T1.1, each landing on verify exit 1 with exactly its named red.
+# Ships-red path: T1.2 opens its PR on verify exit 1 with exactly its named red; once approved,
+# T1.2 merges and its red set is the baseline T1.1 ships against in the same run.
 run red "$(args '["T1.2","T1.1"]')" "$(two_tasks T1.2 "$R12s" "$R12l" T1.1 "$R11s" "$R11l")"
-assert 'ships-red: T1.2 and T1.1 land on verify exit 1 with exactly their named red lines' \
-  '[ "$(result_key ".landed | length" red)" = 2 ]'
-assert "ships-red: a landed red set becomes the baseline — finalRed carries all $red_both_n lines" \
-  '[ "$(result_key ".finalRed | length" red)" = "$red_both_n" ]'
-assert 'ships-red: T1.1'"'"'s ship prompt is handed T1.2'"'"'s red lines as its baseline' \
-  "grep '^prompt:ship:T1.1=' $tmp/red.out | grep -q 'model-alias'"
+assert 'ships-red: T1.2 opens its PR on verify exit 1 with exactly its named red lines' \
+  '[ "$(result_key ".awaitingApproval[0].id" red)" = T1.2 ]'
 assert 'ships-red: the ship prompt forbids /finish' "grep '^prompt:ship:T1.2=' $tmp/red.out | grep -q 'Do NOT run /finish'"
+M12=$(merge T1.2 1 "$red_aliases" "$red_aliases")
+run redmerged "$(args '["T1.2","T1.1"]' ".approvedPR = $(approved T1.2)")" \
+  "$(jq -nc --argjson m "$M12" --argjson s "$R11s" --argjson l "$R11l" '{"land-merge:T1.2":$m, "ship:T1.1":$s, "land:T1.1":$l}')"
+assert 'ships-red: T1.2 merges, then T1.1 ships and opens its PR in the same run' \
+  '[ "$(field calls redmerged)" = "land-merge:T1.2,ship:T1.1,land:T1.1" ] && [ "$(result_key ".awaitingApproval[0].id" redmerged)" = T1.1 ]'
+assert "ships-red: a merged red set becomes the baseline — finalRed carries T1.2's lines" \
+  '[ "$(result_key ".finalRed | length" redmerged)" = "$(jq -r length <<< "$red_aliases")" ]'
+assert 'ships-red: T1.1'"'"'s ship prompt is handed T1.2'"'"'s red lines as its baseline' \
+  "grep '^prompt:ship:T1.1=' $tmp/redmerged.out | grep -q 'model-alias'"
 
-# Deploying task: the prompts carry the runtime-action contract.
+# Deploying task: nothing deploys before the merge; the merge agent runs the runtime actions.
 run deploy "$(args '["T6.1"]')" "$(jq -nc --argjson s "$(ship T6.1 finish 0 '[]')" --argjson l "$(land T6.1 0 '[]' '[]')" '{"ship:T6.1":$s, "land:T6.1":$l}')"
 assert 'T6.1: the ship prompt demands a "## Runtime actions" section and forbids running it' \
   "grep '^prompt:ship:T6.1=' $tmp/deploy.out | grep -q '## Runtime actions'"
-assert 'T6.1: the land prompt runs bin/deploy from main and reads the journal' \
-  "grep '^prompt:land:T6.1=' $tmp/deploy.out | grep -q 'bin/deploy (from main)'"
+assert 'T6.1: run 1 deploys nothing and expects DRIFT only on the paths the task changed' \
+  "grep '^prompt:land:T6.1=' $tmp/deploy.out | grep -q 'No deploy yet' &&
+   grep '^prompt:land:T6.1=' $tmp/deploy.out | grep -q 'DRIFT line naming a path in git diff --name-only origin/main..HEAD is expected'"
+run deploymerged "$(args '["T6.1"]' ".approvedPR = $(approved T6.1)")" "$(jq -nc --argjson m "$(merge T6.1 0 '[]' '[]')" '{"land-merge:T6.1":$m}')"
+assert 'T6.1: run 2 runs the merged brief'"'"'s Runtime actions after the merge' \
+  "grep '^prompt:land-merge:T6.1=' $tmp/deploymerged.out | grep -q '## Runtime actions'"
 
 # preShipped: a task whose ship already happened (a land agent that died mid-review is the
 # case this exists for) is landed from the recorded result, with no ship agent spawned.
@@ -178,8 +222,8 @@ PRE=$(jq -nc --argjson s "$G64s" '{"T6.4": $s}')
 run preshipped "$(args '["T6.4"]' ".preShipped = $PRE")" "$(jq -nc --argjson l "$G64l" '{"land:T6.4":$l}')"
 assert 'preShipped: the land agent runs and no ship agent is spawned' \
   '[ "$(field calls preshipped)" = "land:T6.4" ]'
-assert 'preShipped: the task still lands, from the recorded head' \
-  '[ "$(result_key ".landed | length" preshipped)" = 1 ] && [ "$(result_key ".landed[0].commit" preshipped)" = main-T6.4 ]'
+assert 'preShipped: the task still reaches its PR, from the recorded ship' \
+  '[ "$(result_key ".awaitingApproval[0].headSha" preshipped)" = sha-T6.4 ]'
 assert 'preShipped: the recorded branch is what the land prompt is told to rebase' \
   "grep '^prompt:land:T6.4=' $tmp/preshipped.out | grep -q 'agents/ship-T6.4'"
 assert 'preShipped: the reuse is logged, not silent' '[ "$(field logs preshipped)" -ge 2 ]'
@@ -214,8 +258,8 @@ expect_stop gate-exit "$(args "$T2")" "$(two_tasks T6.4 "$G64s" "$(land T6.4 0 '
   'plan gate: exit 1' 'ship:T6.4,land:T6.4'
 expect_stop review "$(args "$T2")" "$(two_tasks T6.4 "$G64s" "$(land T6.4 0 '[]' '[]' '.reviewConfirmed = ["design/x.md:3: live cell"]')" T1.3 "$G13s" "$G13l")" \
   'code review confirmed: design/x.md:3' 'ship:T6.4,land:T6.4'
-expect_stop not-landed "$(args "$T2")" "$(two_tasks T6.4 "$G64s" "$(land T6.4 0 '[]' '[]' '.originMainHead = "stale"')" T1.3 "$G13s" "$G13l")" \
-  'not landed:' 'ship:T6.4,land:T6.4'
+expect_stop no-pr "$(args "$T2")" "$(two_tasks T6.4 "$G64s" "$(land T6.4 0 '[]' '[]' '.awaiting = false | .failingAssertion = "push refused"')" T1.3 "$G13s" "$G13l")" \
+  'no PR opened: push refused' 'ship:T6.4,land:T6.4'
 expect_stop fleet-restart "$(args "$T2")" "$(two_tasks T6.4 "$G64s" "$(land T6.4 0 '[]' '[]' '.fleetStart.augustus = "a1"')" T1.3 "$G13s" "$G13l")" \
   'fleet restart detected: augustus' 'ship:T6.4,land:T6.4'
 expect_stop enabled "$(args "$T2")" "$(two_tasks T6.4 "$G64s" "$(land T6.4 0 '[]' '[]' '.enabled.user = 15')" T1.3 "$G13s" "$G13l")" \
@@ -232,5 +276,23 @@ expect_stop no-tasks "$(args "$T2" 'del(.tasks)')" "$(two_tasks T6.4 "$G64s" "$G
   'args.tasks' ''
 expect_stop no-today "$(args "$T2" 'del(.today)')" "$(two_tasks T6.4 "$G64s" "$G64l" T1.3 "$G13s" "$G13l")" \
   'args.today' ''
+
+# Every refusal of run 2, each with a second approved task that must never merge.
+merge_stop() {  # $1 name, $2 jq filter on T6.4's merge reply, $3 failingAssertion fragment
+  expect_stop "$1" "$(args "$T2" ".approvedPR = $(approved T6.4 T1.3)")" \
+    "$(jq -nc --argjson a "$(merge T6.4 0 '[]' '[]' "$2")" --argjson b "$(merge T1.3 0 '[]' '[]')" '{"land-merge:T6.4":$a, "land-merge:T1.3":$b}')" \
+    "$3" 'land-merge:T6.4'
+}
+merge_stop merge-unapproved '.reviewDecision = "REVIEW_REQUIRED"' 'PR #71 not approved: REVIEW_REQUIRED'
+merge_stop merge-gate-failed '.gateConclusion = "FAILURE"' 'PR #71 gate check: FAILURE'
+merge_stop merge-gate-absent '.gateConclusion = ""' 'PR #71 gate check: absent'
+merge_stop merge-new-head '.prHeadSha = "sha-pushed-after-approval"' 'is not the approved sha-T6.4'
+merge_stop merge-not-merged '.merged = false | .failingAssertion = "merge refused"' 'not merged:'
+merge_stop merge-red '.newRed = ["FAIL: x"] | .allRed = ["FAIL: x"]' 'after merge: red set mismatch'
+merge_stop merge-restart '.fleetStart.augustus = "a1"' 'after merge: fleet restart detected: augustus'
+expect_stop merge-null "$(args "$T2" ".approvedPR = $(approved T6.4 T1.3)")" '{"land-merge:T6.4":null}' \
+  'merge agent returned null' 'land-merge:T6.4'
+expect_stop merge-bad-entry "$(args '["T6.4"]' '.approvedPR = {"T6.4": {"pr": "71"}}')" '{}' \
+  'args.approvedPR entry for T6.4 needs an integer pr' ''
 
 exit $fail

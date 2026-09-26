@@ -23,7 +23,7 @@ GITCONFIG = """[user]
 \tname = {name}
 \temail = {email}
 [credential "https://github.com"]
-\thelper = !/usr/bin/gh auth git-credential
+\thelper = !python3 /home/dave/.local/bin/github_app_credential.py
 [push]
 \tdefault = nothing
 [advice]

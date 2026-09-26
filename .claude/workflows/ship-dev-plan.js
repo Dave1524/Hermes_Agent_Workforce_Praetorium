@@ -1,17 +1,18 @@
 export const meta = {
   name: 'ship-dev-plan',
-  description: 'Serially /ship ready dev-plan tasks: worktree ship, independent verify + review, fast-forward to main; stop on first red',
+  description: 'Serially /ship ready dev-plan tasks: worktree ship, independent verify + review, an App-authored PR Dave approves, merged on a second run; stop on first red',
   whenToUse: 'Launching one or more ready tasks from docs/dev-plan-2026-09.md unattended, per .claude/briefs/archive/2026-09-08-workflow-ship-feasibility.md',
   phases: [
     { title: 'Ship', detail: 'plan -> implement -> finish in an isolated worktree, one task at a time' },
-    { title: 'Land', detail: 'fresh agent: verify.sh set-diff, plan gate, /code-review, ff-merge, push, archive brief' },
+    { title: 'Land', detail: 'fresh agent: verify.sh set-diff, plan gate, /code-review, archive brief, open the PR; on approval, merge and deploy' },
   ],
 }
 
 // args, measured inline by the launching session because a script cannot read the box:
 //   { today: 'YYYY-MM-DD', tasks: ['T6.4', ...], baselineRed: [...],
 //     fleetStart: { marcus: '<ExecMainStartTimestamp>', ... }, enabled: { system: N, user: N },
-//     preShipped: { 'T6.4': <a SHIP object from an earlier run> } }
+//     preShipped: { 'T6.4': <a SHIP object from an earlier run> },
+//     approvedPR: { 'T6.4': { pr: 71, headSha: '<the sha Dave approved>' } } }
 //
 // preShipped exists because the expensive half is not the half that fails. A ship can finish,
 // push its branch and be verified, and the run still die in the land step — T6.2 lost a land
@@ -22,6 +23,13 @@ export const meta = {
 // launching session's evidence, not the script's: it is checked for the branch the land prompt
 // is built from and for the phase the task requires, and a run stops rather than sending an
 // agent to rebase `undefined`.
+//
+// main is protected (T8.2): a PR, one approving review and the `gate` check, no bypass. So a land
+// is two runs. Run 1 verifies and reviews in a worktree, commits the archived brief on the
+// branch, opens the PR as the App and returns `awaitingApproval` — a clean return, not a stop.
+// Dave approves on GitHub. Run 2 names the task in approvedPR: no ship and no re-verify of the
+// branch; a merge agent checks the approval is for the exact head it was shown, merges as the
+// App, then deploys and verifies main. Nothing unapproved reaches the runtime.
 const REPO = '/home/dave/dev/agent-workforce'
 const PLAN = 'docs/dev-plan-2026-09.md'
 
@@ -66,7 +74,17 @@ const LAND = { type: 'object',
     gateVerdict: { type: 'string', enum: ['met', 'not met'] }, gateEvidence: { type: 'string' },
     reviewConfirmed: { type: 'array', items: { type: 'string' } }, reviewPlausible: { type: 'array', items: { type: 'string' } },
     landed: { type: 'boolean' }, mainHead: { type: 'string' }, originMainHead: { type: 'string' }, archiveCommit: { type: 'string' },
-    fleetStart: { type: 'object' }, enabled: { type: 'object' }, failingAssertion: { type: 'string' } } }
+    fleetStart: { type: 'object' }, enabled: { type: 'object' }, failingAssertion: { type: 'string' },
+    awaiting: { type: 'boolean' }, pr: { type: 'integer' }, headSha: { type: 'string' } } }
+
+const MERGE = { type: 'object',
+  required: ['reviewDecision', 'gateConclusion', 'prHeadSha', 'merged', 'mergedBy', 'verifyExit', 'allRed', 'newRed',
+             'mainHead', 'originMainHead', 'fleetStart', 'enabled', 'failingAssertion'],
+  properties: { reviewDecision: { type: 'string' }, gateConclusion: { type: 'string' }, prHeadSha: { type: 'string' },
+    merged: { type: 'boolean' }, mergedBy: { type: 'string' }, verifyExit: { type: 'integer' },
+    allRed: { type: 'array', items: { type: 'string' } }, newRed: { type: 'array', items: { type: 'string' } },
+    mainHead: { type: 'string' }, originMainHead: { type: 'string' }, fleetStart: { type: 'object' }, enabled: { type: 'object' },
+    failingAssertion: { type: 'string' } } }
 
 const RAILS = `Rails, non-negotiable: never restart, stop, enable or disable any systemd unit (buzz-agent@* above all);
 never run buzz agents / buzz-admin generate-key; never read ~/.ssh, ~/.config/agent-workforce, ~/.config/buzz-agents,
@@ -89,19 +107,38 @@ ${RAILS}
 Return: branch (git rev-parse --abbrev-ref HEAD), headCommit, briefPath, phaseReached (plan|implement|finish), verifyExit of your last gate run, newRed (red lines not in the baseline), stopReason ('' if you completed).`
 }
 
+const FLEET_PROBE = `fleetStart = ExecMainStartTimestamp of buzz-agent@{marcus,claudius,augustus,trajan,aurelian} (systemctl --user show -p ExecMainStartTimestamp --value) and enabled = {system: systemctl list-unit-files --state=enabled --no-legend | wc -l, user: same with --user}`
+
+function redRule(t, baseline) {
+  return `allRed = lines matching ^\\s*FAIL:|^PROBLEM\\t|^\\s*DRIFT . newRed = allRed minus this baseline: ${JSON.stringify(baseline)}. Expected new red for this task: ${JSON.stringify(t.expectedRed)} (one line per item, matched by substring, nothing else).`
+}
+
 function landPrompt(id, t, ship, baseline, today) {
-  return `You are the independent verifier and landing agent for task ${id} (${PLAN}). You did not write this code. Work in ${REPO} (the main checkout), which must be on main and clean; stop if not.
-1. git fetch origin. Rebase branch ${ship.branch} onto main in a temporary worktree under .claude/worktrees/land-${id} (a conflict = stop, failingAssertion='rebase conflict'). If git diff --name-only main..${ship.branch} names .claude/briefs/current.md or any archive/ file containing buzz-task-scheduling, stop (failingAssertion='touched the live current.md'). Then in the main checkout: git merge --ff-only ${ship.branch}.
-${t.deploy ? `2. Read the merged brief's "## Runtime actions" section and run exactly those commands, nothing more: bin/deploy (from main), the targeted rm lines, sudo cp systemd/brave-mcp.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl restart brave-mcp.service, journalctl -u brave-mcp.service -n 20 --no-pager, the sudo rm of the two archived memory-consolidation units from /etc + daemon-reload. Put the journal text in gateEvidence.` : '2. No deploy for this task. If bin/verify.sh reports DRIFT on a file this task changed, that is a red, not something to deploy away.'}
-3. bash bin/verify.sh > /tmp/land-${id}.out 2>&1; verifyExit=$?. allRed = lines matching ^\\s*FAIL:|^PROBLEM\\t|^\\s*DRIFT . newRed = allRed minus this baseline: ${JSON.stringify(baseline)}. Expected new red for this task: ${JSON.stringify(t.expectedRed)} (one line per item, matched by substring, nothing else).
-4. Plan gate. Run: ${t.gateCmd}  -> gateExit. Then judge these words against the tree and put the commands and lines you used in gateEvidence: "${t.gateWords}". gateVerdict = met | not met.
-5. The code review is a gate, not a note. Independent read, calibration-pinned. Read buzz-team/aurelian-calibration.md (the repo copy at the merged main; step 3's drift check has proven it byte-identical to ~/.config/buzz-team/) § "Code / config" and § "Binding"; compute diff_digest = git diff --binary origin/main..main | sha256sum and calibration_digest = sha256sum buzz-team/aurelian-calibration.md; apply the rubric's five bullets to the diff. Then invoke the code-review skill at effort ${t.review} on git diff origin/main..main. reviewConfirmed = CONFIRMED findings (file:line: summary); reviewPlausible = the rest.
-Do not return until the review has produced findings. If the code-review skill cannot be invoked, or returns no result, reset as in step 6, set landed=false and failingAssertion='code review did not complete', and return: an empty reviewConfirmed means the review ran and confirmed nothing, and it must never also mean the review never ran. Both read identically to the caller, and the second one lands the diff.
-6. If verifyExit/newRed/gateExit/gateVerdict/reviewConfirmed do not all pass: git reset --keep origin/main${t.deploy ? ' && bin/deploy (restore runtime bin/ from origin/main; the /etc unit stays as installed, say so)' : ''}; landed=false; fill failingAssertion; return.
-7. Otherwise: git push origin main. git mv the brief to .claude/briefs/archive/${today}-<slug>.md and commit "docs(briefs): archive ${id} — <slug>" with a body carrying verifyExit, every newRed line verbatim, the gate command and result, the diff_digest and calibration_digest, and the plausible findings. git push origin main. git push origin --delete ${ship.branch}. Remove the temporary worktree.
-8. Return fleetStart = ExecMainStartTimestamp of buzz-agent@{marcus,claudius,augustus,trajan,aurelian} (systemctl --user show -p ExecMainStartTimestamp --value) and enabled = {system: systemctl list-unit-files --state=enabled --no-legend | wc -l, user: same with --user}.
+  const wt = `.claude/worktrees/land-${id}`
+  return `You are the independent verifier for task ${id} (${PLAN}). You did not write this code. main is protected: you never push to main and never merge; you open a pull request and Dave approves it. Work in ${REPO}; do every step below inside the temporary worktree ${wt}, never in the main checkout.
+1. git fetch origin. git worktree add ${wt} ${ship.branch}; in it, rebase onto origin/main (a conflict = stop, failingAssertion='rebase conflict'). If git diff --name-only origin/main..HEAD names .claude/briefs/current.md or any archive/ file containing buzz-task-scheduling, stop (failingAssertion='touched the live current.md').
+${t.deploy ? `2. No deploy yet: the runtime changes only after the PR merges (run 2). bin/verify.sh will report DRIFT for this task's changed bin/ and systemd/ files. A DRIFT line naming a path in git diff --name-only origin/main..HEAD is expected here: leave it out of allRed and newRed. Every other DRIFT line is a red.` : '2. No deploy for this task. If bin/verify.sh reports DRIFT on a file this task changed, that is a red, not something to deploy away.'}
+3. In the worktree: bash bin/verify.sh > /tmp/land-${id}.out 2>&1; verifyExit=$?. ${redRule(t, baseline)}
+4. Plan gate, in the worktree. Run: ${t.gateCmd}  -> gateExit. Then judge these words against the tree and put the commands and lines you used in gateEvidence: "${t.gateWords}". gateVerdict = met | not met.
+5. The code review is a gate, not a note. Independent read, calibration-pinned. Read buzz-team/aurelian-calibration.md (the repo copy in the worktree; step 3's drift check has proven it byte-identical to ~/.config/buzz-team/) § "Code / config" and § "Binding"; compute diff_digest = git diff --binary origin/main..HEAD | sha256sum and calibration_digest = sha256sum buzz-team/aurelian-calibration.md; apply the rubric's five bullets to the diff. Then invoke the code-review skill at effort ${t.review} on git diff origin/main..HEAD. reviewConfirmed = CONFIRMED findings (file:line: summary); reviewPlausible = the rest.
+Do not return until the review has produced findings. If the code-review skill cannot be invoked, or returns no result, remove the worktree, set awaiting=false and failingAssertion='code review did not complete', and return: an empty reviewConfirmed means the review ran and confirmed nothing, and it must never also mean the review never ran. Both read identically to the caller, and the second one lands the diff.
+6. If verifyExit/newRed/gateExit/gateVerdict/reviewConfirmed do not all pass: remove the worktree; awaiting=false; fill failingAssertion; return.
+7. Otherwise, in the worktree: git mv the brief to .claude/briefs/archive/${today}-<slug>.md and commit "docs(briefs): archive ${id} — <slug>" with a body carrying verifyExit, every newRed line verbatim, the gate command and result, the diff_digest and calibration_digest, and the plausible findings. git push --force-with-lease origin HEAD:${ship.branch} (the repo-local credential helper pushes as the App). Then bin/gh_app.sh pr create --base main --head ${ship.branch} --title "${id}: <slug>" --body-file <a file carrying the same evidence>. awaiting=true, pr = the PR number, headSha = git rev-parse HEAD. Remove the worktree.
+8. Return ${FLEET_PROBE}. landed=false (only run 2 lands). mainHead = git rev-parse main, originMainHead = git rev-parse origin/main after a final git fetch.
 ${RAILS}
-Never take the ship agent's word for anything; every returned value comes from a command you ran. mainHead = git rev-parse main, originMainHead = git rev-parse origin/main after a final git fetch.`
+Never take the ship agent's word for anything; every returned value comes from a command you ran. Never approve the PR, and never merge it: gh is logged in as Dave and an approval from this box is no approval.`
+}
+
+function mergePrompt(id, t, approved, baseline) {
+  return `You merge the approved pull request #${approved.pr} for task ${id} (${PLAN}) and then prove main. Work in ${REPO} (the main checkout), which must be on main and clean; stop if not.
+1. bin/gh_app.sh pr view ${approved.pr} --json reviewDecision,statusCheckRollup,headRefOid,state. reviewDecision = that field; gateConclusion = the conclusion of the check named gate ('' if absent); prHeadSha = headRefOid. If reviewDecision is not APPROVED, gateConclusion is not SUCCESS, or prHeadSha is not ${approved.headSha}: merged=false, failingAssertion names which, and return (skip to step 6 for the probes).
+2. bin/gh_app.sh pr merge ${approved.pr} --merge --delete-branch. merged = the PR's state is MERGED afterwards; mergedBy = bin/gh_app.sh pr view ${approved.pr} --json mergedBy -q .mergedBy.login.
+3. git fetch origin; git merge --ff-only origin/main.
+${t.deploy ? `4. Read the merged brief's "## Runtime actions" section (it is under .claude/briefs/archive/ now) and run exactly those commands, nothing more. Put the journal text you read in failingAssertion only if a command failed.` : '4. No deploy for this task.'}
+5. bash bin/verify.sh > /tmp/merge-${id}.out 2>&1; verifyExit=$?. ${redRule(t, baseline)}
+6. Return ${FLEET_PROBE}. mainHead = git rev-parse main, originMainHead = git rev-parse origin/main after a final git fetch.
+${RAILS}
+Never approve a PR, and never merge one whose head is not ${approved.headSha}: that is the head Dave approved.`
 }
 
 function stop(at, failingAssertion, landed, extra) {
@@ -113,10 +150,53 @@ const landed = []
 if (!Array.isArray(args?.tasks) || !args.tasks.length) return stop('args', 'args.tasks must be a non-empty array of task ids', landed)
 if (typeof args.today !== 'string' || !args.today) return stop('args', 'args.today must be the launch date as YYYY-MM-DD', landed)
 
+function redMismatch(t, res) {
+  const extra = res.newRed.filter(l => !t.expectedRed.some(s => l.includes(s)))
+  const missing = t.expectedRed.filter(s => !res.newRed.some(l => l.includes(s)))
+  if (extra.length || missing.length || res.newRed.length !== t.expectedRed.length)
+    return `red set mismatch: extra=${JSON.stringify(extra)} missing=${JSON.stringify(missing)}`
+  if (t.shipsRed ? res.verifyExit === 0 : res.verifyExit !== 0) return `verify.sh exit ${res.verifyExit}`
+  return null
+}
+
+function fleetDrift(res) {
+  const restarted = Object.keys(args.fleetStart || {}).filter(a => res.fleetStart[a] !== args.fleetStart[a])
+  if (restarted.length) return `fleet restart detected: ${restarted.join(',')}`
+  if (args.enabled && (res.enabled.system !== args.enabled.system || res.enabled.user !== args.enabled.user))
+    return `enabled-unit count changed: ${JSON.stringify(res.enabled)}`
+  return null
+}
+
+async function mergeApproved(id, t, approved, baseline) {
+  if (!Number.isInteger(approved.pr) || typeof approved.headSha !== 'string' || !approved.headSha)
+    return { stop: stop(id, `args.approvedPR entry for ${id} needs an integer pr and the approved headSha`, landed) }
+  phase('Land')
+  const merge = await agent(mergePrompt(id, t, approved, baseline), { label: `land-merge:${id}`, phase: 'Land', schema: MERGE })
+  if (!merge) return { stop: stop(id, 'merge agent returned null', landed, { approved }) }
+  if (merge.reviewDecision !== 'APPROVED') return { stop: stop(id, `PR #${approved.pr} not approved: ${merge.reviewDecision}`, landed, { merge }) }
+  if (merge.gateConclusion !== 'SUCCESS') return { stop: stop(id, `PR #${approved.pr} gate check: ${merge.gateConclusion || 'absent'}`, landed, { merge }) }
+  if (merge.prHeadSha !== approved.headSha)
+    return { stop: stop(id, `PR #${approved.pr} head ${merge.prHeadSha} is not the approved ${approved.headSha}`, landed, { merge }) }
+  if (!merge.merged || merge.mainHead !== merge.originMainHead)
+    return { stop: stop(id, `not merged: main ${merge.mainHead} origin/main ${merge.originMainHead} (${merge.failingAssertion})`, landed, { merge }) }
+  const red = redMismatch(t, merge) || fleetDrift(merge)
+  if (red) return { stop: stop(id, `after merge: ${red}`, landed, { merge }) }
+  return { merge }
+}
+
 let baseline = args.baselineRed || []
 for (const id of args.tasks) {
   const t = TASKS[id]
   if (!t) return stop(id, 'unknown task id', landed)
+  const approved = args.approvedPR && args.approvedPR[id]
+  if (approved) {
+    const { stop: stopped, merge } = await mergeApproved(id, t, approved, baseline)
+    if (stopped) return stopped
+    baseline = merge.allRed
+    landed.push({ id, commit: merge.mainHead, pr: approved.pr, mergedBy: merge.mergedBy })
+    log(`${id} merged as PR #${approved.pr} at ${merge.mainHead}; red set now ${baseline.length} line(s)`)
+    continue
+  }
   const pre = args.preShipped && args.preShipped[id]
   let ship
   if (pre) {
@@ -135,25 +215,18 @@ for (const id of args.tasks) {
   phase('Land')
   const land = await agent(landPrompt(id, t, ship, baseline, args.today), { label: `land:${id}`, phase: 'Land', schema: LAND })
   if (!land) return stop(id, 'land agent returned null', landed, { ship })
-  const extra = land.newRed.filter(l => !t.expectedRed.some(s => l.includes(s)))
-  const missing = t.expectedRed.filter(s => !land.newRed.some(l => l.includes(s)))
-  if (extra.length || missing.length || land.newRed.length !== t.expectedRed.length)
-    return stop(id, `red set mismatch: extra=${JSON.stringify(extra)} missing=${JSON.stringify(missing)}`, landed, { ship, land })
-  if (t.shipsRed ? land.verifyExit === 0 : land.verifyExit !== 0)
-    return stop(id, `verify.sh exit ${land.verifyExit}`, landed, { ship, land })
+  const red = redMismatch(t, land)
+  if (red) return stop(id, red, landed, { ship, land })
   if (land.gateExit !== 0 || land.gateVerdict !== 'met')
     return stop(id, `plan gate: exit ${land.gateExit}, verdict ${land.gateVerdict}`, landed, { ship, land })
   if (land.reviewConfirmed.length)
     return stop(id, `code review confirmed: ${land.reviewConfirmed.join(' | ')}`, landed, { ship, land })
-  if (!land.landed || land.mainHead !== land.originMainHead)
-    return stop(id, `not landed: main ${land.mainHead} origin/main ${land.originMainHead} (${land.failingAssertion})`, landed, { ship, land })
-  const restarted = Object.keys(args.fleetStart || {}).filter(a => land.fleetStart[a] !== args.fleetStart[a])
-  if (restarted.length) return stop(id, `fleet restart detected: ${restarted.join(',')}`, landed, { land })
-  if (args.enabled && (land.enabled.system !== args.enabled.system || land.enabled.user !== args.enabled.user))
-    return stop(id, `enabled-unit count changed: ${JSON.stringify(land.enabled)}`, landed, { land })
+  if (!land.awaiting || !Number.isInteger(land.pr) || !land.headSha)
+    return stop(id, `no PR opened: ${land.failingAssertion}`, landed, { ship, land })
+  const drift = fleetDrift(land)
+  if (drift) return stop(id, drift, landed, { land })
 
-  baseline = land.allRed
-  landed.push({ id, commit: land.mainHead, archive: land.archiveCommit, plausible: land.reviewPlausible })
-  log(`${id} landed at ${land.mainHead}; red set now ${baseline.length} line(s)`)
+  log(`${id}: PR #${land.pr} at ${land.headSha} awaits Dave's approval; re-run with approvedPR.${id}`)
+  return { landed, awaitingApproval: [{ id, pr: land.pr, headSha: land.headSha, plausible: land.reviewPlausible }], finalRed: baseline }
 }
 return { landed, finalRed: baseline }
