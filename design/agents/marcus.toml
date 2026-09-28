@@ -70,7 +70,7 @@ route    = "ops"
 run_mode = "ops"
 contract = "design/contracts/praetorium-daily-plan.md"
 status   = "standing"
-suite    = ["tests/test_daily_plan_smoke.sh"]
+suite    = ["tests/test_daily_plan_smoke.sh", "tests/test_daily_plan_training.sh"]
 skills   = ["agent-inbox-sync", "post-call-capture", "weekly-review"]
 
 [[workflows]]
