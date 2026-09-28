@@ -48,17 +48,29 @@ class Protection(unittest.TestCase):
     def test_live_read_joins_effective_rules_and_installation(self):
         # (::main-protection-installation)
         effective = [{**rule, "ruleset_id": 42} for rule in self.config["rules"]]
-        pages = [{"repositories": []}, {"repositories": [{"full_name": protection.REPO}]}]
-        with patch.object(protection, "api", side_effect=[effective, self.config, pages]) as api:
+        installed = {"other/repo", protection.REPO}
+        with patch.object(protection, "api", side_effect=[effective, self.config]), \
+                patch.object(protection, "paged_names", return_value=installed):
             self.assertEqual(protection.live_errors(), [])
-            self.assertTrue(api.call_args.kwargs["paginate"])
-        with patch.object(protection, "api", side_effect=[effective, self.config, [{"repositories": []}]]):
+        with patch.object(protection, "api", side_effect=[effective, self.config]), \
+                patch.object(protection, "paged_names", return_value={"other/repo"}):
             self.assertIn("App installation", " ".join(protection.live_errors()))
-        with patch.object(protection, "api", side_effect=[[], pages]):
+        with patch.object(protection, "api", side_effect=[[]]), \
+                patch.object(protection, "paged_names", return_value=installed):
             self.assertIn("main lacks pull_request", protection.live_errors())
         with patch.object(protection, "api", side_effect=RuntimeError("API unavailable")):
             with self.assertRaisesRegex(RuntimeError, "API unavailable"):
                 protection.live_errors()
+
+    def test_paged_read_uses_only_flags_the_box_gh_has(self):
+        # (::main-protection-gh-argv) gh 2.46 on the box has no --slurp.
+        pages = f"other/repo\n{protection.REPO}\n"
+        with patch.object(protection.subprocess, "run") as run:
+            run.return_value.returncode, run.return_value.stdout = 0, pages
+            names = protection.paged_names(["gh"], "/installation/repositories", ".repositories[].full_name")
+        self.assertEqual(names, {"other/repo", protection.REPO})
+        self.assertEqual(run.call_args.args[0], ["gh", "api", "/installation/repositories",
+                                                 "--paginate", "--jq", ".repositories[].full_name"])
 
 
 if __name__ == "__main__":
