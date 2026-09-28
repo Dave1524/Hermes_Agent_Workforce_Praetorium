@@ -60,5 +60,5 @@ suites = ["tests/test_auto_sync.sh"]
 env_override = ""
 run_markers = []
 artifact_retention = { receipts = "keep", notion = "keep", inbox = "keep", note = "auto-sync pushed straight to main; under protection every change is an App-authored PR" }
-residue_cleared_on = ""
+residue_cleared_on = "2026-09-28"
 env_removed_attested = false
