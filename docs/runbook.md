@@ -157,7 +157,6 @@ Supporting daemons (not override-driven):
 | `qmd-refresh.timer` | Index refresh every 30m; the pull leg is `bin/vault_sync_guard.sh sync` (NUC-45) |
 | `brave-mcp.service` | Brave search MCP on `:8766` |
 | `scorecard.timer` | Weekly scorecard publish |
-| `agent-workforce-auto-sync.timer` | Shell auto-sync of this git repo (no LLM) |
 | `overnight-pre-snapshot.timer` | Model-free pre-run state capture → `~/logs/overnight/` (NUC-36) |
 | `inbox-backlog-alert.timer` | Daily 06:20 approvals-aging alert to the Buzz `approvals` channel (>2d oldest pending) — NUC-30 |
 | `workflow-incidents.timer` | Every 5 min (+30 s jitter) actionable workflow incidents → Buzz `incidents` stream via `bin/deliver_incidents.sh` (T5.3c): one `[incident]` per failed check, missing artifact, incomplete run, malformed receipt or control failure; one `[recovered]` when it clears; one `[incident digest]` a day (07:00 gate) while anything stays open. **Ships disabled** and the `incidents` route is empty until Dave creates the channel. State: `~/agent-workforce/var/incidents/state.json`; log `~/logs/workflow-incidents.log` |
@@ -234,7 +233,7 @@ has proven nothing.
 is ~$1. `AGENT_CONFIG_EVAL_LIVE=1` runs the whole tree plus the control through a single
 `--self-check`; groups 12 and 13 deliberately share that one invocation, because the control
 already contains the clean run a separate group-12 pass would buy again. The eval always runs on a **copy outside `$HOME`**: `claude plugin eval`
-writes `<plugin>/evals/results/`, which auto-sync would commit within 15 minutes, and the eval
+writes `<plugin>/evals/results/`, which must stay out of source commits, and the eval
 child's cwd decides whether `~/CLAUDE.md` (46 KB) and the shared memory pool load into every
 run. A `TMPDIR` inside `$HOME` is refused rather than warned about — the wrong measurement
 still produces a number.
@@ -245,14 +244,15 @@ still produces a number.
 The order is:
 
 ```
-edit source  ->  bin/deploy  ->  bash bin/verify.sh  ->  commit
+branch -> verify and review -> App-authored PR -> Dave approves -> App merges -> deploy -> verify
 ```
 
-not the usual edit → verify → commit → deploy. Adding or editing anything under `bin/` makes
-the gate red immediately, and the message names the file, so a red here is explainable rather
-than mysterious — but only if you know to expect it. `bin/deploy` warns when the source tree is
-dirty (it does not block), and refuses to deploy onto a git tree, so the source can never be its
-own destination.
+Adding or editing deployed files makes the pre-merge gate red. Keep that raw result;
+`bin/ship_verify.py` runs the unchanged gate and uses its parent-shell trace to distinguish
+deployment drift from failures in syntax checks, shellcheck or suites. Run 1 accepts only
+deployment differences naming exact paths changed by the task. Unknown findings still stop
+it. After merge, no drift exception remains: deploy and run the full gate again.
+`bin/deploy` warns about a dirty source tree and refuses a git checkout as its destination.
 
 Two consequences that are correct and will still surprise:
 
@@ -321,7 +321,7 @@ record cannot be written is refused. The command rails ignore it — a command D
 run from a terminal. Consequence: a `t.deploy` land step's `sudo systemctl restart` now stops at
 the systemctl rail and is Dave's hand. Measured 2026-09-22: the hook fired in the very session
 that wired it, on the next `Bash` call — there is no launch boundary to hide behind, and the
-auto-sync sweep that lands a new suite on `origin/main` makes it an *existing* test mid-task.
+merge that lands a new suite on `origin/main` makes it an *existing* test mid-task.
 
 ## Control Room (T5.3)
 
@@ -1032,7 +1032,7 @@ Because git rewrites `FETCH_HEAD` even when a fetch fails, the guard keeps its o
 | Asset | Where | Backup path |
 |---|---|---|
 | Service units (`--user`) | Every `.service`/`.timer` in this repo's `systemd/user/` that is installed under `~/.config/systemd/user/` — the nine Buzz-fleet and gateway units. Their drop-in `*.conf` files are **not** captured: three carry `BUZZ_AUTH_TAG` and this tarball is the no-secrets one | `backup_config.sh` tarball |
-| Service units (system) | Every deployed `.service`/`.timer` whose name matches a unit in this repo's `systemd/` (incl. `agent-workforce-auto-sync`, `overnight-*`, `agent-alert@`, `agent-inbox-sync` alongside the qmd/agent-proposal/augustus/bd-stall/brave/memory/scorecard/discord families) — enumerated automatically by `backup_config.sh` | `backup_config.sh` tarball |
+| Service units (system) | Every deployed `.service`/`.timer` whose name matches a unit in this repo's `systemd/` — enumerated automatically by `backup_config.sh` | `backup_config.sh` tarball |
 | Scripts & docs | `~/agent-workforce/{bin,docs,profiles}` | `backup_config.sh` tarball |
 | Job-override templates | this repo `profiles/*.env.example` | git |
 | Job-override runtime envs | `~/.config/agent-workforce/{augustus-content,bd_stall_radar,weekly_pre_assembly}.env` | **not secrets**, but recreate from templates if lost |
@@ -1070,6 +1070,43 @@ which is what `main` protection requires. The App is installed on this repo and 
   argv, never stdout. Empty or missing helper is exit 2 before `gh` runs
   (`tests/test_gh_app.sh`). A bare `gh` stays Dave1524, which is right for reading and wrong
   for opening or merging a PR.
+
+### Protection rollout and proof
+
+MEASURED 2026-09-25: GitHub's effective rules for `main` were empty. PR #72 carries the
+two-run land phase and Control Room identity change; PR #70 retired auto-sync but left
+runtime residue. An archived T8.2 brief is not proof these rollout steps happened.
+
+1. Dave reviews and approves the current head of PR #72. Merge it through `bin/gh_app.sh`
+   after `gate` passes, using `gh pr merge --match-head-commit <approved-sha>`.
+2. Update the source checkout to merged `main`, then run `bin/deploy` and
+   `bin/deploy_buzz_team.sh`. Neither enables or restarts a unit. Check both outputs for drift.
+   Confirm the retired auto-sync units are absent from `/etc` and inactive. Preview
+   `bin/deploy --dry-run --prune`; Dave prunes the retired runtime files from that reviewed
+   list. `bin/auto-sync` is explicitly recorded as a retired runner so the residue check
+   cannot miss it. Run `bin/workflow_pr.py clear agent-workforce-auto-sync --pr
+   https://github.com/Dave1524/Hermes_Agent_Workforce_Praetorium/pull/70` only after the live
+   scan is clear, then commit its registry update through a PR. Never stamp it by hand.
+3. Dave creates the ruleset from the Mac (or the GitHub UI):
+   ```bash
+   gh api --method POST repos/Dave1524/Hermes_Agent_Workforce_Praetorium/rulesets \
+     --input config/main-ruleset.json
+   ```
+   It requires an approving review, dismisses stale reviews, requires GitHub Actions'
+   `gate`, blocks deletion and force pushes, and has no bypass actor, including Dave.
+   `python3 bin/main_protection.py --live` must then pass. The suite fails on the box
+   until protection is installed; it only skips that live read on CI.
+4. Exercise the two-run workflow on the next ready task. Run 1 returns
+   `awaitingApproval: [{id, pr, headSha}]` without changing main or runtime. After Dave's
+   GitHub approval, resume with the same task list and
+   `approvedPR: {"<id>": {"pr": <number>, "headSha": "<approved-sha>"}}`.
+   Run 2 checks protection, approval, CI and the exact head, merges as the App, then deploys
+   and verifies. It never approves on Dave's behalf. Keep the PR's author, Dave's review,
+   check result, mergedBy and SHA as the live acceptance evidence for T8.2.
+
+Until those steps are evidenced, T8.2 remains incomplete. Do not probe direct-push refusal
+with an otherwise valid new commit: without protection it would write main. A no-op push
+also proves nothing. Read-back verifies policy without creating that risk.
 
 ## Rebuild checklist (fresh Ubuntu → working box)
 

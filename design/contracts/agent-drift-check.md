@@ -108,8 +108,7 @@ Two checks, both `sweep`.
   resolve it or declare it in `deploy-exclusions.toml` with its hash, never to mute the job.
 - **`/etc` drift needs a human.** The box cannot write it (`:6-7`); an alert naming an
   `/etc/systemd/system/` finding is a task for Dave, and stays red until then.
-- **Runs from the SOURCE checkout.** If `main` is mid-edit at 05:40 the comparison is against
-  the edit, not the last commit — a source-vs-deployed finding that `auto-sync` will publish
-  fifteen minutes later anyway. Work on a branch (see `agent-workforce-auto-sync.md`).
+- **Runs from the SOURCE checkout.** If it is mid-edit at 05:40 the comparison includes
+  unfinished edits. Work in an isolated branch checkout; merge by reviewed PR before deploying.
 - **Exit 2 and exit 1 alert identically.** A usage error (`:114-139`) reads like drift in the
   alert subject; the journal tail in the alert body says which.

@@ -476,7 +476,7 @@ assert 'an UNDECLARED box-only file is red — a rebuild from source loses it' \
 rm -rf "$root"
 
 echo "--- 14b-ii. an excluded PROSE file is content-pinned ---"
-# Detection without publication. TEAM.md, heartbeat.prompt and aurelian-calibration.md are read
+# Detection without publication. TEAM.md and heartbeat.prompt are read
 # by agents as instruction and stay out of this PUBLIC repo under the manifest's
 # mechanism-in/prose-out rule, so the repo holds their sha256 rather than their text. Without
 # the pin the exclusion is indistinguishable from no control at all — TEAM.md went 24 days with

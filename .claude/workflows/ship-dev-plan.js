@@ -24,7 +24,7 @@ export const meta = {
 // is built from and for the phase the task requires, and a run stops rather than sending an
 // agent to rebase `undefined`.
 //
-// main is protected (T8.2): a PR, one approving review and the `gate` check, no bypass. So a land
+// T8.2 requires protected main: a PR, one approving review and the `gate` check, no bypass. A land
 // is two runs. Run 1 verifies and reviews in a worktree, commits the archived brief on the
 // branch, opens the PR as the App and returns `awaitingApproval` — a clean return, not a stop.
 // Dave approves on GitHub. Run 2 names the task in approvedPR: no ship and no re-verify of the
@@ -68,14 +68,17 @@ const SHIP = { type: 'object', required: ['branch', 'headCommit', 'briefPath', '
 
 const LAND = { type: 'object',
   required: ['verifyExit', 'allRed', 'newRed', 'gateExit', 'gateVerdict', 'gateEvidence', 'reviewConfirmed', 'reviewPlausible',
-             'landed', 'mainHead', 'originMainHead', 'archiveCommit', 'fleetStart', 'enabled', 'failingAssertion'],
+             'landed', 'mainHead', 'originMainHead', 'archiveCommit', 'fleetStart', 'enabled', 'failingAssertion',
+             'awaiting', 'pr', 'headSha', 'changedPaths', 'deployDrift', 'otherChecksExit'],
   properties: { verifyExit: { type: 'integer' }, allRed: { type: 'array', items: { type: 'string' } },
     newRed: { type: 'array', items: { type: 'string' } }, gateExit: { type: 'integer' },
     gateVerdict: { type: 'string', enum: ['met', 'not met'] }, gateEvidence: { type: 'string' },
     reviewConfirmed: { type: 'array', items: { type: 'string' } }, reviewPlausible: { type: 'array', items: { type: 'string' } },
     landed: { type: 'boolean' }, mainHead: { type: 'string' }, originMainHead: { type: 'string' }, archiveCommit: { type: 'string' },
     fleetStart: { type: 'object' }, enabled: { type: 'object' }, failingAssertion: { type: 'string' },
-    awaiting: { type: 'boolean' }, pr: { type: 'integer' }, headSha: { type: 'string' } } }
+    awaiting: { type: 'boolean' }, pr: { type: 'integer' }, headSha: { type: 'string' },
+    changedPaths: { type: 'array', items: { type: 'string' } },
+    deployDrift: { type: 'array', items: { type: 'string' } }, otherChecksExit: { type: 'integer' } } }
 
 const MERGE = { type: 'object',
   required: ['reviewDecision', 'gateConclusion', 'prHeadSha', 'merged', 'mergedBy', 'verifyExit', 'allRed', 'newRed',
@@ -96,6 +99,8 @@ The first four rails and the test/gate-script rail are also enforced by the PreT
 function shipPrompt(id, t, baseline) {
   const gateLine = t.shipsRed
     ? `This task SHIPS RED by design. Green for this task means: bin/verify.sh's red lines (matching ^\\s*FAIL:|^PROBLEM\\t|^\\s*DRIFT ) equal the baseline below plus exactly one new line per item in ${JSON.stringify(t.expectedRed)}, and nothing else. Run /plan-feature then /implement with that as the acceptance. Do NOT run /finish. When the gate matches, commit on your branch by explicit path with a Conventional Commit whose body lists every new red line verbatim (precedent: commit 9f7e977), then git push origin HEAD.`
+    : t.deploy
+    ? `Run /plan-feature then /implement. Do NOT run /finish before deployment. Run python3 bin/ship_verify.py --output /tmp/ship-${id}.out: keep its raw verifyExit and allRed. Only deployment differences on exact paths in git diff --name-only origin/main..HEAD may be extra reds, and otherChecksExit must be 0. Stop on any other failure. Commit by explicit path with the raw gate evidence in the body, then git push origin HEAD; phaseReached=implement. The independent land verifier rechecks the drift allowance before opening the PR.`
     : `Run /ship. Green means bin/verify.sh exits 0 and its red lines equal the baseline below exactly. /finish commits by explicit path and pushes your branch.`
   return `You are in an isolated worktree of ${REPO} on your own branch. Task ${id} of ${PLAN} (read that task's bullet and § Definition of done). Write the brief to .claude/briefs/${id.toLowerCase().replace('.', '-')}-<slug>.md and commit that named brief with the code.
 .claude/briefs/current.md is tracked and belongs to a live brief (T0.3): do not archive, move, overwrite or stage it, and never use git mv anywhere. Where /plan-feature says to archive or write current.md, skip that step. Do not touch .claude/briefs/archive/.
@@ -115,10 +120,10 @@ function redRule(t, baseline) {
 
 function landPrompt(id, t, ship, baseline, today) {
   const wt = `.claude/worktrees/land-${id}`
-  return `You are the independent verifier for task ${id} (${PLAN}). You did not write this code. main is protected: you never push to main and never merge; you open a pull request and Dave approves it. Work in ${REPO}; do every step below inside the temporary worktree ${wt}, never in the main checkout.
+  return `You are the independent verifier for task ${id} (${PLAN}). You did not write this code. You never push to main and never merge; you open a pull request and Dave approves it. Work in ${REPO}; do every step below inside the temporary worktree ${wt}, never in the main checkout.
 1. git fetch origin. git worktree add ${wt} ${ship.branch}; in it, rebase onto origin/main (a conflict = stop, failingAssertion='rebase conflict'). If git diff --name-only origin/main..HEAD names .claude/briefs/current.md or any archive/ file containing buzz-task-scheduling, stop (failingAssertion='touched the live current.md').
-${t.deploy ? `2. No deploy yet: the runtime changes only after the PR merges (run 2). bin/verify.sh will report DRIFT for this task's changed bin/ and systemd/ files. A DRIFT line naming a path in git diff --name-only origin/main..HEAD is expected here: leave it out of allRed and newRed. Every other DRIFT line is a red.` : '2. No deploy for this task. If bin/verify.sh reports DRIFT on a file this task changed, that is a red, not something to deploy away.'}
-3. In the worktree: bash bin/verify.sh > /tmp/land-${id}.out 2>&1; verifyExit=$?. ${redRule(t, baseline)}
+${t.deploy ? `2. No deploy yet: the runtime changes only after the PR merges (run 2). A DRIFT line naming a path in git diff --name-only origin/main..HEAD is expected only for source-only/content-diff/runtime-only deployment differences in bin, system, dropin, user or content. Collect those exact newRed lines as deployDrift; preserve allRed, newRed and verifyExit unchanged. Never exempt missing declarations, expired exclusions, unknown formats or unrelated paths.` : '2. No deploy for this task. If bin/verify.sh reports DRIFT on a file this task changed, that is a red, not something to deploy away. deployDrift = [].'}
+3. In the worktree: python3 bin/ship_verify.py --output /tmp/land-${id}.out. This runs bash bin/verify.sh unchanged with its output redirected; take verifyExit, allRed and otherChecksExit from its JSON. changedPaths = git diff --name-only origin/main..HEAD. ${redRule(t, baseline)} Only run 1 of a deploy task may accept verifyExit=1: every extra red must be an exact changed-path deployment difference and otherChecksExit must be 0. Never normalize the raw exit code.
 4. Plan gate, in the worktree. Run: ${t.gateCmd}  -> gateExit. Then judge these words against the tree and put the commands and lines you used in gateEvidence: "${t.gateWords}". gateVerdict = met | not met.
 5. The code review is a gate, not a note. Independent read, calibration-pinned. Read buzz-team/aurelian-calibration.md (the repo copy in the worktree; step 3's drift check has proven it byte-identical to ~/.config/buzz-team/) § "Code / config" and § "Binding"; compute diff_digest = git diff --binary origin/main..HEAD | sha256sum and calibration_digest = sha256sum buzz-team/aurelian-calibration.md; apply the rubric's five bullets to the diff. Then invoke the code-review skill at effort ${t.review} on git diff origin/main..HEAD. reviewConfirmed = CONFIRMED findings (file:line: summary); reviewPlausible = the rest.
 Do not return until the review has produced findings. If the code-review skill cannot be invoked, or returns no result, remove the worktree, set awaiting=false and failingAssertion='code review did not complete', and return: an empty reviewConfirmed means the review ran and confirmed nothing, and it must never also mean the review never ran. Both read identically to the caller, and the second one lands the diff.
@@ -131,8 +136,8 @@ Never take the ship agent's word for anything; every returned value comes from a
 
 function mergePrompt(id, t, approved, baseline) {
   return `You merge the approved pull request #${approved.pr} for task ${id} (${PLAN}) and then prove main. Work in ${REPO} (the main checkout), which must be on main and clean; stop if not.
-1. bin/gh_app.sh pr view ${approved.pr} --json reviewDecision,statusCheckRollup,headRefOid,state. reviewDecision = that field; gateConclusion = the conclusion of the check named gate ('' if absent); prHeadSha = headRefOid. If reviewDecision is not APPROVED, gateConclusion is not SUCCESS, or prHeadSha is not ${approved.headSha}: merged=false, failingAssertion names which, and return (skip to step 6 for the probes).
-2. bin/gh_app.sh pr merge ${approved.pr} --merge --delete-branch. merged = the PR's state is MERGED afterwards; mergedBy = bin/gh_app.sh pr view ${approved.pr} --json mergedBy -q .mergedBy.login.
+1. python3 bin/main_protection.py --live must pass before any merge; a missing ruleset is a refusal. bin/gh_app.sh pr view ${approved.pr} --json reviewDecision,statusCheckRollup,headRefOid,state,baseRefName,author,reviews. Require OPEN, base main, the App author and Dave1524's APPROVED review at ${approved.headSha}; otherwise return with failingAssertion. reviewDecision = that field; gateConclusion = the conclusion of the check named gate from GitHub Actions ('' if absent or ambiguous); prHeadSha = headRefOid. If reviewDecision is not APPROVED, gateConclusion is not SUCCESS, or prHeadSha is not ${approved.headSha}: merged=false, failingAssertion names which, and return (skip to step 6 for the probes).
+2. bin/gh_app.sh pr merge ${approved.pr} --merge --delete-branch --match-head-commit ${approved.headSha}. merged = the PR's state is MERGED afterwards; mergedBy = bin/gh_app.sh pr view ${approved.pr} --json mergedBy -q .mergedBy.login. If the merge command fails or the state is not MERGED, return immediately without updating main or deploying. Never use --admin or --auto.
 3. git fetch origin; git merge --ff-only origin/main.
 ${t.deploy ? `4. Read the merged brief's "## Runtime actions" section (it is under .claude/briefs/archive/ now) and run exactly those commands, nothing more. Put the journal text you read in failingAssertion only if a command failed.` : '4. No deploy for this task.'}
 5. bash bin/verify.sh > /tmp/merge-${id}.out 2>&1; verifyExit=$?. ${redRule(t, baseline)}
@@ -150,12 +155,28 @@ const landed = []
 if (!Array.isArray(args?.tasks) || !args.tasks.length) return stop('args', 'args.tasks must be a non-empty array of task ids', landed)
 if (typeof args.today !== 'string' || !args.today) return stop('args', 'args.today must be the launch date as YYYY-MM-DD', landed)
 
-function redMismatch(t, res) {
-  const extra = res.newRed.filter(l => !t.expectedRed.some(s => l.includes(s)))
-  const missing = t.expectedRed.filter(s => !res.newRed.some(l => l.includes(s)))
-  if (extra.length || missing.length || res.newRed.length !== t.expectedRed.length)
+function deploymentPath(line) {
+  const match = line.match(/^\s*DRIFT \[(bin|system|dropin|user|content)\] (content differs|source-only|runtime-only|etc-only|live-only): (\S+)(.*)$/)
+  if (!match) return null
+  const [, tree, kind, file, tail] = match
+  if (kind === 'content differs' ? tail !== '' : !/^ (?:is not deployed|has no source|is in this repo and not installed|is not installed|is installed with no source here|runs on this box with no source here)/.test(tail)) return null
+  const prefixes = { bin: 'bin/', system: 'systemd/', dropin: 'systemd/', user: 'systemd/user/', content: '' }
+  return prefixes[tree] + file
+}
+
+function redMismatch(t, res, preMerge = false) {
+  const drift = res.deployDrift || []
+  if (drift.length && (!preMerge || !t.deploy || res.otherChecksExit !== 0 ||
+      !Array.isArray(res.changedPaths) || new Set(drift).size !== drift.length ||
+      drift.some(line => !res.newRed.includes(line) || !res.allRed.includes(line) ||
+        !deploymentPath(line) || !res.changedPaths.includes(deploymentPath(line)))))
+    return 'deployment drift is not confined to verified changed paths'
+  const reds = res.newRed.filter(line => !drift.includes(line))
+  const extra = reds.filter(l => !t.expectedRed.some(s => l.includes(s)))
+  const missing = t.expectedRed.filter(s => !reds.some(l => l.includes(s)))
+  if (extra.length || missing.length || reds.length !== t.expectedRed.length)
     return `red set mismatch: extra=${JSON.stringify(extra)} missing=${JSON.stringify(missing)}`
-  if (t.shipsRed ? res.verifyExit === 0 : res.verifyExit !== 0) return `verify.sh exit ${res.verifyExit}`
+  if (t.shipsRed || drift.length ? res.verifyExit !== 1 : res.verifyExit !== 0) return `verify.sh exit ${res.verifyExit}`
   return null
 }
 
@@ -168,7 +189,7 @@ function fleetDrift(res) {
 }
 
 async function mergeApproved(id, t, approved, baseline) {
-  if (!Number.isInteger(approved.pr) || typeof approved.headSha !== 'string' || !approved.headSha)
+  if (!Number.isInteger(approved.pr) || approved.pr <= 0 || typeof approved.headSha !== 'string' || !approved.headSha)
     return { stop: stop(id, `args.approvedPR entry for ${id} needs an integer pr and the approved headSha`, landed) }
   phase('Land')
   const merge = await agent(mergePrompt(id, t, approved, baseline), { label: `land-merge:${id}`, phase: 'Land', schema: MERGE })
@@ -179,6 +200,9 @@ async function mergeApproved(id, t, approved, baseline) {
     return { stop: stop(id, `PR #${approved.pr} head ${merge.prHeadSha} is not the approved ${approved.headSha}`, landed, { merge }) }
   if (!merge.merged || merge.mainHead !== merge.originMainHead)
     return { stop: stop(id, `not merged: main ${merge.mainHead} origin/main ${merge.originMainHead} (${merge.failingAssertion})`, landed, { merge }) }
+  if (merge.mergedBy !== 'praetorium-vault-writer[bot]' && merge.mergedBy !== 'app/praetorium-vault-writer')
+    return { stop: stop(id, 'merge identity is not the App', landed, { merge }) }
+  if (merge.failingAssertion) return { stop: stop(id, merge.failingAssertion, landed, { merge }) }
   const red = redMismatch(t, merge) || fleetDrift(merge)
   if (red) return { stop: stop(id, `after merge: ${red}`, landed, { merge }) }
   return { merge }
@@ -209,19 +233,20 @@ for (const id of args.tasks) {
     ship = await agent(shipPrompt(id, t, baseline), { label: `ship:${id}`, phase: 'Ship', schema: SHIP, isolation: 'worktree' })
     if (!ship) return stop(id, 'ship agent returned null (skipped or terminal API error)', landed)
   }
-  const wantPhase = t.shipsRed ? 'implement' : 'finish'
+  const wantPhase = t.shipsRed || t.deploy ? 'implement' : 'finish'
   if (ship.phaseReached !== wantPhase) return stop(id, `ship reached ${ship.phaseReached}, wanted ${wantPhase}: ${ship.stopReason}`, landed, { ship })
 
   phase('Land')
   const land = await agent(landPrompt(id, t, ship, baseline, args.today), { label: `land:${id}`, phase: 'Land', schema: LAND })
   if (!land) return stop(id, 'land agent returned null', landed, { ship })
-  const red = redMismatch(t, land)
+  const red = redMismatch(t, land, true)
   if (red) return stop(id, red, landed, { ship, land })
   if (land.gateExit !== 0 || land.gateVerdict !== 'met')
     return stop(id, `plan gate: exit ${land.gateExit}, verdict ${land.gateVerdict}`, landed, { ship, land })
   if (land.reviewConfirmed.length)
     return stop(id, `code review confirmed: ${land.reviewConfirmed.join(' | ')}`, landed, { ship, land })
-  if (!land.awaiting || !Number.isInteger(land.pr) || !land.headSha)
+  if (land.landed) return stop(id, 'run 1 must not land before approval', landed, { ship, land })
+  if (!land.awaiting || !Number.isInteger(land.pr) || land.pr <= 0 || !land.headSha)
     return stop(id, `no PR opened: ${land.failingAssertion}`, landed, { ship, land })
   const drift = fleetDrift(land)
   if (drift) return stop(id, drift, landed, { land })

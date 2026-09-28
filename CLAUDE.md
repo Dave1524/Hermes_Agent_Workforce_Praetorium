@@ -61,9 +61,10 @@ ls design/agents/                                   # the personas — one manif
   branches, never `main`. (Legacy mirror `../obsidian-ai-os-boxsafe/` retires at cutover.)
 - `~/.config/agent-workforce/` — secrets + per-job override envs (mode 600). Outside git entirely.
 - This repo (`~/dev/agent-workforce/`) — **source of truth** for orchestration config, systemd
-  unit sources, agent task profiles, inbox/approval tooling. Commit **and push** your own work
-  yourself: `agent-workforce-auto-sync.timer`, when enabled, sweeps a dirty tree to `main` under
-  a generic message and never pushes a clean one (`tests/test_auto_sync.sh`).
+  unit sources, agent task profiles, inbox/approval tooling. Use a topic branch and an
+  **App-authored PR** (`bin/gh_app.sh`); Dave approves and `gate` must pass before the App merges.
+  Never push directly to `main`. Auto-sync retired in PR #70. Check server enforcement with
+  `python3 bin/main_protection.py --live`; rollout is in the runbook's GitHub identity section.
 - `skills/` — the **pointer-skill tree** (T3.1). One plugin per owner
   (`skills/<owner>/.claude-plugin/plugin.json`, `skills/<owner>/skills/<name>/SKILL.md`); every
   `SKILL.md` names its canonical vault path, **never a copy**. Shipped by `bin/deploy`, loaded by
@@ -166,11 +167,10 @@ present. Full shellcheck output (style/info) is printed but does not fail the ga
 
 **The drift check inverts the usual loop.** It compares source against what is deployed —
 `bin/` against `~/agent-workforce/bin/`, `systemd/` against `/etc/systemd/system/`,
-`systemd/user/` against `~/.config/systemd/user/` — so editing a `bin/` script makes the gate
-red until `bin/deploy` runs: edit → deploy → verify → commit. On a feature branch that adds a
-`bin/` script or a unit the gate cannot be green; report the drift, do not soften the check.
-Off the box it skips out loud, diffed against `tests/ci-expected-skips.txt`. Runbook § Deploy
-ordering.
+`systemd/user/` against `~/.config/systemd/user/`. Before merge, report changed-path deployment
+drift and keep the raw gate exit; every other failure still blocks review. After Dave approves
+and the App merges: deploy → verify. Nothing unapproved deploys. Off-box skips are diffed
+against `tests/ci-expected-skips.txt`. Runbook § Deploy ordering and § GitHub identity.
 
 **Never end a pipeline in an early-exiting reader while `pipefail` is on** — `grep -q` SIGPIPEs
 its producer and a found pattern reports 141. Every suite's `assert()` scopes `pipefail` off and

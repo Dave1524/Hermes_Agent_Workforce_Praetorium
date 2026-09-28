@@ -23,7 +23,7 @@
 #
 # ADDITIVE, NEVER DESTRUCTIVE. It writes the files buzz-team/MANIFEST.toml declares
 # [[adopted]] and touches nothing else — not the declared exclusions (TEAM.md,
-# heartbeat.prompt, aurelian-calibration.md), not backups/, not a credential. There is no
+# heartbeat.prompt), not backups/, not a credential. The calibration pack is adopted. No
 # --prune: deleting a box-side file is what the drift check reports and a human decides.
 set -uo pipefail
 

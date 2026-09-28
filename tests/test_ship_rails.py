@@ -143,7 +143,7 @@ SHIP_DEV_PLAN_COMMANDS = [
     "git reset --keep origin/main",
     "git rev-parse --abbrev-ref HEAD",
     "git diff --binary origin/main..main | sha256sum",
-    "sha256sum ~/.config/buzz-team/aurelian-calibration.md",
+    "sha256sum buzz-team/aurelian-calibration.md",
     "systemctl --user show -p ExecMainStartTimestamp --value buzz-agent@marcus",
     "systemctl list-unit-files --state=enabled --no-legend | wc -l",
     "systemctl --user list-unit-files --state=enabled --no-legend | wc -l",

@@ -16,7 +16,7 @@
 # replies and asserts each stop rule fires, that a stop ships nothing further, and that a
 # landed task's red set becomes the next task's baseline. No agent is spawned.
 #
-# A land is two runs since main was protected (T8.2): run 1 ends `awaitingApproval` with a PR
+# T8.2 prepares a land for protected main: run 1 ends `awaitingApproval` with a PR
 # the App opened, run 2 names it in `approvedPR` and a merge agent lands it. Both halves and
 # every refusal of the second are scenarios here.
 set -uo pipefail
@@ -103,7 +103,7 @@ land() {  # $1 id, $2 verifyExit, $3 allRed json, $4 newRed json; $5 optional jq
     '{verifyExit:$exit, allRed:$allRed, newRed:$newRed, gateExit:0, gateVerdict:"met", gateEvidence:"",
       reviewConfirmed:[], reviewPlausible:[], landed:false, mainHead:"main-0", originMainHead:"main-0",
       archiveCommit:("arch-"+$id), fleetStart:$fleet, enabled:$enabled, failingAssertion:"",
-      awaiting:true, pr:71, headSha:("sha-"+$id)}' \
+      awaiting:true, pr:71, headSha:("sha-"+$id), changedPaths:[], deployDrift:[], otherChecksExit:0}' \
     | jq -c "${5:-.}"
 }
 merge() {  # $1 id, $2 verifyExit, $3 allRed json, $4 newRed json; $5 optional jq filter
@@ -176,6 +176,10 @@ assert 'the merge prompt checks the approval, the gate check and the approved he
   "grep '^prompt:land-merge:T6.4=' $tmp/merged.out | grep -q 'reviewDecision is not APPROVED' &&
    grep '^prompt:land-merge:T6.4=' $tmp/merged.out | grep -q 'prHeadSha is not sha-T6.4' &&
    grep '^prompt:land-merge:T6.4=' $tmp/merged.out | grep -q 'bin/gh_app.sh pr merge 71'"
+assert 'GitHub atomically refuses a head changed between the approval probe and merge' \
+  "grep '^prompt:land-merge:T6.4=' $tmp/merged.out | grep -q -- '--match-head-commit sha-T6.4'"
+assert 'a failed merge returns before updating main or deploying' \
+  "grep '^prompt:land-merge:T6.4=' $tmp/merged.out | grep -q 'If the merge command fails or the state is not MERGED, return immediately'"
 meta_name=$(field meta happy | jq -r .name)
 assert 'meta.name is ship-dev-plan, the name Workflow resolves under .claude/workflows/' '[ "$meta_name" = ship-dev-plan ]'
 meta_phases=$(field meta happy | jq -r '.phases[].title' | sort -u | tr '\n' ' ')
@@ -206,7 +210,10 @@ assert 'ships-red: T1.1'"'"'s ship prompt is handed T1.2'"'"'s red lines as its 
   "grep '^prompt:ship:T1.1=' $tmp/redmerged.out | grep -q 'model-alias'"
 
 # Deploying task: nothing deploys before the merge; the merge agent runs the runtime actions.
-run deploy "$(args '["T6.1"]')" "$(jq -nc --argjson s "$(ship T6.1 finish 0 '[]')" --argjson l "$(land T6.1 0 '[]' '[]')" '{"ship:T6.1":$s, "land:T6.1":$l}')"
+run deploy "$(args '["T6.1"]')" "$(jq -nc --argjson s "$(ship T6.1 implement 0 '[]')" --argjson l "$(land T6.1 0 '[]' '[]')" '{"ship:T6.1":$s, "land:T6.1":$l}')"
+assert 'a deploy task can ship without requiring a green /finish before it is deployed' \
+  "grep '^prompt:ship:T6.1=' $tmp/deploy.out | grep -q 'Do NOT run /finish before deployment' &&
+   [ \"\$(result_key '.awaitingApproval[0].id' deploy)\" = T6.1 ]"
 assert 'T6.1: the ship prompt demands a "## Runtime actions" section and forbids running it' \
   "grep '^prompt:ship:T6.1=' $tmp/deploy.out | grep -q '## Runtime actions'"
 assert 'T6.1: run 1 deploys nothing and expects DRIFT only on the paths the task changed' \
@@ -215,6 +222,16 @@ assert 'T6.1: run 1 deploys nothing and expects DRIFT only on the paths the task
 run deploymerged "$(args '["T6.1"]' ".approvedPR = $(approved T6.1)")" "$(jq -nc --argjson m "$(merge T6.1 0 '[]' '[]')" '{"land-merge:T6.1":$m}')"
 assert 'T6.1: run 2 runs the merged brief'"'"'s Runtime actions after the merge' \
   "grep '^prompt:land-merge:T6.1=' $tmp/deploymerged.out | grep -q '## Runtime actions'"
+
+# A real pre-merge deploy has verifyExit=1. Only named deployment differences may account
+# for it, and the independently captured statuses of the other gate steps must be green.
+DEPLOY_RED='["  DRIFT [bin] content differs: example.sh"]'
+DEPLOY_REPLY=$(land T6.1 1 "$DEPLOY_RED" "$DEPLOY_RED" \
+  '.changedPaths = ["bin/example.sh"] | .deployDrift = .newRed')
+run deploydrift "$(args '["T6.1"]')" \
+  "$(jq -nc --argjson s "$(ship T6.1 implement 1 "$DEPLOY_RED")" --argjson l "$DEPLOY_REPLY" '{"ship:T6.1":$s,"land:T6.1":$l}')"
+assert 'expected deployment drift permits a PR without hiding the raw verify exit or red lines' \
+  '[ "$(result_key ".awaitingApproval[0].id" deploydrift)" = T6.1 ]'
 
 # preShipped: a task whose ship already happened (a land agent that died mid-review is the
 # case this exists for) is landed from the recorded result, with no ship agent spawned.
@@ -277,6 +294,21 @@ expect_stop no-tasks "$(args "$T2" 'del(.tasks)')" "$(two_tasks T6.4 "$G64s" "$G
 expect_stop no-today "$(args "$T2" 'del(.today)')" "$(two_tasks T6.4 "$G64s" "$G64l" T1.3 "$G13s" "$G13l")" \
   'args.today' ''
 
+for variant in unrelated basename syntax unknown missing; do
+  case "$variant" in
+    unrelated) filter='.changedPaths = ["bin/other.sh"]' ;;
+    basename) filter='.changedPaths = ["profiles/example.sh"]' ;;
+    syntax) filter='.otherChecksExit = 1' ;;
+    unknown) filter='.deployDrift = ["DRIFT [bin] source tree bin matched no files"]' ;;
+    missing) filter='del(.otherChecksExit)' ;;
+  esac
+  expect_stop "deploy-$variant" "$(args '["T6.1"]')" \
+    "$(jq -nc --argjson s "$(ship T6.1 implement 1 "$DEPLOY_RED")" --argjson l "$(jq -c "$filter" <<< "$DEPLOY_REPLY")" '{"ship:T6.1":$s,"land:T6.1":$l}')" \
+    'deployment drift' 'ship:T6.1,land:T6.1'
+done
+expect_stop premature-land "$(args "$T2")" "$(two_tasks T6.4 "$G64s" "$(jq -c '.landed = true' <<< "$G64l")" T1.3 "$G13s" "$G13l")" \
+  'run 1 must not land' 'ship:T6.4,land:T6.4'
+
 # Every refusal of run 2, each with a second approved task that must never merge.
 merge_stop() {  # $1 name, $2 jq filter on T6.4's merge reply, $3 failingAssertion fragment
   expect_stop "$1" "$(args "$T2" ".approvedPR = $(approved T6.4 T1.3)")" \
@@ -288,6 +320,9 @@ merge_stop merge-gate-failed '.gateConclusion = "FAILURE"' 'PR #71 gate check: F
 merge_stop merge-gate-absent '.gateConclusion = ""' 'PR #71 gate check: absent'
 merge_stop merge-new-head '.prHeadSha = "sha-pushed-after-approval"' 'is not the approved sha-T6.4'
 merge_stop merge-not-merged '.merged = false | .failingAssertion = "merge refused"' 'not merged:'
+merge_stop merge-wrong-identity '.mergedBy = "Dave1524"' 'merge identity is not the App'
+merge_stop merge-runtime-failed '.failingAssertion = "deploy failed"' 'deploy failed'
+merge_stop merge-verify-failed '.verifyExit = 1' 'after merge: verify.sh exit 1'
 merge_stop merge-red '.newRed = ["FAIL: x"] | .allRed = ["FAIL: x"]' 'after merge: red set mismatch'
 merge_stop merge-restart '.fleetStart.augustus = "a1"' 'after merge: fleet restart detected: augustus'
 expect_stop merge-null "$(args "$T2" ".approvedPR = $(approved T6.4 T1.3)")" '{"land-merge:T6.4":null}' \

@@ -213,8 +213,8 @@ relnames() { # dir, then find-args; prints tree-relative paths, byte-sorted
 # is wrong every day is worse than no check, and the failure is invisible from the output.
 #
 # buzz-team/MANIFEST.toml is in the same list and for the same reason, one tree over: with
-# it missing, every one of the box's declared-excluded files (TEAM.md, heartbeat.prompt,
-# aurelian-calibration.md) reads as undeclared box-only drift, and every adopted file reads
+# it missing, every one of the box's declared-excluded files (TEAM.md, heartbeat.prompt)
+# reads as undeclared box-only drift, and every adopted file reads
 # as an undeclared source-only one. That is a check that is wrong every day about a tree
 # with nothing wrong in it.
 BUZZ_MANIFEST="${DRIFT_BUZZ_MANIFEST:-$SRC_BUZZ/MANIFEST.toml}"
@@ -289,10 +289,10 @@ buzz_declared() { # kind, name
   return 1
 }
 
-# The content pin for an excluded PROSE file. TEAM.md, heartbeat.prompt and
-# aurelian-calibration.md are read by agents as instruction and stay out of this repo under the
-# manifest's mechanism-in/prose-out rule, because Dave1524/Hermes_Agent_Workforce_Praetorium is
-# PUBLIC and auto-sync pushes to it within 15 minutes. So the repo cannot hold their text — it
+# The content pin for an excluded PROSE file. TEAM.md and heartbeat.prompt stay outside this
+# PUBLIC repo under the manifest's mechanism-in/prose-out rule. The calibration pack was
+# adopted in T8.3 and is compared byte-for-byte below. For excluded prose the repo
+# cannot hold the text — it
 # holds their sha256 instead. An edit nobody recorded reads as drift; a deliberate one bumps the
 # pin in the same commit that explains it. Detection without publication, which is the whole of
 # what adoption would have bought for a file whose correctness is judgement anyway.
