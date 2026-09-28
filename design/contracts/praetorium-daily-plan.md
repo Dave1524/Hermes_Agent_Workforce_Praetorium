@@ -234,6 +234,21 @@ modes` references them, never the numbers.
    [ "$(( $(date +%s) - ${t#@} ))" -lt 345600 ]
    ```
 
+10. **Today's training is in the plan, rest days included.** Dave asked for it on
+    2026-09-28. Before that the profile included training "only if today has a slot", and the
+    plans for 09-17, 09-24 and 09-25 carried no training line at all. The line comes from
+    `bin/workout_today.py`, so a day the schedule does not cover still yields a line, an
+    `UNCONFIRMED:` one, and never an absence.
+
+   ```check id=training-line-present
+   body="$(find "$HOME/logs/daily-plan" -maxdepth 1 -name 'daily-plan-*.md' \
+             -newermt "@$AGENT_RUN_STARTED_AT" 2>/dev/null | sort | tail -1)"
+   [ -n "$body" ] || { echo "n/a: no artifact this run"; exit 77; }
+   line="$(awk '/^## Training/{f=1; next} f && /^## /{exit} f && /^- ./{print; exit}' "$body")"
+   [ -n "$line" ] || { echo "no line under '## Training' — today's workout or rest day is missing from the plan"; exit 1; }
+   echo "$line"
+   ```
+
 ## Known failure modes
 
 - **The 1800-character target is not met and is deliberately not asserted.** Measured

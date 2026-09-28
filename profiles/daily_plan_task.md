@@ -51,10 +51,20 @@ got here the tree is current. Read what is relevant, skip what is not:
 - `~/vault/04_operations/key_decisions.md`, `wins_ledger.md` — recent context
 - `~/vault/07_daily/logs/` — the last 2-3 daily logs (yesterday's EOD is the handoff)
 - `~/vault/03_projects/active/*/status.md` — per-project state
-- `~/vault/04_operations/fitness/workout_schedule.md` — only if today has a slot
 - `~/vault/05_knowledge/pattern_journal.md` — only if a pattern bears on today
 
 `_confidential/` is not on this box by construction. Do not go looking for it.
+
+**Today's training — every plan carries it, rest days included.** Read today's row from the
+workout schedule with the helper, not by scanning the file:
+
+```bash
+python3 ~/agent-workforce/bin/workout_today.py --date "$DATE"
+```
+It prints `week`, `kind` (`training` or `rest`), `session`, `detail` and `status` for the day,
+exits 1 when the schedule has no row for the date and 2 when it cannot be read. The plan used
+to include training "only if today has a slot", and rest days and some training days simply
+dropped out (09-17, 09-24, 09-25). A rest day is a line in the plan, not an absence.
 
 ## 4. Read Praetorium's own overnight state
 
@@ -146,6 +156,10 @@ Structure (the leading `>` line is the day's framing, one sentence, no hedging):
 ## Calendar
 - <HH:MM> <event> — <workstream>
 
+## Training
+- <session> — <the detail's numbers: duration, pace/HR cap, the gate>   (training day)
+- Rest day — <session as written, e.g. "Rest / walk", plus its detail>   (rest day)
+
 ## Priorities
 1. <the one thing that must move today, and why it is the one>
 2. <second>
@@ -158,7 +172,7 @@ Structure (the leading `>` line is the day's framing, one sentence, no hedging):
 - <failed/blocked jobs, new proposals, anything needing Dave>
 
 ## Watch
-- <BD follow-ups due, stalled pipeline rows, health/fitness slot if scheduled>
+- <BD follow-ups due, stalled pipeline rows>
 ```
 
 Rules for the content:
@@ -166,6 +180,12 @@ Rules for the content:
   five is the ceiling.
 - Every claim traces to something you read. Where you inferred rather than read, say so.
 - If an input was unreadable, add one line under the relevant section: `UNCONFIRMED: <what>`.
+- `## Training` is never omitted and holds exactly one line, under 200 characters. Take it
+  from `workout_today.py`: `kind: rest` → `Rest day — …`; `kind: training` → the session and
+  the detail's numbers (duration, pace/HR cap, the gate), not its prose. Exit 1 →
+  `UNCONFIRMED: no row for <date> in workout_schedule.md`; exit 2 → `UNCONFIRMED: workout
+  schedule unreadable`. If a calendar event collides with the session (travel, a full-day
+  block), say so on the same line — the schedule's own rules decide what gets dropped.
 
 ## 7. Write it to Notion — unconditionally
 
