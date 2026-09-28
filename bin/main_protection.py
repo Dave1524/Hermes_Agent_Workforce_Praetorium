@@ -44,14 +44,20 @@ def ruleset_errors(ruleset: dict) -> list[str]:
     return errors
 
 
-def api(command: list[str], endpoint: str, paginate: bool = False):
-    args = [*command, "api", endpoint]
-    if paginate:
-        args.extend(["--paginate", "--slurp"])
+def run_gh(args: list[str], endpoint: str) -> str:
     done = subprocess.run(args, text=True, capture_output=True, timeout=60)
     if done.returncode:
         raise RuntimeError(f"GitHub read failed: {endpoint} (exit {done.returncode})")
-    return json.loads(done.stdout)
+    return done.stdout
+
+
+def api(command: list[str], endpoint: str):
+    return json.loads(run_gh([*command, "api", endpoint], endpoint))
+
+
+def paged_names(command: list[str], endpoint: str, jq: str) -> set[str]:
+    # gh 2.46 (the box's) has no --slurp; --jq applies per page and concatenates lines.
+    return set(run_gh([*command, "api", endpoint, "--paginate", "--jq", jq], endpoint).split())
 
 
 def live_errors() -> list[str]:
@@ -64,10 +70,11 @@ def live_errors() -> list[str]:
     if not any(not ruleset_errors(ruleset) for ruleset in protections):
         errors.append("no active, non-bypassable ruleset covers all four requirements")
     try:
-        pages = api([str(ROOT / "bin/gh_app.sh")], "/installation/repositories", paginate=True)
+        installed = paged_names([str(ROOT / "bin/gh_app.sh")], "/installation/repositories",
+                                ".repositories[].full_name")
     except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
         return [*errors, f"App installation could not be verified: {exc}"]
-    if not any(repo.get("full_name") == REPO for page in pages for repo in page.get("repositories", [])):
+    if REPO not in installed:
         errors.append(f"App installation does not include {REPO}")
     return errors
 
