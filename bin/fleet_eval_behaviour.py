@@ -135,6 +135,15 @@ def _published(receipt):
     return receipt.get("buzz_attempted") and receipt.get("buzz_result") == "ok"
 
 
+def _as_recorded(field, value):
+    """bin/deliver.sh records a route that notifies nobody as notify='' (initialised at :121 and
+    only assigned when a slug resolves); the route table spells the same decision 'none'. Until
+    2026-09-29 this compared the two literally, and every incidents-route delivery (97 of them)
+    read as a mismatch the day fleet-eval was re-enabled."""
+    value = str(value)
+    return "none" if field == "notify" and value == "" else value
+
+
 def _mismatches(receipt, route):
     """Only fields the receipt actually carries — an absent field is legacy, not wrong."""
     expected = {
@@ -146,7 +155,7 @@ def _mismatches(receipt, route):
     return [
         f"{field}={receipt[field]!r} but route says {want!r}"
         for field, want in expected.items()
-        if receipt.get(field) is not None and str(receipt[field]) != want
+        if receipt.get(field) is not None and _as_recorded(field, receipt[field]) != want
     ]
 
 
