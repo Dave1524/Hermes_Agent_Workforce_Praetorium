@@ -179,8 +179,22 @@ esac
 
 # Only a run that spends a model call needs the binary: --dry-run, the change gate and the
 # $HOME refusal above answer without it, which is what lets CI run them on a bare runner.
-command -v claude >/dev/null 2>&1 || {
-  echo "agent_config_eval: claude is not on PATH — nothing to evaluate" >&2; exit 2; }
+#
+# The binary is pinned, not taken from PATH, like every bin/run_*_cc.sh. Under systemd PATH
+# resolves /usr/local/bin/claude, 2.1.201 on 2026-09-29, which has no --trust-plugin, no
+# --no-publish, no -j and a boolean --json. The first scheduled run (2026-09-26) therefore died on
+# "unknown option '--trust-plugin'" before evaluating anything; every run by hand had used the
+# 2.1.278 on the interactive PATH. The capability is checked as well as the path, so the next
+# CLI that drops a flag stops here, by name, instead of inside the first eval child.
+CLAUDE_BIN="${CLAUDE_BIN:-/home/linuxbrew/.linuxbrew/bin/claude}"
+[ -x "$CLAUDE_BIN" ] || {
+  echo "agent_config_eval: no claude at $CLAUDE_BIN — nothing to evaluate" >&2; exit 2; }
+eval_help="$("$CLAUDE_BIN" plugin eval --help 2>&1)"
+for flag in --trust-plugin --no-publish --concurrency; do
+  grep -qe "$flag" <<<"$eval_help" || {
+    echo "agent_config_eval: $CLAUDE_BIN ($("$CLAUDE_BIN" --version 2>/dev/null)) has no plugin eval $flag" >&2
+    exit 2; }
+done
 
 # Non-blocking, like fleet_eval: every case run is a full `claude` child on the same login as
 # five Buzz agents and nine runners, so two overlapping suites are a rate-limit collision and
@@ -222,7 +236,7 @@ eval_tree() {
               --allow-tools Write --model "$MODEL" --json "$out")
   [ -n "$RUNS" ] && args+=(--runs "$RUNS")
   [ -n "$only" ] && args+=(--case "$only")
-  ( cd "$work" && claude plugin eval "${args[@]}" ) >"$TMPROOT/$label.log" 2>&1
+  ( cd "$work" && "$CLAUDE_BIN" plugin eval "${args[@]}" ) >"$TMPROOT/$label.log" 2>&1
   if [ ! -s "$out" ]; then
     echo "agent_config_eval: $owner produced no result JSON:" >&2
     tail -5 "$TMPROOT/$label.log" >&2
