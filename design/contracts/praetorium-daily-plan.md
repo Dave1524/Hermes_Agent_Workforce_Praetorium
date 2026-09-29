@@ -238,13 +238,16 @@ modes` references them, never the numbers.
     2026-09-28. Before that the profile included training "only if today has a slot", and the
     plans for 09-17, 09-24 and 09-25 carried no training line at all. The line comes from
     `bin/workout_today.py`, so a day the schedule does not cover still yields a line, an
-    `UNCONFIRMED:` one, and never an absence.
+    `UNCONFIRMED:` one, and never an absence. The check asks for any non-empty line under
+    the heading, not a bullet. On 2026-09-29, its first live day, it failed a correct plan whose
+    training line Marcus wrote without the `- `: the content was there, and the form is not
+    what Dave asked for.
 
    ```check id=training-line-present
    body="$(find "$HOME/logs/daily-plan" -maxdepth 1 -name 'daily-plan-*.md' \
              -newermt "@$AGENT_RUN_STARTED_AT" 2>/dev/null | sort | tail -1)"
    [ -n "$body" ] || { echo "n/a: no artifact this run"; exit 77; }
-   line="$(awk '/^## Training/{f=1; next} f && /^## /{exit} f && /^- ./{print; exit}' "$body")"
+   line="$(awk '/^## Training/{f=1; next} f && /^#/{exit} f && NF{print; exit}' "$body")"
    [ -n "$line" ] || { echo "no line under '## Training' — today's workout or rest day is missing from the plan"; exit 1; }
    echo "$line"
    ```

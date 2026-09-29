@@ -85,6 +85,9 @@ assert 'a plan with a training line passes and quotes it' "[ $rc -eq 0 ] && grep
 printf '> Wednesday.\n\n## Training\n- Rest day — Travel / rest, walk\n' >"$PLAN"
 run_check; rc=$?
 assert 'a rest day is a line, and passes' "[ $rc -eq 0 ]"
+printf '> Tuesday.\n\n## Training\nRun 1 → Strength B — 20 min continuous, HR<145.\n\n## Priorities\n1. x\n' >"$PLAN"
+run_check; rc=$?
+assert 'a plain line, not a bullet, passes (the 2026-09-29 plan)' "[ $rc -eq 0 ] && grep -q 'Run 1' '$WORK/check.out'"
 printf '> Monday.\n\n## Calendar\n- 09:00 call\n\n## Priorities\n1. x\n' >"$PLAN"
 run_check; rc=$?
 assert 'a plan with no Training section fails' "[ $rc -eq 1 ] && grep -q 'missing from the plan' '$WORK/check.out'"
