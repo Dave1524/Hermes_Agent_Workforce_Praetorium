@@ -109,6 +109,24 @@ assert 'a mismatched notify slug fails' "grep -q '^receipt-conformance|FAIL|' '$
 assert 'the failure names the slug that was woken' \
   "grep -q \"notify='claudius' but route says 'marcus'\" '$TMP/badnotify.out'"
 
+echo '--- tier 1: a route that notifies nobody, as deliver.sh actually records it (2026-09-29) ---'
+# deliver.sh writes notify='' for a notify=none route. The fixtures above never exercised that
+# route shape, and the first live run after fleet-eval was re-enabled failed on all 97
+# incidents-route receipts.
+INCIDENTS=ebe0c534-d7e7-4672-b21d-826f009c0ecb
+cp "$ROUTES" "$TMP/routes_none_fixture.env"
+printf 'ROUTE_incidents=%s\nROUTE_incidents_kind=9\nROUTE_incidents_notify=none\n' "$INCIDENTS" \
+  >>"$TMP/routes_none_fixture.env"
+receipt "$NOW" incidents "$INCIDENTS" kind=9 notify= >"$TMP/nonotify.jsonl"
+behaviour "$TMP/nonotify.jsonl" "$TMP/routes_none_fixture.env" >"$TMP/nonotify.out"
+assert "notify='' on a notify=none route conforms" "grep -q '^receipt-conformance|PASS|' '$TMP/nonotify.out'"
+receipt "$NOW" ops "$OPS" kind=9 notify= >"$TMP/nowake.jsonl"
+behaviour "$TMP/nowake.jsonl" "$TMP/routes_none_fixture.env" >"$TMP/nowake.out"
+assert "but notify='' on a route that should wake marcus still fails" \
+  "grep -q '^receipt-conformance|FAIL|' '$TMP/nowake.out' && grep -qF \"notify='' but route says 'marcus'\" '$TMP/nowake.out'"
+assert 'the empty value is what the producer initialises, not a fixture guess' \
+  "grep -qx 'notify=\"\"; notify_pubkey=\"\"' '$REPO_ROOT/bin/deliver.sh'"
+
 echo '--- tier 1: a pre-2026-08-08 receipt carries no kind and is not a mismatch ---'
 receipt "$NOW" research "$RESEARCH" >"$TMP/legacy.jsonl"
 behaviour "$TMP/legacy.jsonl" >"$TMP/legacy.out"
