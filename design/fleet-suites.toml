@@ -661,6 +661,18 @@ nine would say the other eight are not covered by it.
 """
 
 [[suite]]
+path    = "tests/test_cc_run_close_loop.sh"
+owner   = "fleet"
+asserts = [
+  "cc-run-close-loop-off",           # both exec paths hand claude CLAUDE_CLOSE_LOOP_CHECK=off, whatever the caller exported
+  "cc-run-close-loop-every-runner",  # every Claude Code runner a profiles/*.env.example wires is run, and its claude inherits the opt-out
+]
+why_no_workflow = """
+Same seam as tests/test_cc_run.sh, and the second group walks every runner the job templates
+wire; crediting one workflow would say the others are not covered by it.
+"""
+
+[[suite]]
 path    = "tests/test_propose_receipt.sh"
 owner   = "fleet"
 asserts = [
