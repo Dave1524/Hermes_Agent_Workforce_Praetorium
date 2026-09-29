@@ -280,6 +280,7 @@ apply() {
     cp -p "$LOCAL_BIN/$b" "$backup/$b" || die "could not back up $b"
   done
   ( cd "$backup" && sha256sum "${BINARIES[@]}" > SHA256SUMS )
+  [ ! -f "$RECEIPT" ] || cp -p "$RECEIPT" "$backup/receipt.json" || die "could not back up the receipt"
   echo "backed up the running binaries to $backup"
 
   for b in "${BINARIES[@]}"; do
@@ -331,6 +332,11 @@ rollback_to() {
   for b in "${BINARIES[@]}"; do
     install -m 0755 "$backup/$b" "$LOCAL_BIN/$b"
   done
+  if [ -f "$backup/receipt.json" ]; then
+    cp -p "$backup/receipt.json" "$RECEIPT"
+  else
+    note "$backup holds no receipt; the live one no longer describes these bytes — run: $0 adopt <tag>"
+  fi
   for u in $(fleet_units); do systemctl --user restart "$u" || true; done
   note "rolled back from $backup; re-run the fleet gate by hand before trusting the fleet"
 }

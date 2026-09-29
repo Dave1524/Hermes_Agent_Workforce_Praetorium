@@ -148,6 +148,48 @@ printf '0' > "$v2/buzz-cli-check-last-ok"
 assert 'and a checker that has NEVER succeeded reports rather than waiting out a window' \
   "! run_check '$v2' 'file:///nonexistent-endpoint'"
 
+echo "--- apply: a gate failure rolls back the receipt with the bytes ---"
+# systemctl and sleep are stubbed so apply restarts nothing real; the gate is a fake
+# verify-fleet under a fixture HOME whose exit code we choose.
+mkdir -p "$fx/stub"
+cat > "$fx/stub/systemctl" <<'STUB'
+#!/usr/bin/env bash
+case " $* " in
+  *" list-units "*) echo "buzz-agent@fake.service loaded active running fake" ;;
+  *" show "*) echo 0 ;;
+  *" is-active "*) echo active ;;
+esac
+exit 0
+STUB
+printf '#!/usr/bin/env bash\nexit 0\n' > "$fx/stub/sleep"
+chmod +x "$fx/stub/systemctl" "$fx/stub/sleep"
+
+run_apply() {  # run_apply <gate-exit> ; prints the var dir it used
+  local ap bin home
+  ap=$(newvar); bin="$ap/bin"; home="$ap/home"
+  mkdir -p "$bin" "$home/.config/buzz-team" "$ap/buzz-stage/desktop-v0.5.99"
+  make_acp "$bin/buzz-acp" "$WAKE old" "$ALL_FLAGS"; cp "$bin/buzz-acp" "$bin/buzz"
+  make_acp "$ap/buzz-stage/desktop-v0.5.99/buzz-acp" "$WAKE new" "$ALL_FLAGS"
+  cp "$ap/buzz-stage/desktop-v0.5.99/buzz-acp" "$ap/buzz-stage/desktop-v0.5.99/buzz"
+  printf '#!/usr/bin/env bash\nexit %s\n' "$1" > "$home/.config/buzz-team/verify-fleet.sh"
+  chmod +x "$home/.config/buzz-team/verify-fleet.sh"
+  BUZZ_UPDATE_VAR="$ap" BUZZ_UPDATE_BIN="$bin" "$TOOL" adopt desktop-v0.5.98 >/dev/null 2>&1
+  HOME="$home" PATH="$fx/stub:$PATH" BUZZ_UPDATE_VAR="$ap" BUZZ_UPDATE_BIN="$bin" \
+    BUZZ_UPDATE_UNIT="$FAKE_UNIT" "$TOOL" apply desktop-v0.5.99 >/dev/null 2>&1
+  printf '%s' "$ap"
+}
+receipt_tag() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["tag"])' "$1/buzz-cli-install.json"; }
+is_pinned() { BUZZ_UPDATE_VAR="$1" BUZZ_UPDATE_BIN="$1/bin" "$TOOL" status 2>&1 | grep -q '  pinned:'; }
+
+ap=$(run_apply 1)
+assert 'a failed gate puts the old bytes back' "grep -q '# old' '$ap/bin/buzz-acp'"
+assert 'and the receipt names the old tag again, not the release that was rolled back' \
+  "[ \"\$(receipt_tag '$ap')\" = desktop-v0.5.98 ]"
+assert 'so the receipt is pinned to the bytes on disk' "is_pinned '$ap'"
+ap=$(run_apply 0)
+assert 'a passed gate leaves the new bytes, and a receipt naming the new tag' \
+  "grep -q '# new' '$ap/bin/buzz-acp' && [ \"\$(receipt_tag '$ap')\" = desktop-v0.5.99 ] && is_pinned '$ap'"
+
 echo "--- the live install, and the real July binary as a fixture ---"
 box_only_with 'the installed buzz binaries and the unit that launches them' \
   "$HOME/.local/bin/buzz-acp" "$HOME/.config/systemd/user/buzz-agent@.service" || exit 77
