@@ -620,6 +620,8 @@ assert_bridge_offer() {
 # the two ways to break that silently stay closed — a profile without network, and an admin
 # deny_read in /etc/codex/requirements.toml, which rejects augustus's danger-full-access.
 CODEX_CONFIG="$HOME/.codex/config.toml"
+# A systemd unit's PATH has no linuxbrew, and apply runs this gate from one.
+CODEX_BIN=$(command -v codex || echo /home/linuxbrew/.linuxbrew/bin/codex)
 CODEX_DENIED=(.ssh .config/agent-workforce .config/buzz-agents .config/google-docs-mcp
   ENCRYPTION_RECOVERY.md .confidential.img)
 
@@ -647,9 +649,11 @@ assert_codex_profile() {
   else
     ok "16/codex-profile no admin deny_read in /etc/codex/requirements.toml"
   fi
-  if ! (cd /tmp && timeout 30 codex sandbox -- ls "$HOME/dev" >/dev/null 2>&1); then
+  if [ ! -x "$CODEX_BIN" ]; then
+    fail "16/codex-profile codex CLI not found (not on PATH, not at $CODEX_BIN), so the sandbox probe cannot run"
+  elif ! (cd /tmp && timeout 30 "$CODEX_BIN" sandbox -- ls "$HOME/dev" >/dev/null 2>&1); then
     fail "16/codex-profile control: codex sandbox cannot read ~/dev, so the deny probe proves nothing"
-  elif (cd /tmp && timeout 30 codex sandbox -- ls "$HOME/.ssh" >/dev/null 2>&1); then
+  elif (cd /tmp && timeout 30 "$CODEX_BIN" sandbox -- ls "$HOME/.ssh" >/dev/null 2>&1); then
     fail "16/codex-profile codex sandbox lists ~/.ssh"
   else
     ok "16/codex-profile codex sandbox is denied ~/.ssh (control ~/dev readable)"
