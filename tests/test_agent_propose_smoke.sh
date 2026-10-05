@@ -697,4 +697,43 @@ assert "no BLOCKED record" "! grep -q 'outcome=BLOCKED' '$h40b/agent-workforce/l
 h40c=$(sandbox); stub40c=$(make_requires_stub "$h40c" 1 'requires x: inactive')
 rc=$(DELIVERY_JOB= AGENT_RECEIPT_UNIT= WORKFLOW_REQUIRES="$stub40c" run_scenario "$h40c" 0 0)
 assert "no unit known: the pre-flight is skipped out loud, never asked" "[ '$rc' = 0 ] && [ ! -e '$h40c/requires_argv.log' ] && grep -q 'requires pre-flight skipped: no unit' '$h40c/agent-workforce/logs/agent_propose.log'"
+
+# ── the claude-auth pre-flight (2026-10-05) ─────────────────────────────────────────────────
+# CLAUDE_AUTH_PROBE points it at a stub; the probe's own verdicts are tests/test_claude_auth.sh's.
+# The runtime is renamed *_cc.sh, the shape that marks a Claude Code runner.
+make_auth_scenario() {  # make_auth_scenario <home> <probe-rc> <probe-line>
+  ln -s "$1/mock_hermes.sh" "$1/run_mock_cc.sh"
+  sed -i "s|^AGENT_RUNTIME_CMD=.*|AGENT_RUNTIME_CMD=$1/run_mock_cc.sh|" "$1/.config/agent-workforce/secrets.env"
+  cat > "$1/stub_auth.sh" <<EOF
+#!/usr/bin/env bash
+echo probed >> "$1/auth_argv.log"
+echo "$3"
+exit $2
+EOF
+  chmod +x "$1/stub_auth.sh"
+}
+auth_incident() { echo "$1/agent-workforce/var/incidents/declared/auth-expired_claude-auth_claude-auth.json"; }
+echo "--- scenario 41: an auth refusal is a skipped run and one shared incident, nothing launched (::propose-claude-auth-preflight) ---"
+h41=$(sandbox); make_auth_scenario "$h41" 3 'claude-auth: refused — OAuth session expired'
+rc=$(CLAUDE_AUTH_PROBE="$h41/stub_auth.sh" run_receipt_scenario "$h41" 0)
+assert "exits 0" "[ '$rc' = 0 ]"
+assert "the receipt is skipped, naming the dependency" "stub_has '$h41' --skipped 'dependency-down: claude-auth — claude-auth: refused — OAuth session expired'"
+assert "and is the only receipt call, never --failed" "[ \"\$(stub_calls '$h41')\" = 1 ] && ! grep -q -- '--failed' '$h41/stub.jsonl'"
+assert "cost.log outcome=BLOCKED" "grep -q 'outcome=BLOCKED' '$h41/agent-workforce/logs/cost.log'"
+assert "the runtime was never launched" "[ ! -s '$h41/hermes_argv.log' ]"
+assert "one open auth-expired incident is declared" "[ \"\$(jq -r .resolved_at \"\$(auth_incident '$h41')\")\" = null ]"
+first=$(jq -r .declared_at "$(auth_incident "$h41")")
+rc=$(CLAUDE_AUTH_PROBE="$h41/stub_auth.sh" run_receipt_scenario "$h41" 0)
+assert "a second refused run keeps the same incident (declared_at unchanged)" "[ \"\$(jq -r .declared_at \"\$(auth_incident '$h41')\")\" = '$first' ] && [ \"\$(ls '$h41/agent-workforce/var/incidents/declared' | wc -l)\" = 1 ]"
+h41b=$(sandbox); make_auth_scenario "$h41b" 0 'claude-auth: ok (3s)'
+mkdir -p "$(dirname "$(auth_incident "$h41b")")"; cp "$(auth_incident "$h41")" "$(auth_incident "$h41b")"
+rc=$(CLAUDE_AUTH_PROBE="$h41b/stub_auth.sh" run_receipt_scenario "$h41b" 0)
+assert "a passing probe runs the job" "[ '$rc' = 0 ] && [ -s '$h41b/hermes_argv.log' ] && grep -q 'claude-auth: ok' '$h41b/agent-workforce/logs/agent_propose.log'"
+assert "and closes the open incident" "[ \"\$(jq -r .resolved_at \"\$(auth_incident '$h41b')\")\" != null ]"
+h41c=$(sandbox); make_auth_scenario "$h41c" 1 'claude-auth: unknown — exit 124'
+rc=$(CLAUDE_AUTH_PROBE="$h41c/stub_auth.sh" run_receipt_scenario "$h41c" 0)
+assert "unknown is not a refusal: the run proceeds, no incident" "[ '$rc' = 0 ] && [ -s '$h41c/hermes_argv.log' ] && [ ! -e \"\$(auth_incident '$h41c')\" ]"
+h41d=$(sandbox); : > "$h41d/stub_auth.sh"
+rc=$(CLAUDE_AUTH_PROBE="$h41d/stub_auth.sh" run_receipt_scenario "$h41d" 0)
+assert "a runtime that is not a Claude Code runner is never probed" "[ '$rc' = 0 ] && [ ! -e '$h41d/auth_argv.log' ] && ! grep -q 'claude-auth' '$h41d/agent-workforce/logs/agent_propose.log'"
 exit $fail

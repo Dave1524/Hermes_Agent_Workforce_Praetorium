@@ -43,6 +43,7 @@ SEVERITY = {
     "incomplete-run": "high",
     "malformed-receipt": "high",
     "control-failure": "high",
+    "auth-expired": "high",
     "blocked-next-action": "medium",
     "contract-unavailable": "medium",
 }
@@ -54,6 +55,8 @@ REQUIRED_ACTION = {
     "incomplete-run": "The run never completed; check the unit's journal and re-run by hand.",
     "malformed-receipt": "Repair or quarantine the malformed receipt; do not infer its run outcome.",
     "control-failure": "The incident sweep cannot see one of its sources; restore it before trusting silence.",
+    "auth-expired": ("Headless Claude cannot authenticate, so every scheduled runner and Claude agent is down: "
+                     "check ~/.config/agent-workforce/claude_oauth.env (mint with `claude setup-token`) or /login."),
     "blocked-next-action": "Unblock the named next action.",
     "contract-unavailable": "Declare and validate the workflow contract before receipt wiring.",
 }
@@ -218,12 +221,22 @@ def _write_json(path: pathlib.Path, data: dict[str, Any]) -> None:
         raise
 
 
+def _open_declared(path: pathlib.Path) -> bool:
+    try:
+        return json.loads(path.read_text()).get("resolved_at") is None
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
 def declare(state_dir: pathlib.Path, incident: dict[str, Any], now: dt.datetime | None = None) -> pathlib.Path:
+    """Idempotent while open: a re-declaration keeps the first one, so N callers are one incident."""
     problem = _validate_declared(incident)
     if problem:
         raise ValueError(problem)
     key_ = key(incident["class"], incident["workflow_id"], incident["id"])
     path = _declared_dir(state_dir) / f"{sanitise_key(key_)}.json"
+    if _open_declared(path):
+        return path
     _write_json(path, {**incident, "schema": SCHEMA, "key": key_, "declared_at": iso_utc(now), "resolved_at": None})
     return path
 
@@ -233,7 +246,8 @@ def resolve_declared(state_dir: pathlib.Path, key_: str, now: dt.datetime | None
     if not path.is_file():
         return False
     data = json.loads(path.read_text())
-    _write_json(path, {**data, "resolved_at": iso_utc(now)})
+    if data.get("resolved_at") is None:
+        _write_json(path, {**data, "resolved_at": iso_utc(now)})
     return True
 
 

@@ -2,7 +2,8 @@
 # cc_run.sh <claude-bin> <args…> — the one seam between a scheduled runner and Claude Code.
 #
 # With AGENT_USAGE_JSON unset this is `exec "$@"`, argv byte for byte: hand runs and the smoke
-# suites see no wrapper beyond the one variable exported below. With it set, claude is asked
+# suites see no wrapper beyond the variables exported below (the close-loop opt-out, and the
+# headless token when bin/claude_oauth_env.sh finds one). With it set, claude is asked
 # for its JSON envelope, which bin/cc_envelope.py splits: `.result` goes to stdout exactly as
 # text mode printed it — the five readers of runner stdout (^DECLINE:, PROVIDER_ERROR_RE,
 # proposal_or_decline.sh, the contract checks, deliver_proposal.sh) are unchanged — and the
@@ -21,6 +22,10 @@ BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # today (the box-safe mirror is allowlist-only); a canonical vault checkout does. Unconditional:
 # no scheduled run wants the reminder.
 export CLAUDE_CLOSE_LOOP_CHECK=off
+
+# shellcheck source=bin/claude_oauth_env.sh
+. "$BIN_DIR/claude_oauth_env.sh"
+claude_oauth_export
 
 if [ -z "${AGENT_USAGE_JSON:-}" ]; then
   exec "$@"

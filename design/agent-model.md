@@ -90,8 +90,9 @@ Upstream ships **no standalone CLI asset**; the CLI rides inside `Buzz_X.Y.Z_amd
 the Desktop app. Previous pair kept at `~/.local/bin/buzz-backup-2026-09-07/`.
 
 **Staleness is now watched, and that is the durable half of this.** `agent-buzz-acp-update.timer`
-(daily 07:35) alerts through `agent-alert@` when the box falls behind upstream, when the receipt
-stops matching disk, or when it has not reached GitHub for a week. It stages and probes a candidate
+(daily 07:35) records on its receipt when the box falls behind upstream (exit 10, a notice since
+2026-10-05), and alerts through `agent-alert@` when the receipt stops matching disk or when it has
+not reached GitHub for a week. It stages and probes a candidate
 — wake literals plus every flag the unit's `ExecStart` passes — but installs nothing: that is
 `bin/buzz_acp_update.sh apply <tag>`, supervised, with a canary restart and automatic rollback.
 The five-week gap was never really a stale binary; it was that no check on this box could ask the

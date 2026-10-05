@@ -189,6 +189,11 @@ esac
 CLAUDE_BIN="${CLAUDE_BIN:-/home/linuxbrew/.linuxbrew/bin/claude}"
 [ -x "$CLAUDE_BIN" ] || {
   echo "agent_config_eval: no claude at $CLAUDE_BIN — nothing to evaluate" >&2; exit 2; }
+# Its eval children spawn claude themselves, so neither launch seam is in the path; the token
+# is set here, exported to every child, by the same reader the seams use.
+# shellcheck source=bin/claude_oauth_env.sh
+. "$BIN_DIR/claude_oauth_env.sh"
+claude_oauth_export
 eval_help="$("$CLAUDE_BIN" plugin eval --help 2>&1)"
 for flag in --trust-plugin --no-publish --concurrency; do
   grep -qe "$flag" <<<"$eval_help" || {

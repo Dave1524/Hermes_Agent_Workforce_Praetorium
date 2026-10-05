@@ -326,8 +326,14 @@ echo '--- 11. the private key leaves the claude argv: --mcp-config <json> become
 W="$TMP/w"; mkdir -p "$W/brew" "$W/run" "$W/home/.config/buzz-team" "$W/home/agent-workforce/skills/t/.claude-plugin"
 echo '{"name":"praetorium-t"}' > "$W/home/agent-workforce/skills/t/.claude-plugin/plugin.json"
 : > "$W/home/.config/buzz-team/agent-settings-t.json"
-printf '#!/bin/sh\nfor a in "$@"; do printf "%%s\\n" "$a"; done > "$STUB_OUT"\n' > "$W/brew/claude"; chmod +x "$W/brew/claude"
-run_wrapper() { HOME="$W/home" XDG_RUNTIME_DIR="$W/run" CLAUDE_WRAPPER_BREW="$W/brew" BUZZ_AGENT_NAME=t STUB_OUT="$W/argv" sh "$WRAPPER" "$@"; }
+cat > "$W/brew/claude" <<'STUB'
+#!/bin/sh
+for a in "$@"; do printf "%s\n" "$a"; done > "$STUB_OUT"
+printf '%s' "${CLAUDE_CODE_OAUTH_TOKEN:-}" > "$STUB_OUT.token"
+STUB
+chmod +x "$W/brew/claude"
+run_wrapper() { env -u CLAUDE_CODE_OAUTH_TOKEN HOME="$W/home" XDG_RUNTIME_DIR="$W/run" CLAUDE_WRAPPER_BREW="$W/brew" \
+  CLAUDE_OAUTH_HELPER="$REPO_ROOT/bin/claude_oauth_env.sh" BUZZ_AGENT_NAME=t STUB_OUT="$W/argv" sh "$WRAPPER" "$@"; }
 run_wrapper --output-format stream-json --mcp-config '{"mcpServers":{"x":{"env":{"BUZZ_PRIVATE_KEY":"SECRET"}}}}' --setting-sources=user --session-id=abc
 assert 'the stub ran and its argv carries no key' "[ -s '$W/argv' ] && ! grep -q SECRET '$W/argv'"
 assert 'the --mcp-config value is the runtime file, named by agent and session' \
@@ -343,5 +349,20 @@ assert "an unwritable runtime dir refuses (exit $rc) rather than passing the JSO
   "[ '$rc' = 1 ] && grep -q 'refusing to pass it in argv' <<<\"\$probe\" && [ ! -e '$W/run/buzz-team/mcp-t-ghi.json' ]"
 assert 'the launch script clears the agent'"'"'s files from the previous process' \
   "grep -q 'rm -f \"\${XDG_RUNTIME_DIR:-/run/user/\$(id -u)}/buzz-team/mcp-\${BUZZ_AGENT_NAME:-}-\"\*.json' '$BT/buzz-acp-launch.sh'"
+
+echo '--- 12. the headless token reaches claude only from a mode-600 file, and the seam is never skipped (::wrapper-oauth-token) ---'
+TOK="$W/home/.config/agent-workforce/claude_oauth.env"
+run_wrapper --session-id=t0
+assert 'no token file: claude gets no CLAUDE_CODE_OAUTH_TOKEN (inert until Dave mints one)' "[ -e '$W/argv.token' ] && [ ! -s '$W/argv.token' ]"
+mkdir -p "${TOK%/*}"; printf 'CLAUDE_CODE_OAUTH_TOKEN=tok-123\nCLAUDE_OAUTH_EXPIRES=2027-10-05\n' > "$TOK"; chmod 600 "$TOK"
+run_wrapper --session-id=t1
+assert 'a mode-600 token file is exported to claude' "[ \"\$(cat '$W/argv.token')\" = tok-123 ]"
+assert 'the token never reaches the argv' "! grep -q tok-123 '$W/argv'"
+chmod 644 "$TOK"; probe=$(run_wrapper --session-id=t2 2>&1)
+assert 'a group/world-readable token file is ignored, out loud' \
+  "[ ! -s '$W/argv.token' ] && grep -q 'not mode 600' <<<\"\$probe\" && ! grep -q tok-123 <<<\"\$probe\""
+probe=$(env HOME="$W/home" CLAUDE_WRAPPER_BREW="$W/brew" CLAUDE_OAUTH_HELPER="$W/absent.sh" BUZZ_AGENT_NAME=t \
+  STUB_OUT="$W/argv" sh "$WRAPPER" 2>&1); rc=$?
+assert "an undeployed token helper is refused (exit $rc), never skipped" "[ '$rc' = 1 ] && grep -q 'token helper not readable' <<<\"\$probe\""
 
 exit $fail

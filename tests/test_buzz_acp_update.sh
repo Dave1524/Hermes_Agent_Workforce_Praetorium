@@ -125,6 +125,10 @@ assert 'a receipt matching disk, with upstream at the same tag, is exit 0' \
   "run_check '$v' \"\$(serve_tag desktop-v0.5.23)\""
 assert 'the same receipt with upstream AHEAD is exit 10, not 0' \
   "run_check '$v' \"\$(serve_tag desktop-v9.9.9)\"; [ \$? -eq 10 ]"
+UNIT_FILE="$REPO_ROOT/systemd/agent-buzz-acp-update.service"
+assert 'and the unit takes 10 as success: behind is a notice, never a daily failed receipt' \
+  "grep -qx 'SuccessExitStatus=10' '$UNIT_FILE'"
+assert 'while exit 1 still alerts' "grep -qx 'OnFailure=agent-alert@%n.service' '$UNIT_FILE'"
 
 # The failure this whole design turns on: the receipt is a note about the artifact, and a
 # note can describe bytes that are no longer there. It must never be believed on its own.

@@ -24,10 +24,16 @@ export HOME=/home/dave
 export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/1000}
 export PATH="/home/dave/.local/bin:/usr/local/bin:/usr/bin:/bin"
 
-CLAUDE_BIN=/usr/local/bin/claude
 ACP_BIN=/usr/local/bin/claude-agent-acp
 PROBE_MODEL=${FLEET_PROBE_MODEL:-claude-haiku-4-5-20251001}
-SENTINEL=FLEET_TURN_OK
+# Gate 2's turn and gate 3's cause share one reader of "what an auth refusal looks like" with
+# the scheduled runners' pre-flight (the deployed bin/claude_auth_probe.sh), and one incident:
+# bin/claude_auth_incident.sh, which this gate and every runner open and close by the same key.
+AUTH_PROBE=${FLEET_AUTH_PROBE:-/home/dave/agent-workforce/bin/claude_auth_probe.sh}
+AUTH_INCIDENT=${FLEET_AUTH_INCIDENT:-/home/dave/agent-workforce/bin/claude_auth_incident.sh}
+# Gate 7: the headless token's recorded expiry, read through the seams' own reader.
+OAUTH_HELPER=${FLEET_OAUTH_HELPER:-/home/dave/agent-workforce/bin/claude_oauth_env.sh}
+TOKEN_WARN_DAYS=${FLEET_TOKEN_WARN_DAYS:-30}
 LOOKBACK_MIN=${FLEET_LOOKBACK_MIN:-90}
 STATE=${FLEET_STATE_FILE:-/home/dave/logs/fleet-turn-check.state}
 # CPU burned between two runs that counts as "this agent did real work". One real
@@ -79,20 +85,13 @@ fi
 # A real model round trip. This is the gate that would have caught 2026-08-27:
 # an expired refresh token cannot complete a turn, however healthy the units look.
 gate 2 "turn-completes (synthetic turn, model=$PROBE_MODEL)"
-t0=$(date +%s)
-turn_out=$(timeout 120 "$CLAUDE_BIN" -p --model "$PROBE_MODEL" \
-  "Reply with exactly this token and nothing else: $SENTINEL" 2>&1)
-turn_rc=$?
-t1=$(date +%s)
-if [ $turn_rc -ne 0 ]; then
-  fail_ "probe turn exited $turn_rc after $((t1-t0))s"
-  info_ "$(printf '%s' "$turn_out" | head -5)"
-elif [ "$(printf '%s' "$turn_out" | tr -d '[:space:]')" = "$SENTINEL" ]; then
-  pass_ "model returned the sentinel in $((t1-t0))s"
-else
-  fail_ "probe turn completed but did not return the sentinel"
-  info_ "got: $(printf '%s' "$turn_out" | head -3)"
-fi
+turn_rc=0
+turn_out=$(CLAUDE_AUTH_PROBE_MODEL="$PROBE_MODEL" "$AUTH_PROBE" 2>&1) || turn_rc=$?
+case $turn_rc in
+  0) pass_ "$turn_out"; "$AUTH_INCIDENT" close ;;
+  3) fail_ "AUTH -- $turn_out"; "$AUTH_INCIDENT" open "$turn_out" ;;
+  *) fail_ "probe turn did not complete (exit $turn_rc)"; info_ "${turn_out:0:300}" ;;
+esac
 
 # The newest Codex turn error in the window, as "<class>[ until <reset>]: <message>", or
 # nothing: not a Codex agent, no error logged, or the log unreadable (unknown, never a cause).
@@ -136,8 +135,8 @@ else
     else
       win_s=$look_s;  bound="last ${LOOKBACK_MIN}m"
     fi
-    win=$(date -d "@$win_s" '+%Y-%m-%d %H:%M:%S')
-    errs=$(journalctl --utc --user -u "$u" --since "$win" --no-pager 2>/dev/null \
+    win=$(date -u -d "@$win_s" '+%Y-%m-%d %H:%M:%SZ')
+    errs=$(journalctl --utc --user -u "$u" --since "@$win_s" --no-pager 2>/dev/null \
       | grep -c 'Failed to authenticate\|OAuth session expired\|reported error')
     # A COMPLETED TURN LOGS NOTHING. Measured 2026-08-31: marcus answered a DM at
     # 11:58 and left zero journal lines, and outcome="ok" has never once been
@@ -164,8 +163,11 @@ else
     fi
     if [ "$errs" -gt 0 ]; then
       cause=$(codex_cause "$name" "$win_s")
-      fail_ "$name: ERRORED${cause:+ ($cause)} -- $errs error line(s) in window [$win, now] ($bound)"
-      journalctl --utc --user -u "$u" --since "$win" --no-pager 2>/dev/null \
+      verdict=ERRORED
+      journalctl --utc --user -u "$u" --since "@$win_s" --no-pager 2>/dev/null \
+        | "$AUTH_PROBE" classify >/dev/null || verdict=AUTH
+      fail_ "$name: $verdict${cause:+ ($cause)} -- $errs error line(s) in window [$win, now] ($bound)"
+      journalctl --utc --user -u "$u" --since "@$win_s" --no-pager 2>/dev/null \
         | grep 'Failed to authenticate\|OAuth session expired\|reported error' | tail -2 \
         | while IFS= read -r l; do info_ "  ${l:0:150}"; done
     elif [ "$turns" -gt 0 ]; then
@@ -259,6 +261,34 @@ else
       pass_ "$name: one turn per relay event"
     fi
   done <<<"$rate_out"
+fi
+
+# ---------------------------------------------------------------- gate 7
+# The headless token lapses on a date written down at mint, so the next outage is scheduled,
+# not discovered. No token file is not a failure: the fleet is on the interactive login, which
+# gates 1-3 watch. A token with no recorded expiry is, because nothing could warn about it.
+gate 7 "token-expiry (headless CLAUDE_CODE_OAUTH_TOKEN, red ${TOKEN_WARN_DAYS}d before expiry)"
+if [ ! -r "$OAUTH_HELPER" ]; then
+  fail_ "$OAUTH_HELPER is not deployed -- the token file cannot be read"
+else
+  # shellcheck source=/dev/null
+  . "$OAUTH_HELPER"
+  if [ ! -e "$(claude_oauth_file)" ]; then
+    info_ "no token file at $(claude_oauth_file) -- headless claude uses the interactive login"
+  else
+    expires=$(claude_oauth_expiry)
+    expires_s=$(date -u -d "$expires" +%s 2>/dev/null) || expires_s=""
+    if [ -z "$expires_s" ]; then
+      fail_ "the token file records no readable CLAUDE_OAUTH_EXPIRES (got '${expires}') -- its lapse would be discovered, not scheduled"
+    else
+      days=$(( (expires_s - $(date +%s)) / 86400 ))
+      if [ "$days" -lt "$TOKEN_WARN_DAYS" ]; then
+        fail_ "the headless token expires $expires ($days day(s)) -- mint a new one with claude setup-token"
+      else
+        pass_ "the headless token expires $expires ($days days)"
+      fi
+    fi
+  fi
 fi
 
 printf '\n== fleet-turn-check %s ==\n' "$([ $fail -eq 0 ] && echo PASS || echo FAIL)"

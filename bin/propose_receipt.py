@@ -4,7 +4,8 @@
     propose_receipt.py <OUTCOME> [--rc N] [--reason TEXT] [--proposal RELPATH]
 
 OUTCOME is the word agent_propose.sh logs to cost.log: SKIP, DEDUP, BLOCKED, FAIL, CRASHED,
-VIOLATION, OPS, PROPOSAL or NOPROPOSAL. Each maps to exactly one executor evidence flag —
+VIOLATION, OPS, PROPOSAL or NOPROPOSAL — or AUTHDOWN, the claude-auth pre-flight's refusal,
+which cost.log records as BLOCKED and the receipt as a skipped dependency-down. Each maps to exactly one executor evidence flag —
 the outcome map in .claude/briefs/t5-2-executor-wiring.md — and the executor derives the
 terminal outcome from there; nothing here defaults to success.
 
@@ -38,10 +39,10 @@ REASON_TAIL = 400
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    p.add_argument("outcome", choices=["SKIP", "DEDUP", "BLOCKED", "FAIL", "CRASHED", "VIOLATION",
+    p.add_argument("outcome", choices=["SKIP", "DEDUP", "BLOCKED", "AUTHDOWN", "FAIL", "CRASHED", "VIOLATION",
                                        "OPS", "PROPOSAL", "NOPROPOSAL"])
     p.add_argument("--rc", type=int, help="the runtime's exit status (FAIL, CRASHED)")
-    p.add_argument("--reason", help="the gate that refused (BLOCKED)")
+    p.add_argument("--reason", help="the gate that refused (BLOCKED, AUTHDOWN)")
     p.add_argument("--proposal", metavar="RELPATH", help="the proposal, relative to the inbox worktree (PROPOSAL)")
     return p.parse_args(argv)
 
@@ -111,6 +112,8 @@ def evidence_flags(args: argparse.Namespace, env: dict[str, str]) -> list[str]:
         return ["--skipped", "dedup: today's proposal already exists"]
     if outcome == "BLOCKED":
         return ["--failed", f"BLOCKED: {args.reason or 'a preflight gate refused'}"]
+    if outcome == "AUTHDOWN":
+        return ["--skipped", f"dependency-down: claude-auth — {args.reason or 'headless claude refused authentication'}"]
     if outcome in ("FAIL", "CRASHED"):
         return ["--failed", f"{outcome}: rc={args.rc if args.rc is not None else '?'} {last_attempt_line(env)}".rstrip()]
     if outcome == "VIOLATION":
