@@ -14,6 +14,7 @@ case "$job" in
   *) echo "usage: $(basename "$0") content-strategy|faceless-content" >&2; exit 2 ;;
 esac
 
+BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_BIN="${CLAUDE_BIN:-/home/linuxbrew/.linuxbrew/bin/claude}"
 WORKDIR="${STANDING_RESEARCH_TOPIC_WORKDIR:-$HOME/agent-workforce}"
 
@@ -27,7 +28,7 @@ esac
 # notion_research_page.py (plain HTTP via notion_rest.py), not an MCP tool. Declare
 # AGENT_MCP_DEPS=none in the job env so agent_propose.sh skips the daemon probes too.
 cd "$WORKDIR"
-exec "$CLAUDE_BIN" -p "$(cat "$TASK_FILE")" \
+exec "$BIN_DIR/cc_run.sh" "$CLAUDE_BIN" -p "$(cat "$TASK_FILE")" \
   --model claude-opus-5 \
   --permission-mode dontAsk \
   --strict-mcp-config \

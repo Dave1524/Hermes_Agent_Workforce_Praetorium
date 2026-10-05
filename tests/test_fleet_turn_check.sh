@@ -171,7 +171,7 @@ echo '--- gate 3 names a Codex agent'"'"'s cause, from that agent'"'"'s own Code
 # "augustus: ERRORED -- 4 error line(s)" for a plan over its usage limit; the first reading was
 # "probably a one-off", and the next morning's report proposed a restart.
 assert 'the ERRORED line carries the cause when there is one' \
-  "grep -qF 'ERRORED\${cause:+ (\$cause)}' '$SCRIPT'"
+  "grep -qF '\$verdict\${cause:+ (\$cause)}' '$SCRIPT' && grep -qx '      verdict=ERRORED' '$SCRIPT'"
 assert 'the reader is the deployed classifier, overridable like turn_rate.py' \
   "grep -qF 'CODEX_TURN_ERROR=\${FLEET_CODEX_TURN_ERROR:-/home/dave/agent-workforce/bin/codex_turn_error.py}' '$SCRIPT'"
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/ftc.XXXXXX")
@@ -241,6 +241,20 @@ assert 'a FAIL with neither a receipt this hour nor a throttle line fails (OnFai
 set_case '' '' ''
 run_check; rc=$?
 assert 'no verdict line fails' "[ $rc -eq 1 ] && grep -q 'no verdict line' '$WORK/check.out'"
+
+echo '--- an auth refusal is named AUTH and is the one shared incident (2026-10-05) ---'
+# 2026-10-02..05: ~75 h in which every Claude agent's error was an expired login, reported here
+# as a generic ERRORED. The words are owned by bin/claude_auth_probe.sh, shared with the runners.
+assert 'gate 2 is the shared probe, deployed and overridable' \
+  "grep -qF 'AUTH_PROBE=\${FLEET_AUTH_PROBE:-/home/dave/agent-workforce/bin/claude_auth_probe.sh}' '$SCRIPT'"
+assert 'a refused probe fails as AUTH and opens the incident; a pass closes it' \
+  "grep -qF '3) fail_ \"AUTH -- \$turn_out\"; \"\$AUTH_INCIDENT\" open' '$SCRIPT' && grep -qF '0) pass_ \"\$turn_out\"; \"\$AUTH_INCIDENT\" close' '$SCRIPT'"
+assert 'gate 3 names AUTH from the error lines, through the same classifier' \
+  "grep -qF '\"\$AUTH_PROBE\" classify >/dev/null || verdict=AUTH' '$SCRIPT'"
+assert 'no direct claude launch remains (it would bypass the token seam)' "! grep -qE 'CLAUDE_BIN|claude\" -p' '$SCRIPT'"
+assert 'window labels are UTC, like the journal they bound' "grep -qF 'win=\$(date -u -d' '$SCRIPT'"
+assert 'gate 7 goes red before the token lapses, and on a token with no recorded expiry' \
+  "grep -qF 'TOKEN_WARN_DAYS=\${FLEET_TOKEN_WARN_DAYS:-30}' '$SCRIPT' && grep -q 'records no readable CLAUDE_OAUTH_EXPIRES' '$SCRIPT'"
 
 echo '--- the unit and the registry agree about what execs what ---'
 assert 'the unit ExecStarts the adopted script by its box path' \

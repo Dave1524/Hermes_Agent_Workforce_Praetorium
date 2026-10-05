@@ -163,7 +163,7 @@ Supporting daemons (not override-driven):
 | `fleet-eval.timer` | Daily 07:07 drift check via `bin/fleet_eval.sh`: tier 1 grades receipts against `bin/buzz_routes.env`, tier 2 re-asks the vault questions the fleet got wrong — three assert which document wins, and `p4_kind_span` asserts the answer is still inside the anchor's own retrieved chunk, because prose added to a vault file re-cuts every chunk below it. Gates on **regression against the baselines in `bin/fleet_eval_probes.json`**, not on absolute state — two probes fail today by design, and re-recording a baseline is a deliberate fixture edit. Exits 1 and posts to `ops` only when something moved backwards; history spine at `~/logs/fleet-eval/history.psv` |
 | `agent-config-eval.timer` | **Shipped disabled.** Weekly Sat 08:07 behavioural eval via `bin/agent_config_eval.sh --self-check --deliver`: runs each owner's `skills/<owner>/evals/*/case.yaml` through `claude plugin eval` and scores the result against `skills/evals-baseline.json`. The **only** unit here that spends model tokens — one full `claude` child per case run, on the login the five Buzz agents and nine runners share. Gates on **regression against the recorded baseline**, never an absolute mark; a rise is reported and leaves the baseline alone. Exits 1 and posts to `ops` only when something moved backwards. The verify gate runs the same script with `--changed-since` on any branch touching agent config; this timer exists for the class with **no diff** (a model rollout, a harness change) |
 | `agent-drift-check.timer` | Daily 05:40 source-vs-deployed drift via `bin/check_deploy_drift.sh` (D8). Compares every destination `bin/deploy` writes plus the three unit trees — `bin/` ↔ runtime, the eight content trees ↔ their runtime copies (`profiles`, `docs`, `config`, `CLAUDE.md`, `AGENTS.md`, `README.md`, `systemd` — the staging copy — and `skills`, the pointer tree the scheduled runners load by explicit path), `systemd/` ↔ `/etc`, `systemd/user/` ↔ `~/.config/systemd/user/`, `buzz-team/` ↔ `~/.config/buzz-team/` — in **both membership directions**, not just the bytes of units present in both. Ownership fails closed: an installed unit with no source is red unless declared in `design/unit-ownership.toml` (permanent) or by its manifest's `status = "campaign"` + `expires` (dated, and an expired entry still doing work is itself red). Reports only — no `/etc` writes, no `systemctl`, no deploy. The staging copy `~/agent-workforce/systemd/` is compared against **source**, never used as a stand-in for `/etc` (W17): `bin/deploy` writes it, so it is a destination this repo answers for, but systemd never reads it — source-vs-staging alone would go green the moment a unit is deployed while `/etc` stayed stale. Both comparisons run |
-| `agent-buzz-acp-update.timer` | Daily 07:35 upstream-currency check for the Buzz CLI/ACP via `bin/buzz_acp_update.sh check` (W20). The class it covers: the fleet ran a `buzz-acp` twelve releases behind for five weeks and nothing on this box could have reported it. **Buzz Desktop on the Mac and the CLI here are two independent installs of one release stream** — every upstream tag is `desktop-vX.Y.Z` and the CLI ships inside `Buzz_X.Y.Z_amd64.deb` at `usr/bin/`, as a byproduct of packaging the app — so Desktop keeping itself current through its Tauri updater says nothing about this box, and there is no dpkg package to `apt upgrade`. Neither binary answers `--version` and neither carries the release (`strings` finds the same `0.5.3` dependency crate in the July and September builds), so staleness is not merely unreported, it is **unaskable** without a receipt: `~/agent-workforce/var/buzz-cli-install.json` records tag *and* sha256, and every run re-hashes the live files before believing the tag. Non-zero is the whole notification path — **10** behind, **1** unpinned or a week without reaching upstream — because `agent-alert@` already owns the throttle (one alert on the transition, one reminder per 24h) and a second notifier would be a second copy of that policy. **It never installs.** It may stage and probe a new release, once per tag, so the report says whether that release would still *run* here: the three `buzz:workflow*` wake literals plus every flag the unit's `ExecStart` passes, since `buzz-acp` rejects an unknown flag at startup and `Restart=on-failure` turns that into a crash loop rather than a visible stop. Installing is `bin/buzz_acp_update.sh apply <tag>` by hand — canary restart, fleet gate, automatic rollback. Making it unattended is a one-line `ExecStart` change and the probe is what would make that defensible; do it after a few releases have passed cleanly, not before. |
+| `agent-buzz-acp-update.timer` | Daily 07:35 upstream-currency check for the Buzz CLI/ACP via `bin/buzz_acp_update.sh check` (W20). The class it covers: the fleet ran a `buzz-acp` twelve releases behind for five weeks and nothing on this box could have reported it. **Buzz Desktop on the Mac and the CLI here are two independent installs of one release stream** — every upstream tag is `desktop-vX.Y.Z` and the CLI ships inside `Buzz_X.Y.Z_amd64.deb` at `usr/bin/`, as a byproduct of packaging the app — so Desktop keeping itself current through its Tauri updater says nothing about this box, and there is no dpkg package to `apt upgrade`. Neither binary answers `--version` and neither carries the release (`strings` finds the same `0.5.3` dependency crate in the July and September builds), so staleness is not merely unreported, it is **unaskable** without a receipt: `~/agent-workforce/var/buzz-cli-install.json` records tag *and* sha256, and every run re-hashes the live files before believing the tag. **10** (behind) is `SuccessExitStatus` since 2026-10-05 — a notice on the receipt (`ExecMainStatus=10`), because upstream ships near-daily and as a failure it was a guaranteed daily red. **1** (unpinned, or a week without reaching upstream) is the alarm, through `agent-alert@`, which owns the throttle (one alert on the transition, one reminder per 24h); a second notifier would be a second copy of that policy. **It never installs.** It may stage and probe a new release, once per tag, so the report says whether that release would still *run* here: the three `buzz:workflow*` wake literals plus every flag the unit's `ExecStart` passes, since `buzz-acp` rejects an unknown flag at startup and `Restart=on-failure` turns that into a crash loop rather than a visible stop. Installing is `bin/buzz_acp_update.sh apply <tag>` by hand — canary restart, fleet gate, automatic rollback. Making it unattended is a one-line `ExecStart` change and the probe is what would make that defensible; do it after a few releases have passed cleanly, not before. |
 
 ## Agent-config evals (T8.4)
 
@@ -1107,6 +1107,35 @@ runtime residue. An archived T8.2 brief is not proof these rollout steps happene
 Until those steps are evidenced, T8.2 remains incomplete. Do not probe direct-push refusal
 with an otherwise valid new commit: without protection it would write main. A no-op push
 also proves nothing. Read-back verifies policy without creating that risk.
+
+## Headless Claude auth — off the interactive login (2026-10-05)
+
+Every headless `claude` — the scheduled runners via `bin/cc_run.sh`, the Claude Buzz agents via
+`buzz-team/claude-agent-wrapper.sh`, `bin/agent_config_eval.sh`, the hourly turn check — reads
+one token file through `bin/claude_oauth_env.sh`. `tests/test_claude_auth.sh` is red for a launch
+that goes around it. With no file, everything uses `~/.claude/.credentials.json` as before; that
+shared login lapsing took the fleet down 2026-09-30 and 2026-10-02..05.
+
+**Mint (Dave, in his own terminal — the token never passes through chat or a repo):**
+
+```
+claude setup-token
+install -m 600 /dev/null ~/.config/agent-workforce/claude_oauth.env
+$EDITOR ~/.config/agent-workforce/claude_oauth.env
+#   CLAUDE_CODE_OAUTH_TOKEN=<token>
+#   CLAUDE_OAUTH_MINTED=YYYY-MM-DD
+#   CLAUDE_OAUTH_EXPIRES=YYYY-MM-DD   (the lifetime setup-token reports)
+systemctl --user restart 'buzz-agent@*'
+```
+
+Then prove it: `claude /logout` interactively; the next heartbeat and scheduled run stay green and
+`~/.config/buzz-team/verify-fleet.sh` gate 17 passes; `/login` again. Fleet-turn-check gate 7
+goes red 30 days before `CLAUDE_OAUTH_EXPIRES`. **Rollback:** delete the file, restart the units.
+
+**When auth fails anyway** it is one `auth-expired` incident (`bin/claude_auth_incident.sh`), not
+one per workflow: each `*_cc.sh` run's pre-flight (`bin/claude_auth_probe.sh`, one haiku turn)
+receipts `skipped` — `dependency-down: claude-auth` — and fleet-turn-check names it `AUTH`. A
+passing probe from either closes it. A probe that cannot decide (timeout, network) never refuses.
 
 ## Rebuild checklist (fresh Ubuntu → working box)
 

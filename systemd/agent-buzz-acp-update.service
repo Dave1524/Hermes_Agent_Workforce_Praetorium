@@ -8,13 +8,15 @@
 # binary answers --version, so staleness is not merely unreported — it is unaskable without
 # a recorded receipt. That is what bin/buzz_acp_update.sh maintains.
 #
-# NON-ZERO IS THE REPORT, and it is deliberately not a notification of its own. exit 10 is
-# "behind", exit 1 is "the receipt no longer describes what is installed" or "upstream has
-# been unreachable for a week". Both reach Dave through agent-alert@, which already owns the
-# throttle: one alert on the transition, one reminder per 24h while it persists, silence
-# otherwise. A second notifier here would be a second copy of that policy — and the failure
-# it protects against is real: qmd-refresh emitted 14 identical alerts in a day before
-# anyone looked.
+# EXIT 10 IS A NOTICE, EXIT 1 IS THE ALARM. "behind" (exit 10) is SuccessExitStatus: upstream
+# ships near-daily, and as a failure it was a guaranteed daily red — six of the 26 failed receipts
+# of 2026-09-30..10-05 (approved 2026-10-05). It now receipts as a run that reached its verdict,
+# ExecMainStatus=10 on the receipt and the tag in the journal line; apply stays a decision Dave
+# takes when he chooses, not one an alert demands. Exit 1 — the receipt no longer describes what
+# is installed, or upstream unreachable for a week — still reaches Dave through agent-alert@,
+# which owns the throttle: one alert on the transition, one reminder per 24h, silence otherwise.
+# A second notifier here would be a second copy of that policy; qmd-refresh once emitted 14
+# identical alerts in a day before anyone looked.
 #
 # THIS UNIT DOES NOT INSTALL ANYTHING. It may download and extract a new release into
 # var/buzz-stage/ (once per tag, not once per run) so the compatibility verdict it reports
@@ -32,5 +34,6 @@ Type=oneshot
 User=dave
 Environment=DELIVERY_JOB=%n
 ExecStart=/home/dave/agent-workforce/bin/buzz_acp_update.sh check
+SuccessExitStatus=10
 TimeoutStartSec=20min
 NoNewPrivileges=true

@@ -21,10 +21,10 @@ believing it (`:32-34`, `:166-175`).
 | Surface | platform — deterministic shell, one GitHub releases call, sha256 over two binaries |
 | Runner | `bin/buzz_acp_update.sh check` (deployed copy), `DELIVERY_JOB=%n` |
 | Cadence | daily 07:35, `RandomizedDelaySec=5min`, `Persistent=true` |
-| Alerted | yes — `OnFailure=agent-alert@%n.service`; exit 10 (behind) and exit 1 (unpinned / receipt missing / a week offline) both alert, with different text |
+| Alerted | exit 1 only (unpinned / receipt missing / a week offline), via `OnFailure=agent-alert@%n.service`. Exit 10 (behind) is `SuccessExitStatus` since 2026-10-05: a notice on the receipt (`ExecMainStatus=10`), not an alert |
 | Remediation owner | Dave — `apply` is a supervised install with a canary restart of the fleet (`:41-42`), and the fleet is Dave's to restart |
 | Retirement condition | none — standing; retires if the box stops hosting Buzz agents |
-| Contract version | 1 (2026-09-11) |
+| Contract version | 2 (2026-10-05: exit 10 is a notice) |
 
 ## Trigger
 
@@ -53,9 +53,9 @@ believing it (`:32-34`, `:166-175`).
   (`:383-388`).
 - **Beneficiary:** the five `buzz-agent@*` units, which run whatever `buzz-acp` this job
   vouches for; Dave, who otherwise reads "Desktop is current" as "the box is current".
-- **Next actor:** Dave on exit 10 (`bin/buzz_acp_update.sh apply`, supervised) or exit 1
+- **Next actor:** Dave, when he chooses, on exit 10 (`bin/buzz_acp_update.sh apply`, supervised); on exit 1
   (`adopt <tag>` once the installed release is known).
-- **Next action:** read the compatibility verdict in the alert body first — a staged binary
+- **Next action:** read the compatibility verdict in the journal first — a staged binary
   that fails `probe` against the unit's flags must not be applied.
 - **Benefit hypothesis:** the box is never more than one day behind knowing it is behind, and
   never a week without knowing whether it knows.
@@ -112,8 +112,9 @@ Two checks, both `sweep`.
 - **Receipt says X, disk says Y.** Something replaced the binaries outside this tool —
   `UNPINNED`, exit 1, daily until `adopt` (`:353-357`). The job cannot infer the tag; only a
   human who knows what was installed can.
-- **The daily reminder is a daily alert.** A box that is behind alerts every morning until
-  `apply` or a deliberate decision; the 117 MB is downloaded once, the message is not.
+- **Behind used to be a daily alert.** Upstream ships near-daily, so exit 10 as a failure was a
+  guaranteed daily red — six failed receipts in 2026-09-30..10-05. It is a notice since
+  2026-10-05 (`SuccessExitStatus=10`); the 117 MB is still downloaded once per tag.
 - **A stale `last-ok` after a clock jump.** The file holds an epoch; a box whose clock ran
   ahead writes a future `last-ok` and reads as "reached upstream" for as long as the jump
   lasted. Light-contract approximation.

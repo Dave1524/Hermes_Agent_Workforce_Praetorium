@@ -181,6 +181,17 @@ block_exit() {
   exit 0
 }
 
+auth_down_exit() {
+  # A run that cannot authenticate never started: skipped, not failed, and the cause is the
+  # shared auth-expired incident rather than one alarm per workflow. BLOCKED in cost.log, the
+  # vocabulary scorecard.sh already excludes from the proposal rate.
+  log "SKIP: $1"
+  log_cost BLOCKED
+  write_receipt AUTHDOWN --reason "$1"
+  refresh_scorecard
+  exit 0
+}
+
 # NUC-31: fail-soft MCP daemon health probes (reuse the exact patterns in
 # praetorium-status.sh — qmd :8765/health, brave :8766). A missing probe tool returns
 # "healthy" so a box without curl/ss never blocks; curl is bounded by --max-time 2 so a
@@ -325,6 +336,24 @@ else
     block_exit "${requires_out##*$'\n'}"
   fi
 fi
+
+# The claude-auth pre-flight (2026-10-05). An expired login fails every Claude Code runner at
+# once, and each run used to retry into it three times and receipt its own `failed`: 14
+# incidents for one cause between 09-30 and 10-05. A refusal is now a skipped run naming the
+# dependency plus the one shared auth-expired incident; a pass closes that incident; unknown
+# (timeout, network) proceeds, because a blip must not read as an expired login. Only runtimes
+# that are Claude Code runners are probed. CLAUDE_AUTH_PROBE overrides the probe for fixtures.
+case "$AGENT_RUNTIME_CMD" in
+  *_cc.sh*)
+    auth_rc=0
+    auth_out=$("${CLAUDE_AUTH_PROBE:-$BIN_DIR/claude_auth_probe.sh}" 2>&1) || auth_rc=$?
+    log "${auth_out:-claude-auth: probe printed nothing (exit $auth_rc)}"
+    case $auth_rc in
+      0) "$BIN_DIR/claude_auth_incident.sh" close ;;
+      3) "$BIN_DIR/claude_auth_incident.sh" open "$auth_out"; auth_down_exit "$auth_out" ;;
+    esac
+    ;;
+esac
 
 # The NUC-21 episodic store (~/.hermes/profiles/<owner>/memories) is retired (T6.1);
 # mem_status stays na on every run.

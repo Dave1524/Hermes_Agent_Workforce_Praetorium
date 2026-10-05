@@ -179,6 +179,28 @@ class Derivation(unittest.TestCase):
         self.assertFalse(wi.sources_visible([], ["bad toml"]))
         self.assertTrue(wi.sources_visible(["receipt directory unavailable: x"], []))
 
+    def test_auth_expired_is_one_incident_however_many_declare_it(self):
+        # (::incidents-auth-expired-once)
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            first = dt.datetime(2026, 10, 2, 5, 0, tzinfo=dt.timezone.utc)
+            body = {"class": "auth-expired", "workflow_id": "claude-auth", "id": "claude-auth",
+                    "issue": "OAuth session expired", "evidence": []}
+            for minutes in range(3):
+                wi.declare(root, dict(body, issue=f"refusal {minutes}"), now=first + dt.timedelta(minutes=minutes))
+            declared, errors = wi.load_declared(root)
+            self.assertEqual(errors, [])
+            found = derive([], declared=declared)
+            self.assertEqual([i["key"] for i in found], ["auth-expired:claude-auth:claude-auth"])
+            self.assertEqual(found[0]["severity"], "high")
+            self.assertEqual(found[0]["observed_at"], "2026-10-02T05:00:00Z")
+            self.assertEqual(found[0]["issue"], "refusal 0")
+            self.assertIn("auth-expired", wi.IMMEDIATE_CLASSES)
+            self.assertTrue(wi.resolve_declared(root, "auth-expired:claude-auth:claude-auth"))
+            wi.declare(root, dict(body, issue="next episode"), now=first + dt.timedelta(days=1))
+            declared, _ = wi.load_declared(root)
+            self.assertEqual(derive([], declared=declared)[0]["issue"], "next episode")
+
     def test_declared_incidents_pass_through_and_resolved_ones_vanish(self):
         # (::incidents-declared)
         with tempfile.TemporaryDirectory() as temp:

@@ -660,6 +660,36 @@ assert_codex_profile() {
   fi
 }
 
+# Gate 17: with a headless token minted, every Claude agent's live session authenticates with it
+# rather than the interactive login, whose lapse took the fleet down 2026-10-02..05. Read from
+# /proc by name only — the value is never captured past an emptiness test. No token file is the
+# inert state the plumbing ships in, and says so.
+OAUTH_HELPER="$HOME/agent-workforce/bin/claude_oauth_env.sh"
+assert_headless_token() {
+  local agent spid
+  if [ ! -r "$OAUTH_HELPER" ]; then
+    fail "17/headless-token $OAUTH_HELPER is not deployed (the seams refuse without it)"
+    return
+  fi
+  # shellcheck source=/dev/null
+  . "$OAUTH_HELPER"
+  if [ ! -e "$(claude_oauth_file)" ]; then
+    skip "17/headless-token (no $(claude_oauth_file) — the fleet is on the interactive login)"
+    return
+  fi
+  for agent in "${AGENTS[@]}"; do
+    [ "${EXPECT_HARNESS[$agent]}" = claude-agent-acp ] || continue
+    spid=$(session_pids "$agent" | head -1)
+    if [ -z "$spid" ]; then
+      skip "17/headless-token $agent (no claude session to read — the wrapper's export is proven offline)"
+    elif [ -n "$(proc_env "$spid" CLAUDE_CODE_OAUTH_TOKEN)" ]; then
+      ok "17/headless-token $agent session carries CLAUDE_CODE_OAUTH_TOKEN"
+    else
+      fail "17/headless-token $agent session has no CLAUDE_CODE_OAUTH_TOKEN (started before the token, or the wrapper skipped it)"
+    fi
+  done
+}
+
 assert_units_active
 assert_harness
 assert_team_instructions
@@ -676,6 +706,7 @@ assert_brave_mcp
 assert_capability_isolation
 assert_bridge_offer
 assert_codex_profile
+assert_headless_token
 
 printf '\n%s\n' "----------------------------------------"
 if [ "$failures" -eq 0 ]; then

@@ -78,4 +78,15 @@ assert 'no temp file is left' "[ \"\$(ls '$h/last-attempt' | wc -l)\" = 0 ]"
 rc=0; out=$(AGENT_USAGE_JSON="$usage" FAKE_BODY=/dev/null bash "$WRAP" "$fake" -p hi 2>/dev/null) || rc=$?
 assert 'empty output: exit code preserved, stdout empty, no side file' "[ '$rc' = 0 ] && [ -z \"\$out\" ] && [ ! -e '$usage' ]"
 
+echo "--- cc-run-oauth-token ---"   # (::cc-run-oauth-token)
+h=$(mktemp -d); tok="$h/claude_oauth.env"
+printf '#!/usr/bin/env bash\nprintf "%%s" "${CLAUDE_CODE_OAUTH_TOKEN:-}" > "%s/token"\necho text mode\n' "$h" > "$h/claude"; chmod +x "$h/claude"
+env -u AGENT_USAGE_JSON -u CLAUDE_CODE_OAUTH_TOKEN CLAUDE_OAUTH_FILE="$tok" bash "$WRAP" "$h/claude" -p hi >/dev/null 2>&1
+assert 'no token file: claude sees no token (the interactive login decides, as before)' "[ -e '$h/token' ] && [ ! -s '$h/token' ]"
+printf 'CLAUDE_CODE_OAUTH_TOKEN="tok-abc"\n' > "$tok"; chmod 600 "$tok"
+env -u AGENT_USAGE_JSON -u CLAUDE_CODE_OAUTH_TOKEN CLAUDE_OAUTH_FILE="$tok" bash "$WRAP" "$h/claude" -p hi >/dev/null 2>&1
+assert 'a mode-600 token file is exported to claude, quotes stripped' "[ \"\$(cat '$h/token')\" = tok-abc ]"
+env -u AGENT_USAGE_JSON CLAUDE_CODE_OAUTH_TOKEN=caller CLAUDE_OAUTH_FILE="$tok" bash "$WRAP" "$h/claude" -p hi >/dev/null 2>&1
+assert 'a token the caller already exported wins' "[ \"\$(cat '$h/token')\" = caller ]"
+
 [ "$fail" = 0 ] && echo "PASS: cc_run" || { echo "FAIL: cc_run"; exit 1; }

@@ -39,6 +39,15 @@ SKILLS_DIR="$HOME/agent-workforce/skills/$BUZZ_AGENT_NAME"
 [ -r "$SETTINGS" ] || { echo "claude-agent-wrapper: settings not readable: $SETTINGS" >&2; exit 1; }
 [ -r "$SKILLS_DIR/.claude-plugin/plugin.json" ] || { echo "claude-agent-wrapper: skills plugin not readable: $SKILLS_DIR" >&2; exit 1; }
 
+# The headless token, when Dave has minted one (bin/claude_oauth_env.sh): without it every
+# agent shares the interactive login and fails with it. The deployed copy is the reader; an
+# undeployed helper is refused, never skipped, so the agent cannot fall back unseen.
+OAUTH_HELPER="${CLAUDE_OAUTH_HELPER:-$HOME/agent-workforce/bin/claude_oauth_env.sh}"
+[ -r "$OAUTH_HELPER" ] || { echo "claude-agent-wrapper: token helper not readable: $OAUTH_HELPER — run bin/deploy" >&2; exit 1; }
+# shellcheck source=/dev/null
+. "$OAUTH_HELPER"
+claude_oauth_export
+
 session_id=$$
 for arg in "$@"; do
   case "$arg" in --session-id=*) session_id="${arg#--session-id=}" ;; esac
