@@ -100,6 +100,7 @@ chmod +x "$WORK/corpus.sh"
 # runner's code for a receipt's error text must be the classifier's, not a second copy.
 cat >"$WORK/codex.sh" <<'STUB'
 #!/usr/bin/env bash
+printf '%s\n' "$1" >>"$STUB_CODEX_ARGV"
 case "$1" in
   blocking) [ -s "$STUB_CODEX_BLOCKING" ] && { cat "$STUB_CODEX_BLOCKING"; exit 0; }
             [ -s "$STUB_CODEX_RC" ] && exit "$(cat "$STUB_CODEX_RC")"; exit 1 ;;
@@ -116,10 +117,21 @@ cat "$STUB_JOURNAL" 2>/dev/null
 exit 0
 STUB
 chmod +x "$WORK/journal.sh"
+mkdir -p "$WORK/systemctl-bin"
+cat >"$WORK/systemctl-bin/systemctl" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$STUB_SYSTEMCTL_ARGV"
+cat "$STUB_SYSTEMCTL_ENV"
+exit "${STUB_SYSTEMCTL_RC:-0}"
+STUB
+chmod +x "$WORK/systemctl-bin/systemctl"
+export STUB_SYSTEMCTL_ENV="$WORK/systemctl_env"
+export STUB_SYSTEMCTL_ARGV="$WORK/systemctl_argv"
 export REAL_CODEX_TURN_ERROR="$REPO_ROOT/bin/codex_turn_error.py"
 export STUB_CODEX_BLOCKING="$WORK/codex_blocking"
 export STUB_CODEX_RC="$WORK/codex_rc"
 export STUB_CODEX_LAST="$WORK/codex_last"
+export STUB_CODEX_ARGV="$WORK/codex_argv"
 export STUB_JOURNAL="$WORK/journal"
 export STUB_JOURNAL_ARGV="$WORK/journal_argv"
 QUOTA_ROW=$(printf 'quota-exhausted\t2026-09-26 11:14 CEST\t1790414040\t2026-09-25 01:35 CEST\tYou have hit your usage limit. try again at Sep 26th, 2026 11:14 AM.')
@@ -146,7 +158,9 @@ reset_case() {
   rm -rf "$STUB_TURN_RECEIPTS"
   printf '[]\n' >"$STUB_EVENTS"
   : >"$STUB_CODEX_BLOCKING"; : >"$STUB_CODEX_RC"; : >"$STUB_CODEX_LAST"
+  : >"$STUB_CODEX_ARGV"
   : >"$STUB_JOURNAL"; : >"$STUB_JOURNAL_ARGV"
+  : >"$STUB_SYSTEMCTL_ENV"; : >"$STUB_SYSTEMCTL_ARGV"
 }
 
 # augustus's interaction receipt for one turn, as bin/interaction_receipt.py writes it —
@@ -175,7 +189,9 @@ PY
 }
 
 run_dispatch() {  # run_dispatch [extra env assignments...]
-  env DELIVERY_RECEIPTS="$WORK/receipts.jsonl" \
+  local harness_env=(CONTENT_AUGUSTUS_HARNESS=codex-acp)
+  [ "${HARNESS_FROM_SYSTEMCTL:-0}" = 1 ] && harness_env=(-u CONTENT_AUGUSTUS_HARNESS)
+  env "${harness_env[@]}" DELIVERY_RECEIPTS="$WORK/receipts.jsonl" \
       BUZZ_DELIVER_HELPER="$WORK/helper.sh" \
       BUZZ_HELPER_BIN="$WORK/helper.sh" \
       CONTENT_DIGEST_BIN="$WORK/digest.sh" \
@@ -212,6 +228,63 @@ assert 'and prints NOTHING — an unreadable board is never "unchanged"' "[ -z '
 
 assert 'the digest asks for every row, not the NUC-44 agent cap' \
   "grep -q -- '--max-rows 0' '$DIGEST'"
+
+echo '--- Codex log reads follow the Augustus harness, including rollback ---'
+for harness in claude-agent-acp /usr/local/bin/claude-agent-acp unknown ''; do
+  reset_case
+  printf '%s\n' "$QUOTA_ROW" >"$STUB_CODEX_BLOCKING"
+  event "$AUGUSTUS" 'DECLINE: nothing Picked tonight'
+  run_dispatch CONTENT_AUGUSTUS_HARNESS="$harness"; rc=$?
+  assert "harness=${harness:-empty}: an old Codex block cannot prevent dispatch" \
+    "[ $rc -eq 0 ] && grep -q 'messages send' '$STUB_ARGV'"
+  assert "harness=${harness:-empty}: no quota refusal and no Codex log read" \
+    "! grep -q 'reason_code=quota-exhausted' '$WORK/out' && [ ! -s '$STUB_CODEX_ARGV' ]"
+  case "$harness" in
+    unknown|'') assert 'an unknown harness is logged once' \
+      "[ \"\$(grep -c 'harness unknown or unreadable' '$WORK/out')\" = 1 ]" ;;
+  esac
+done
+
+for harness in codex-acp /usr/local/bin/codex-acp; do
+  reset_case
+  printf '%s\n' "$QUOTA_ROW" >"$STUB_CODEX_BLOCKING"
+  run_dispatch CONTENT_AUGUSTUS_HARNESS="$harness"; rc=$?
+  assert "harness=$harness: a Codex quota block still refuses before dispatch" \
+    "[ $rc -eq 1 ] && grep -q 'reason_code=quota-exhausted' '$WORK/out' && ! grep -q 'messages send' '$STUB_ARGV'"
+done
+
+# The second read is reached after dispatch. A receipt closes the turn promptly, but says
+# nothing was produced; old Codex refusal rows must not replace that Claude turn's reason.
+for harness in claude-agent-acp unknown; do
+  reset_case
+  printf '%s\n' "$QUOTA_ROW" >"$STUB_CODEX_LAST"
+  turn_receipt artifact "$(printf 'a%.0s' {1..64})"
+  run_dispatch CONTENT_AUGUSTUS_HARNESS="$harness"; rc=$?
+  assert "harness=$harness: silence cannot be attributed to an old Codex refusal" \
+    "[ $rc -eq 1 ] && tail -1 '$WORK/out' | grep -q 'reason_code=silent'"
+  assert 'neither Codex log reader was called' "[ ! -s '$STUB_CODEX_ARGV' ]"
+done
+
+echo '--- the live harness read extracts only the command and handles unreadable systemctl ---'
+for systemctl_rc in 0 1; do
+  reset_case
+  printf '%s\n' 'BUZZ_AUTH_TAG=TEST-AUTH-MUST-NOT-BE-LOGGED BUZZ_ACP_AGENT_COMMAND=/usr/local/bin/claude-agent-acp' >"$STUB_SYSTEMCTL_ENV"
+  printf '%s\n' "$QUOTA_ROW" >"$STUB_CODEX_BLOCKING"
+  event "$AUGUSTUS" 'DECLINE: nothing Picked tonight'
+  HARNESS_FROM_SYSTEMCTL=1 run_dispatch PATH="$WORK/systemctl-bin:$PATH" STUB_SYSTEMCTL_RC="$systemctl_rc"; rc=$?
+  assert "systemctl exit=$systemctl_rc: dispatch proceeds without consulting Codex" \
+    "[ $rc -eq 0 ] && [ ! -s '$STUB_CODEX_ARGV' ]"
+  assert 'the unit Environment read uses the expected property' \
+    "grep -qx -- '--user show buzz-agent@augustus.service -p Environment --value' '$STUB_SYSTEMCTL_ARGV'"
+  assert 'the auth tag never appears in the attempt log' \
+    "! grep -q 'TEST-AUTH-MUST-NOT-BE-LOGGED' '$WORK/out'"
+  if [ "$systemctl_rc" = 1 ]; then
+    assert 'a failed read is logged as unknown even if it emitted a command' \
+      "grep -q 'harness unknown or unreadable' '$WORK/out'"
+  else
+    assert 'a successful Claude read is known' "! grep -q 'harness unknown or unreadable' '$WORK/out'"
+  fi
+done
 
 echo '--- the trigger leaves as kind 45001 carrying augustus in a p tag ---'
 reset_case

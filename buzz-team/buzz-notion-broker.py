@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Notion credential + policy broker for the Buzz fleet.
 
-`buzz-team-mcp.py` is spawned by the *agent*, not by buzz-acp. For the three
-claude-agent-acp agents that lands on the host namespace, but codex-acp runs
-inside the bwrap mount namespace of /usr/local/bin/codex-acp, so augustus's copy
-of the bridge inherits `--tmpfs ~/.config/agent-workforce` and cannot see
-notion-buzz.env at all.
+`buzz-team-mcp.py` is spawned by the *agent*, not by buzz-acp. The Claude fleet
+runs it on the host. Originally augustus ran it inside the bwrap namespace of
+/usr/local/bin/codex-acp, where `--tmpfs ~/.config/agent-workforce` hid the
+credential; that harness remains available for rollback after his Claude migration.
 
 Handing the token into that namespace would defeat the namespace: anything the
 bridge can read there, the agent's own shell can read too. So the token stays

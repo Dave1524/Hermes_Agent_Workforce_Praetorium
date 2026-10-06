@@ -357,11 +357,11 @@ in the abstract — a mechanism nobody can point a test at is indistinguishable 
 which is the defect this gap was opened for. Two consequences worth stating:
 
 - **A rule can be enforced by different mechanisms on different agents, and the `why` must
-  name the right one.** marcus and claudius are covered by the strict settings file;
-  augustus is covered by running a harness that never had the connectors, and the settings
-  file never reaches him. Crediting the settings file for augustus would be the exact
-  §2/§6.1 defect D3 found — a real boundary attributed to the wrong thing, which then
-  survives the removal of the thing that actually holds it.
+  name the right one.** The Claude agents are covered by their rendered strict settings
+  files, including augustus after his 2026-10-06 migration. His earlier Codex harness
+  lacked the Claude connector surface and never loaded those settings. Crediting an
+  unread settings file would be the §2/§6.1 defect D3 found — a boundary attributed to
+  the wrong mechanism, which then survives removal of what actually holds it.
 - **A rule whose mechanism is the non-existence of a surface gets `test_exempt`, not a
   test.** Same shape as R15b's `suite_exempt`: an exemption is a declared hole that greps,
   and silence is not. trajan's hermes-cron rule was the one instance — the cron list was

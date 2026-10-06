@@ -19,7 +19,7 @@ table and the write boundary two places to drift.
 | Units | `augustus-content.service` / `.timer` + `content-change-dispatch.service` / `.timer` |
 | Owner | **augustus** (`design/agents/augustus.toml`) |
 | Surface | `buzz_dispatch` — a timer triggers the live augustus session over the content route and waits |
-| Executor | none on this box. `run_content_via_buzz.sh` sends a trigger; the model is augustus's own `buzz-agent@augustus` session on `codex-acp`, inside its bwrap namespace |
+| Executor | the live `buzz-agent@augustus` session on `claude-agent-acp`, through the shared Claude wrapper. `run_content_via_buzz.sh` sends a trigger and waits; it invokes no model directly |
 | Contract version | 3 (2026-09-18, T7.2 turn-end evidence — the harness error the channel cannot show) |
 | Alerted | yes — `OnFailure=agent-alert@%n.service` on both live units |
 
@@ -41,9 +41,9 @@ Both are declared values from the unit files, not next-elapse.
 | Source | Freshness requirement | If stale or absent |
 |---|---|---|
 | the Notion content board, via `bin/content_board_digest.sh` | read immediately before dispatch as the movement baseline | **crash (4)**: `run_content_via_buzz.sh:61` refuses to dispatch on an unknown baseline. An unreadable board makes "the board moved" undecidable, so the run would be unable to tell a draft from silence |
-| `vantagepointconsulting.nl` published corpus, via `bin/published_corpus.py snapshot` on the **host** | a live `git fetch` in this run — the snapshot refuses to be written from anything else (`:314-319`) | **crash (4)**: `:84-87`. Augustus cannot fetch from inside bwrap, so a run dispatched without this gate drafts with the duplicate-title check silently not running |
+| `vantagepointconsulting.nl` published corpus, via `bin/published_corpus.py snapshot` on the **host** | a live `git fetch` in this run — the snapshot refuses to be written from anything else (`:314-319`) | **crash (4)**: `:84-87`. The host snapshot gate remains mandatory after the Claude migration: dispatch without a fresh corpus risks silently skipping the duplicate-title check |
 | `~/agent-workforce/var/published_corpus.json` — the file augustus actually reads | written this run by the gate above; `published_corpus.py` treats a snapshot older than `SNAPSHOT_MAX_AGE_HOURS` (24) as absent | augustus's read falls through to `local-ref`, which prints `OFFLINE — origin unreachable and no host snapshot` and **exits 0**. Failing open is the nine-night failure; the gate above is what closes it |
-| `profiles/augustus_content_task.md` (deployed copy) | must be readable by augustus in his own namespace | he replies `SKILL-READ-FAILED:` or `RUN-FAILED:`; the runner exits 1 and names which |
+| `profiles/augustus_content_task.md` (deployed copy) | must be readable by augustus in his session | he replies `SKILL-READ-FAILED:` or `RUN-FAILED:`; the runner exits 1 and names which |
 | `~/logs/delivery-receipts.jsonl` | this run's own tail, sliced at `receipts_before`; its lowercase 64-hex `buzz_event_id` is the canonical run ID | **crash (4)**: no `buzz_result == "ok"` receipt with a valid event ID means the trigger never reached the relay — augustus was never asked |
 | Notion `Picked` rows, via `notion_rest.py board --status Picked --json --max-rows 0` (`content-change-dispatch` only) | current at the tick | **fail-soft**: log `FAIL-SOFT:`, exit 0, `STATE` byte-for-byte untouched. A transient Notion outage must never mark an undrafted row as seen |
 | `~/agent-workforce/var/content_picked.state` (`content-change-dispatch` only) | advanced only after a fresh, receipt-keyed `OPS` record has an exact new-row `Picked -> Draft` transition or an owned `DECLINE:` | absent on a fresh deploy, which makes every current `Picked` row new — deliberate |
@@ -447,7 +447,7 @@ ambiguous inside a DST repeat hour.
   `drafted`, `declined`, `quota-exhausted`, `model-unavailable`, `harness-error`,
   `undelivered`, `board-moved-no-draft`, `replied-unrecognised`, `skill-read-failed`,
   `run-failed`, `silent`, `not-dispatched`.
-  - **Quota:** named from `bin/codex_turn_error.py`, which is read inside the run while the
+  - **Quota:** named from `bin/codex_turn_error.py`, read only when the live harness is Codex, while the
     row still exists. A block still in force stops the run before dispatch.
   - **`undelivered`:** the durable fallback. His journal keeps the requeues, though not why.
 - **Permanent fail-soft.** By contract every Notion error in the dispatcher exits 0 with state

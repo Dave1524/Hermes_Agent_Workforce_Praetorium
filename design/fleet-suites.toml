@@ -39,14 +39,13 @@
 path    = "tests/test_fleet_guards.sh"
 owner   = "fleet"
 asserts = [
-  "connector-deny",                  # marcus, claudius: outward connectors denied for agent sessions
-  "schedule-deny",                   # the four Claude agents: Skill(schedule) and RemoteTrigger denied, deployed and rendered
-  "augustus-no-claude-connectors",   # augustus: same rule, different mechanism — codex harness
+  "connector-deny",                  # Claude agents: outward connectors denied for agent sessions
+  "schedule-deny",                   # Claude agents: Skill(schedule) and RemoteTrigger denied, deployed and rendered
+  "augustus-harness-matches-manifest", # Augustus inherits the template's Claude harness with no active override
   "deny-superset",                   # the strict file can never be laxer than ~/.claude/settings.json
   "vault-push-guard",                # trajan: the pre-push guard, in every vault clone on this box
   "aurelian-unaddressable",          # aurelian: absent from the slug table
   "propose-write-boundary",          # marcus, claudius: the _inbox/agents/** write boundary
-  "augustus-no-fetch",               # augustus: no ssh credential inside his bwrap namespace
   "enforced-has-test",               # the reverse direction — an enforced flag with no assertion is red
 ]
 why_no_workflow = """
