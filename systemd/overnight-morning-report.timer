@@ -3,7 +3,7 @@
 Description=Schedule overnight morning report — NUC-36
 
 [Timer]
-OnCalendar=*-*-* 06:15
+OnCalendar=*-*-* 05:30
 RandomizedDelaySec=5min
 Persistent=true
 

@@ -26,7 +26,7 @@ here so nobody adds a receipt check that could never pass.
 
 ## Trigger
 
-`OnCalendar=*-*-* 06:15`, `RandomizedDelaySec=5min`, `Persistent=true`. Daily.
+`OnCalendar=*-*-* 05:30`, `RandomizedDelaySec=5min`, `Persistent=true`. Daily.
 
 It is the **second half of a two-unit pair**: `overnight-pre-snapshot.timer` runs at 04:25
 (2min jitter) and writes `~/logs/overnight/pre-snapshot-<stamp>.log`; this job diffs the night
