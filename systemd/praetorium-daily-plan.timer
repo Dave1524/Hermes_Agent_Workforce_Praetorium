@@ -6,7 +6,7 @@ Description=Schedule Praetorium daily plan, weekdays 06:00 — NUC-45
 # unlike the overnight jobs where jitter only spreads load.
 
 [Timer]
-OnCalendar=Mon..Fri 06:00
+OnCalendar=Mon..Fri 05:00
 RandomizedDelaySec=2min
 # A reboot spanning the slot must still produce the day's plan.
 Persistent=true
