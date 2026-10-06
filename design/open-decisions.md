@@ -33,16 +33,17 @@ measurements, queue spent), `augustus.toml` retirement comment, and `design/arch
 named not built there too).*
 
 Every `buzz-agent@*` unit runs as `dave`, so an agent's shell can read whatever Dave can
-minus the deny-list — the deny-list, the bwrap namespace (augustus) and the managed
-settings are all *policy on one account*. Separate accounts would make it *the kernel's*
+minus the applicable denies — the Claude settings boundary is *policy on one account*.
+Augustus joins that boundary in the 2026-10-06 migration; his former bwrap wrapper is
+retained for rollback. Separate accounts would make it *the kernel's*
 policy. Three things it collides with, each a precondition rather than a detail:
 
 1. **The control broker's trust model** — `control-room-broker.socket` is `root:control-room
    0660` reachable only by `control-room.service`, the runtimes table names user units of
    `dave`, and the receipts land under `dave`'s `var/`. A second account means a second
    allowlist row shape and a broker that can `systemctl --user -M <user>@`.
-2. **The shared memory pool and cwd** — the four Claude agents run with cwd `/home/dave` so
-   they share `~/.claude/projects/-home-dave/memory/` with Dave's own `~` sessions (by
+2. **The shared memory pool and cwd** — Claude agents whose cwd is `/home/dave`
+   share `~/.claude/projects/-home-dave/memory/` with Dave's own `~` sessions (by
    design, the team-wide layer) and read `~/CLAUDE.md`. Another home is another pool.
 3. **Ownership every runner assumes** — `~/vault` (a symlink into `dave`'s checkout),
    `~/agent-workforce/` (the deployed tree, `dave`-owned, receipts written into it), the

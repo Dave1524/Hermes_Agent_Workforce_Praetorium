@@ -59,14 +59,14 @@ the surface §5 now records as retired.
 - **Platform job** — deterministic script; no persona. Accountable to the platform
   owner: **trajan** (decided 2026-09-01, §7.1).
 
-## 1. Interactive layer (always-on Buzz units, as recorded 2026-09-03)
+## 1. Interactive layer (always-on Buzz units; harness updated 2026-10-06)
 
 | Agent | Harness | Standing role |
 |---|---|---|
 | marcus | claude-agent-acp | Chief of staff; DAG root (~20 channels); dispatch + reporting |
 | claudius | claude-agent-acp | Research + BD analysis |
 | trajan | claude-agent-acp | Engineering; vpc-seo queue executor |
-| augustus | codex-acp (bwrap) | Content editor-in-chief; namespace strips `~/.ssh`, so never owns a workflow needing `git fetch` |
+| augustus | claude-agent-acp | Content editor-in-chief; shared Claude wrapper, rendered settings and pointer skills |
 | aurelian | read-only calibration pin | Cold verification only; never a co-author; no scheduled work |
 
 **This layer entered the registry on 2026-09-03 (brief 7); until then it was described here

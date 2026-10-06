@@ -14,15 +14,15 @@ checkout sat on a feature branch (feat/ab-hero-cta-flag), eight commits behind, 
 netcongestie article that was already live. Reading the working tree would answer "no
 collision" for an article that exists — the exact failure this helper is meant to end.
 
-ACQUISITION IS SPLIT FROM INTERROGATION, because one reader cannot acquire. augustus is
-the only agent on the codex-acp harness and his bwrap namespace mounts a tmpfs over
-~/.ssh; the site remote is `git@github-website:`, an ssh-config alias, so with no ssh
-config the hostname does not resolve and his fetch fails every single time. From
+ACQUISITION IS SPLIT FROM INTERROGATION. Before his 2026-10-06 Claude migration, augustus
+ran on codex-acp with a bwrap namespace mounting a tmpfs over ~/.ssh; the site remote is `git@github-website:`, an ssh-config alias, so with no ssh
+config the hostname did not resolve and his fetch failed every time. From
 2026-08-14 to 2026-09-06 he reported the corpus unreachable nine nights running while
 the host, seconds later, fetched fine. The corpus is public data, so the fix is a
 transport split like buzz-notion-broker.py — the host runs `snapshot`, the sandbox reads
 the file — never a wider namespace, which would hand a credential to the agent's own
-shell to solve a problem that needs no credential at all.
+shell to solve a problem that needs no credential at all. The host snapshot gate stays
+mandatory after the Claude migration, providing a fresh corpus before dispatch.
 
 Commands:
   list                 Published corpus, one line per locale. What the profiles inject.

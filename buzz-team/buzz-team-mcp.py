@@ -4,8 +4,8 @@
 The Buzz harness accepts one stdio MCP command. This process preserves the
 existing qmd server by proxying its JSON-RPC stream, adds a small Notion
 REST surface, and forwards web search to brave-mcp.service. It holds no
-credential: the agent spawns this process, so for augustus it runs inside
-codex-acp's bwrap namespace where `~/.config/agent-workforce` is a tmpfs.
+credential: the agent spawns this process, while credentials and write policy
+stay in the host services. This also supports a Codex bwrap session during rollback.
 Notion calls are forwarded to buzz-notion-broker.py over a unix socket; Brave
 calls to the daemon on 127.0.0.1:8766 (streamable HTTP), which holds the API
 key in its own EnvironmentFile. Token, key and write policy all live out

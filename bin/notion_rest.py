@@ -29,11 +29,10 @@ NOTION_VERSION = "2025-09-03"
 API = "https://api.notion.com/v1"
 SECRETS = os.path.expanduser("~/.config/agent-workforce/secrets.env")
 
-# NUC-46. buzz-agent@augustus runs codex-acp inside a bwrap mount namespace whose
-# --tmpfs over ~/.config/agent-workforce replaces the credential directory, so on that
-# path load_token() finds nothing and HTTPS is unreachable. He reaches Notion only
-# through buzz-notion-broker.service, a host-namespace unit that owns the token and the
-# write policy and answers one JSON line per connection on a 0600 unix socket.
+# NUC-46. The agent transport uses buzz-notion-broker.service, a host service that owns
+# the token and write policy and answers one JSON line per connection on a 0600 socket.
+# This split originally served augustus's Codex bwrap namespace; it remains the policy
+# boundary after his 2026-10-06 migration to the shared Claude harness.
 #
 # The transport is the only thing that differs. Every guard above this seam — the
 # NUC-44 draft refusal and the --max-rows cap — runs before either path is chosen, so

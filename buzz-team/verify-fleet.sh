@@ -12,7 +12,7 @@ declare -A EXPECT_HARNESS=(
   [marcus]=claude-agent-acp
   [claudius]=claude-agent-acp
   [trajan]=claude-agent-acp
-  [augustus]=codex-acp
+  [augustus]=claude-agent-acp
   [aurelian]=claude-agent-acp
 )
 

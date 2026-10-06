@@ -10,7 +10,7 @@
 #
 # SOURCE, NOT THE BOX. Every subject is a file in this repo, so the suite runs anywhere and
 # proves what a deploy would ship; the live half — the flags on the running `claude` child,
-# the bridge's tools/list inside augustus's namespace — is buzz-team/verify-fleet.sh gates
+# the bridge's tools/list in the agent's runtime namespace — is buzz-team/verify-fleet.sh gates
 # 14 and 15. tests/test_fleet_guards.sh reads the DEPLOYED copies and is the drift-side twin.
 #
 # FIXTURES FIRST. The renderer's `check` is proven to bite on a hand edit before it is
@@ -171,7 +171,7 @@ PY
 assert 'every Claude agent'"'"'s settings file is base + exactly its manifest'"'"'s denies and plugins' "is_empty superset_problems"
 [ -n "$superset_problems" ] && printf '%s\n' "$superset_problems" | sed 's/^/      /'
 # The plugin decision itself (Dave, 2026-09-19): whoever builds or reviews software carries
-# the shared coding-standards plugin; the researcher does not, and codex cannot.
+# the shared coding-standards plugin; researchers and editors do not.
 plugin_of() { python3 -c 'import sys,tomllib; print(",".join(tomllib.load(open(sys.argv[1],"rb"))["surfaces"]["interactive"].get("plugins") or []))' "$REPO_ROOT/design/agents/$1.toml"; }
 for a in trajan marcus aurelian; do
   assert "$a declares the shared plugin (::plugins-match-manifest)" "[ \"\$(plugin_of $a)\" = shared@jbuitenhuis ]"
@@ -179,6 +179,11 @@ done
 for a in claudius augustus; do
   assert "$a declares no plugin" "[ -z \"\$(plugin_of $a)\" ]"
 done
+assert 'augustus declares the Claude harness' \
+  "grep -q '^augustus|claude-agent-acp|' <<<\"\$rows\""
+assert 'augustus has a rendered settings file' "[ -f '$BT/agent-settings-augustus.json' ]"
+assert 'augustus settings are adopted for deployment' \
+  "grep -q '^path = \"agent-settings-augustus.json\"$' '$MANIFEST_TOML'"
 
 echo '--- 4. the wrapper'"'"'s flags come after "$@", so they win (::wrapper-flags-after-args) ---'
 # The adapter emits --setting-sources=user,project,local and no --strict-mcp-config; for a
@@ -233,7 +238,7 @@ while IFS='|' read -r name harness _deny families; do
     [ ! -e "$BT/agent-settings-$name.json" ] || shim_problems+="$name: a settings file for a harness that reads none"$'\n'
   fi
 done <<<"$rows"
-assert 'every agent has its shim and its MANIFEST rows, and no codex agent has a settings file' "is_empty shim_problems"
+assert 'every agent has its shim and the settings and MANIFEST rows its harness reads' "is_empty shim_problems"
 [ -n "$shim_problems" ] && printf '%s' "$shim_problems" | sed 's/^/      /'
 orphans=$(for f in "$BT"/buzz-team-mcp-*; do n=${f##*/buzz-team-mcp-}; [ -f "$MANIFESTS/$n.toml" ] || echo "$n"; done)
 assert "no shim exists for a name with no manifest (${orphans:-none})" "is_empty orphans"
@@ -241,8 +246,7 @@ assert "no shim exists for a name with no manifest (${orphans:-none})" "is_empty
 echo '--- 7. what each shim really advertises is its manifest'"'"'s families (::bridge-filter-matches-manifest) ---'
 # Spawned the way the harness spawns it, against a qmd stub and no brave/notion, and asked
 # tools/list; the families of the names it returns must equal bridge_tools, and a call into a
-# withheld family must be refused by the bridge itself — the shim is the mechanism on the
-# codex side, where no settings deny backs it.
+# withheld family must be refused by the bridge itself, as well as by settings denies.
 filter_problems=""
 while IFS='|' read -r name _harness _deny families; do
   withheld=$(python3 -c "import sys; print(next((f for f in ('qmd','notion','brave') if f not in sys.argv[1].split(',')), ''))" "$families")

@@ -25,7 +25,7 @@ and `~/.config/systemd/user/buzz-agent@.service`. Upstream mechanics cite
 | Units | `buzz-agent@{marcus,claudius,augustus,trajan,aurelian}.service` (`--user` scope) |
 | Owners | **marcus**, **claudius**, **augustus**, **trajan**, **aurelian** — each unit's own persona manifest, `design/agents/<name>.toml` |
 | Surface | S1 — Buzz interactive |
-| Executor | `~/.local/bin/buzz-acp` → `/usr/local/bin/claude-agent-acp`; **augustus alone** runs `codex-acp` inside a bwrap mount namespace |
+| Executor | `~/.local/bin/buzz-acp` → `/usr/local/bin/claude-agent-acp` through `claude-agent-wrapper.sh` for every agent (augustus migrated 2026-10-06) |
 | Kind | `service` — `Type=simple`, always on, **no timer**. `config/fleet-units.tsv` column 5 |
 | Contract version | 1 (2026-09-03) |
 | Alerted | **no.** There is no `OnFailure=` on `buzz-agent@.service`. `fleet-turn-check` is the compensating control and it is hourly, not immediate |
@@ -231,9 +231,9 @@ Each is decidable by a command. 1–6 run in the repo; 7–10 need the box.
 - **The context ceiling, marcus only.** He is the DAG root with ~20 channels against 4–8 for
   the others, and the limit bounds *messages*, not tokens. `Prompt is too long` ×258. A
   restart resets it and it re-accumulates.
-- **augustus's namespace.** His bwrap wrapper `--tmpfs`es `~/.ssh` and
-  `~/.config/agent-workforce`, so he can never `git fetch` — which surfaced once as a bogus
-  "origin unreachable". Never fix a capability gap here by widening the namespace; anything
-  the bridge can read inside bwrap, his shell can read too.
+- **augustus's former namespace (before 2026-10-06).** His Codex bwrap wrapper hid
+  `~/.ssh` and `~/.config/agent-workforce`, causing a misleading "origin unreachable".
+  The host corpus snapshot and Notion broker closed those gaps without exposing credentials.
+  Those paths remain after his migration to the shared Claude settings boundary.
 - **Presence is not liveness.** A stale or Desktop-held relay presence ticks happily for a
   pubkey whose box unit is dead. Check `systemctl --user is-active` first.

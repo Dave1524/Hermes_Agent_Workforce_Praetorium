@@ -3,8 +3,8 @@
 # task on buzz-agent@augustus instead of a scheduled OpenRouter runner (NUC-46).
 #
 # OpenRouter has answered `402 Insufficient credits` on every augustus-content call
-# since ~2026-07-25. The same Editor-in-Chief already runs on this box on the codex-acp
-# harness at zero marginal cost, so this dispatches to him over Buzz and waits.
+# since ~2026-07-25. The same Editor-in-Chief runs in a live Buzz session, so this
+# dispatches to him over Buzz and waits. His harness moved to Claude on 2026-10-06.
 #
 # THE WHOLE CONTRACT IS THE EXIT CODE, and it has three states, not two:
 #   4 (CRASH_EXIT)  the trigger never landed — nobody was asked. agent_propose.sh
@@ -91,8 +91,22 @@ esac
 # A Codex usage-limit refusal reaches nothing the rest of this script reads: no receipt, no
 # post, no board write, only `-32603 Internal error` in his journal. Dispatching into it
 # spends the full wait and then records silence. Codex's own log knows, and says when it
-# resets. A read that fails is unknown, and unknown is never a refusal.
-if quota=$("$CODEX_ERROR_BIN" blocking --codex-home "$CODEX_HOME_DIR" 2>/dev/null) && [ -n "$quota" ]; then
+# resets. Read that log only for a Codex harness: retained logs cannot block Claude.
+# Environment also contains an auth tag. Extract just the harness assignment inside the
+# pipe, and never log the property or the unknown value. The explicit seam (even empty)
+# keeps tests off systemctl. An unreadable harness is unknown, never a quota refusal.
+if [ "${CONTENT_AUGUSTUS_HARNESS+x}" = x ]; then
+  augustus_harness=$CONTENT_AUGUSTUS_HARNESS
+else
+  augustus_harness=$(systemctl --user show "$AUGUSTUS_UNIT" -p Environment --value 2>/dev/null \
+    | grep -o 'BUZZ_ACP_AGENT_COMMAND=[^ ]*' | sed 's/^BUZZ_ACP_AGENT_COMMAND=//') || augustus_harness=""
+fi
+case "$augustus_harness" in
+  codex-acp|/usr/local/bin/codex-acp) augustus_is_codex=true ;;
+  claude-agent-acp|/usr/local/bin/claude-agent-acp) augustus_is_codex=false ;;
+  *) augustus_is_codex=false; log "augustus harness unknown or unreadable; skipping Codex log reads" ;;
+esac
+if "$augustus_is_codex" && quota=$("$CODEX_ERROR_BIN" blocking --codex-home "$CODEX_HOME_DIR" 2>/dev/null) && [ -n "$quota" ]; then
   IFS=$'\t' read -r _ q_retry _ q_at _ <<<"$quota"
   reason quota-exhausted "not dispatched: augustus's Codex plan refused a turn over its usage limit at $q_at and resets $q_retry, and no model request has succeeded since. Buy credits or wait; restarting him does not help."
   exit 1
@@ -114,20 +128,16 @@ printf '%s\n' "$baseline" >"$SNAPSHOT" \
   || crash "could not write the board snapshot at $SNAPSHOT"
 
 # ── 1b. arm the corpus gate, on the HOST ──────────────────────────────────────────
-# augustus cannot do this himself and never could. He is the only agent on codex-acp, and
-# his bwrap namespace mounts a tmpfs over ~/.ssh; the site remote is `git@github-website:`,
-# an ssh-config alias, so with no ssh config the name does not resolve. For nine consecutive
-# nights (2026-08-14 → 09-06) he reported the corpus unreachable while the host-side receipt
-# seconds later read `corpus: fetched`. It is a transport split, not a namespace question:
-# ~/agent-workforce/var/ is already inside his dev-bind and under no tmpfs, so the host
-# writes the snapshot and he reads it with no credential and no widening — which is the
-# rule, not merely the cheaper option (~/CLAUDE.md).
+# His former Codex bwrap namespace hid the SSH config the site remote needs. For nine
+# consecutive nights (2026-08-14 → 09-06) he reported the corpus unreachable while the
+# host-side receipt seconds later read `corpus: fetched`. The host snapshot gate stays
+# mandatory after his Claude migration: establish a fresh corpus before dispatch.
 #
 # A crash, not a warning, for the same reason the baseline above is one: a run dispatched
 # without the duplicate-title gate produces a draft that looks exactly as confident as a
 # correct one. Ten posts shipped that way between 09-02 and 09-05.
 if ! corpus_note=$("$CORPUS_BIN" snapshot 2>&1); then
-  crash "the corpus gate could not be armed, so nobody was asked — augustus cannot reach origin from his namespace and would draft with the duplicate-title check not running: ${corpus_note//$'\n'/ }"
+  crash "the corpus gate could not be armed, so nobody was asked — dispatch without a fresh corpus risks skipping the duplicate-title check: ${corpus_note//$'\n'/ }"
 fi
 log "corpus gate armed — ${corpus_note//$'\n'/ }"
 
@@ -395,7 +405,7 @@ trigger_failures() {
 # Only a refusal of the ACCOUNT or the MODEL is this run's cause by construction — it refuses
 # every turn alike. Any other error in the window may be his hourly heartbeat's, not this
 # trigger's; that one is attributed through the receipt above or not at all.
-if refusal=$(codex_refusal) && [ -n "$refusal" ]; then
+if "$augustus_is_codex" && refusal=$(codex_refusal) && [ -n "$refusal" ]; then
   IFS=$'\t' read -r r_class r_retry _ r_at r_message <<<"$refusal"
   case "$r_class" in
     quota-exhausted)

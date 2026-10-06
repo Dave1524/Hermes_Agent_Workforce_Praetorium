@@ -24,8 +24,7 @@ BASE_SETTINGS="$HOME/.claude/settings.json"
 STRICT_SETTINGS="$HOME/.config/buzz-team/agent-settings.json"
 WRAPPER="$HOME/.config/buzz-team/claude-agent-wrapper.sh"
 UNIT="$HOME/.config/systemd/user/buzz-agent@.service"
-AUGUSTUS_DROPIN="$HOME/.config/systemd/user/buzz-agent@augustus.service.d/harness.conf"
-CODEX_ACP=/usr/local/bin/codex-acp
+AUGUSTUS_DROPINS="$HOME/.config/systemd/user/buzz-agent@augustus.service.d"
 AGENT_TABLE="$REPO_ROOT/bin/buzz_agents.env"
 PROPOSE="$REPO_ROOT/bin/agent_propose.sh"
 SUITE_DECL="$REPO_ROOT/design/fleet-suites.toml"
@@ -78,8 +77,21 @@ denied_in_every_agent_file() {
     jq -e --arg t "$1" '.permissions.deny | index($t)' "$f" >/dev/null || return 1
   done
 }
-codex_acp_tmpfs_over_ssh() { grep -qF -- '--tmpfs "$HOME/.ssh"' "$CODEX_ACP"; }
-augustus_runs_codex_harness() { grep -qF 'Environment="BUZZ_ACP_AGENT_COMMAND=/usr/local/bin/codex-acp"' "$AUGUSTUS_DROPIN"; }
+augustus_harness_matches_manifest() {
+  python3 - "$REPO_ROOT/design/agents/augustus.toml" "$UNIT" "$AUGUSTUS_DROPINS" <<'PY'
+import pathlib, sys, tomllib
+manifest, unit, dropins = map(pathlib.Path, sys.argv[1:])
+if tomllib.loads(manifest.read_text())["harness"] != "claude-agent-acp":
+    raise SystemExit(1)
+def code(path):
+    return "\n".join(line for line in path.read_text().splitlines()
+                     if not line.lstrip().startswith("#"))
+if 'Environment="BUZZ_ACP_AGENT_COMMAND=/usr/local/bin/claude-agent-acp"' not in code(unit):
+    raise SystemExit(1)
+if any("BUZZ_ACP_AGENT_COMMAND" in code(p) for p in dropins.glob("*.conf")):
+    raise SystemExit(1)
+PY
+}
 propose_scopes_violations() { grep -qF "grep -v \"^_inbox/agents/\"" "$PROPOSE"; }
 propose_discards_on_violation() { grep -qF 'reset --hard -q' "$PROPOSE"; }
 
@@ -97,6 +109,19 @@ done
 # be some — an empty glob would make the loop above vacuous.
 n_agent_files=$(agent_settings_files | grep -c .)
 assert "per-agent settings files are deployed (found $n_agent_files)" "[ '$n_agent_files' -ge 1 ]"
+# A glob alone would certify the other agents when Augustus's new settings were missing.
+# Join deployed presence back to every Claude harness declared by the source manifests.
+claude_agents=$(python3 - "$REPO_ROOT/design/agents" <<'PY'
+import pathlib, sys, tomllib
+for p in sorted(pathlib.Path(sys.argv[1]).glob("*.toml")):
+    if tomllib.loads(p.read_text())["harness"] == "claude-agent-acp":
+        print(p.stem)
+PY
+)
+for agent in $claude_agents; do
+  assert "$agent: the declared Claude harness has a deployed settings file" \
+    "[ -f '$HOME/.config/buzz-team/agent-settings-$agent.json' ]"
+done
 for family in mcp__claude_ai_Gmail mcp__claude_ai_Eden mcp__claude_ai_Claude_Docs; do
   assert "$family is denied in every deployed per-agent file" "denied_in_every_agent_file '$family'"
 done
@@ -130,14 +155,11 @@ assert 'CLAUDE_CODE_EXECUTABLE names the agent wrapper' "[ '$exec_path' = '$WRAP
 assert 'CLAUDE_CODE_EXECUTABLE resolves to a file that exists and is executable' \
   "[ -n '$exec_path' ] && [ -x '$exec_path' ]"
 
-echo '--- augustus never had the claude.ai connector surface (::augustus-no-claude-connectors) ---'
-# augustus is on codex-acp inside bwrap. The claude.ai OAuth connectors are a Claude Code
-# surface he has never had, so the strict settings file neither reaches him nor needs to —
-# and must NOT be credited for him. Crediting the wrong mechanism is the defect D3 found in
-# agent-model.md §2/§6.1. What IS checkable is that his harness is still not Claude's: if
-# he were ever moved onto claude-agent-acp, this goes red and his rule needs the strict file.
-assert 'augustus has a harness drop-in' "[ -f '$AUGUSTUS_DROPIN' ]"
-assert 'augustus runs the codex harness, not claude-agent-acp' "augustus_runs_codex_harness"
+echo '--- augustus inherits the declared Claude harness (::augustus-harness-matches-manifest) ---'
+# Only *.conf drop-ins load. A renamed Codex backup stays available for rollback without
+# changing the template's harness. Check every active drop-in, not just harness.conf.
+assert 'augustus declares Claude, the template selects it, and no active drop-in overrides it' \
+  "augustus_harness_matches_manifest"
 
 echo '--- the strict file is a superset of the base file (::deny-superset) ---'
 # Written as a superset deliberately, so it is correct whether --settings merges or
@@ -220,13 +242,6 @@ assert 'it counts anything outside _inbox/agents/ as a violation' "propose_scope
 assert 'a violation hard-resets the worktree rather than committing part of it' "propose_discards_on_violation"
 assert 'a violation exits non-zero' \
   "grep -A6 'FATAL: agent touched files outside' '$PROPOSE' | grep -q 'exit 1'"
-
-echo '--- augustus has no ssh credential inside his namespace (::augustus-no-fetch) ---'
-# The bwrap wrapper mounts an empty tmpfs over ~/.ssh, so his namespace has neither the
-# deploy keys nor the Host aliases from ~/.ssh/config. Never fix a fetch failure by
-# widening this: anything his tooling can read, his shell can read.
-assert 'the codex-acp bwrap wrapper exists' "[ -f '$CODEX_ACP' ]"
-assert 'it mounts an empty tmpfs over ~/.ssh, so git fetch has no credential' "codex_acp_tmpfs_over_ssh"
 
 echo '--- every enforced flag is backed by an assertion that exists (::enforced-has-test) ---'
 # D9's redefinition, made machine-checkable: `enforced = true` iff a machine-checkable

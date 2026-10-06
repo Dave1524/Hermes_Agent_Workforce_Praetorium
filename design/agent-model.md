@@ -58,7 +58,7 @@ positions in a count, and a table that renumbers on retirement silently invalida
 
 | # | Surface | Runtime | Who runs here | Tool set | Governed by |
 |---|---|---|---|---|---|
-| **S1** | Buzz interactive | `claude-agent-acp` (marcus, claudius, trajan, aurelian); `codex-acp` in bwrap (augustus) | all five personas | **Per agent since 2026-09-18 (S1 isolation):** the manifest's `[surfaces.interactive]` `tools` family minus `tools_deny`, plus the ONE MCP server `buzz-team-mcp-<name>` (the per-agent bridge shim: qmd's 4 + 7 `notion_*` + 4 `brave_*`, filtered to `bridge_tools`), plus the owner's pointer skills, plus — on trajan, marcus and aurelian since 2026-09-19 — the `shared@jbuitenhuis` plugin's skills and coding-standards hook (`plugins` in the manifest → `enabledPlugins` in the settings file; its MCP servers are dropped by `--strict-mcp-config`). Nothing of Dave's user scope — the Claude agents run `--strict-mcp-config --setting-sources=` and read only the rendered `agent-settings-<name>.json`, under the managed `/etc/claude-code/managed-settings.json` path deny that binds every session on the box; augustus's bridge is his shim and his skills the `$CODEX_HOME/skills/praetorium` link | `design/agents/<name>.toml` `[surfaces.interactive]` → `bin/fleet_capabilities.py render` → `buzz-team/agent-settings-<name>.json` + `buzz-team/buzz-team-mcp-<name>` (deployed to `~/.config/buzz-team/`); `buzz-team/claude-agent-wrapper.sh` (the flags); `systemd/user/buzz-agent@.service` (`BUZZ_AGENT_NAME=%i`, `--mcp-command …-%i`); `buzz-team/<name>.toml` (who may wake whom). Proven by `tests/test_fleet_capabilities.sh` (source), `tests/test_fleet_guards.sh` (deployed) and `verify-fleet.sh` gates 14/15 (live) |
+| **S1** | Buzz interactive | `claude-agent-acp` through the shared wrapper for every persona | all five personas | **Per agent since 2026-09-18 (S1 isolation):** the manifest's `[surfaces.interactive]` `tools` family minus `tools_deny`, plus the ONE MCP server `buzz-team-mcp-<name>` (the per-agent bridge shim: qmd's 4 + 7 `notion_*` + 4 `brave_*`, filtered to `bridge_tools`), plus the owner's pointer skills, plus — on trajan, marcus and aurelian since 2026-09-19 — the `shared@jbuitenhuis` plugin's skills and coding-standards hook (`plugins` in the manifest → `enabledPlugins` in the settings file; its MCP servers are dropped by `--strict-mcp-config`). Nothing of Dave's user scope — the Claude agents run `--strict-mcp-config --setting-sources=` and read only the rendered `agent-settings-<name>.json`, under the managed `/etc/claude-code/managed-settings.json` path deny that binds every session on the box; augustus uses the same wrapper and per-agent settings after the 2026-10-06 migration | `design/agents/<name>.toml` `[surfaces.interactive]` → `bin/fleet_capabilities.py render` → `buzz-team/agent-settings-<name>.json` + `buzz-team/buzz-team-mcp-<name>` (deployed to `~/.config/buzz-team/`); `buzz-team/claude-agent-wrapper.sh` (the flags); `systemd/user/buzz-agent@.service` (`BUZZ_AGENT_NAME=%i`, `--mcp-command …-%i`); `buzz-team/<name>.toml` (who may wake whom). Proven by `tests/test_fleet_capabilities.sh` (source), `tests/test_fleet_guards.sh` (deployed) and `verify-fleet.sh` gates 14/15 (live) |
 | **S2** | Scheduled headless CC | `claude -p` from `bin/run_*_cc.sh`, wrapped by `bin/agent_propose.sh` | nobody — the owner persona is *accountability*, the executor is anonymous | **no MCP** (`--strict-mcp-config --mcp-config '{"mcpServers":{}}'` — no connector tool exists in the session) plus the `agent_propose.sh` write boundary (proposal mode: anything outside `_inbox/agents/**` discards the whole worktree; ops mode has none). `--allowedTools` is enforced under `--permission-mode dontAsk` (T2.2, 2026-09-09): a tool not on the list is denied, not prompted. A bare `Bash` entry still permits any command the model writes, so Bash is not a sandbox; the write boundary is still the proposal-mode guard. | the wrapper script, one per workflow, in `bin/` |
 | ~~**S3**~~ | ~~Hermes kanban dispatch~~ — **RETIRED 2026-09-02 (D7)** | ~~`hermes-gateway` auto-dispatches `ready` cards every 60s~~; the gateway is disabled+stopped, the board is archived (`design/archive/hermes-kanban-board.md`), `bin/kanban_run_and_wait.sh` is deleted | ~~marcus, claudius, augustus, trajan~~ — nobody | ~~Hermes toolsets + a real skills index with a per-profile allowlist~~ | ~~`~/.hermes/profiles/<p>/config.yaml` and `bin/apply_skills_allowlist.sh` both survived the board~~; profiles deleted 2026-09-14 (T6.1) |
 | **S4** | Buzz-dispatched scheduled | `bin/run_content_via_buzz.sh` — a timer that triggers **S1** and waits | augustus only | inherits S1 entirely | `bin/buzz_routes.env` (destination, kind, who to wake) + the profile augustus is told to read |
@@ -206,8 +206,7 @@ augustus's `linkedin-review` and `blog-engine` (no profile extracts them). Those
 recorded as `skills = []` on 16 trajan entries and as absent from augustus's lists, which
 was the honest state of the scheduled surface, not a gap to close by inventing a runner.
 **Since 2026-09-18 they reach their owners on S1**: `buzz-agent@trajan` is offered
-trajan's 4 and `buzz-agent@augustus` augustus's 3 (`skills_mechanism = "acp-wrapper"` /
-`"codex-home"`, below), so every pointer is now offered to its owner on at least one
+trajan's 4 and `buzz-agent@augustus` augustus's 3 (`skills_mechanism = "acp-wrapper"`, below), so every pointer is now offered to its owner on at least one
 surface; aurelian's entry stays `[]` by allocation. What the join proves is *offer*, not
 *use*: whether a run ever opens a skill it is handed is measured by T3.3's telemetry on
 S2 and, since the same date, by the `skills` block on every S1 interaction receipt.
@@ -361,7 +360,7 @@ skills_mechanism = "heading-extraction" # optional. How the offer reaches the ru
                                   # claude-agent-wrapper.sh passes --plugin-dir
                                   # skills/$BUZZ_AGENT_NAME, and the join proves the unit
                                   # sets BUZZ_AGENT_NAME=%i and the tree is the owner's;
-                                  # "codex-home" = augustus on S1: the offer is the owner
+                                  # "codex-home" = retained for Codex rollback: the owner
                                   # tree through the $CODEX_HOME/skills/praetorium link
                                   # the entry's notes name (hand-installed, asserted live by
                                   # verify-fleet gate 15). The field exists because the
@@ -556,11 +555,11 @@ the live totals.
    assertion covering it (`<file>::<assertion-id>`), or `test_exempt` says in prose why no
    assertion is possible. `tests/test_fleet_guards.sh` enforces this rule on the manifests
    themselves, in both directions. Definition and rationale: eval-spec.md §7.4 (D9).
-   **Same rule, different agents, different mechanism — name the right one.** marcus and
-   claudius are covered by the strict settings file; augustus is covered by a harness that
-   never had the connectors, and that file never reaches him. Attributing a real boundary
-   to the wrong thing is the §6.1 defect in miniature, and it survives the removal of
-   whatever actually held the line.
+   **Name the mechanism that reaches the session.** Every Claude agent, including
+   augustus after the 2026-10-06 migration, is covered by its rendered strict settings file.
+   His earlier Codex harness had no Claude connector surface; that historical absence
+   cannot be credited to settings it never loaded. Attributing a boundary to the wrong
+   mechanism survives the removal of whatever actually held the line.
 4. **Deployed-copy convention (D1 §7.8) still holds**: units ExecStart from
    `~/agent-workforce/bin`. The manifest records the source path; the
    runtime reads the deployed one.
@@ -602,12 +601,13 @@ and neither is guessable: `--settings` passed through `BUZZ_ACP_AGENT_ARGS` is a
 no-op, because buzz-acp parses nothing from argv but `--version`; and the strict file is
 written as a superset so the split holds whether the loader merges or replaces.
 
-**It does not cover augustus, and must not be credited for him.** He runs `codex-acp`, so
-the claude.ai connector surface is absent from his harness by construction — a separate
-mechanism with its own assertion.
+**Updated 2026-10-06:** augustus moves from `codex-acp` to the shared Claude wrapper.
+His rendered `agent-settings-augustus.json` now supplies connector denies and the Stop
+receipt hook. The previous absence of Claude connectors was a property of the Codex
+harness; its separate harness and no-fetch assertions are retired.
 
 Asserted by `tests/test_fleet_guards.sh` (`::connector-deny`, `::deny-superset`,
-`::augustus-no-claude-connectors`); `::deny-superset` is what goes red if a deny is ever
+`::augustus-harness-matches-manifest`); `::deny-superset` is what goes red if a deny is ever
 added to the base file and not mirrored here. Definition of the flag: eval-spec.md §7.4.
 
 ### 6.2 The failure-alert throttle has been deployed but unwired for 18 days

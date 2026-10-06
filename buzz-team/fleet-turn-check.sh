@@ -66,8 +66,7 @@ note "fleet-turn-check  $(date -Is)  host=$(hostname)"
 
 # ---------------------------------------------------------------- gate 1
 # The credential, read through the exact binary the Claude-backed agents spawn.
-# Scope: covers marcus/claudius/trajan/aurelian. augustus runs codex-acp and is
-# NOT covered by this gate -- gate 3 is what watches him.
+# Scope: covers every Claude-backed agent, including augustus after his harness migration.
 gate 1 "auth-live (claude-agent-acp --cli auth status)"
 auth_out=$("$ACP_BIN" --cli auth status 2>&1)
 auth_rc=$?
