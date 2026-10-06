@@ -24,7 +24,7 @@ The live per-job env (`~/.config/agent-workforce/daily_plan.env`) is deny-listed
 
 ## Trigger
 
-`OnCalendar=Mon..Fri 06:00`, `RandomizedDelaySec=2min`, `Persistent=true`. Recurring; no
+`OnCalendar=Mon..Fri 05:00`, `RandomizedDelaySec=2min`, `Persistent=true`. Recurring; no
 expiry.
 
 **Weekdays only, and the jitter is deliberately small.** 06:00 is a slot Dave plans around,

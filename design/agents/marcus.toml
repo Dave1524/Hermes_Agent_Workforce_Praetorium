@@ -62,7 +62,7 @@ present = false
 [[workflows]]
 unit     = "praetorium-daily-plan"
 surface  = "scheduled"
-trigger  = "Mon..Fri 06:00 (+2min jitter)"
+trigger  = "Mon..Fri 05:00 (+2min jitter)"
 model    = "claude-sonnet-5"
 profile  = "profiles/daily_plan_task.md"
 runner   = "bin/run_daily_rhythm_cc.sh"
