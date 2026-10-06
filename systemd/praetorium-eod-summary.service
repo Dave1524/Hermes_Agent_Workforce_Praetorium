@@ -24,5 +24,5 @@ ExecStartPre=/usr/bin/touch /home/dave/logs/run-markers/%n
 EnvironmentFile=/home/dave/.config/agent-workforce/secrets.env
 ExecStart=/home/dave/agent-workforce/bin/agent_propose.sh
 ExecStartPost=/home/dave/agent-workforce/bin/deliver_report.sh
-TimeoutStartSec=20min
+TimeoutStartSec=25min
 NoNewPrivileges=true

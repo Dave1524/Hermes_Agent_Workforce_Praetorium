@@ -42,6 +42,19 @@ and `profiles/overnight_morning_report_task.md` — both archived to `profiles/a
 and attributed both to `claudius`, when `design/agents/marcus.toml` declares both. Following the old
 rows installed a job pointing at an archived profile under an owner that does not own it.
 
+### The time budget — `TimeoutStartSec` must hold the whole run (2026-10-06)
+
+The units are `Type=oneshot`, so `TimeoutStartSec` covers preflight, every attempt and the
+ExecStartPost delivery. Only a failure faster than `AGENT_RETRY_WITHIN_SECONDS` (default 300) is
+retried; a slow failure or a timeout ends the run. Worst case = `(n-1)·W + backoff + T + 180s`
+reserve, plus 60s margin, and `bin/propose_budget.py` owns that sum twice over:
+`tests/test_propose_budget.sh` audits every unit against the example its `AGENT_JOB_OVERRIDES`
+names, and each run checks the values it actually loaded (`BUDGET:` in `agent_propose.log`,
+`budget=` in cost.log). A misfit still runs, clamped to the unit's deadline, and declares a
+`failed-assertion` incident keyed `budget-misfit`. A run ended by a limit is `outcome=FAIL` with
+`timeout=attempt|deadline|unit`; per-attempt `T` is 1.5 × the longest measured success, rounded
+up to 5 minutes, never sized to absorb a stall.
+
 ### `AGENT_OWNER` — the persona that owns a job
 
 `AGENT_OWNER` in each live override env names the owning persona (`design/agents/<owner>.toml`)

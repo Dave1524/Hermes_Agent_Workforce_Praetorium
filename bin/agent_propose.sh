@@ -49,6 +49,11 @@ run_task="standing"
 run_proposal="none"
 run_outcome="NOPROPOSAL"
 mem_status="na"
+# Which limit, if any, ended the run (none|attempt|deadline|unit), and whether the loaded budget
+# fits the unit's TimeoutStartSec (fit|misfit|unknown) — bin/propose_budget.py owns the sum.
+run_timeout="none"
+budget_state="unknown"
+cost_logged=false
 # T6.1 (2026-09-16): the shared OpenRouter key probe is retired. The Hermes runtime was its
 # only spender and its delta read 0.000000 on 344 of 353 rows; usage is measured per run in
 # the receipt (T5.2). cost.log keeps the keys with `unknown`.
@@ -127,9 +132,10 @@ except Exception:
   #   skills_offered=<csv|none|unknown>  the skill_listing, namespace-filtered
   #   skills_src=transcript|none         none <=> unknown <=> no transcript for the session
   skill_telemetry
-  printf 'ts=%s schema=3 profile=%s model=%s task=%s outcome=%s proposal=%s run_seconds=%s attempts=%s tokens=unknown usage_before=%s usage_after=%s cost_usd_delta=%s cost_src=openrouter-key-api memory=%s skills=%s skills_offered=%s skills_src=%s\n' \
-    "$(date -Is)" "$run_profile" "$run_model" "$run_task" "$outcome" "$run_proposal" "$elapsed" "$attempt" "${usage_before:-unknown}" "$usage_after" "$delta" "${mem_status:-na}" "$tel_skills" "$tel_offered" "$tel_src" \
+  printf 'ts=%s schema=3 profile=%s model=%s task=%s outcome=%s proposal=%s run_seconds=%s attempts=%s tokens=unknown usage_before=%s usage_after=%s cost_usd_delta=%s cost_src=openrouter-key-api memory=%s skills=%s skills_offered=%s skills_src=%s timeout=%s budget=%s\n' \
+    "$(date -Is)" "$run_profile" "$run_model" "$run_task" "$outcome" "$run_proposal" "$elapsed" "$attempt" "${usage_before:-unknown}" "$usage_after" "$delta" "${mem_status:-na}" "$tel_skills" "$tel_offered" "$tel_src" "$run_timeout" "$budget_state" \
     >> "$LOG_DIR/cost.log"
+  cost_logged=true
 }
 
 refresh_scorecard() {
@@ -210,6 +216,20 @@ brave_healthy() {
 
 exec 9>"$LOCK"
 flock -n 9 || { log "SKIP: previous run still active"; write_receipt SKIP; exit 0; }
+
+unit_terminated() {
+  # systemd's TimeoutStartSec kill sends SIGTERM to the whole cgroup. Before 2026-10-06 that
+  # left no cost.log row and no receipt, so the run was invisible to the scorecard. Record it
+  # here unless the run already recorded itself, in which case let that record finish.
+  $cost_logged && return 0
+  run_timeout=unit
+  local why="systemd terminated the run after $(( $(date +%s) - run_started ))s, during attempt $attempt/${max_attempts:-?}"
+  log "TIMEOUT: $why"
+  log_cost FAIL
+  write_receipt FAIL --rc 143 --reason "timeout=unit: $why"
+  exit 143
+}
+trap unit_terminated TERM
 
 # ── Preflight: every gate must hold, else BLOCKED (recorded) with NO proposal (NUC-37) ──
 # NOTE: the "previous run still active" SKIP at the flock above stays a SILENT exit —
@@ -387,6 +407,13 @@ DEDUP_EXIT=3
 # augustus-content nights, and a generic FAIL is indistinguishable from a transport fault.
 CRASH_EXIT=4
 max_attempts="${AGENT_MAX_ATTEMPTS:-3}"
+timeout_minutes="${AGENT_TIMEOUT_MINUTES:-30}"
+# Only a failure this fast is retried. A slow failure is an upstream stall the retry rarely
+# beats (2026-10-06: attempt 1 hung on a 196s call, attempt 2 saw 126s ones), and its retry is
+# what used to outrun the unit's TimeoutStartSec.
+retry_within="${AGENT_RETRY_WITHIN_SECONDS:-300}"
+# Kept back from the unit's limit for preflight and the ExecStartPost delivery.
+budget_reserve="${AGENT_BUDGET_RESERVE_SECONDS:-180}"
 ok=false; is_dedup=false; is_crash=false; rc=0
 # ── Silent-failure detection: a zero exit is NOT evidence the work happened ──
 # hermes exits 0 when the agent's FINAL RESPONSE is itself a provider error. The
@@ -407,6 +434,61 @@ PROVIDER_ERROR_RE='^(HTTP [45][0-9]{2}:|API call failed after [0-9]+ retries:|Pr
 run_ended_on_provider_error() {
   tail -n "${AGENT_ERROR_TAIL_LINES:-5}" "$1" 2>/dev/null | grep -qE "$PROVIDER_ERROR_RE"
 }
+for knob in max_attempts timeout_minutes retry_base retry_within budget_reserve; do
+  [[ "${!knob}" =~ ^[0-9]+$ ]] || block_exit "time budget: $knob must be a whole number (got: ${!knob})"
+done
+deadline=""
+check_budget() {
+  # From the values this run actually loaded: the live overrides are deny-listed to every
+  # agent, so a budget that cannot fit its unit is only ever visible here. A misfit runs, but
+  # clamped to the unit's deadline so the run records its own end instead of being killed.
+  local out rc=0 field remaining=unknown
+  out=$(python3 "$BIN_DIR/propose_budget.py" check --attempts "$max_attempts" \
+    --timeout-min "$timeout_minutes" --retry-base "$retry_base" --retry-within "$retry_within" \
+    --reserve "$budget_reserve" --unit "${DELIVERY_JOB:-}" 2>&1) || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    log "BUDGET: check failed (exit $rc: ${out##*$'\n'}) — running unclamped"
+    return 0
+  fi
+  for field in $out; do
+    case "$field" in
+      budget=*)    budget_state=${field#*=} ;;
+      remaining=*) remaining=${field#*=} ;;
+    esac
+  done
+  log "BUDGET: $out"
+  [ "$remaining" = unknown ] || deadline=$(( $(date +%s) + remaining - budget_reserve ))
+  case "$budget_state" in
+    misfit)
+      log "BUDGET MISFIT: $max_attempts x ${timeout_minutes}m (retry within ${retry_within}s, backoff base ${retry_base}s) cannot fit ${DELIVERY_JOB:-the unit}'s TimeoutStartSec — attempts are clamped to its deadline"
+      budget_incident declare "$out" ;;
+    fit) budget_incident resolve ;;
+  esac
+}
+budget_incident() {
+  # Fail-soft, like claude_auth_incident.sh: bookkeeping never changes the run's outcome.
+  local workflow="${DELIVERY_JOB%.service}"
+  [ -n "$workflow" ] || return 0
+  if [ "$1" = declare ]; then
+    python3 "$BIN_DIR/workflow_incidents.py" declare --class failed-assertion --workflow "$workflow" \
+      --id budget-misfit --issue "time budget misfit: $2" \
+      --action "Set this job's AGENT_MAX_ATTEMPTS / AGENT_TIMEOUT_MINUTES / AGENT_RETRY_WITHIN_SECONDS in ~/.config/agent-workforce to the committed example (profiles/*.env.example), or grow the unit; bin/propose_budget.py check shows the sum" \
+      >/dev/null 2>&1 || log "BUDGET: could not declare the budget-misfit incident"
+  else
+    python3 "$BIN_DIR/workflow_incidents.py" resolve --key "failed-assertion:$workflow:budget-misfit" >/dev/null 2>&1 || true
+  fi
+}
+attempt_limit_seconds() {
+  local limit=$((timeout_minutes * 60)) left
+  [ -n "$deadline" ] || { echo "$limit"; return 0; }
+  left=$(( deadline - $(date +%s) ))
+  [ "$left" -ge 1 ] || left=1
+  echo $(( left < limit ? left : limit ))
+}
+retry_fits() {
+  [ -z "$deadline" ] || [ $(( $(date +%s) + $1 + timeout_minutes * 60 )) -le "$deadline" ]
+}
+
 # NUC-29: stamp the real date once, exported so this script and whatever it execs share ONE
 # value — no midnight-rollover mismatch between them. Written for the kanban wrapper, which
 # is gone (D7, 2026-09-02); it still matters because the AGENT_VERIFY_CMD and four task
@@ -417,9 +499,12 @@ run_ended_on_provider_error() {
 export RUN_DATE="${RUN_DATE:-$(date +%Y-%m-%d)}"
 export TODAY="${TODAY:-$(date '+%A, %-d %B %Y')}"
 log "date: RUN_DATE=$RUN_DATE"
+check_budget
 while [ "$attempt" -lt "$max_attempts" ]; do
   attempt=$((attempt + 1))
   rc=0
+  attempt_limit=$(attempt_limit_seconds)
+  [ "$attempt_limit" -ge $((timeout_minutes * 60)) ] || log "attempt $attempt clamped to ${attempt_limit}s by the unit's deadline"
   # T3.3: exported so the runner's `--session-id` and log_cost's transcript lookup agree on
   # ONE id, minted per attempt so a retry's record carries the attempt whose outcome it is.
   AGENT_SESSION_ID="$(new_session_id)"
@@ -433,9 +518,17 @@ while [ "$attempt" -lt "$max_attempts" ]; do
   mkdir -p "$(dirname "$attempt_out")"
   : > "$attempt_out"
   rm -f "$AGENT_USAGE_JSON"
-  timeout "${AGENT_TIMEOUT_MINUTES:-30}m" bash -lc "$run_cmd" \
+  attempt_started=$(date +%s)
+  timeout --kill-after=30 "${attempt_limit}s" bash -lc "$run_cmd" \
     >"$attempt_out" 2>&1 || rc=$?
+  attempt_seconds=$(( $(date +%s) - attempt_started ))
   cat "$attempt_out" >>"$LOG_DIR/agent_run.log"
+  if { [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; } && [ "$attempt_seconds" -ge "$attempt_limit" ]; then
+    run_timeout=attempt
+    timeout_detail="attempt $attempt/$max_attempts hit the ${attempt_limit}s limit after ${attempt_seconds}s"
+    log "TIMEOUT: $timeout_detail"
+    break
+  fi
   if [ "$rc" -eq 0 ] && run_ended_on_provider_error "$attempt_out"; then
     rc=90
     log "SILENT-FAIL: exit 0 but the run ended on a provider error — recording FAIL"
@@ -458,9 +551,21 @@ while [ "$attempt" -lt "$max_attempts" ]; do
   # NUC-44: a crash-parked card is a failure, but a diagnosed one — record it as such and
   # stop, rather than re-running work hermes has already retried into the ground.
   if [ "$rc" -eq "$CRASH_EXIT" ]; then is_crash=true; break; fi
+  [ "$attempt" -lt "$max_attempts" ] || break
+  if [ "$attempt_seconds" -gt "$retry_within" ]; then
+    log "no retry: attempt $attempt failed (rc $rc) after ${attempt_seconds}s, slower than AGENT_RETRY_WITHIN_SECONDS=$retry_within"
+    break
+  fi
+  backoff=$((retry_base * attempt * attempt))   # 30s, 120s by default
+  if ! retry_fits "$backoff"; then
+    run_timeout=deadline
+    timeout_detail="no room for attempt $((attempt + 1))/$max_attempts: it needs ${backoff}s backoff + $((timeout_minutes * 60))s, $(( deadline - $(date +%s) ))s left before the unit's deadline"
+    log "TIMEOUT: $timeout_detail"
+    break
+  fi
   # Only back off when another attempt will actually follow — never hold the
   # flock sleeping after the FINAL failed attempt (dead 270s/30s wait).
-  [ "$attempt" -lt "$max_attempts" ] && sleep $((retry_base * attempt * attempt))   # 30s, 120s backoff by default
+  sleep "$backoff"
 done
 
 # ── NUC-38: idempotent hit — not a real run. No proposal, no memory fallback, no retry,
@@ -483,9 +588,13 @@ if ! $ok; then
   if $is_crash; then
     fail_outcome=CRASHED
     fail_reason="CRASHED: runtime reported a crashed run (exit $CRASH_EXIT) — see the wrapper's run errors above"
+  elif [ "$run_timeout" != none ]; then
+    fail_outcome=FAIL
+    fail_reason="FAIL: timeout — $timeout_detail"
   else
     fail_outcome=FAIL
     fail_reason="FAIL: runtime failed after $max_attempts attempts"
+    [ "$attempt" -eq "$max_attempts" ] || fail_reason="FAIL: runtime failed after $attempt of $max_attempts attempts (no retry)"
   fi
   if [ "$run_mode" = proposal ]; then
     log "$fail_reason — resetting worktree, NO proposal emitted"
@@ -494,7 +603,11 @@ if ! $ok; then
     log "$fail_reason (ops mode — no worktree reset)"
   fi
   log_cost "$fail_outcome"
-  write_receipt "$fail_outcome" --rc "$rc"
+  if [ "$run_timeout" != none ]; then
+    write_receipt "$fail_outcome" --rc "$rc" --reason "timeout=$run_timeout: $timeout_detail"
+  else
+    write_receipt "$fail_outcome" --rc "$rc"
+  fi
   refresh_scorecard
   exit 1
 fi

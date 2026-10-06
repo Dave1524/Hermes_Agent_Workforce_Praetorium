@@ -19,5 +19,5 @@ ExecStartPre=/usr/bin/mkdir -p /home/dave/logs/run-markers
 ExecStartPre=/usr/bin/touch /home/dave/logs/run-markers/%n
 ExecStart=/home/dave/agent-workforce/bin/agent_propose.sh
 ExecStartPost=/home/dave/agent-workforce/bin/deliver_proposal.sh
-TimeoutStartSec=45min
+TimeoutStartSec=50min
 NoNewPrivileges=true

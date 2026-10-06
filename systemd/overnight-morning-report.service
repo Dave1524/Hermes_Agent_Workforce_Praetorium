@@ -31,5 +31,5 @@ ExecStart=/home/dave/agent-workforce/bin/agent_propose.sh
 # exits 0 — so a transport hiccup never marks the report unit failed / fires the
 # OnFailure alert.
 ExecStartPost=/home/dave/agent-workforce/bin/deliver_report.sh
-TimeoutStartSec=15min
+TimeoutStartSec=25min
 NoNewPrivileges=true
