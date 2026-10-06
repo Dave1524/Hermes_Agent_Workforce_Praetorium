@@ -105,3 +105,23 @@ differ. Today's timeline confirms only that daily-plan's live values are 2 attem
   at `e30df0a`.
 - For each unit, read the timeout in force with `systemctl show <unit> -p TimeoutStartUSec`,
   not from the file alone.
+
+## Order of work
+
+As delivered in PR #82 (merged, deployed 2026-10-06):
+1. `bin/propose_budget.py` — the worst-case sum, `audit` over units + examples, `check` per run.
+2. Every `profiles/*.env.example` carries the four knobs, sized from cost.log; new
+   `augustus-content.env.example`.
+3. Units grown: daily-plan / eod-summary / morning-report 25 min, agent-proposal 50 min.
+4. `bin/agent_propose.sh` — fast-fail-only retry, deadline clamp, named timeouts,
+   `timeout=` / `budget=` in cost.log, SIGTERM trap, `budget-misfit` incident.
+5. `bin/propose_receipt.py` — FAIL carries `--reason`; `tests/test_propose_budget.sh` pins it all.
+
+## Risks
+
+- fleet-eval sees a failed run only as a MISSING delivery, not FAILED: it reads delivery
+  receipts, and a failed oneshot never runs ExecStartPost. Recorded in PR #82; not fixed here.
+- The live overrides are unread by design; until Dave applies the PR's lines, jobs run on the
+  defaults (fast retry within 300s), which fit every unit but are not the measured sizing.
+- The morning report still loses its slot on a slow daily-plan day (lock hold to ~06:25:30);
+  moving it to 06:30 is proposed, not done.
