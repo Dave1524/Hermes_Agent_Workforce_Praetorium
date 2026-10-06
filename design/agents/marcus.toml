@@ -76,7 +76,7 @@ skills   = ["agent-inbox-sync", "post-call-capture", "weekly-review"]
 [[workflows]]
 unit     = "overnight-morning-report"
 surface  = "scheduled"
-trigger  = "daily 06:15 (+5min jitter)"
+trigger  = "*-*-* 05:30 (+5min jitter)"
 model    = "claude-sonnet-5"
 profile  = "profiles/overnight_morning_report_cc_task.md"
 runner   = "bin/run_overnight_morning_report_cc.sh"
