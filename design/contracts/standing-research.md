@@ -29,7 +29,7 @@ only for systemd and the journal, which know it by the other name.
 
 ## Trigger
 
-`OnCalendar=Mon..Fri 04:30`, `RandomizedDelaySec=5min`, `Persistent=true`. Recurring; no
+`OnCalendar=Mon..Fri 03:30`, `RandomizedDelaySec=5min`, `Persistent=true`. Recurring; no
 expiry. Weekday-only, so the longest legitimate gap between runs is the 72h weekend —
 registry §2 recorded this as "daily" off a next-elapse value (`agent-model.md` §6.8).
 
