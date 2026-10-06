@@ -54,7 +54,10 @@ class LineageSixStages(unittest.TestCase):  # (::lineage-six-stages)
     def test_trigger_is_manifest_text_plus_control_state(self):
         trigger = self.stages["trigger"]
         self.assertEqual(trigger["source"], "manifest")
-        self.assertIn("Mon..Fri 04:30", flat(trigger["value"]))
+        manifest_triggers = [t["trigger"] for t in fixture_item("agent-proposal")["triggers"] if t.get("trigger")]
+        self.assertTrue(manifest_triggers)
+        for text in manifest_triggers:
+            self.assertIn(text, flat(trigger["value"]))
         self.assertIn("paused", flat(trigger["value"]))
 
     def test_agent_is_owner_plus_receipt_model(self):
