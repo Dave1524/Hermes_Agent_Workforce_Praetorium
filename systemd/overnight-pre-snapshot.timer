@@ -4,7 +4,7 @@
 Description=Schedule overnight pre-snapshot — NUC-36
 
 [Timer]
-OnCalendar=*-*-* 04:25
+OnCalendar=*-*-* 03:25
 RandomizedDelaySec=2min
 Persistent=true
 

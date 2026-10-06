@@ -26,7 +26,7 @@ the morning report has a *before* to diff against
 
 ## Trigger
 
-`overnight-pre-snapshot.timer`: `OnCalendar=*-*-* 04:25`, `RandomizedDelaySec=2min`,
+`overnight-pre-snapshot.timer`: `OnCalendar=*-*-* 03:25`, `RandomizedDelaySec=2min`,
 `Persistent=true`. `ExecStartPre` touches the run marker so the adapter can anchor on this run.
 
 ## Inputs
