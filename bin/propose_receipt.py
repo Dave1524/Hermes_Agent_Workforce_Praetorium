@@ -42,7 +42,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("outcome", choices=["SKIP", "DEDUP", "BLOCKED", "AUTHDOWN", "FAIL", "CRASHED", "VIOLATION",
                                        "OPS", "PROPOSAL", "NOPROPOSAL"])
     p.add_argument("--rc", type=int, help="the runtime's exit status (FAIL, CRASHED)")
-    p.add_argument("--reason", help="the gate that refused (BLOCKED, AUTHDOWN)")
+    p.add_argument("--reason", help="the gate that refused (BLOCKED, AUTHDOWN) or the limit that ended it (FAIL)")
     p.add_argument("--proposal", metavar="RELPATH", help="the proposal, relative to the inbox worktree (PROPOSAL)")
     return p.parse_args(argv)
 
@@ -115,7 +115,10 @@ def evidence_flags(args: argparse.Namespace, env: dict[str, str]) -> list[str]:
     if outcome == "AUTHDOWN":
         return ["--skipped", f"dependency-down: claude-auth — {args.reason or 'headless claude refused authentication'}"]
     if outcome in ("FAIL", "CRASHED"):
-        return ["--failed", f"{outcome}: rc={args.rc if args.rc is not None else '?'} {last_attempt_line(env)}".rstrip()]
+        rc = args.rc if args.rc is not None else "?"
+        if args.reason:
+            return ["--failed", f"{outcome}: rc={rc} {args.reason}"]
+        return ["--failed", f"{outcome}: rc={rc} {last_attempt_line(env)}".rstrip()]
     if outcome == "VIOLATION":
         return ["--failed", "VIOLATION: wrote outside _inbox/agents"]
     if outcome == "OPS":
