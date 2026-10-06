@@ -22,7 +22,7 @@ no run's output was read.
 
 ## Trigger
 
-`OnCalendar=Mon,Wed 05:30`, `RandomizedDelaySec=5min`, `Persistent=true`. Recurring; no
+`OnCalendar=Mon,Wed 04:25`, `RandomizedDelaySec=5min`, `Persistent=true`. Recurring; no
 expiry. **Twice weekly, not daily** — registry §2 recorded it as daily off a next-elapse
 value, and the difference matters here more than anywhere else in the fleet: the profile
 carries a same-day idempotency check and deliberately **no weekly-skip guard**, because the

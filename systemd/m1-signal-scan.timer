@@ -9,7 +9,7 @@ Description=M1 market signal scan, twice weekly (Mon+Wed) — NUC-32
 # This dedicated timer decouples M1 from the non-deterministic agent-proposal queue lottery.
 
 [Timer]
-OnCalendar=Mon,Wed 05:30
+OnCalendar=Mon,Wed 04:25
 RandomizedDelaySec=5min
 Persistent=true
 
