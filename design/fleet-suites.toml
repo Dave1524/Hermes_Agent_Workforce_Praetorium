@@ -996,3 +996,27 @@ path = "tests/test_ship_verify.sh"
 owner = "fleet"
 asserts = ["ship-verify-drift", "ship-verify-other-failures", "ship-verify-trace"]
 why_no_workflow = "T8.2's interactive ship workflow distinguishes deployment drift from other gate failures before opening a PR."
+
+[[suite]]
+path    = "tests/test_board.sh"
+owner   = "fleet"
+asserts = [
+  "board-derive-columns",     # every column is derived from events, broker decisions and receipts; a research date ahead reads scheduled; an approval waits in review until its hash is on main; rejection is Done, withdrawn outside review
+  "board-strikes",            # two returns, two requests for changes or two declines block; a passed deadline blocks; only an unblocked decision lifts it and an edit never does
+  "board-decisions-trust",    # a decision-shaped ledger event is forged and moves nothing; a decision naming another brief or card moves nothing; derivation is order-independent
+  "board-void-pick",          # a failed or skipped run, or an artifact naming no page, voids the pick without a strike; a pick past the timeout is a stale-pick; brief-run declines count
+  "board-fields-and-moves",   # the editable fields and the moves per column come from one table; locked fields stay locked
+  "board-create-rules",       # create lands in Backlog and refuses a duplicate id, an owner with no runner, a bad scope, a research date after the deadline, a buzz brief, a run
+  "board-brief-hashing",      # the hash ignores line endings and trailing whitespace only; a returned or unchanged text is refused; a run writes one brief, only into Backlog
+  "board-edit-rules",         # only dave and the Mac edit; id, owner and kind are refused; stale revisions refused; idea and scope void the brief and close after the first run; the research date holds the pick
+  "board-actor-verbs",        # the actor vocabulary is closed; notes are open; no ledger verb is a decision
+  "board-pick",               # priority then deadline order; idempotent per run id; passes over scheduled and non-Todo cards; refuses a tampered brief; a voided pick returns the card; changes requested reach the next card.md
+  "board-reads-and-main",     # list, next, status, show and decisions; Done is a join with origin/main by content hash
+  "board-template",           # the template's headings are exactly what validate-brief requires; acceptance is three to five lines; the brief names its card
+  "board-help",               # --help is the mechanism document: layout, actors, decisions, hashing, columns
+]
+why_no_workflow = """
+The ledger's shape and derivation, ahead of the workflows that call it (the brief run, the
+standing-research pick, the Control Room seam). A workflow that adopts the board names this
+suite in its own join; until then it belongs to the fleet.
+"""
