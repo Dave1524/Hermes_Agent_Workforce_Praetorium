@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Card Popup Mockup</title>
+<!--
+  The card popup mockup Dave approved on 2026-10-06, the layout reference for section 3.8 of
+  agent-board-refinement-2026-09-23.md. Layout and content are the approved mockup's. Colours,
+  fonts, inputs and buttons are the Control Room's own (ui/control-room/src/index.css, and
+  DialogFrame.tsx's inputClass and buttonClass); the width is DialogFrame's `wide` (max-w-3xl).
+  The card is a synthetic example in Todo, not client data.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
+<style>
+  :root {
+    --bg: #111114;
+    --surface: #18181c;
+    --surface-2: #202026;
+    --surface-3: #28282f;
+    --border: #2a2a32;
+    --border-2: #38383f;
+    --text: #edeae4;
+    --text-2: #a4a4b0;
+    --muted: #5e5e6a;
+    --accent: #c9a44a;
+    --accent-dim: #2a2210;
+    --green: #3ea862;
+    --red: #c43c3c;
+    --red-dim: #281010;
+    --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px 16px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  .caption { max-width: 768px; margin: 0 auto 12px; font-size: 12px; color: var(--text-2); }
+  .overlay {
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px 12px; border-radius: 8px; background: rgba(0, 0, 0, 0.6);
+  }
+  .dialog {
+    width: 100%; max-width: 768px; background: var(--surface);
+    border: 1px solid var(--border-2); border-radius: 6px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+  }
+  .dialog-header {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+  }
+  .dialog-body {
+    display: grid; grid-template-columns: minmax(0, 1fr) 190px; gap: 16px; padding: 14px 16px;
+  }
+  .dialog-footer {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 12px 16px; border-top: 1px solid var(--border);
+  }
+  .main { min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+  .side { display: flex; flex-direction: column; gap: 10px; font-size: 12px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .section-title { font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 6px; }
+  .section-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+  .section-head .section-title { margin-bottom: 0; }
+  .input {
+    width: 100%; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px;
+    padding: 6px 10px; font: inherit; font-size: 13px; color: var(--text);
+  }
+  .input::placeholder { color: var(--muted); }
+  .input:focus { outline: none; border-color: var(--border-2); }
+  .input-title { font-size: 16px; font-weight: 500; max-width: 420px; }
+  .input-small { font-size: 12px; }
+  .mono { font-family: var(--font-mono); }
+  textarea.input { resize: vertical; line-height: 1.5; }
+  .chip { padding: 2px 8px; border-radius: 4px; font-size: 12px; background: var(--surface-2); color: var(--text-2); }
+  .chip-column { background: var(--accent-dim); color: var(--accent); }
+  .muted { color: var(--muted); }
+  .hint { display: block; font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .label { display: block; color: var(--text-2); margin-bottom: 3px; }
+  .approved { font-size: 12px; color: var(--green); }
+  .activity { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-2); }
+  .activity .when { color: var(--muted); margin-right: 6px; }
+  .locked { border-top: 1px solid var(--border); padding-top: 8px; color: var(--text-2); }
+  .locked div { display: flex; justify-content: space-between; margin-top: 4px; }
+  .locked div:first-child { margin-top: 0; }
+  .btn {
+    padding: 6px 12px; font: inherit; font-size: 12px; border-radius: 4px; cursor: pointer;
+    background: transparent; border: 1px solid var(--border); color: var(--text-2);
+  }
+  .btn:hover { background: var(--surface-3); }
+  .btn-primary { font-weight: 500; background: var(--accent-dim); border-color: rgba(201, 164, 74, 0.3); color: var(--accent); }
+  .btn-primary:hover { background: rgba(201, 164, 74, 0.2); }
+  .btn-danger { font-weight: 500; border-color: rgba(196, 60, 60, 0.4); color: var(--red); }
+  .btn-danger:hover { background: var(--red-dim); }
+  .close { background: none; border: none; color: var(--muted); font-size: 14px; padding: 2px 4px; cursor: pointer; }
+  .close:hover { color: var(--text); }
+  @media (max-width: 640px) {
+    .dialog-body { grid-template-columns: minmax(0, 1fr); }
+  }
+</style>
+</head>
+<body>
+<p class="caption">Mockup: the card popup, a card in Todo. Approved 2026-10-06; designed in §3.8 of the board refinement note.</p>
+<div class="overlay">
+  <div class="dialog" role="dialog" aria-modal="true" aria-label="Vector search options for the vault">
+    <div class="dialog-header">
+      <div style="min-width: 0; flex: 1;">
+        <input class="input input-title" value="Vector search options for the vault" aria-label="Title">
+        <div class="row" style="margin-top: 8px;">
+          <span class="chip chip-column">Todo</span>
+          <span class="chip"><i class="ti ti-calendar" aria-hidden="true"></i> Scheduled Tue 6 Oct</span>
+          <span class="mono muted" style="font-size: 12px;">vault-vector-search</span>
+        </div>
+      </div>
+      <button class="close" aria-label="Dismiss">✕</button>
+    </div>
+
+    <div class="dialog-body">
+      <div class="main">
+        <div>
+          <div class="section-head">
+            <span class="section-title">Brief</span>
+            <span class="approved"><i class="ti ti-check" aria-hidden="true"></i> v2 by Claudius, approved 28 Sep</span>
+          </div>
+          <textarea class="input mono input-small" rows="8" aria-label="Brief">## Do
+Compare three local vector search options for the vault.
+## Acceptance
+- each option: licence, index size, update cost
+- one recommendation, with the reason
+- a test query run against the vault
+## Sources
+- project docs and published benchmarks
+- 05_knowledge/qmd_vault_search_setup.md</textarea>
+          <div class="row" style="margin-top: 6px;">
+            <button class="btn">Save</button>
+            <button class="btn btn-primary">Save and approve</button>
+            <span class="muted" style="font-size: 12px;">A changed brief goes back to Refine</span>
+          </div>
+        </div>
+
+        <div>
+          <div class="section-title">Idea</div>
+          <textarea class="input" rows="2" aria-label="Idea">Can the vault search run locally instead of over an API? What would it cost to keep fresh?</textarea>
+        </div>
+
+        <div>
+          <div class="section-title">Activity</div>
+          <div class="activity">
+            <div><span class="when">Mon 28 Sep</span>Brief approved by Dave</div>
+            <div><span class="when">Mon 28 Sep</span>Brief v2 by Claudius</div>
+            <div><span class="when">Fri 25 Sep</span>Returned by Dave: keep it to local options</div>
+            <div><span class="when">Fri 25 Sep</span>Brief v1 by Claudius</div>
+            <div><span class="when">Thu 24 Sep</span>Created by Dave</div>
+          </div>
+          <div class="row" style="margin-top: 8px; flex-wrap: nowrap;">
+            <input class="input" placeholder="Add a note" aria-label="Note">
+            <button class="btn">Add</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="side">
+        <label>
+          <span class="label">Research date</span>
+          <input class="input input-small" type="date" value="2026-10-06">
+          <span class="hint">Not before this morning's run</span>
+        </label>
+        <label>
+          <span class="label">Deadline</span>
+          <input class="input input-small" type="date" value="2026-10-16">
+        </label>
+        <label>
+          <span class="label">Priority</span>
+          <select class="input input-small"><option>High</option><option>Normal</option><option>Low</option></select>
+        </label>
+        <div>
+          <span class="label">Tags</span>
+          <span class="chip">search</span> <span class="chip">tooling</span>
+        </div>
+        <label>
+          <span class="label">Scope</span>
+          <input class="input input-small mono" value="vault:05_knowledge">
+          <span class="hint">Until the first run; re-briefs</span>
+        </label>
+        <div class="locked">
+          <div><span>Owner</span><span><i class="ti ti-lock" aria-hidden="true"></i> Claudius</span></div>
+          <div><span>Kind</span><span><i class="ti ti-lock" aria-hidden="true"></i> Research</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="dialog-footer">
+      <span class="muted" style="font-size: 12px;">Moves by decision only</span>
+      <div class="row">
+        <button class="btn">Block</button>
+        <button class="btn btn-danger">Withdraw</button>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
