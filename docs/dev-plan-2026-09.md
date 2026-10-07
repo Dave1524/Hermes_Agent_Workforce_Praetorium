@@ -1020,3 +1020,36 @@ note, not here.
   first, since both edit `agent_merge_watch.sh`. Designed in §3.7, §3.6.2.
   Gate: `agent_branch_test.py` cases green for the signature, the one-note check and the body
   hash (§3.6.10).
+
+**Shipping a Phase B slice** (`/ship B<n>`). Order: B1; then B2, B3 and B8 (B3 also waits for
+D9); then B4, B6, B7; then B5; then B9 (it includes sudo installs only Dave can run); B10 is
+built on the Mac in the vault repo after the watcher fix, with a prompt Dave writes then.
+
+- The note is the approved spec. Read the sections the slice's §8 row names, plus §3.6.10 (tests
+  and gates), §3.6.12 (files) and §6 (non-goals). If the code shows the design is wrong, stop
+  and tell Dave; do not redesign it in the brief.
+- First check the slice's dependencies have merged to `main`; if not, stop. Build only that slice.
+- Dave's Approve click on the board is the only approval. Never add a step for him, never
+  reopen it.
+- The repo is public: synthetic cards only in tests, fixtures and docs.
+- Branch from a fresh `origin/main`. Open the PR as the App via `bin/gh_app.sh` with the gate
+  result and any deploy drift, then stop for review. Nothing deploys before the merge; after it,
+  `bin/deploy` then `bash bin/verify.sh`. If the step needs sudo or a hand-install, give Dave
+  the exact commands.
+
+**B1 as built** (PR #92, merged and deployed 2026-10-07), choices the note leaves open that
+later slices inherit:
+
+- Brief headings are `## Question`, `## Why`, `## Scope in / out`, `## Sources`,
+  `## Acceptance` (three to five lines), `## Size`, `## Questions for Dave`; the first line is
+  `# Brief: <id>`. `board.py template` owns them, `validate-brief` checks them.
+- The owner check is the `KIND_OWNERS` constant in `board.py` (`design/` is not deployed); a
+  test pins it to `design/agents/<owner>.toml`.
+- A receipt `terminal.outcome = artifact` counts as In Review only when its `card.page` is set
+  (B3 writes the block); without a page the pick is void, back to Todo, no strike.
+- Brief-run declines count toward the two-decline block.
+- Picks are `picked` events with `fields.purpose` of `brief` or `research`; only research picks
+  move the column. Ordering inside a card is by timestamp, ties by append order.
+- The broker stream B9 must write is `decisions.jsonl` under `BOARD_DECISIONS_ROOT` (default
+  `/var/lib/control-room/receipts/board`): one object per line with `ts`, `decision`, `card`,
+  `brief_hash?`, `page_hash?`, `reason?`. B1 does not verify signatures.
