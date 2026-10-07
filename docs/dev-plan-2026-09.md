@@ -790,6 +790,10 @@ Format: `ID [assignee, size, blocked by]`. Gate is what green means for that tas
   refuses today — the 72 h `MAX_LAG_HOURS` gate fires only when origin is unreachable, and
   this morning's run fetched and augustus declined on his own — so this is purely the content
   decision, with no mechanical cost of leaving it open.
+- **D9** [Dave, S] Share the Notion Research database with the box's Notion integration, and put
+  its id in the box's configuration beside the Notion token (outside git). Claude creates the
+  database from the Mac; the sharing is Dave's. Blocks B3. Gate: the integration can read and
+  create a page in it.
 - **D7** Done 2026-09-07: workflow authoring granted in `TEAM.md`.
 - **D8** is T0.1.
 
@@ -957,3 +961,62 @@ on a merge-and-deploy (T3.3's calendar half), or on a Dave item.
 
 Dave's queue: D6, L1, T6.3 (D2 installed 2026-09-18, proof Mon 09-21; D5 done 09-18). D1 closed with T2.4; D4 closed 2026-09-16, D3 2026-09-17; D7 and
 L2 are closed.
+
+### Phase B — Agent board pilot
+
+Designed in `.claude/briefs/agent-board-refinement-2026-09-23.md` (the note) with the card popup
+mockup beside it; every decision in its §7 is taken. B1-B10 are the note's §8 increments I1-I10,
+one to one. Each step gets its brief once its dependencies have merged; the design stays in the
+note, not here.
+
+- **B1** [Claude, M] `bin/board.py`: the card ledger, derivation joined to receipts, a broker
+  decision stream and canonical `main`, brief hashing, `edit`, the research date, the template.
+  Designed in §3.1, §3.2, §3.6.1, §3.8.
+  Gate: `tests/test_board.sh` and `.py` green on synthetic cards and a fixture stream (§3.6.10).
+- **B2** [Claude, M, B1] Brief workflow: `board` run mode and the pick in `agent_propose.sh`,
+  runner, verify command, profile, contract, units, manifest entry, pinned counts. Designed in
+  §3.2a, §3.5, §3.6.3-§3.6.5, §3.6.8.
+  Gate: `tests/test_research_brief_smoke.sh`, `test_agent_propose_smoke.sh` (board mode, ledger
+  growth), `test_fleet_ownership.sh`, `test_workflow_coverage.py` (`board-join`) and the two
+  count tests green.
+- **B3** [Claude, M, B1, D9] Research runner join: the pick in `standing_research.env`, the card
+  run's page, `bin/notion_research.py`, the receipt `card` block, contract and profile edits.
+  Designed in §3.6.3 item 5, §3.6.4, §3.6.8, §3.7.
+  Gate: `tests/test_notion_research.py`, `test_propose_receipt.py`, `test_contract_exec.py`,
+  `test_contract_schema.py` and `test_agent_propose_smoke.sh::card-writes-research-only` green.
+- **B4** [Claude, M, B1, B3] Control Room reads: read model, board page, the card popup
+  read-only as in the mockup, `GET /api/v1/board/decisions`, rebuild. Designed in §3.4, §3.6.9,
+  §3.8.
+  Gate: `tests/test_control_room_api.py`, `test_control_room_spa.sh` and `CardDialog.test.tsx`
+  (parametrised over the seven columns) green.
+- **B5** [Claude, M, B4] Control Room writes: the board seam for `create`, `brief`, `note` and
+  `edit`, the popup's edit mode and unsaved-edit guard, the state-root drop-in. Decisions are
+  B9's. Designed in §3.6.9, §3.8.
+  Gate: the seam cases in `tests/test_control_room_api.py` (verb table, stale revision refused)
+  and the `CardDialog.test.tsx` edit cases green.
+- **B6** [Claude, M, B3] Land and closure: `board.py land` and `sweep`, the card branch pushed as
+  the App, `card-` branches skipped by the Agent Inbox sync, Done by join with `main`, the card
+  exceptions. Fixture decisions stand in until B9. Designed in §3.7, §3.6.8.
+  Gate: the `land` and Done-join cases in `tests/test_board.py` and
+  `tests/test_agent_inbox_branch_rows.py` green.
+- **B7** [Claude, S, B3] `queue.md` succession: the research profile stops reading it, docs
+  updated. Designed in §3.6.4, §7 decision 2.
+  Gate: `tests/test_standing_research_smoke.sh` asserts the profile no longer names `queue.md`.
+- **B8** [Claude, M, B1] S1: the `board` bridge family, vault skill, pointer, README row,
+  manifest `bridge_tools` and `skills`. Buildable alongside B2 and B3. Designed in §3.6.6,
+  §3.6.7.
+  Gate: `tests/test_buzz_team_mcp.py`, `test_fleet_capabilities.sh`, `test_pointer_skills.sh`
+  and `test_workflow_coverage.py` (`skills-join`) green; no tool maps to `pick`, `edit` or a
+  decision.
+- **B9** [Claude, M, B1, B5] Broker decisions: the seven Dave-only verbs, the signed root-owned
+  stream, the popup's decision buttons. Root-owned files are hand-installed and the signing key
+  generated at install, never through `bin/deploy`. Designed in §3.7, §3.8, §7 decisions 10, 12.
+  Gate: `tests/test_control_broker.py` and `.sh` green (seven verbs, signature); a forged
+  ledger decision moves nothing (`tests/test_board.py::forged-decision-ignored`).
+- **B10** [Claude, M, B6, B9, the `agent_merge_watch.sh` fail-open fix] **Mac-side, in the vault
+  repo**, on the vault's own loop: the watcher's board pass (signature, one added note, body
+  hash, `merge --expect-sha`), the pinned public key, the research area in `vault_map.md`.
+  The fix to the watcher's fail-open outcome parsing has no row yet; it is made separately
+  first, since both edit `agent_merge_watch.sh`. Designed in §3.7, §3.6.2.
+  Gate: `agent_branch_test.py` cases green for the signature, the one-note check and the body
+  hash (§3.6.10).
