@@ -1,0 +1,13 @@
+[Unit]
+Description=Board brief run, hourly on weekdays — Dev Plan B2
+# Hourly 08:07..18:07, Mon-Fri. The pre-flight is model-free: a tick with no Backlog card is a
+# receipted skip and no model starts, so the cadence costs nothing on a quiet board. Not
+# Persistent: a tick missed while the box was off must not fire at boot.
+
+[Timer]
+OnCalendar=Mon..Fri 08..18:07
+RandomizedDelaySec=3min
+Persistent=false
+
+[Install]
+WantedBy=timers.target

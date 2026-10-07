@@ -323,6 +323,13 @@ kind        = "service"           # "timer" (default) or "service". A `service` 
                                   # pre-existing rows were, and a default that reclassifies
                                   # existing entries is not a default.
 route       = "research"          # key in bin/buzz_routes.env, or omitted
+board       = "research"          # optional (Dev Plan B2), scheduled entries only: the card kind
+                                  # this workflow works off the agent board. The pick itself is
+                                  # AGENT_BOARD_PICK in the unit's override example; the
+                                  # `board-join` in tests/test_workflow_coverage.py joins the
+                                  # two (owner, kind, a known column, one runner per column)
+tools_without = ["Edit"]          # optional: builtins the scheduled surface's floor offers but this
+                                  # runner withholds; the runner-tools join subtracts them
 contract    = "design/contracts/knowledge-digest.md"
 requires    = ["buzz-agent@augustus", "user/buzz-notion-broker"]  # optional (T5.3f): the units
                                   # this workflow cannot run without. A bare name is a manifest

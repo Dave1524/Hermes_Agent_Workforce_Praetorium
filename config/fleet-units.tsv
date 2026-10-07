@@ -81,6 +81,7 @@ praetorium-daily-plan	system	standing	marcus	timer
 praetorium-eod-summary	system	standing	marcus	timer
 qmd-refresh	system	standing	trajan	timer
 raw-ingest	system	standing	claudius	timer
+research-brief	system	standing	claudius	timer
 scorecard	system	standing	trajan	timer
 workflow-receipt-sweep	system	standing	trajan	timer
 workflow-incidents	system	standing	trajan	timer

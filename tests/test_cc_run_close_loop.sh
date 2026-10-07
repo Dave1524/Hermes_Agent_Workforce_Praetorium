@@ -67,6 +67,7 @@ for runner in ${runners[@]+"${runners[@]}"}; do
     h=$(make_runner_home); fake=$(make_env_recording_claude "$h")
     vars=(HOME="$h" PATH="$PATH" CLAUDE_BIN="$fake" VAULT_SYNC_GUARD=true AGENT_SESSION_ID=close-loop-test)
     if [ "$usage" = set ]; then vars+=(AGENT_USAGE_JSON="$h/last-attempt/job.usage.json"); fi
+    case "$runner" in *run_research_brief_cc.sh) mkdir -p "$h/card"; vars+=(AGENT_CARD_DIR="$h/card") ;; esac
     env -i "${vars[@]}" bash "$runner" >"$h/run.log" 2>&1 || true
     assert "${runner#"$REPO_ROOT"/} (AGENT_USAGE_JSON $usage): its claude inherits exactly 'off'" \
       "[ \"\$(seen '$h')\" = off ]"

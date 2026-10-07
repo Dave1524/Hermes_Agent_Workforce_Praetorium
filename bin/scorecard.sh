@@ -142,7 +142,7 @@ if [ -r "$COST_LOG" ]; then
     # NUC-36: OPS (non-proposal guarded runs) are real inference but not proposal
     # jobs — counted in duration/window above, kept in a separate bucket, excluded
     # from the proposal rate.
-    if [ "${kv[outcome]:-}" = OPS ]; then
+    if [ "${kv[outcome]:-}" = OPS ] || [ "${kv[outcome]:-}" = BOARD ]; then
       ops=$(( ops + 1 ))
       unset kv
       continue

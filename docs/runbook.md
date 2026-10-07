@@ -23,6 +23,7 @@ Scheduled **proposal** agent jobs share `bin/agent_propose.sh` (lock, preflight,
 |---|---|---|---|---|---|
 | Standing research (Opus 5, NUC research pipeline brief 2026-07-30) | `agent-proposal.timer` Mon–Fri 04:30 | `agent-proposal.{service,timer}` | `~/.config/agent-workforce/standing_research.env` | `profiles/standing_research_cc_task.md` | *(headless Claude Code)* |
 | Raw source ingestion (Mechanism B) | **Tue–Sat 03:00** | `raw-ingest.{service,timer}` | `~/.config/agent-workforce/raw_ingest.env` | `profiles/raw_ingest_cc_task.md` | *(headless Claude Code)* |
+| Board brief run (Dev Plan B2) | **Mon–Fri 08:07–18:07 hourly**, quiet ticks receipted `skipped` | `research-brief.{service,timer}` | `~/.config/agent-workforce/research_brief.env` | `profiles/research_brief_cc_task.md` | *(headless Claude Code; `AGENT_RUN_MODE=board`)* |
 | Knowledge digest (Mechanism C) | **Sun 09:00** | `knowledge-digest.{service,timer}` | `~/.config/agent-workforce/knowledge_digest.env` | `profiles/knowledge_digest_cc_task.md` | *(headless Claude Code)* |
 | M1 signal scan (NUC-32/34) | **Mon,Wed 05:30** | `m1-signal-scan.{service,timer}` | `~/.config/agent-workforce/m1_signal_scan.env` | `profiles/m1_signal_scan_cc_task.md` | *(headless Claude Code)* |
 | Augustus content pitch+draft | daily **01:30** (backstop) | `augustus-content.{service,timer}` | `~/.config/agent-workforce/augustus-content.env` | `profiles/augustus_content_task.md` | **`buzz-agent@augustus`** via `bin/run_content_via_buzz.sh` (NUC-46) |

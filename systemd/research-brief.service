@@ -1,0 +1,24 @@
+[Unit]
+Description=Board brief run (headless Claude Code, Opus 5) — Dev Plan B2
+After=network-online.target
+Wants=network-online.target
+# The job never touches the inbox worktree; it needs the board's state root.
+ConditionPathExists=/var/lib/control-room-board
+OnFailure=agent-alert@%n.service
+
+[Service]
+Type=oneshot
+User=dave
+Environment=AGENT_JOB_OVERRIDES=/home/dave/.config/agent-workforce/research_brief.env
+Environment="REPORT_SUBJECT=[Praetorium] Board brief"
+Environment=DELIVERY_ROUTE=research
+Environment=DELIVERY_JOB=%n
+Environment=DELIVERY_TASK=research-brief
+Environment=DELIVERY_RUN_MARKER=/home/dave/logs/run-markers/%n
+EnvironmentFile=/home/dave/.config/agent-workforce/secrets.env
+ExecStartPre=/usr/bin/mkdir -p /home/dave/logs/run-markers
+ExecStartPre=/usr/bin/touch /home/dave/logs/run-markers/%n
+ExecStart=/home/dave/agent-workforce/bin/agent_propose.sh
+ExecStartPost=/home/dave/agent-workforce/bin/deliver_board_brief.sh
+TimeoutStartSec=20min
+NoNewPrivileges=true

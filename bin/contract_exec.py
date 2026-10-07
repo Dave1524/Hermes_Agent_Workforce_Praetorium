@@ -166,6 +166,9 @@ class Run:
                                         or self.home / "agent-workforce" / "logs" / "last-attempt" / f"{self.unit}.log")
         self.vault = pathlib.Path(os.path.realpath(args.vault or env.get("VAULT") or self.home / "vault"))
         self.invocation_id = env.get("INVOCATION_ID")
+        self.card = env.get("AGENT_CARD", "")
+        self.card_dir = env.get("AGENT_CARD_DIR", "")
+        self.board_root = env.get("BOARD_ROOT") or env.get("CONTROL_ROOM_BOARD_ROOT") or "/var/lib/control-room-board"
         self.explicit_run_id = args.run_id
 
     def systemctl(self) -> str:
@@ -187,6 +190,9 @@ class Run:
             "INBOX_WORKTREE": str(self.inbox_worktree),
             "VAULT": str(self.vault),
             "HOME": str(self.home),
+            "AGENT_CARD": self.card,
+            "AGENT_CARD_DIR": self.card_dir,
+            "BOARD_ROOT": self.board_root,
         }
 
 

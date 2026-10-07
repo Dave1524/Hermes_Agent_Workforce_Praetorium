@@ -736,4 +736,78 @@ assert "unknown is not a refusal: the run proceeds, no incident" "[ '$rc' = 0 ] 
 h41d=$(sandbox); : > "$h41d/stub_auth.sh"
 rc=$(CLAUDE_AUTH_PROBE="$h41d/stub_auth.sh" run_receipt_scenario "$h41d" 0)
 assert "a runtime that is not a Claude Code runner is never probed" "[ '$rc' = 0 ] && [ ! -e '$h41d/auth_argv.log' ] && ! grep -q 'claude-auth' '$h41d/agent-workforce/logs/agent_propose.log'"
+# ── board mode (Dev Plan B2) ────────────────────────────────────────────────────────────────
+# BOARD_PY points at a stub that records argv; the ledger's own verbs are tests/test_board.py's.
+# The runtime is a mock that writes what the scenario asks for: a brief, or a ledger event.
+make_board_scenario() {  # make_board_scenario <home> <picked-card or empty>
+  local home=$1 card=$2
+  mkdir -p "$home/board/cards/${card:-none}"
+  printf '%s\n' '{"event":"picked"}' > "$home/board/cards/${card:-none}/events.jsonl"
+  cat > "$home/stub_board.py" <<PY
+#!/usr/bin/env python3
+import os, sys
+argv = sys.argv[1:]
+open("$home/board_argv.log", "a").write(" ".join(argv) + "\n")
+if argv[0] == "pick":
+    if "$card":
+        os.makedirs(os.path.join(os.environ["BOARD_ROOT"], "runs", argv[argv.index("--run-id") + 1]), exist_ok=True)
+        print("$card")
+    sys.exit(0)
+if argv[0] == "brief":
+    print("hash0001")
+    sys.exit(int(os.environ.get("STUB_BRIEF_RC", "0")))
+sys.exit(2)
+PY
+  cat > "$home/mock_hermes.sh" <<MOCK
+#!/usr/bin/env bash
+echo "\$@" >> "$home/hermes_argv.log"
+[ "\${MOCK_WRITE_BRIEF:-}" = 1 ] && echo "# Brief: $card" > "\$AGENT_CARD_DIR/brief.out.md"
+[ "\${MOCK_WRITE_LEDGER:-}" = 1 ] && echo '{"event":"decided"}' >> "\$BOARD_ROOT/cards/\$AGENT_CARD/events.jsonl"
+exit 0
+MOCK
+  chmod +x "$home/stub_board.py" "$home/mock_hermes.sh"
+  printf '\nAGENT_RUN_MODE=board\nAGENT_TASK_SLUG=research-brief\nAGENT_BOARD_PICK="--owner claudius --kind research --column backlog"\n' \
+    >> "$home/.config/agent-workforce/secrets.env"
+}
+echo "--- scenario 42: board mode picks a card, records the model's brief, receipts BOARD (::board-mode-records-brief) ---"
+h42=$(sandbox); make_board_scenario "$h42" card-one
+rc=$(BOARD_PY="$h42/stub_board.py" BOARD_ROOT="$h42/board" MOCK_WRITE_BRIEF=1 run_receipt_scenario "$h42" 0)
+assert "exits 0" "[ '$rc' = 0 ]"
+assert "the pick carried the flags, the run id and the receipt unit" \
+  "grep -q '^pick --owner claudius --kind research --column backlog --run-id inv-smoke --workflow knowledge-digest' '$h42/board_argv.log'"
+assert "the wrapper, not the model, recorded the brief under the run's actor" \
+  "grep -q '^brief card-one --from-file $h42/board/runs/inv-smoke/brief.out.md --actor run:inv-smoke' '$h42/board_argv.log'"
+assert "cost.log outcome=BOARD" "grep -q 'outcome=BOARD' '$h42/agent-workforce/logs/cost.log'"
+assert "the receipt's artifact is board://<card>/brief/<hash>" "stub_has '$h42' --artifact board://card-one/brief/hash0001"
+
+echo "--- scenario 43: board mode, model writes no brief -> NOPROPOSAL, nothing recorded ---"
+h43=$(sandbox); make_board_scenario "$h43" card-one
+rc=$(BOARD_PY="$h43/stub_board.py" BOARD_ROOT="$h43/board" run_receipt_scenario "$h43" 0)
+assert "exits 0 with outcome=NOPROPOSAL" "[ '$rc' = 0 ] && grep -q 'outcome=NOPROPOSAL' '$h43/agent-workforce/logs/cost.log'"
+assert "board.py brief was never called" "! grep -q '^brief' '$h43/board_argv.log'"
+
+echo "--- scenario 44: board mode, no card -> skipped receipt and the model is never launched ---"
+h44=$(sandbox); make_board_scenario "$h44" ""
+rc=$(BOARD_PY="$h44/stub_board.py" BOARD_ROOT="$h44/board" run_receipt_scenario "$h44" 0)
+assert "exits 0" "[ '$rc' = 0 ]"
+assert "the receipt is skipped, naming the pick" "stub_has '$h44' --skipped 'no card for: --owner claudius --kind research --column backlog'"
+assert "the runtime was never launched" "[ ! -s '$h44/hermes_argv.log' ]"
+h44b=$(sandbox); make_board_scenario "$h44b" ""
+sed -i '/^AGENT_RUN_MODE=board/d' "$h44b/.config/agent-workforce/secrets.env"
+rc=$(BOARD_PY="$h44b/stub_board.py" BOARD_ROOT="$h44b/board" run_receipt_scenario "$h44b" 0)
+assert "proposal mode with a pick and no card proceeds card-less" "[ '$rc' = 0 ] && [ -s '$h44b/hermes_argv.log' ] && grep -q 'proceeding card-less' '$h44b/agent-workforce/logs/agent_propose.log'"
+h44c=$(sandbox); make_board_scenario "$h44c" card-one
+sed -i '/^AGENT_BOARD_PICK=/d' "$h44c/.config/agent-workforce/secrets.env"
+rc=$(BOARD_PY="$h44c/stub_board.py" BOARD_ROOT="$h44c/board" run_receipt_scenario "$h44c" 0)
+assert "board mode without AGENT_BOARD_PICK is BLOCKED, runtime never launched" "[ ! -s '$h44c/hermes_argv.log' ] && grep -q 'AGENT_RUN_MODE=board needs AGENT_BOARD_PICK' '$h44c/agent-workforce/logs/agent_propose.log'"
+
+echo "--- scenario 45: the model growing the ledger is a VIOLATION, moved aside, ledger restored (::ledger-untouched) ---"
+h45=$(sandbox); make_board_scenario "$h45" card-one
+rc=$(BOARD_PY="$h45/stub_board.py" BOARD_ROOT="$h45/board" MOCK_WRITE_LEDGER=1 MOCK_WRITE_BRIEF=1 run_receipt_scenario "$h45" 0)
+assert "exits non-zero" "[ '$rc' != 0 ]"
+assert "cost.log outcome=VIOLATION" "grep -q 'outcome=VIOLATION' '$h45/agent-workforce/logs/cost.log'"
+assert "the ledger is back to its picked-only line" "[ \"\$(wc -l < '$h45/board/cards/card-one/events.jsonl')\" = 1 ]"
+assert "the offending event is kept in rejected-events.jsonl" "grep -q decided '$h45/board/runs/inv-smoke/rejected-events.jsonl'"
+assert "the brief was NOT recorded" "! grep -q '^brief' '$h45/board_argv.log'"
+assert "the receipt is failed VIOLATION, with the reason" "stub_has '$h45' --failed 'VIOLATION: wrote the card ledger during the model phase'"
 exit $fail

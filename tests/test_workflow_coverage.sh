@@ -325,6 +325,28 @@ fx_guards_two=$(guards_fixture two trajan fleet-turn-check 's/^guards *= .*/guar
 fx_guards_open=$(guards_fixture open trajan fleet-turn-check 's/^guards *= .*/guards = "No period at the end"/')
 fx_what_two=$(guards_fixture what trajan qmd-refresh 's/^what *= .*/what = "Vault pull. Then re-index."/')
 
+# Dev Plan B2: the same shape for the board join. A fixture is a checkout-shaped copy with
+# the unit's committed override example mutated; each result is `<entries checked>:<ids>`.
+board_fixture() {  # board_fixture <name> <sed-expr over profiles/research_brief.env.example>
+  local name=$1 expr=$2
+  local dir="$fx/board-$name"
+  mkdir -p "$dir"
+  cp -r design tests bin systemd skills profiles buzz-team "$dir"/
+  [ -z "$expr" ] || sed -i "$expr" "$dir/profiles/research_brief.env.example"
+  python3 "$dir/tests/test_workflow_coverage.py" >"$dir/report" 2>/dev/null
+  printf '%s:%s\n' \
+    "$(sed -n 's/^SUMMARY.* board_checked=\([0-9]\{1,\}\).*/\1/p' "$dir/report")" \
+    "$(sed -n 's/^PROBLEM\t\(board-join\)\t.*/\1/p' "$dir/report" | sort -u | paste -sd,)"
+}
+fx_board_clean=$(board_fixture clean '')
+fx_board_kind=$(board_fixture kind 's/--kind research/--kind digest/')
+fx_board_owner=$(board_fixture owner 's/--owner claudius/--owner trajan/')
+fx_board_column=$(board_fixture column 's/--column backlog/--column review/')
+live_board=$(cat design/agents/*.toml | grep -c '^board *= *"' || true)
+board_join_checked_every_entry() {
+  [ -n "$live_board" ] && [ "$live_board" -gt 0 ] && [ "$fx_board_clean" = "$live_board:" ]
+}
+
 # One assertion per rule, each named as design/fleet-suites.toml declares it.
 #
 # THE TRAILING TOKEN IS THE JOIN ANCHOR, not decoration (W9). `check <id>` names the id to
@@ -408,5 +430,16 @@ assert 'fixture (g): a guards with no period is one-sentence, and only that' \
   "[ \"\$fx_guards_open\" = \"\$live_entries:one-sentence\" ]"
 assert 'fixture (h): a two-sentence platform what is one-sentence, and only that' \
   "[ \"\$fx_what_two\" = \"\$live_entries:one-sentence\" ]"
+
+check board-join \
+  'every board = "<kind>" entry has a committed AGENT_BOARD_PICK naming its persona, that kind and a known column, and no column has two pickers'  # (::board-join)
+assert 'the board join checked every board entry the manifests declare (a deleted rule prints nothing and is red)' \
+  board_join_checked_every_entry  # (::board-join-counted)
+assert 'fixture (l): a pick naming another kind is board-join, and only that' \
+  "[ \"\$fx_board_kind\" = \"$live_board:board-join\" ]"
+assert 'fixture (m): a pick naming another owner is board-join, and only that' \
+  "[ \"\$fx_board_owner\" = \"$live_board:board-join\" ]"
+assert 'fixture (n): a pick on a column the board does not know is board-join, and only that' \
+  "[ \"\$fx_board_column\" = \"$live_board:board-join\" ]"
 
 exit $fail

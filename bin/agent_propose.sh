@@ -18,6 +18,10 @@
 #              write-boundary, no proposal commit. For
 #              overnight reports and other non-proposal LLM jobs folded off
 #              Hermes cron onto this guarded runner.
+#   board    — ops-style, plus a card: the pick (AGENT_BOARD_PICK) is required and a quiet
+#              tick is a receipted skip before any model. The run's one output is
+#              $AGENT_CARD_DIR/brief.out.md, which the wrapper records as the card's `brief`
+#              event after the model exits (design: agent-board-refinement §3.6.3).
 set -euo pipefail
 
 SECRETS="$HOME/.config/agent-workforce/secrets.env"
@@ -40,6 +44,9 @@ run_started=$(date +%s)
 # exactly (-newermt "@$AGENT_RUN_STARTED_AT") instead of guessing a freshness
 # window that silently breaks the day someone changes AGENT_TIMEOUT_MINUTES.
 export AGENT_RUN_STARTED_AT="$run_started"
+# One run id, resolved before any pre-flight so a card's `picked` event and the receipt name the
+# same run: propose_receipt.py already prefers AGENT_RUN_ID over INVOCATION_ID.
+export AGENT_RUN_ID="${AGENT_RUN_ID:-${INVOCATION_ID:-hand-$run_started}}"
 attempt=0
 # NUC-23 metrics fields (resolved after secrets are sourced); NUC-21 memory field.
 run_profile="unknown"
@@ -253,8 +260,8 @@ fi
 # NUC-36: default proposal; ops skips inbox/write-boundary/memory (see header).
 run_mode="${AGENT_RUN_MODE:-proposal}"
 case "$run_mode" in
-  proposal|ops) ;;
-  *) block_exit "AGENT_RUN_MODE must be proposal or ops (got: $run_mode)" ;;
+  proposal|ops|board) ;;
+  *) block_exit "AGENT_RUN_MODE must be proposal, ops or board (got: $run_mode)" ;;
 esac
 [ -n "${OPENROUTER_API_KEY:-}" ] || block_exit "no API key — no run (by design)"
 if [ "$run_mode" = proposal ]; then
@@ -356,6 +363,38 @@ else
     block_exit "${requires_out##*$'\n'}"
   fi
 fi
+
+# The board pick (Dev Plan B2). Opt-in by AGENT_BOARD_PICK, e.g. "--owner claudius --kind research
+# --column backlog"; the override env's variables never reach the model, so the three exports
+# below are the whole card-side environment a profile may name. Board mode requires a card;
+# elsewhere AGENT_BOARD_REQUIRED=1 asks for the same. No card is a receipted skip, never a
+# model run. The workflow is the unit the receipt is filed under, because that is the path
+# board.py joins a pick to its outcome by.
+BOARD_PY="${BOARD_PY:-$BIN_DIR/board.py}"
+card_events_file() { echo "$BOARD_ROOT/cards/$AGENT_CARD/events.jsonl"; }
+card_ledger_lines() { if [ -f "$(card_events_file)" ]; then wc -l < "$(card_events_file)"; else echo 0; fi; }
+pick_card() {
+  [ "$run_mode" = board ] && [ -z "${AGENT_BOARD_PICK:-}" ] && block_exit "AGENT_RUN_MODE=board needs AGENT_BOARD_PICK"
+  [ -n "${AGENT_BOARD_PICK:-}" ] || return 0
+  local picked rc=0 workflow
+  workflow="${requires_unit:-$run_task}"
+  export BOARD_ROOT="${BOARD_ROOT:-${CONTROL_ROOM_BOARD_ROOT:-/var/lib/control-room-board}}"
+  # shellcheck disable=SC2086  # AGENT_BOARD_PICK is a flag list by contract
+  picked=$(python3 "$BOARD_PY" pick $AGENT_BOARD_PICK --run-id "$AGENT_RUN_ID" --workflow "$workflow") || rc=$?
+  [ "$rc" -eq 0 ] || block_exit "board pick failed (exit $rc)"
+  if [ -z "$picked" ]; then
+    if [ "$run_mode" = board ] || [ "${AGENT_BOARD_REQUIRED:-0}" = 1 ]; then
+      log "SKIP: no card for: $AGENT_BOARD_PICK"
+      write_receipt SKIP --reason "no card for: $AGENT_BOARD_PICK"
+      exit 0
+    fi
+    log "board: no card — proceeding card-less"
+    return 0
+  fi
+  export AGENT_CARD="$picked" AGENT_CARD_DIR="$BOARD_ROOT/runs/$AGENT_RUN_ID"
+  log "board: picked card $AGENT_CARD for run $AGENT_RUN_ID"
+}
+pick_card
 
 # The claude-auth pre-flight (2026-10-05). An expired login fails every Claude Code runner at
 # once, and each run used to retry into it three times and receipt its own `failed`: 14
@@ -500,6 +539,22 @@ export RUN_DATE="${RUN_DATE:-$(date +%Y-%m-%d)}"
 export TODAY="${TODAY:-$(date '+%A, %-d %B %Y')}"
 log "date: RUN_DATE=$RUN_DATE"
 check_budget
+ledger_before=0
+[ -z "${AGENT_CARD:-}" ] || ledger_before=$(card_ledger_lines)
+ledger_grew() {
+  # The model never writes the ledger: growth during the model phase is the same VIOLATION as a
+  # write outside the boundary. The offending lines are moved aside, not deleted, so the
+  # incident can name what was attempted.
+  [ -n "${AGENT_CARD:-}" ] || return 1
+  local file now
+  file=$(card_events_file); now=$(card_ledger_lines)
+  [ "$now" -gt "$ledger_before" ] || return 1
+  mkdir -p "$AGENT_CARD_DIR"
+  tail -n +$((ledger_before + 1)) "$file" >> "$AGENT_CARD_DIR/rejected-events.jsonl"
+  head -n "$ledger_before" "$file" > "$file.keep" && mv "$file.keep" "$file"
+  log "FATAL: the model wrote $((now - ledger_before)) event(s) to card $AGENT_CARD's ledger — moved to rejected-events.jsonl"
+  return 0
+}
 while [ "$attempt" -lt "$max_attempts" ]; do
   attempt=$((attempt + 1))
   rc=0
@@ -518,11 +573,18 @@ while [ "$attempt" -lt "$max_attempts" ]; do
   mkdir -p "$(dirname "$attempt_out")"
   : > "$attempt_out"
   rm -f "$AGENT_USAGE_JSON"
+  [ "$run_mode" != board ] || rm -f "$AGENT_CARD_DIR/brief.out.md"
   attempt_started=$(date +%s)
   timeout --kill-after=30 "${attempt_limit}s" bash -lc "$run_cmd" \
     >"$attempt_out" 2>&1 || rc=$?
   attempt_seconds=$(( $(date +%s) - attempt_started ))
   cat "$attempt_out" >>"$LOG_DIR/agent_run.log"
+  if ledger_grew; then
+    log_cost VIOLATION
+    write_receipt VIOLATION --reason "wrote the card ledger during the model phase"
+    refresh_scorecard
+    exit 1
+  fi
   if { [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; } && [ "$attempt_seconds" -ge "$attempt_limit" ]; then
     run_timeout=attempt
     timeout_detail="attempt $attempt/$max_attempts hit the ${attempt_limit}s limit after ${attempt_seconds}s"
@@ -620,6 +682,34 @@ if [ "$run_mode" = ops ]; then
   mem_status=na
   log_cost OPS
   write_receipt OPS
+  refresh_scorecard
+  exit 0
+fi
+
+# ── board mode: the run's one output is the card's brief; the wrapper, not the model, records it ──
+if [ "$run_mode" = board ]; then
+  brief_file="$AGENT_CARD_DIR/brief.out.md"
+  if [ -f "$brief_file" ] && [ -n "$(find "$AGENT_CARD_DIR" -maxdepth 1 -name brief.out.md -newermt "@$AGENT_RUN_STARTED_AT")" ]; then
+    brief_rc=0
+    brief_hash=$(python3 "$BOARD_PY" brief "$AGENT_CARD" --from-file "$brief_file" --actor "run:$AGENT_RUN_ID") || brief_rc=$?
+    if [ "$brief_rc" -ne 0 ]; then
+      log "FAIL: board.py refused the brief for $AGENT_CARD (exit $brief_rc)"
+      log_cost FAIL
+      write_receipt FAIL --rc "$brief_rc" --reason "board.py brief refused the text for card $AGENT_CARD"
+      refresh_scorecard
+      exit 1
+    fi
+    log "OK: board run recorded brief ${brief_hash} for card $AGENT_CARD"
+    run_outcome=BOARD
+    run_proposal="$AGENT_CARD"
+    log_cost BOARD
+    write_receipt BOARD --brief-hash "$brief_hash"
+  else
+    log "OK: board run declined card $AGENT_CARD"
+    run_outcome=NOPROPOSAL
+    log_cost NOPROPOSAL
+    write_receipt NOPROPOSAL
+  fi
   refresh_scorecard
   exit 0
 fi
