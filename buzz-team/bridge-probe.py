@@ -19,7 +19,7 @@ import json
 import subprocess
 import sys
 
-FAMILIES = ("qmd", "notion", "brave")
+FAMILIES = ("qmd", "notion", "brave", "board")
 
 
 def family_of(name: str) -> str:
@@ -27,6 +27,8 @@ def family_of(name: str) -> str:
         return "notion"
     if name.startswith("brave_"):
         return "brave"
+    if name.startswith("board_"):
+        return "board"
     return "qmd"
 
 

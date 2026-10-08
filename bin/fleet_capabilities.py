@@ -5,7 +5,7 @@ The manifest `design/agents/<name>.toml` `[surfaces.interactive]` block is the s
 
     tools        = "claude-code-builtins" | "codex-builtins"
     tools_deny   = [<builtin tool names withheld>]
-    bridge_tools = [<families of qmd, notion, brave the bridge shim advertises>]
+    bridge_tools = [<families of qmd, notion, brave, board the bridge shim advertises>]
     plugins      = [<Claude Code plugins enabled in the session, by marketplace name>]  # optional
 
 From it, two artefacts per agent land in buzz-team/ (deployed to ~/.config/buzz-team/ by

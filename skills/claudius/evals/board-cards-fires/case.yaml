@@ -1,0 +1,21 @@
+# Does claudius FIRE board-cards when Dave uses the vault's own trigger phrase?
+#
+# The idea is fictitious on purpose: the question is whether the trigger phrase reaches the
+# skill, not what the skill then does with a card. allowed_tools is [Skill] alone for the same
+# reason as meeting-prep-fires: the pointer body sends the agent to a sealed vault path.
+# NOT YET MEASURED: gate:false in skills/evals-baseline.json until a live run (B8, 2026-10-08).
+schema_version: "1.1"
+name: board-cards-fires
+runs: 3
+execution:
+  prompt: |
+    Put that on the board: can we compare cold-chain sensor vendors for a fictitious pilot?
+  max_turns: 2
+  timeout_seconds: 180
+  allowed_tools: [Skill]
+graders:
+  - name: fires-board-cards
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:[\w-]+:)?board-cards"'
+    weight: 1
