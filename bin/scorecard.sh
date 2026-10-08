@@ -148,7 +148,7 @@ if [ -r "$COST_LOG" ]; then
       continue
     fi
     case "${kv[outcome]:-}" in
-      PROPOSAL)   proposals=$(( proposals + 1 )) ;;
+      PROPOSAL|CARD) proposals=$(( proposals + 1 )) ;;
       NOPROPOSAL) noproposals=$(( noproposals + 1 )) ;;
       # NUC-44: CRASHED is a FAIL with a diagnosis attached (the runtime told us the run
       # crashed rather than merely exiting non-zero). It must land in the error bucket —

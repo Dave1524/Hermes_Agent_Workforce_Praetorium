@@ -67,7 +67,13 @@ skip_sentinel() {
   grep -qE "^skip: today's .* already exists" "$attempt_log"
 }
 
+# A card run (Dev Plan B3) writes $AGENT_CARD_DIR/research.md instead of the dated inbox file.
+card_page_fresh() {
+  [ -n "${AGENT_CARD_DIR:-}" ] && newer_than_run "$AGENT_CARD_DIR/research.md"
+}
+
 proposal_fresh && exit 0
+card_page_fresh && exit 0
 decline_sentinel && exit 0
 skip_sentinel && exit "$SKIP_EXIT"
 exit 1

@@ -166,7 +166,7 @@ write_receipt() {
   # adapter's own stdout is the executor's check table, kept in agent_propose.log.
   local outcome=$1; shift
   local rc=0 out
-  out="$(python3 "$BIN_DIR/propose_receipt.py" "$outcome" "$@" 2>&1)" || rc=$?
+  out="$(AGENT_CARD_BRIEF_HASH="${card_brief_hash:-}" python3 "$BIN_DIR/propose_receipt.py" "$outcome" "$@" 2>&1)" || rc=$?
   printf '%s\n' "$out" | tee -a "$LOG_DIR/agent_propose.log"
   # The executor exits 1 for a written receipt whose checks failed, so its status alone
   # cannot tell a failed verdict from a broken adapter; the `receipt: <path>` line it
@@ -392,9 +392,30 @@ pick_card() {
     return 0
   fi
   export AGENT_CARD="$picked" AGENT_CARD_DIR="$BOARD_ROOT/runs/$AGENT_RUN_ID"
-  log "board: picked card $AGENT_CARD for run $AGENT_RUN_ID"
+  card_brief_hash=$(card_field brief_hash)
+  mkdir -p "$AGENT_CARD_DIR"
+  printf '{"card": "%s", "run_id": "%s", "brief_hash": "%s"}\n' "$AGENT_CARD" "$AGENT_RUN_ID" "$card_brief_hash" \
+    > "$AGENT_CARD_DIR/pick.json"
+  log "board: picked card $AGENT_CARD for run $AGENT_RUN_ID (brief ${card_brief_hash:-none})"
 }
+# One field of the picked card's view (`board.py show --json`); empty when the verb or the field is absent.
+card_field() {  # card_field <brief_hash|title>
+  python3 "$BOARD_PY" show "$AGENT_CARD" --json 2>/dev/null | python3 -c '
+import json, sys
+try:
+    view = json.load(sys.stdin)
+except ValueError:
+    sys.exit(0)
+key = sys.argv[1]
+print(view.get(key) or (view.get("fields") or {}).get(key) or "")' "$1" || true
+}
+card_brief_hash=""
 pick_card
+# A card picked in proposal mode is a research run: the model works in the card's directory, the
+# wrapper publishes its one file as the card's page, and the inbox is never checked out or written.
+card_run=false
+if [ "$run_mode" = proposal ] && [ -n "${AGENT_CARD:-}" ]; then card_run=true; fi
+NOTION_RESEARCH_PY="${NOTION_RESEARCH_PY:-$BIN_DIR/notion_research.py}"
 
 # The claude-auth pre-flight (2026-10-05). An expired login fails every Claude Code runner at
 # once, and each run used to retry into it three times and receipt its own `failed`: 14
@@ -416,9 +437,25 @@ esac
 
 # The NUC-21 episodic store (~/.hermes/profiles/<owner>/memories) is retired (T6.1);
 # mem_status stays na on every run.
-if [ "$run_mode" = proposal ]; then
+if [ "$run_mode" = proposal ] && ! $card_run; then
   git -C "$WORKTREE" checkout -q agents/inbox
   git -C "$WORKTREE" pull -q --ff-only origin agents/inbox 2>/dev/null || true
+fi
+
+# After a request for changes the page already exists, Dave's edits in it: the model revises that
+# rather than starting over. --if-exists makes a first run (no page yet) write nothing; a Notion
+# failure is the run's failure, never a silent first draft over Dave's edits.
+if $card_run; then
+  export_rc=0
+  python3 "$NOTION_RESEARCH_PY" export --card "$AGENT_CARD" --out "$AGENT_CARD_DIR/research.prev.md" --if-exists \
+    >/dev/null 2>>"$LOG_DIR/agent_propose.log" || export_rc=$?
+  if [ "$export_rc" -ne 0 ]; then
+    log "FAIL: notion_research.py export refused for card $AGENT_CARD (exit $export_rc)"
+    log_cost FAIL
+    write_receipt FAIL --rc "$export_rc" --reason "notion_research.py export refused the page for card $AGENT_CARD"
+    refresh_scorecard
+    exit 1
+  fi
 fi
 
 # ── Run the profile with retry + backoff (NUC-16) ──
@@ -574,6 +611,7 @@ while [ "$attempt" -lt "$max_attempts" ]; do
   : > "$attempt_out"
   rm -f "$AGENT_USAGE_JSON"
   [ "$run_mode" != board ] || rm -f "$AGENT_CARD_DIR/brief.out.md"
+  ! $card_run || rm -f "$AGENT_CARD_DIR/research.md"
   attempt_started=$(date +%s)
   timeout --kill-after=30 "${attempt_limit}s" bash -lc "$run_cmd" \
     >"$attempt_out" 2>&1 || rc=$?
@@ -706,6 +744,48 @@ if [ "$run_mode" = board ]; then
     write_receipt BOARD --brief-hash "$brief_hash"
   else
     log "OK: board run declined card $AGENT_CARD"
+    run_outcome=NOPROPOSAL
+    log_cost NOPROPOSAL
+    write_receipt NOPROPOSAL
+  fi
+  refresh_scorecard
+  exit 0
+fi
+
+# ── card run: the run's one output is research.md; the wrapper, not the model, publishes it ──
+if $card_run; then
+  dirty=$(git -C "$WORKTREE" status --porcelain)
+  if [ -n "$dirty" ]; then
+    log "FATAL: a card run touched the inbox mirror — discarding everything: $dirty"
+    git -C "$WORKTREE" reset --hard -q && git -C "$WORKTREE" clean -fdq
+    log_cost VIOLATION
+    write_receipt VIOLATION --reason "a card run wrote to the inbox mirror"
+    refresh_scorecard
+    exit 1
+  fi
+  research_file="$AGENT_CARD_DIR/research.md"
+  if [ -f "$research_file" ] && [ -n "$(find "$AGENT_CARD_DIR" -maxdepth 1 -name research.md -newermt "@$AGENT_RUN_STARTED_AT")" ]; then
+    publish_rc=0
+    published=$(python3 "$NOTION_RESEARCH_PY" publish --card "$AGENT_CARD" --from-file "$research_file" \
+      --title "$(card_field title)" --run-id "$AGENT_RUN_ID" 2>>"$LOG_DIR/agent_propose.log") || publish_rc=$?
+    if [ "$publish_rc" -ne 0 ]; then
+      log "FAIL: notion_research.py publish refused the page for card $AGENT_CARD (exit $publish_rc)"
+      log_cost FAIL
+      write_receipt FAIL --rc "$publish_rc" --reason "notion_research.py publish refused the page for card $AGENT_CARD"
+      refresh_scorecard
+      exit 1
+    fi
+    page=$(printf '%s' "$published" | python3 -c 'import json,sys; print(json.load(sys.stdin)["page"])')
+    page_hash=$(printf '%s' "$published" | python3 -c 'import json,sys; print(json.load(sys.stdin)["page_hash"])')
+    printf '{"card": "%s", "run_id": "%s", "page": "%s", "page_hash": "%s", "brief_hash": "%s"}\n' \
+      "$AGENT_CARD" "$AGENT_RUN_ID" "$page" "$page_hash" "$(card_field brief_hash)" > "$AGENT_CARD_DIR/published.json"
+    log "OK: card run published page $page (${page_hash}) for card $AGENT_CARD"
+    run_outcome=CARD
+    run_proposal="$AGENT_CARD"
+    log_cost CARD
+    write_receipt CARD --page "$page" --page-hash "$page_hash"
+  else
+    log "OK: card run declined card $AGENT_CARD"
     run_outcome=NOPROPOSAL
     log_cost NOPROPOSAL
     write_receipt NOPROPOSAL

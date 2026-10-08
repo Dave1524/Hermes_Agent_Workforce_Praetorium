@@ -37,6 +37,7 @@ registry §2 recorded this as "daily" off a next-elapse value (`agent-model.md` 
 
 | Source | Freshness requirement | If stale or absent |
 |---|---|---|
+| a Todo card on the board, through `AGENT_BOARD_PICK` (`bin/board.py pick`, B3) | the card's approved brief is the acceptance bar | **proceed**: no card falls through to the queue and the standing missions below, and to `DECLINE:` if nothing qualifies |
 | `04_operations/box_brief/queue.md` (qmd CLI over the mirror) | regenerated at Dave's EOD wrap; a run works the soonest-deadline OPEN item | **proceed**: falls through to a standing mission, and to `DECLINE:` if nothing qualifies. Nothing detects a queue that stopped being regenerated |
 | `04_operations/box_brief/standing_missions.md` | same mirror | same fall-through; the missions carry their own cadences |
 | `04_operations/current_priorities.md`, `open_loops.md` | same mirror, background context only | proceed-and-flag under *Confidence & gaps* |
@@ -59,6 +60,12 @@ registry §2 recorded this as "daily" off a next-elapse value (`agent-model.md` 
 - Every claim is labelled `FACT:` (with its source) or `INFERENCE:`. Mechanism A —
   contradiction flagging — is mandatory, and `## Contradictions` says `none found this run`
   rather than being left blank.
+- **With a card:** exactly one file, `$AGENT_CARD_DIR/research.md` — the findings, then under
+  `## Acceptance` one `MET` / `PARTLY` / `NOT MET` line per acceptance line of the card's brief,
+  then the sources. The wrapper publishes it as the card's page in the Notion Research database
+  (`bin/notion_research.py publish`), records the page and the hash of what it published in
+  `$AGENT_CARD_DIR/published.json`, and the receipt's `card` block carries both. Nothing is
+  written to the inbox, and no git happens in the run.
 - **Delivery:** `ExecStartPost=bin/deliver_proposal.sh`, `DELIVERY_ROUTE=research` → channel
   `6ea596af-…`, **event kind 45001** (forum), notify `claudius`. A kind-9 post into that
   channel is receipted `ok` and shown to nobody.
@@ -125,6 +132,7 @@ Ids are the stable names; `## Known failure modes` references them, never the nu
    that declined, which is the only other legitimate outcome.
 
    ```check id=artifact-is-this-run
+   [ -z "$AGENT_CARD" ] || { echo "n/a: a card run publishes a page, not an inbox file"; exit 77; }
    f="$AGENT_INBOX_DIR/${RUN_DATE}_standing-research.md"
    if [ ! -f "$f" ] && grep -qE '^DECLINE:' "$AGENT_ATTEMPT_LOG" 2>/dev/null; then
      echo "n/a: no artifact and a declared decline"
@@ -141,6 +149,7 @@ Ids are the stable names; `## Known failure modes` references them, never the nu
    ```check id=decline-is-this-runs-own
    f="$AGENT_INBOX_DIR/${RUN_DATE}_standing-research.md"
    [ -f "$f" ] && { echo "n/a: the run produced an artifact"; exit 77; }
+   [ -f "$AGENT_CARD_DIR/research.md" ] && { echo "n/a: the card run produced its page text"; exit 77; }
    fresh="$(find "$(dirname "$AGENT_ATTEMPT_LOG")" -maxdepth 1 \
               -name "$(basename "$AGENT_ATTEMPT_LOG")" \
               -newermt "@$AGENT_RUN_STARTED_AT" 2>/dev/null)"
@@ -253,6 +262,42 @@ Ids are the stable names; `## Known failure modes` references them, never the nu
     [ "$age" -lt 345600 ]
     ```
 
+The four checks below are the board join (Dev Plan B3). Each is n/a without a card, and n/a when
+the card run wrote no `research.md` — whether it declined is `decline-is-this-runs-own`'s verdict.
+
+11. **The published page is this card's.** The wrapper writes `published.json` after the
+    publish; the page it names must be there and name the card the run picked. Without it the
+    receipt's `card` block has no page and the board reads the run as void.
+
+    ```check id=page-names-card
+    python3 "$HOME/agent-workforce/bin/card_checks.py" page-names-card
+    ```
+
+12. **What was published is this run's text.** The page hash on the receipt is the hash of
+    `research.md` as the run left it (the board's hash: line endings normalised, trailing
+    whitespace trimmed), so an approval that carries it names the text the run wrote.
+
+    ```check id=published-is-this-run
+    python3 "$HOME/agent-workforce/bin/card_checks.py" published-is-this-run
+    ```
+
+13. **Every acceptance line was answered.** The brief is the one `published.json` names, read
+    from the ledger's own `briefs/<hash>.md`; `research.md` carries exactly one `MET` /
+    `PARTLY` / `NOT MET` line under `## Acceptance` for each of its acceptance lines. A
+    count, not a reading of the prose: whether `MET` is true is Dave's review.
+
+    ```check id=acceptance-answered
+    python3 "$HOME/agent-workforce/bin/card_checks.py" acceptance-answered
+    ```
+
+14. **The brief did not change under the run.** `pick.json` is the brief hash the wrapper saw
+    when it picked the card; `published.json` is the hash after the model exited. They match,
+    or the run answered a brief Dave had already replaced.
+
+    ```check id=pick-hash-matched
+    python3 "$HOME/agent-workforce/bin/card_checks.py" pick-hash-matched
+    ```
+
 `not-lock-skipped`, `timer-fired-this-window` and `mirror-was-not-dirty` catch the failures
 this box actually produces; the rest catch a bad proposal. D3 needs both.
 
@@ -280,7 +325,14 @@ this box actually produces; the rest catch a bad proposal. D3 needs both.
 - **A queue that stopped being regenerated.** `queue.md` comes from Dave's Mac-side EOD wrap.
   A stale queue does not fail anything — the run silently falls through to standing missions
   and keeps producing plausible proposals about the wrong week. Nothing on the box detects
-  it today.
+  it today. With the board join this is the card-less path only; a board with nothing in Todo
+  is a visible decline and an empty column, not a plausible proposal.
+- **A page that is not the run's text.** The wrapper publishes, the model does not, so the
+  failure is a publish that reached Notion with other text than `research.md` or no `page` on
+  the receipt. Signals: `page-names-card`, `published-is-this-run`.
+- **An acceptance line answered twice or not at all.** The count is mechanical, the verdict is
+  Dave's. Signal: `acceptance-answered`.
+- **A brief replaced mid-run.** Signal: `pick-hash-matched`.
 - **Corpus gate overruled by the brief.** The gate is a local git read of the site's
   `blog.ts`, so it is cheap and always available; the failure mode is the model treating the
   brief's title as authoritative after `check` returned 2. Signal:

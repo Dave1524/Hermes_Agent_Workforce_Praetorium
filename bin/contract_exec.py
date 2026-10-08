@@ -89,6 +89,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="fold this vantage's checks into the run-vantage receipt --run-id names (sweep only)")
     p.add_argument("--sweep-run-id", metavar="ID", help="with --amend: the sweep run making the amendment")
     p.add_argument("--parent-run-id")
+    p.add_argument("--card", metavar="ID", help="the board card this run picked")
+    p.add_argument("--card-brief-hash", metavar="HASH", help="the brief the run answered (with --card)")
+    p.add_argument("--card-page", metavar="PAGE", help="the card's published page (with --card)")
+    p.add_argument("--card-page-hash", metavar="HASH", help="the hash of what was published (with --card-page)")
     p.add_argument("--handoff-actor")
     p.add_argument("--handoff-recipient")
     p.add_argument("--handoff-event")
@@ -390,6 +394,15 @@ def amend_receipt(run: Run, existing: dict[str, Any], contract_text: str, env: d
 
 
 # --- the receipt ----------------------------------------------------------------------------------
+def card_block(args: argparse.Namespace, workflow: str) -> dict[str, Any]:
+    block: dict[str, Any] = {"id": args.card, "workflow": workflow}
+    for key, value in (("brief_hash", args.card_brief_hash), ("page", args.card_page),
+                       ("page_hash", args.card_page_hash)):
+        if value:
+            block[key] = value
+    return block
+
+
 def build_receipt(run: Run, run_id: str, assertions: list[dict[str, Any]], terminal: dict[str, Any],
                   args: argparse.Namespace, contract_text: str) -> dict[str, Any]:
     usage, cost, measured_model = usage_and_cost(pathlib.Path(args.usage_json) if args.usage_json else None)
@@ -416,6 +429,8 @@ def build_receipt(run: Run, run_id: str, assertions: list[dict[str, Any]], termi
         receipt["artifact"] = {"uri": args.artifact}
     if args.state_change:
         receipt["state_change"] = {"evidence": args.state_change}
+    if args.card:
+        receipt["card"] = card_block(args, receipt["workflow_id"])
     return receipt
 
 

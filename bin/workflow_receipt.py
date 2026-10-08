@@ -18,6 +18,10 @@ Two rules the shape enforces rather than documents:
 - A `swept` block (T7.3) records that the receipt sweep amended a run-vantage receipt with
   its contract's `when=sweep` results, once. The run's own facts stay as written; a sweep
   can add failed checks and turn the outcome `failed`, never the reverse.
+- A `card` block (Dev Plan B3) names the board card a run picked: its id, the workflow the pick
+  was filed under, the brief hash the run answered, and — once a research run published —
+  the card's page and the hash of what was published. `bin/board.py` reads `page` to decide
+  whether an artifact receipt counts as In Review. Optional, so every older receipt validates.
 """
 from __future__ import annotations
 
@@ -25,6 +29,7 @@ import datetime as dt
 import json
 import os
 import pathlib
+import re
 import tempfile
 from typing import Any
 
@@ -39,6 +44,8 @@ CLAUDE_CODE_CURRENCY = "USD"
 SWEEP_WORKFLOW_ID = "workflow-receipt-sweep"
 CLOSED_FIELDS = ("at", "by", "reason")
 SWEPT_FIELDS = ("at", "sweep_run_id")
+CARD_SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
+HASH64 = re.compile(r"^[0-9a-f]{64}$")
 RUN_VANTAGE = "run"
 SWEEP_VANTAGE = "sweep"
 
@@ -205,6 +212,32 @@ def validate(data: Any) -> list[str]:
             errors.append("artifact outcome has no artifact URI or state-change evidence")
     errors.extend(_closed_errors(data))
     errors.extend(_swept_errors(data))
+    errors.extend(_card_errors(data))
+    return errors
+
+
+def _card_errors(data: dict[str, Any]) -> list[str]:
+    card = data.get("card")
+    if card is None:
+        return []
+    if not isinstance(card, dict):
+        return ["card is not an object"]
+    errors = []
+    if not isinstance(card.get("id"), str) or not CARD_SLUG.match(card["id"]):
+        errors.append("card.id is not a card id")
+    if not isinstance(card.get("workflow"), str) or not card["workflow"].strip():
+        errors.append("card.workflow is missing")
+    brief = card.get("brief_hash")
+    if brief is not None and not (isinstance(brief, str) and HASH64.match(brief)):
+        errors.append("card.brief_hash must be 64 hex characters")
+    page, page_hash = card.get("page"), card.get("page_hash")
+    if (page is None) != (page_hash is None):
+        errors.append("card.page and card.page_hash go together")
+    elif page is not None:
+        if not isinstance(page, str) or not page.strip():
+            errors.append("card.page is empty")
+        if not (isinstance(page_hash, str) and HASH64.match(page_hash)):
+            errors.append("card.page_hash must be 64 hex characters")
     return errors
 
 

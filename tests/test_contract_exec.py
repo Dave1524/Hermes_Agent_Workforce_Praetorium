@@ -642,6 +642,40 @@ class ContractExecTest(unittest.TestCase):
         self.assertEqual(done.returncode, 2)
         self.assertIn("needs --run-id", done.stderr)
 
+    def test_card_block(self):  # (::exec-card-block)
+        """A run that picked a card carries its id, workflow, brief and published page on the
+        receipt; without the flags there is no block, so every older receipt is unchanged."""
+        brief, page_hash = "a" * 64, "b" * 64
+        done, written = self.healthy_run()
+        self.assertNotIn("card", written)
+        self.box.attempt_log().unlink()
+        done, written = self.card_run(
+            "--card", "card-one", "--card-brief-hash", brief,
+            "--card-page", "page-1", "--card-page-hash", page_hash)
+        self.assertEqual(receipt.validate(written), [], written)
+        self.assertEqual(written["card"], {"id": "card-one", "workflow": "knowledge-digest",
+                                           "brief_hash": brief, "page": "page-1", "page_hash": page_hash})
+        done, written = self.card_run("--card", "card-one")
+        self.assertEqual(written["card"], {"id": "card-one", "workflow": "knowledge-digest"})
+        self.assertEqual(receipt.validate(written), [])
+
+    def card_run(self, *flags):
+        self.box.write_attempt_log(GUARD_OK + "digest written\n")
+        self.box.write_artifact()
+        return self.box.run("knowledge-digest", "run", "--artifact",
+                            f"file://{self.box.inbox}/_inbox/agents/{self.box.run_date}_knowledge-digest.md",
+                            *flags)
+
+    def test_card_block_validation(self):  # (::exec-card-block)
+        base, ok = self.healthy_run()[1], {"id": "card-one", "workflow": "agent-proposal"}
+        for card in (ok, {**ok, "brief_hash": "c" * 64}, {**ok, "page": "p", "page_hash": "d" * 64}):
+            self.assertEqual(receipt.validate({**base, "card": card}), [], card)
+        for card, word in (("card", "not an object"), ({**ok, "id": "Not A Slug"}, "card.id"),
+                           ({"id": "card-one"}, "card.workflow"), ({**ok, "brief_hash": "xyz"}, "brief_hash"),
+                           ({**ok, "page": "p"}, "go together"), ({**ok, "page_hash": "d" * 64}, "go together"),
+                           ({**ok, "page": "p", "page_hash": "short"}, "page_hash")):
+            self.assertTrue(any(word in e for e in receipt.validate({**base, "card": card})), (card, word))
+
     def test_refuses_non_contract_rows(self):  # (::exec-refuses-non-contract-rows)
         for unit, word in (("always-on", "service"), ("spent-job", "contract_exempt"), ("no-such-unit", "no")):
             done, written = self.box.run(unit, "run", "--artifact", "file:///x")

@@ -94,6 +94,30 @@ class ProposeReceiptTest(unittest.TestCase):
         calls = [json.loads(line) for line in self.stub_out.read_text().splitlines()] if self.stub_out.exists() else []
         return done, calls
 
+    def test_card_run_carries_the_card_block(self):  # (::propose-receipt-card-block)
+        """CARD is a research run that published the card's page; every outcome of a card run
+        names the card, so a void pick and a decline are as joinable as a page."""
+        brief, page_hash = "a" * 64, "b" * 64
+        done, calls = self.run_adapter("CARD", "--page", "page-1", "--page-hash", page_hash,
+                                       env=self.base_env(AGENT_CARD="card-one", AGENT_CARD_BRIEF_HASH=brief))
+        call = calls[0]
+        self.assertEqual(call[call.index("--artifact") + 1], "notion://page-1")
+        self.assertEqual(call[call.index("--card") + 1], "card-one")
+        self.assertEqual(call[call.index("--card-brief-hash") + 1], brief)
+        self.assertEqual(call[call.index("--card-page") + 1], "page-1")
+        self.assertEqual(call[call.index("--card-page-hash") + 1], page_hash)
+        self.stub_out.unlink()
+        done, calls = self.run_adapter("NOPROPOSAL", env=self.base_env(AGENT_CARD="card-one"))
+        call = calls[0]
+        self.assertEqual(call[call.index("--card") + 1], "card-one")
+        for flag in ("--card-brief-hash", "--card-page", "--card-page-hash", "--artifact"):
+            self.assertNotIn(flag, call)
+        self.stub_out.unlink()
+        done, calls = self.run_adapter("NOPROPOSAL")
+        self.assertNotIn("--card", calls[0], "a card-less run has no card block")
+        done, _ = self.run_adapter("CARD", env=self.base_env(AGENT_CARD="card-one"))
+        self.assertNotEqual(done.returncode, 0, "CARD without a page is a usage error, not a receipt")
+
     def test_every_exit(self):  # (::propose-receipt-every-exit)
         cases = {
             ("SKIP",): ["--skipped", "previous run still active (flock)"],

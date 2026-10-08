@@ -810,4 +810,107 @@ assert "the ledger is back to its picked-only line" "[ \"\$(wc -l < '$h45/board/
 assert "the offending event is kept in rejected-events.jsonl" "grep -q decided '$h45/board/runs/inv-smoke/rejected-events.jsonl'"
 assert "the brief was NOT recorded" "! grep -q '^brief' '$h45/board_argv.log'"
 assert "the receipt is failed VIOLATION, with the reason" "stub_has '$h45' --failed 'VIOLATION: wrote the card ledger during the model phase'"
+
+# ── a card run publishes a page (Dev Plan B3) ───────────────────────────────────────────────
+# Proposal mode with a pick: the model runs in the card's directory, the wrapper publishes
+# research.md through notion_research.py (a stub here; its verbs are tests/test_notion_research.py's)
+# and the inbox is never checked out, written or committed.
+BRIEF64=$(printf 'a%.0s' $(seq 64)); PAGE64=$(printf 'b%.0s' $(seq 64))
+make_card_run_scenario() {  # make_card_run_scenario <home> [prior-page-text]
+  local home=$1
+  make_board_scenario "$home" card-one
+  sed -i '/^AGENT_RUN_MODE=board/d; /^AGENT_TASK_SLUG=/d; /^AGENT_BOARD_PICK=/d' "$home/.config/agent-workforce/secrets.env"
+  printf 'AGENT_TASK_SLUG=standing-research\nAGENT_BOARD_PICK="--owner claudius --kind research --column todo"\n' \
+    >> "$home/.config/agent-workforce/secrets.env"
+  python3 - "$home" "$BRIEF64" <<'PY'
+import sys
+home, brief = sys.argv[1:3]
+path = home + "/stub_board.py"
+text = open(path).read()
+text = text.replace("sys.exit(2)", 'if argv[0] == "show":\n    print(\'{"brief_hash": "%s", "fields": {"title": "Card one"}}\')\n    sys.exit(0)\nsys.exit(2)' % brief)
+open(path, "w").write(text)
+PY
+  cat > "$home/stub_notion_research.py" <<PY
+#!/usr/bin/env python3
+import os, sys
+argv = sys.argv[1:]
+open("$home/notion_argv.log", "a").write(" ".join(argv) + "\n")
+if argv[0] == "export":
+    prior = "$home/prior_page.md"
+    if os.path.exists(prior):
+        open(argv[argv.index("--out") + 1], "w").write(open(prior).read())
+    sys.exit(0)
+if argv[0] == "publish":
+    if os.environ.get("STUB_PUBLISH_RC", "0") != "0":
+        print("Notion API 400", file=sys.stderr)
+        sys.exit(int(os.environ["STUB_PUBLISH_RC"]))
+    print('{"card": "card-one", "page": "page-1", "page_hash": "$PAGE64", "version": 1}')
+    sys.exit(0)
+sys.exit(2)
+PY
+  cat > "$home/mock_hermes.sh" <<MOCK
+#!/usr/bin/env bash
+echo "\$@" >> "$home/hermes_argv.log"
+[ -f "\$AGENT_CARD_DIR/research.prev.md" ] && echo "prev:\$(cat "\$AGENT_CARD_DIR/research.prev.md")" >> "$home/prev_seen.log"
+[ "\${MOCK_WRITE_RESEARCH:-}" = 1 ] && echo "# card-one — answered" > "\$AGENT_CARD_DIR/research.md"
+[ "\${MOCK_WRITE_FILE:-}" = 1 ] && touch "$home/agent-worktrees/inbox/out_of_bounds.txt"
+[ "\${MOCK_WRITE_LEDGER:-}" = 1 ] && echo '{"event":"decided"}' >> "\$BOARD_ROOT/cards/\$AGENT_CARD/events.jsonl"
+[ "\${MOCK_WRITE_PROPOSAL:-}" = 1 ] && touch "$home/agent-worktrees/inbox/_inbox/agents/2026-08-08_test-slug.md"
+exit 0
+MOCK
+  chmod +x "$home/stub_board.py" "$home/stub_notion_research.py" "$home/mock_hermes.sh"
+  git -C "$home/agent-worktrees/inbox" checkout -q -b elsewhere
+}
+echo "--- scenario 46: a card run publishes research.md as the card's page and touches no inbox (::card-writes-research-only) ---"
+h46=$(sandbox); make_card_run_scenario "$h46"
+rc=$(BOARD_PY="$h46/stub_board.py" BOARD_ROOT="$h46/board" NOTION_RESEARCH_PY="$h46/stub_notion_research.py" MOCK_WRITE_RESEARCH=1 run_receipt_scenario "$h46" 0)
+assert "exits 0" "[ '$rc' = 0 ]"
+assert "the inbox was not checked out" "[ \"\$(git -C '$h46/agent-worktrees/inbox' rev-parse --abbrev-ref HEAD)\" = elsewhere ]"
+assert "nothing was committed to the inbox" "[ \"\$(git -C '$h46/agent-worktrees/inbox' log --oneline | wc -l)\" = 1 ]"
+assert "the wrapper published the card's file under the run's id and the card's title" \
+  "grep -q '^publish --card card-one --from-file $h46/board/runs/inv-smoke/research.md --title Card one --run-id inv-smoke' '$h46/notion_argv.log'"
+assert "cost.log outcome=CARD" "grep -q 'outcome=CARD' '$h46/agent-workforce/logs/cost.log'"
+assert "the receipt's artifact is the page" "stub_has '$h46' --artifact notion://page-1"
+assert "the receipt carries the card, its brief and the published hash" \
+  "stub_has '$h46' --card card-one && stub_has '$h46' --card-brief-hash $BRIEF64 && stub_has '$h46' --card-page-hash $PAGE64"
+assert "published.json records the page for the contract's checks" \
+  "[ \"\$(jq -r .page_hash '$h46/board/runs/inv-smoke/published.json')\" = $PAGE64 ] && [ \"\$(jq -r .brief_hash '$h46/board/runs/inv-smoke/published.json')\" = $BRIEF64 ]"
+assert "pick.json records the brief the run started from" "[ \"\$(jq -r .brief_hash '$h46/board/runs/inv-smoke/pick.json')\" = $BRIEF64 ]"
+assert "a first run exports nothing the model could read" "[ ! -e '$h46/prev_seen.log' ]"
+
+echo "--- scenario 47: after a request for changes the model starts from the page as Dave left it ---"
+h47=$(sandbox); make_card_run_scenario "$h47"; printf 'Dave edited this\n' > "$h47/prior_page.md"
+rc=$(BOARD_PY="$h47/stub_board.py" BOARD_ROOT="$h47/board" NOTION_RESEARCH_PY="$h47/stub_notion_research.py" MOCK_WRITE_RESEARCH=1 run_receipt_scenario "$h47" 0)
+assert "the export ran before the model, into research.prev.md" \
+  "grep -q '^export --card card-one --out $h47/board/runs/inv-smoke/research.prev.md --if-exists' '$h47/notion_argv.log'"
+assert "the model saw Dave's text" "grep -q 'prev:Dave edited this' '$h47/prev_seen.log'"
+
+echo "--- scenario 48: a card run that writes nothing declines; nothing is published ---"
+h48=$(sandbox); make_card_run_scenario "$h48"
+rc=$(BOARD_PY="$h48/stub_board.py" BOARD_ROOT="$h48/board" NOTION_RESEARCH_PY="$h48/stub_notion_research.py" run_receipt_scenario "$h48" 0)
+assert "exits 0 with outcome=NOPROPOSAL" "[ '$rc' = 0 ] && grep -q 'outcome=NOPROPOSAL' '$h48/agent-workforce/logs/cost.log'"
+assert "nothing was published" "! grep -q '^publish' '$h48/notion_argv.log'"
+assert "the receipt still names the card (a void pick is joinable)" "stub_has '$h48' --card card-one"
+
+echo "--- scenario 49: a card run that dirties the inbox is a VIOLATION and is discarded ---"
+h49=$(sandbox); make_card_run_scenario "$h49"
+rc=$(BOARD_PY="$h49/stub_board.py" BOARD_ROOT="$h49/board" NOTION_RESEARCH_PY="$h49/stub_notion_research.py" MOCK_WRITE_RESEARCH=1 run_receipt_scenario "$h49" 0 0 1)
+assert "exits non-zero" "[ '$rc' != 0 ]"
+assert "cost.log outcome=VIOLATION" "grep -q 'outcome=VIOLATION' '$h49/agent-workforce/logs/cost.log'"
+assert "the stray file is discarded" "[ ! -e '$h49/agent-worktrees/inbox/out_of_bounds.txt' ]"
+assert "nothing was published" "! grep -q '^publish' '$h49/notion_argv.log'"
+
+echo "--- scenario 50: a refused publish fails the run and names the card ---"
+h50=$(sandbox); make_card_run_scenario "$h50"
+rc=$(BOARD_PY="$h50/stub_board.py" BOARD_ROOT="$h50/board" NOTION_RESEARCH_PY="$h50/stub_notion_research.py" STUB_PUBLISH_RC=1 MOCK_WRITE_RESEARCH=1 run_receipt_scenario "$h50" 0)
+assert "exits non-zero" "[ '$rc' != 0 ]"
+assert "cost.log outcome=FAIL" "grep -q 'outcome=FAIL' '$h50/agent-workforce/logs/cost.log'"
+assert "the receipt is failed, naming the card" "stub_has '$h50' --failed 'FAIL: rc=1 notion_research.py publish refused the page for card card-one'"
+
+echo "--- scenario 51: a card-less proposal run still takes the inbox path ---"
+h51=$(sandbox); make_card_run_scenario "$h51"
+sed -i '/^AGENT_BOARD_PICK=/d' "$h51/.config/agent-workforce/secrets.env"
+git -C "$h51/agent-worktrees/inbox" checkout -q agents/inbox
+rc=$(BOARD_PY="$h51/stub_board.py" BOARD_ROOT="$h51/board" NOTION_RESEARCH_PY="$h51/stub_notion_research.py" run_receipt_scenario "$h51" 0 1)
+assert "the proposal is committed as before" "[ '$rc' = 0 ] && grep -q 'outcome=PROPOSAL' '$h51/agent-workforce/logs/cost.log' && [ ! -e '$h51/notion_argv.log' ]"
 exit $fail
