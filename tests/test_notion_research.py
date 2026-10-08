@@ -26,6 +26,15 @@ def check(desc, cond):
         failures.append(desc)
 
 
+def with_plain_text(properties):
+    shaped = {}
+    for name, prop in properties.items():
+        spans = prop.get("title") or prop.get("rich_text")
+        key = "title" if "title" in prop else "rich_text"
+        shaped[name] = dict(prop, **{key: [dict(s, plain_text=s["text"]["content"]) for s in spans]}) if spans else prop
+    return shaped
+
+
 class FakeNotion:
     def __init__(self):
         self.pages, self.children, self.calls, self._seq = {}, {}, [], 0
@@ -68,7 +77,7 @@ class FakeNotion:
             want = flt["rich_text"]["equals"]
             rows = [p for p in rows if "".join(
                 t["text"]["content"] for t in p["properties"].get(flt["property"], {}).get("rich_text", [])) == want]
-        return {"results": [{"id": p["id"], "url": p["url"], "properties": p["properties"]} for p in rows],
+        return {"results": [{"id": p["id"], "url": p["url"], "properties": with_plain_text(p["properties"])} for p in rows],
                 "has_more": False, "next_cursor": None}
 
     def creates(self):
@@ -104,7 +113,7 @@ with tempfile.TemporaryDirectory() as tmp:
                  "--from-file", write(tmp, "r.md", V1)], api)
     check("one page created", len(api.creates()) == 1)
     check("result names the page", first["page"] == "page-1")
-    check("page_hash is the board's hash of the file", first["page_hash"] == nr.text_hash(V1))
+    check("page_hash is the hash of the text export will return", first["page_hash"] == nr.text_hash(nr.canonical(api, V1)))
     check("version starts at 1", first["version"] == 1)
     props = api.pages["page-1"]["properties"]
     check("Card property keys the page", plain(props["Card"]) == "card-one")
@@ -136,6 +145,7 @@ with tempfile.TemporaryDirectory() as tmp:
     again = pathlib.Path(tmp) / "again.md"
     run(["export", "--card", "card-one", "--out", str(again)], api)
     check("round trip is a fixed point", again.read_text() == text)
+    check("an unedited page exports the hash publish recorded", exported["page_hash"] == exported["published_hash"])
     check("export reports the hash of the text it returned", exported["page_hash"] == nr.text_hash(text))
 
 print("--- export --if-exists: no page is not an error ---")

@@ -69,13 +69,17 @@ def next_version(row):
     return int(current) + 1
 
 
-def publish_props(args, text, version):
+def canonical(api, text):
+    return blocks_to_markdown(api, blocks_from_markdown(text))
+
+
+def publish_props(api, args, text, version):
     return {
         TITLE: {"title": rt(args.title or args.card)},
         CARD: {"rich_text": rt(args.card)},
         RUN: {"rich_text": rt(args.run_id or "")},
         VERSION: {"number": version},
-        PUBLISHED: {"rich_text": rt(text_hash(text))},
+        PUBLISHED: {"rich_text": rt(text_hash(canonical(api, text)))},
         STATE: {"rich_text": rt("published")},
     }
 
@@ -88,7 +92,7 @@ def read_text(path):
 def cmd_publish(args, api):
     ds, text = data_source(), read_text(args.from_file)
     row = find_page(api, ds, args.card)
-    props = publish_props(args, text, next_version(row))
+    props = publish_props(api, args, text, next_version(row))
     if row:
         api.call("PATCH", "/pages/" + row["id"], {"properties": props})
         page_id, url, action = row["id"], row.get("url"), "updated"
@@ -98,7 +102,8 @@ def cmd_publish(args, api):
         page_id, url, action = created["id"], created.get("url"), "created"
     replace_children(api, page_id, blocks_from_markdown(text))
     return emit({"card": args.card, "page": page_id, "url": url, "action": action,
-                 "version": props[VERSION]["number"], "page_hash": text_hash(text)})
+                 "version": props[VERSION]["number"],
+                 "page_hash": text_hash(canonical(api, text))})
 
 
 def spans_to_markdown(spans):
