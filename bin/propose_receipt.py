@@ -2,10 +2,10 @@
 """An agent_propose.sh outcome -> the executor's argv -> one receipt (T5.2).
 
     propose_receipt.py <OUTCOME> [--rc N] [--reason TEXT] [--proposal RELPATH]
-                       [--brief-hash HASH]
+                       [--brief-hash HASH] [--page PAGE --page-hash HASH]
 
 OUTCOME is the word agent_propose.sh logs to cost.log: SKIP, DEDUP, BLOCKED, FAIL, CRASHED,
-VIOLATION, OPS, BOARD, PROPOSAL or NOPROPOSAL — or AUTHDOWN, the claude-auth pre-flight's refusal,
+VIOLATION, OPS, BOARD, CARD, PROPOSAL or NOPROPOSAL — or AUTHDOWN, the claude-auth pre-flight's refusal,
 which cost.log records as BLOCKED and the receipt as a skipped dependency-down. Each maps to exactly one executor evidence flag —
 the outcome map in .claude/briefs/t5-2-executor-wiring.md — and the executor derives the
 terminal outcome from there; nothing here defaults to success.
@@ -41,12 +41,17 @@ REASON_TAIL = 400
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("outcome", choices=["SKIP", "DEDUP", "BLOCKED", "AUTHDOWN", "FAIL", "CRASHED", "VIOLATION",
-                                       "OPS", "BOARD", "PROPOSAL", "NOPROPOSAL"])
+                                       "OPS", "BOARD", "CARD", "PROPOSAL", "NOPROPOSAL"])
     p.add_argument("--rc", type=int, help="the runtime's exit status (FAIL, CRASHED)")
     p.add_argument("--reason", help="the gate that refused (BLOCKED, AUTHDOWN) or the limit that ended it (FAIL)")
     p.add_argument("--proposal", metavar="RELPATH", help="the proposal, relative to the inbox worktree (PROPOSAL)")
     p.add_argument("--brief-hash", metavar="HASH", help="the brief recorded on the picked card (BOARD)")
-    return p.parse_args(argv)
+    p.add_argument("--page", metavar="PAGE", help="the card's published page (CARD)")
+    p.add_argument("--page-hash", metavar="HASH", help="the hash of the text published (CARD)")
+    args = p.parse_args(argv)
+    if args.outcome == "CARD" and not (args.page and args.page_hash):
+        p.error("CARD needs --page and --page-hash")
+    return args
 
 
 def unit_name(env: dict[str, str]) -> str | None:
@@ -130,6 +135,8 @@ def evidence_flags(args: argparse.Namespace, env: dict[str, str]) -> list[str]:
         return ["--artifact", report] if report else []
     if outcome == "BOARD":
         return ["--artifact", f"board://{env.get('AGENT_CARD', '')}/brief/{args.brief_hash or ''}"]
+    if outcome == "CARD":
+        return ["--artifact", f"notion://{args.page}"]
     if outcome == "PROPOSAL":
         return ["--artifact", proposal_artifact(args, env)]
     return []
@@ -148,9 +155,22 @@ def identity_flags(env: dict[str, str]) -> list[str]:
     return flags
 
 
+def card_flags(args: argparse.Namespace, env: dict[str, str]) -> list[str]:
+    card = env.get("AGENT_CARD", "").strip()
+    if not card:
+        return []
+    flags = ["--card", card]
+    brief = args.brief_hash or env.get("AGENT_CARD_BRIEF_HASH")
+    if brief:
+        flags += ["--card-brief-hash", brief]
+    if args.outcome == "CARD":
+        flags += ["--card-page", args.page, "--card-page-hash", args.page_hash]
+    return flags
+
+
 def executor_argv(args: argparse.Namespace, env: dict[str, str], unit: str) -> list[str]:
     executor = env.get("CONTRACT_EXEC") or str(BIN_DIR / "contract_exec.py")
-    return [executor, unit, "--vantage", "run", *evidence_flags(args, env), *identity_flags(env)]
+    return [executor, unit, "--vantage", "run", *evidence_flags(args, env), *card_flags(args, env), *identity_flags(env)]
 
 
 def main(argv: list[str] | None = None) -> int:

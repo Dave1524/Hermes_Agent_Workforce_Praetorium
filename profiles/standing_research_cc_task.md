@@ -14,6 +14,27 @@ remains the source for what to WORK, ops files are background context only. Real
 client/prospect names are fine everywhere on this mirror — the box is inside Dave's
 private bubble; only `_confidential/` stays out.
 
+CARD RUN — check first: `echo "${AGENT_CARD:-}"`. When it prints a card id, this run answers
+that card and the rest of this file applies only where it says so. Your working directory is
+the card's run directory (`$AGENT_CARD_DIR`), not the inbox worktree; the vault mirror is read
+the same way, over qmd and `~/vault`.
+
+- Tasking. `$AGENT_CARD_DIR/card.md` is the tasking and its approved brief is the acceptance
+  bar. Do not read `queue.md`; standing missions are not this run's work. STEP 0's
+  "today's file exists" check does not apply; each card run is its own.
+- After a request for changes `$AGENT_CARD_DIR/research.prev.md` holds the page as Dave left it,
+  his edits included. Revise it rather than start over, and keep what he edited.
+- Research as in steps 3 (Mechanism A included) with the brief's questions in view. Duplicate-title
+  gate 2b applies as written.
+- Write exactly `$AGENT_CARD_DIR/research.md`, and nothing else, anywhere except
+  `$AGENT_CARD_DIR/notes.md` for anything worth keeping that is not a finding. First line: the
+  card id and the question. Then the findings (FACT / INFERENCE as below), then each acceptance
+  line of the brief, in its order, answered `MET`, `PARTLY` or `NOT MET` with the finding it
+  rests on, then the sources.
+- Never touch Notion, git, the vault, or the card's other files (`events.jsonl`, `pick.json`,
+  `published.json`). The wrapper publishes your file as the card's page; the ledger is not yours.
+- Decline as in step 2c, `DECLINE: <short reason>` on its own line and no file.
+
 STEP 0 — Idempotency and working-memory substitute. Run `date +%F` for today's date,
 then `ls -1 _inbox/agents/ | grep standing-research`. If `<today>_standing-research.md`
 already exists, this run already happened — write nothing and stop (print one line:
@@ -27,7 +48,7 @@ already approved, edited, or rejected. If a task/question you would pick has alr
 been proposed recently, do NOT re-propose it as-is: either advance it (new angle, next
 step, updated data) or pick a different item.
 
-1. Use the qmd tools to read your tasking:
+1. Without a card, use the qmd tools to read your tasking:
    - `04_operations/box_brief/queue.md` — dated, tasking from the Mac (regenerated at
      Dave's EOD wrap).
    - `04_operations/box_brief/standing_missions.md` — standing missions, priority order,

@@ -39,7 +39,9 @@ SKILLS_DIR="${PRAETORIUM_SKILLS_DIR:-$HOME/agent-workforce/skills/claudius}"
 # No MCP servers by design (toolset trim, 2026-07-20): this job reads the vault off disk via
 # its `cd "$INBOX"` checkout with Read/Glob/Grep and needs no qmd retrieval. Declare
 # AGENT_MCP_DEPS=none in the job env so agent_propose.sh skips the daemon probes too.
-cd "$INBOX"
+# A card run (agent_propose.sh picked a card) works in the card's directory and writes its one file
+# there; the inbox worktree is for the card-less proposal path.
+cd "${AGENT_CARD_DIR:-$INBOX}"
 exec "$BIN_DIR/cc_run.sh" "$CLAUDE_BIN" -p "$(cat "$TASK_FILE")" \
   --model claude-opus-5 \
   --permission-mode dontAsk \

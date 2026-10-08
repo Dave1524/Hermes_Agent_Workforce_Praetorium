@@ -540,6 +540,7 @@ asserts = [
   "exec-one-result-per-check",       # every declared check yields one assertion, in contract order; wrong vantage is n/a, never omitted
   "exec-env-is-schema-list",         # the child sees the schema doc's variables plus PATH and nothing of the parent's
   "exec-user-scope-runtime-dir",     # a user-scope row's child also carries XDG_RUNTIME_DIR (parent's, else /run/user/<uid>) so `systemctl --user` reaches its bus; a system-scope row's does not
+  "exec-card-block",                 # B3: --card flags put a validated `card` block (id, workflow, brief hash, page + page hash) on the receipt; absent without them
   "exec-artifact-is-this-run",       # check class: artifact is this run's (knowledge-digest check 1)
   "exec-decline-is-own",             # check class: sentinel branch — fresh ^DECLINE: in this run's own attempt log
   "exec-write-boundary",             # check class: write boundary (knowledge-digest check 5)
@@ -692,6 +693,7 @@ wire; crediting one workflow would say the others are not covered by it.
 path    = "tests/test_propose_receipt.sh"
 owner   = "fleet"
 asserts = [
+  "propose-receipt-card-block",           # B3: CARD maps to notion://<page>; every outcome of a card run passes the card block (id, brief hash, page + hash); a card-less run passes none
   "propose-receipt-every-exit",           # agent_propose.sh writes exactly one receipt on every exit path, with the brief's outcome map; receipt failure never changes the exit code
   "propose-receipt-usage-from-envelope",  # a CC run's usage and cost are the captured envelope's; a hermes run is unavailable with null tokens
   "propose-receipt-no-unit-no-receipt",   # a hand run outside any unit writes nothing and says so

@@ -273,7 +273,7 @@ class FixtureBox(unittest.TestCase):
         if outcome == "artifact":
             data["artifact"] = {"uri": "board://alpha-card/page"}
         if page:
-            data["card"] = {"id": "alpha-card", "page": page, "page_hash": PAGE}
+            data["card"] = {"id": "alpha-card", "workflow": workflow, "page": page, "page_hash": PAGE}
         wr.write(data, self.tmp / "receipts")
 
     def column(self, card_id: str = "alpha-card") -> str:
