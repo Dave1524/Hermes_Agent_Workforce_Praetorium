@@ -102,13 +102,17 @@ class ProposeReceiptTest(unittest.TestCase):
             ("FAIL", "--rc", "1"): ["--failed", "FAIL: rc=1 ran"],
             ("CRASHED", "--rc", "4"): ["--failed", "CRASHED: rc=4 ran"],
             ("VIOLATION",): ["--failed", "VIOLATION: wrote outside _inbox/agents"],
+            ("SKIP", "--reason", "no card for: --owner claudius"): ["--skipped", "no card for: --owner claudius"],
+            ("VIOLATION", "--reason", "wrote the card ledger during the model phase"):
+                ["--failed", "VIOLATION: wrote the card ledger during the model phase"],
+            ("BOARD", "--brief-hash", "ab12"): ["--artifact", "board://card-one/brief/ab12"],
             ("NOPROPOSAL",): [],
             ("PROPOSAL", "--proposal", "_inbox/agents/2026-09-14_knowledge-digest.md"):
                 ["--artifact", f"file://{self.home}/agent-worktrees/inbox/_inbox/agents/2026-09-14_knowledge-digest.md"],
         }
         for argv, expected in cases.items():
             self.stub_out.unlink(missing_ok=True)
-            done, calls = self.run_adapter(*argv)
+            done, calls = self.run_adapter(*argv, env=self.base_env(AGENT_CARD="card-one"))
             self.assertEqual(done.returncode, 0, (argv, done.stdout, done.stderr))
             self.assertEqual(len(calls), 1, argv)
             call = calls[0]

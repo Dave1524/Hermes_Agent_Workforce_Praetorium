@@ -2,9 +2,10 @@
 """An agent_propose.sh outcome -> the executor's argv -> one receipt (T5.2).
 
     propose_receipt.py <OUTCOME> [--rc N] [--reason TEXT] [--proposal RELPATH]
+                       [--brief-hash HASH]
 
 OUTCOME is the word agent_propose.sh logs to cost.log: SKIP, DEDUP, BLOCKED, FAIL, CRASHED,
-VIOLATION, OPS, PROPOSAL or NOPROPOSAL — or AUTHDOWN, the claude-auth pre-flight's refusal,
+VIOLATION, OPS, BOARD, PROPOSAL or NOPROPOSAL — or AUTHDOWN, the claude-auth pre-flight's refusal,
 which cost.log records as BLOCKED and the receipt as a skipped dependency-down. Each maps to exactly one executor evidence flag —
 the outcome map in .claude/briefs/t5-2-executor-wiring.md — and the executor derives the
 terminal outcome from there; nothing here defaults to success.
@@ -40,10 +41,11 @@ REASON_TAIL = 400
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("outcome", choices=["SKIP", "DEDUP", "BLOCKED", "AUTHDOWN", "FAIL", "CRASHED", "VIOLATION",
-                                       "OPS", "PROPOSAL", "NOPROPOSAL"])
+                                       "OPS", "BOARD", "PROPOSAL", "NOPROPOSAL"])
     p.add_argument("--rc", type=int, help="the runtime's exit status (FAIL, CRASHED)")
     p.add_argument("--reason", help="the gate that refused (BLOCKED, AUTHDOWN) or the limit that ended it (FAIL)")
     p.add_argument("--proposal", metavar="RELPATH", help="the proposal, relative to the inbox worktree (PROPOSAL)")
+    p.add_argument("--brief-hash", metavar="HASH", help="the brief recorded on the picked card (BOARD)")
     return p.parse_args(argv)
 
 
@@ -107,7 +109,7 @@ def proposal_artifact(args: argparse.Namespace, env: dict[str, str]) -> str:
 def evidence_flags(args: argparse.Namespace, env: dict[str, str]) -> list[str]:
     outcome = args.outcome
     if outcome == "SKIP":
-        return ["--skipped", "previous run still active (flock)"]
+        return ["--skipped", args.reason or "previous run still active (flock)"]
     if outcome == "DEDUP":
         return ["--skipped", "dedup: today's proposal already exists"]
     if outcome == "BLOCKED":
@@ -120,12 +122,14 @@ def evidence_flags(args: argparse.Namespace, env: dict[str, str]) -> list[str]:
             return ["--failed", f"{outcome}: rc={rc} {args.reason}"]
         return ["--failed", f"{outcome}: rc={rc} {last_attempt_line(env)}".rstrip()]
     if outcome == "VIOLATION":
-        return ["--failed", "VIOLATION: wrote outside _inbox/agents"]
+        return ["--failed", f"VIOLATION: {args.reason or 'wrote outside _inbox/agents'}"]
     if outcome == "OPS":
         if env.get("AGENT_TASK_SLUG") == CONTENT_TASK:
             return content_evidence(env)
         report = newest_report(env)
         return ["--artifact", report] if report else []
+    if outcome == "BOARD":
+        return ["--artifact", f"board://{env.get('AGENT_CARD', '')}/brief/{args.brief_hash or ''}"]
     if outcome == "PROPOSAL":
         return ["--artifact", proposal_artifact(args, env)]
     return []

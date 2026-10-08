@@ -18,19 +18,21 @@ bridge_tools = ["qmd", "notion", "brave"]# families the bridge shim advertises: 
 mcp          = ["buzz-team-mcp"]# the ONE MCP server a session loads (--strict-mcp-config); qmd and brave sit behind it as mcp__buzz-team-mcp-<name>__*
 notes       = "Isolated like marcus (2026-09-18): the wrapper flags, agent-settings-claudius.json and the buzz-team-mcp-claudius shim are rendered from this block — see marcus.toml and agent-model.md §6.1."
 
-# The six scheduled workflows do NOT share one tool set. This is the clearest case on
+# The seven scheduled workflows do NOT share one tool set. This is the clearest case on
 # the box of a capability that exists per-workflow rather than per-agent.
 [surfaces.scheduled]
 present     = true
-governed_by = "bin/run_knowledge_digest_cc.sh, bin/run_standing_research_cc.sh, bin/run_raw_ingest_cc.sh, bin/run_m1_signal_scan_cc.sh, bin/run_bd_stall_radar_cc.sh, bin/run_bd_followup_drafts_cc.sh"
+governed_by = "bin/run_knowledge_digest_cc.sh, bin/run_standing_research_cc.sh, bin/run_raw_ingest_cc.sh, bin/run_m1_signal_scan_cc.sh, bin/run_bd_stall_radar_cc.sh, bin/run_bd_followup_drafts_cc.sh, bin/run_research_brief_cc.sh"
 tools       = ["Bash", "Read", "Write", "Edit", "Glob", "Grep"]   # the common floor
-tools_web   = ["WebSearch", "WebFetch"]                            # standing-research + m1 only
+tools_web   = ["WebSearch", "WebFetch"]                            # standing-research, m1 and research-brief only
 mcp         = []
 notes       = """
-knowledge-digest, raw-ingest, and both BD jobs have NO web access; standing research and
-m1-signal-scan do. qmd is reached through Bash (the CLI), never MCP, on this surface. All
-six write only _inbox/agents/** and must end in a dated proposal or a literal DECLINE:
-sentinel — bin/proposal_or_decline.sh is the AGENT_VERIFY_CMD for every one of them.
+knowledge-digest, raw-ingest, and both BD jobs have NO web access; standing research,
+m1-signal-scan and research-brief do. qmd is reached through Bash (the CLI), never MCP, on
+this surface. Six write only _inbox/agents/** and must end in a dated proposal or a literal
+DECLINE: sentinel — bin/proposal_or_decline.sh is the AGENT_VERIFY_CMD for every one of them.
+research-brief is the seventh: it writes one file in its card's scratch directory, the
+wrapper records it as the card's brief, and bin/brief_or_decline.sh is its verify command.
 """
 
 [surfaces.kanban]
@@ -70,6 +72,23 @@ suite    = ["tests/test_standing_research_smoke.sh"]
 skills   = ["investment-research", "meeting-prep", "prospect-research"]
 rule1_exempt = "the unit is the generic agent-proposal; the workflow, the artifact and AGENT_VERIFY_CMD are all standing-research, and naming the file after the unit would hide it from every reader who knows the job by its slug"
 notes    = "Unit name is the generic one; the workflow is standing research."
+
+[[workflows]]
+unit     = "research-brief"
+surface  = "scheduled"
+trigger  = "Mon..Fri 08-18 hourly (+3min jitter)"
+model    = "claude-opus-5"
+profile  = "profiles/research_brief_cc_task.md"
+runner   = "bin/run_research_brief_cc.sh"
+route    = "research"        # one notice line naming the card, never the brief
+web      = true
+tools_without = ["Edit"]   # the common floor minus Edit: the run writes one new file, never edits one
+board    = "research"        # works cards of this kind off the board; joined to the unit's AGENT_BOARD_PICK
+contract = "design/contracts/research-brief.md"
+status   = "standing"
+suite    = ["tests/test_research_brief_smoke.sh"]
+skills   = ["investment-research", "meeting-prep", "prospect-research"]
+notes    = "A quiet tick is receipted skipped before any model; the model runs only when Backlog holds a card. The wrapper, not the model, records the brief (agent_propose.sh AGENT_RUN_MODE=board)."
 
 [[workflows]]
 unit     = "raw-ingest"
@@ -192,6 +211,18 @@ why      = "pipeline Last contact is known-unreliable; unverifiable claims must 
 rule     = "silently supersede a contradicted 05_knowledge/ claim"
 enforced = false
 why      = "Mechanism A — name both sides under ## Contradictions"
+
+[[must_not]]
+rule     = "write the card ledger from a scheduled model session"
+enforced = true
+why      = "agent_propose.sh counts the card's events.jsonl lines before and after every attempt; growth is a VIOLATION, the offending lines move to the run's rejected-events.jsonl and the run is discarded"
+test     = "tests/test_agent_propose_smoke.sh::ledger-untouched"
+
+[[must_not]]
+rule     = "approve a brief or decide a card"
+enforced = true
+why      = "decisions exist only in the broker's root-owned stream and board.py derives a column from nothing else; a decision-shaped event in the ledger is a forged-decision exception and moves nothing"
+test     = "tests/test_board.py::board-decisions-trust"
 
 [[must_not]]
 rule     = "route Tier-A judgment to the local Ollama tier"

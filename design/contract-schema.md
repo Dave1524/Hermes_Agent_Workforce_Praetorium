@@ -149,6 +149,10 @@ per unit, and T5.1 is what makes them true.
 - `VAULT` — the vault the run read, already resolved. `~/vault` is a symlink and a check that
   records the link rather than its target does not survive cutover.
 - `HOME` — the box account's home.
+- `AGENT_CARD` — the board card this run picked (`bin/agent_propose.sh`'s pick), empty on a run
+  that picked none.
+- `AGENT_CARD_DIR` — the run's scratch directory under the board root, empty without a card.
+- `BOARD_ROOT` — the card ledger's root, `/var/lib/control-room-board` unless overridden.
 
 **`logs/agent_run.log` is deliberately absent.** One stream carries every job with no run
 boundary in it, so a line in it belongs to nobody; scoping the decline sentinel out of it was

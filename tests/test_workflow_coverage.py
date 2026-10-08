@@ -424,6 +424,7 @@ for owner, w in entries:
     want = set(surf.get("tools") or [])
     if w.get("web") is True:
         want.update(surf.get("tools_web") or [])
+    want.difference_update(w.get("tools_without") or [])
     got = set(flags["tools"] or [])
     if got != want:
         problem("runner-tools",
@@ -570,6 +571,67 @@ if s1_entries and skills_s1 < len(s1_entries):
     problem("skills-join-counted",
             f"{skills_s1} of {len(s1_entries)} interactive entries declare an S1 mechanism — "
             "an interactive entry with no mechanism is offered nothing and must say so")
+
+# --- board-join (Dev Plan B2) ---------------------------------------------------------------
+# `board = "<kind>"` on a scheduled entry says the workflow works cards of that kind off the
+# agent board. The pick itself is wired in the unit's committed override example
+# (`AGENT_BOARD_PICK="--owner <persona> --kind <kind> --column <column>"`), so this joins the
+# two: the pick must name the declaring persona, the declared kind and a column the board
+# knows, and no column of one kind may have two pickers — "one owner, one kind, one runner"
+# asserted rather than remembered. B3 adds the todo-side entry and tightens this to exactly
+# one picker per column.
+BOARD_PICK_COLUMNS = {"backlog", "todo"}
+OVERRIDES = re.compile(r"AGENT_JOB_OVERRIDES=\S*?/([A-Za-z0-9_.-]+)\.env\b")
+PICK_LINE = re.compile(r'^AGENT_BOARD_PICK="?([^"\n]*)"?\s*$', re.M)
+
+
+def board_pick(unit):
+    service = ROOT / "systemd" / f"{unit}.service"
+    if not service.is_file():
+        return None, f"systemd/{unit}.service does not exist"
+    found = OVERRIDES.search(service.read_text())
+    if not found:
+        return None, f"systemd/{unit}.service names no AGENT_JOB_OVERRIDES file"
+    example = ROOT / "profiles" / f"{found.group(1)}.env.example"
+    if not example.is_file():
+        return None, f"profiles/{found.group(1)}.env.example does not exist"
+    pick = PICK_LINE.search(example.read_text())
+    return (pick.group(1) if pick else ""), None
+
+
+def pick_flags(pick):
+    words = pick.split()
+    return {words[i][2:]: words[i + 1] for i in range(0, len(words) - 1, 2) if words[i].startswith("--")}
+
+
+board_checked = 0
+pickers = {}
+for owner, w in entries:
+    kind = w.get("board")
+    if kind is None:
+        continue
+    board_checked += 1
+    unit = w.get("unit")
+    if w.get("surface") != "scheduled":
+        problem("board-join", f"{unit} ({owner}): board on a surface = {w.get('surface')!r} entry — only a scheduled workflow picks cards")
+        continue
+    pick, why = board_pick(unit)
+    if why:
+        problem("board-join", f"{unit} ({owner}): {why}")
+        continue
+    if not pick:
+        continue
+    flags = pick_flags(pick)
+    if flags.get("owner") != owner:
+        problem("board-join", f"{unit} ({owner}): AGENT_BOARD_PICK names owner {flags.get('owner')!r}")
+    if flags.get("kind") != kind:
+        problem("board-join", f"{unit} ({owner}): AGENT_BOARD_PICK names kind {flags.get('kind')!r}, the entry declares board = {kind!r}")
+    if flags.get("column") not in BOARD_PICK_COLUMNS:
+        problem("board-join", f"{unit} ({owner}): AGENT_BOARD_PICK column {flags.get('column')!r} is not one of {sorted(BOARD_PICK_COLUMNS)}")
+    pickers.setdefault((kind, flags.get("column")), []).append(unit)
+for (kind, column), units_picking in sorted(pickers.items(), key=str):
+    if len(units_picking) > 1:
+        problem("board-join", f"board {kind!r} column {column!r} is picked by {units_picking} — one runner per column")
 
 # --- guards (T5.3f) -----------------------------------------------------------------------
 # `guards` is the one sentence a system workflow says about what its absence costs, and it
@@ -835,6 +897,7 @@ print(f"SUMMARY\tentries={len(entries)} standing={len(standing)} covered={len(co
       f"contract_missing={len(missing_contract_paths)} "
       f"standing_logical={len(logical_groups)} runner_checked={runner_checked} "
       f"model_alias={len(model_alias)} skills_checked={skills_checked} "
-      f"skills_he={skills_he} skills_s1={skills_s1} skills_offered={skills_offered}")
+      f"skills_he={skills_he} skills_s1={skills_s1} skills_offered={skills_offered} "
+      f"board_checked={board_checked}")
 for assertion, detail in problems:
     print(f"PROBLEM\t{assertion}\t{detail}")
