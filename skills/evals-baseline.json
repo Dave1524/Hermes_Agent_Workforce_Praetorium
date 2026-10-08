@@ -80,6 +80,12 @@
     "trajan/verification-before-completion-fires": {
       "score": 1.0,
       "runs": 3
+    },
+    "claudius/board-cards-fires": {
+      "score": 0.0,
+      "runs": 3,
+      "gate": false,
+      "notes": "NOT YET MEASURED (B8, 2026-10-08): no live eval run has fired this case. Ungated until bin/agent_config_eval.sh --owner claudius has read it; the score is a placeholder, not a reading."
     }
   }
 }

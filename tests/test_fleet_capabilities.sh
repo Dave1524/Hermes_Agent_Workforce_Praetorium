@@ -249,7 +249,7 @@ echo '--- 7. what each shim really advertises is its manifest'"'"'s families (::
 # withheld family must be refused by the bridge itself, as well as by settings denies.
 filter_problems=""
 while IFS='|' read -r name _harness _deny families; do
-  withheld=$(python3 -c "import sys; print(next((f for f in ('qmd','notion','brave') if f not in sys.argv[1].split(',')), ''))" "$families")
+  withheld=$(python3 -c "import sys; print(next((f for f in ('qmd','notion','brave','board') if f not in sys.argv[1].split(',')), ''))" "$families")
   probe_call=$([ -n "$withheld" ] && python3 -c "
 import importlib.util, sys
 spec = importlib.util.spec_from_file_location('b', '$BT/buzz-team-mcp.py'); b = importlib.util.module_from_spec(spec); spec.loader.exec_module(b)
@@ -258,8 +258,8 @@ print(b.family_tools('$withheld')[0])" || echo query)
   grep -qx "server buzz-team-mcp-$name" <<<"$out" || filter_problems+="$name: serverInfo is not buzz-team-mcp-$name"$'\n'
   listed=$(sed -n 's/^tools //p' <<<"$out" | tr ',' '\n' | python3 -c "
 import sys
-fam = lambda n: 'notion' if n.startswith('notion_') else 'brave' if n.startswith('brave_') else 'qmd'
-print(','.join(sorted({fam(n) for n in sys.stdin.read().split() if n}, key=('qmd','notion','brave').index)))")
+fam = lambda n: 'notion' if n.startswith('notion_') else 'brave' if n.startswith('brave_') else 'board' if n.startswith('board_') else 'qmd'
+print(','.join(sorted({fam(n) for n in sys.stdin.read().split() if n}, key=('qmd','notion','brave','board').index)))")
   [ "$listed" = "$families" ] || filter_problems+="$name: advertises [$listed], manifest says [$families]"$'\n'
   if [ -n "$withheld" ]; then
     grep -q "^call true .*is not offered to $name" <<<"$out" || filter_problems+="$name: a $withheld call ($probe_call) was not refused"$'\n'

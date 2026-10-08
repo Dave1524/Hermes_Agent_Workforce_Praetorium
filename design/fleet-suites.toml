@@ -715,6 +715,13 @@ asserts = [
   "bridge-brave-daemon-down",        # nothing listening: tools still advertised (static schema, said on stderr), the call fails naming the daemon, qmd and Notion keep answering
   "bridge-brave-session-recovery",   # the daemon restarted (404): the bridge re-initialises once and the call succeeds
   "bridge-tools-filter",             # a shim's --agent/--tools: the list carries only the named families, a call outside them is one tool error naming agent and families, serverInfo is buzz-team-mcp-<agent>
+  "bridge-board-five-tools",         # the board family is exactly board_list/get/create/brief/note; a board_ name outside them (pick, edit, a decision) is refused at the bridge and never reaches the CLI
+  "bridge-board-withheld",           # a persona whose bridge_tools omits board sees no board_* and a call is one tool error naming the agent; the CLI never runs
+  "bridge-board-reads",              # board_list and board_get forward to the CLI's list and show only
+  "bridge-board-writes",             # create, brief and note carry --actor buzz:<agent> (never a caller's actor) and the text by file, exact
+  "bridge-board-template",           # board_brief template=true is `template --kind` and writes nothing; a brief without text is an error
+  "bridge-board-cli-refusal",        # a rule lives in board.py: its stderr returns whole as a tool error
+  "bridge-board-needs-agent",        # no --agent, no actor, no board call
   "bridge-tools-unknown-family",     # a family the bridge does not know exits 2 naming it, never an empty advertisement
 ]
 why_no_workflow = """

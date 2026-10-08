@@ -21,6 +21,7 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 BRIDGE = ROOT / "buzz-team" / "buzz-team-mcp.py"
 FIX = ROOT / "tests" / "fixtures" / "buzz-team-mcp"
+BOARD_OFFERED = ["board_list", "board_get", "board_create", "board_brief", "board_note"]
 BRAVE_OFFERED = ["brave_web_search", "brave_news_search", "brave_llm_context", "brave_summarizer"]
 
 
@@ -31,9 +32,10 @@ def free_port() -> int:
 
 
 class Bridge:
-    def __init__(self, brave_url: str, *args: str):
+    def __init__(self, brave_url: str, *args: str, **extra_env: str):
         env = dict(os.environ, BUZZ_QMD_MCP_COMMAND=str(FIX / "qmd-stub.py"), BUZZ_BRAVE_MCP_URL=brave_url,
-                   BUZZ_NOTION_SOCKET="/nonexistent/buzz-notion.sock")
+                   BUZZ_NOTION_SOCKET="/nonexistent/buzz-notion.sock",
+                   BUZZ_BOARD_COMMAND=str(FIX / "board-stub.py"), **extra_env)
         self.proc = subprocess.Popen([sys.executable, str(BRIDGE), *args], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                      stderr=subprocess.PIPE, text=True, bufsize=1, env=env)
         self.n = 0
@@ -208,6 +210,100 @@ class BridgeTest(unittest.TestCase):
         methods = [r["method"] for r in self.brave.requests()]
         self.assertEqual(methods.count("initialize"), 2)  # one per daemon life, the second forced by the 404
         self.assertEqual(methods.count("tools/call"), 3)  # before the restart, the attempt the daemon 404'd, the retry
+        bridge.close()
+
+    def board_bridge(self, *args: str, fail: bool = False) -> "tuple[Bridge, pathlib.Path]":
+        log = self.tmp / "board.log"
+        extra = {"BOARD_STUB_LOG": str(log), **({"BOARD_STUB_FAIL": "1"} if fail else {})}
+        bridge = Bridge(self.brave.url, *(args or ("--agent", "claudius", "--tools", "qmd,board")), **extra)
+        bridge.start()
+        return bridge, log
+
+    @staticmethod
+    def board_calls(log: pathlib.Path) -> list[dict]:
+        return [json.loads(l) for l in log.read_text().splitlines()] if log.exists() else []
+
+    def test_board_family_advertises_five_tools_and_nothing_that_decides(self):
+        # (::bridge-board-five-tools) — the family is exactly the five the note names, after
+        # qmd's; no tool maps to pick, edit or any decision, and a board_ name outside the five
+        # is refused by the bridge, never forwarded
+        bridge, log = self.board_bridge()
+        names = [t["name"] for t in bridge.rpc("tools/list")["result"]["tools"]]
+        self.assertEqual([n for n in names if n.startswith("board_")], BOARD_OFFERED)
+        for forbidden in ("pick", "edit", "approve", "approved", "brief_approved", "reject", "land"):
+            refused = bridge.call(f"board_{forbidden}", {"card": "x"})
+            self.assertTrue(refused["isError"], forbidden)
+            self.assertIn("is not a board tool", refused["content"][0]["text"])
+        self.assertEqual(self.board_calls(log), [])
+        self.assertIn("board_brief", bridge.rpc("initialize")["result"]["instructions"])
+        bridge.close()
+
+    def test_board_family_withheld_is_refused_and_unlisted(self):
+        # (::bridge-board-withheld) — a persona whose bridge_tools omits board sees no board_*
+        # and a call is one tool error naming the agent, with the CLI never run
+        bridge, log = self.board_bridge("--agent", "marcus", "--tools", "qmd,notion,brave")
+        names = [t["name"] for t in bridge.rpc("tools/list")["result"]["tools"]]
+        self.assertEqual([n for n in names if n.startswith("board_")], [])
+        refused = bridge.call("board_list", {})
+        self.assertTrue(refused["isError"])
+        self.assertIn("not offered to marcus", refused["content"][0]["text"])
+        self.assertEqual(self.board_calls(log), [])
+        bridge.close()
+
+    def test_board_reads_run_the_cli_as_the_agent(self):
+        # (::bridge-board-reads) — list and get forward to the CLI's read verbs only
+        bridge, log = self.board_bridge()
+        listed = bridge.call("board_list", {"column": "refine", "owner": "claudius"})
+        self.assertFalse(listed.get("isError"))
+        self.assertEqual(listed["content"][0]["text"], "stub-ok list")
+        bridge.call("board_get", {"card": "local-search"})
+        self.assertEqual([c["argv"] for c in self.board_calls(log)],
+                         [["list", "--column", "refine", "--owner", "claudius"], ["show", "local-search"]])
+        bridge.close()
+
+    def test_board_writes_carry_the_buzz_actor_and_the_text_by_file(self):
+        # (::bridge-board-writes) — create, brief and note pass --actor buzz:<agent>, never a
+        # caller-supplied actor, and text reaches the CLI as a file with the exact text
+        bridge, log = self.board_bridge()
+        bridge.call("board_create", {"title": "T", "idea": "I", "scope": ["vault:05_knowledge"], "owner": "claudius",
+                                     "tags": ["a", "b"], "actor": "dave"})
+        bridge.call("board_brief", {"card": "t", "text": "# Brief: t\nbody\n"})
+        bridge.call("board_note", {"card": "t", "text": "a note"})
+        created, briefed, noted = self.board_calls(log)
+        self.assertEqual(created["argv"], ["create", "--title", "T", "--idea", "I", "--scope", "vault:05_knowledge",
+                                           "--owner", "claudius", "--tags", "a,b", "--actor", "buzz:claudius"])
+        self.assertEqual(briefed["argv"][:2], ["brief", "t"])
+        self.assertEqual(briefed["argv"][-2:], ["--actor", "buzz:claudius"])
+        self.assertEqual(briefed["files"]["--from-file"], "# Brief: t\nbody\n")
+        self.assertEqual(noted["files"]["--from-file"], "a note")
+        bridge.close()
+
+    def test_board_brief_template_prints_the_skeleton_without_a_card(self):
+        # (::bridge-board-template) — template=true is the CLI's `template --kind`, writes nothing
+        bridge, log = self.board_bridge()
+        result = bridge.call("board_brief", {"template": True})
+        self.assertEqual(result["content"][0]["text"], "stub-ok template")
+        self.assertEqual(self.board_calls(log)[0]["argv"], ["template", "--kind", "research"])
+        missing = bridge.call("board_brief", {"card": "t"})
+        self.assertTrue(missing["isError"])
+        self.assertEqual(len(self.board_calls(log)), 1)
+        bridge.close()
+
+    def test_board_refusal_is_the_clis_message_as_a_tool_error(self):
+        # (::bridge-board-cli-refusal) — a rule lives in board.py: its stderr comes back whole
+        bridge, _ = self.board_bridge(fail=True)
+        result = bridge.call("board_note", {"card": "t", "text": "x"})
+        self.assertTrue(result["isError"])
+        self.assertIn("refused by the stub", result["content"][0]["text"])
+        bridge.close()
+
+    def test_board_without_an_agent_name_is_refused(self):
+        # (::bridge-board-needs-agent) — the actor is buzz:<agent>; no --agent, no writes
+        bridge, log = self.board_bridge("--tools", "qmd,board")
+        result = bridge.call("board_note", {"card": "t", "text": "x"})
+        self.assertTrue(result["isError"])
+        self.assertIn("needs --agent", result["content"][0]["text"])
+        self.assertEqual(self.board_calls(log), [])
         bridge.close()
 
 

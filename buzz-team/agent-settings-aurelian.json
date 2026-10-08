@@ -31,7 +31,12 @@
       "mcp__buzz-team-mcp-aurelian__notion_query_data_source",
       "mcp__buzz-team-mcp-aurelian__notion_create_page",
       "mcp__buzz-team-mcp-aurelian__notion_update_page",
-      "mcp__buzz-team-mcp-aurelian__notion_append_blocks"
+      "mcp__buzz-team-mcp-aurelian__notion_append_blocks",
+      "mcp__buzz-team-mcp-aurelian__board_list",
+      "mcp__buzz-team-mcp-aurelian__board_get",
+      "mcp__buzz-team-mcp-aurelian__board_create",
+      "mcp__buzz-team-mcp-aurelian__board_brief",
+      "mcp__buzz-team-mcp-aurelian__board_note"
     ]
   },
   "hooks": {

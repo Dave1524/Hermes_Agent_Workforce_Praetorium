@@ -73,7 +73,7 @@ fenced block, the way the eval measurements below are.
 | owner | pointers |
 |---|---|
 | augustus | `linkedin-content-engine`, `linkedin-review`, `blog-engine` |
-| claudius | `prospect-research`, `meeting-prep`, `investment-research` |
+| claudius | `prospect-research`, `meeting-prep`, `investment-research`, `board-cards` |
 | trajan | `systematic-debugging`, `test-driven-development`, `verification-before-completion`, `spec-to-code-enforcement` |
 | marcus | `weekly-review`, `agent-inbox-sync`, `post-call-capture` |
 | aurelian | none |
@@ -83,7 +83,7 @@ Which of these a run actually opens is measured since T3.3 (2026-09-11): the wee
 each pointer versus runs offered it, rolled up from the `skills=` / `skills_offered=` keys
 `agent_propose.sh` records per run (`docs/runbook.md` § Agent-run metrics & scorecard).
 
-Thirteen pointers. The frozen decision's prose says "1 of these 14 is named by a live
+Fourteen pointers. The frozen decision's prose says "1 of these 14 is named by a live
 workflow"; its own table sums to 13, and 13 is what exists here — the 14 is an arithmetic slip
 carried into `docs/dev-plan-2026-09.md`, corrected there and left standing in the archive,
 which is a record of what was written rather than a live document.
@@ -103,8 +103,8 @@ no model. Different things, same name.
 **Every pointer now reaches its owner on at least one surface, and the manifests say which.**
 Since T3.2 (2026-09-11) every `[[workflows]]` entry in `design/agents/*.toml` carries
 `skills = [...]`, and `tests/test_workflow_coverage.py` joins each list to the offer its
-mechanism really delivers: claudius's and marcus's scheduled entries declare their three
-pointers (the runner's `--plugin-dir` tree); augustus's two content triggers declare
+mechanism really delivers: claudius's four and marcus's three scheduled-entry pointers are declared
+(the runner's `--plugin-dir` tree); augustus's two content triggers declare
 `["linkedin-content-engine"]` under `skills_mechanism = "heading-extraction"` (the only
 pointer their profile extracts through `bin/skill_sections.sh`); trajan's sixteen platform
 entries (no model to offer a skill to) declare `[]`. Until 2026-09-18 the five `buzz-agent@*`

@@ -21,7 +21,12 @@
       "mcp__claude_ai_Eden",
       "mcp__claude_ai_Claude_Docs",
       "Skill(schedule)",
-      "RemoteTrigger"
+      "RemoteTrigger",
+      "mcp__buzz-team-mcp-augustus__board_list",
+      "mcp__buzz-team-mcp-augustus__board_get",
+      "mcp__buzz-team-mcp-augustus__board_create",
+      "mcp__buzz-team-mcp-augustus__board_brief",
+      "mcp__buzz-team-mcp-augustus__board_note"
     ]
   },
   "hooks": {

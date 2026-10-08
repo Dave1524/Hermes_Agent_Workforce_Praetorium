@@ -20,6 +20,7 @@ import os
 import socket
 import subprocess
 import sys
+import tempfile
 import urllib.error
 import urllib.request
 from typing import Any
@@ -38,9 +39,17 @@ BRAVE_TOOLS = ("brave_web_search", "brave_news_search", "brave_llm_context", "br
 # rendered for them (bin/fleet_capabilities.py) — the filter below treats every proxied
 # tool as this family, so a new qmd tool is filtered even before it is named here.
 QMD_TOOLS = ("query", "get", "multi_get", "status")
-# The three families a shim may advertise (`--tools qmd,notion,brave`). A manifest's
+# The families a shim may advertise (`--tools qmd,notion,brave,board`). A manifest's
 # bridge_tools names families, never tools; the tool names are this file's.
-FAMILIES = ("qmd", "notion", "brave")
+FAMILIES = ("qmd", "notion", "brave", "board")
+BOARD_COMMAND = os.environ.get("BUZZ_BOARD_COMMAND") or os.path.expanduser("~/agent-workforce/bin/board.py")
+BOARD_TIMEOUT_SECONDS = 30
+BOARD_RULE = (
+    "Board: board_list and board_get read the card board; board_create puts a card in Backlog; "
+    "board_brief records a brief on a Backlog or Refine card (template=true returns the skeleton, "
+    "writes nothing); board_note adds a note. Approving, returning, picking and editing are not "
+    "offered here and are never claimed: a card whose brief you wrote waits in Refine for Dave."
+)
 BRAVE_RULE = (
     "Web: brave_web_search, brave_news_search, brave_llm_context (grounding snippets) and "
     "brave_summarizer, via brave-mcp.service. A query string LEAVES the box (Brave Software, "
@@ -185,6 +194,54 @@ NOTION_TOOLS: list[dict[str, Any]] = [
 ]
 NOTION_NAMES = [tool["name"] for tool in NOTION_TOOLS]
 
+def _board_tool(name: str, title: str, description: str, properties: dict[str, Any],
+                required: list[str], *, read_only: bool) -> dict[str, Any]:
+    return {
+        "name": name,
+        "title": title,
+        "description": description,
+        "inputSchema": {"type": "object", "properties": properties, "required": required},
+        "annotations": {"readOnlyHint": read_only, "destructiveHint": False, "openWorldHint": False},
+    }
+
+
+BOARD_TOOLS: list[dict[str, Any]] = [
+    _board_tool(
+        "board_list", "List Board Cards",
+        "List cards, one line each: id, column, priority, title. Filter by column (backlog, refine, "
+        "todo, in-progress, in-review, done, blocked), owner or kind.",
+        {"column": {"type": "string"}, "owner": {"type": "string"}, "kind": {"type": "string"}},
+        [], read_only=True),
+    _board_tool(
+        "board_get", "Get Board Card",
+        "Show one card: fields, current brief, notes and state.",
+        {"card": {"type": "string"}}, ["card"], read_only=True),
+    _board_tool(
+        "board_create", "Create Board Card",
+        "Create a card in Backlog. scope entries are vault:<dir> or repo:<name>. Check board_list "
+        "for a duplicate first.",
+        {"title": {"type": "string"}, "idea": {"type": "string"},
+         "scope": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+         "owner": {"type": "string"}, "kind": {"type": "string"},
+         "priority": {"type": "string", "enum": ["high", "normal", "low"]},
+         "deadline": {"type": "string", "description": "YYYY-MM-DD"},
+         "research_on": {"type": "string", "description": "YYYY-MM-DD"},
+         "tags": {"type": "array", "items": {"type": "string"}}},
+        ["title", "idea", "scope", "owner"], read_only=False),
+    _board_tool(
+        "board_brief", "Write Board Brief",
+        "Record a brief on a card in Backlog or Refine (never an approval). With template=true and "
+        "no card, return the brief skeleton for kind (default research) and write nothing.",
+        {"card": {"type": "string"}, "text": {"type": "string"}, "template": {"type": "boolean"},
+         "kind": {"type": "string"}},
+        [], read_only=False),
+    _board_tool(
+        "board_note", "Add Board Note",
+        "Add a note to a card.",
+        {"card": {"type": "string"}, "text": {"type": "string"}}, ["card", "text"], read_only=False),
+]
+BOARD_NAMES = [tool["name"] for tool in BOARD_TOOLS]
+
 
 def emit(message: dict[str, Any]) -> None:
     sys.stdout.write(json.dumps(message, separators=(",", ":")) + "\n")
@@ -221,6 +278,69 @@ def notion_tool(name: str, args: dict[str, Any]) -> Any:
     if not response.get("ok"):
         raise RuntimeError(str(response.get("error", "Notion broker reported an unknown error")))
     return response.get("value")
+
+
+def _need(args: dict[str, Any], *keys: str) -> None:
+    missing = [key for key in keys if not args.get(key)]
+    if missing:
+        raise RuntimeError(f"missing: {', '.join(missing)}")
+
+
+def _option(args: dict[str, Any], key: str, flag: str) -> list[str]:
+    return [flag, str(args[key])] if args.get(key) else []
+
+
+def _create_argv(args: dict[str, Any], actor: str) -> list[str]:
+    _need(args, "title", "idea", "scope", "owner")
+    argv = ["create", "--title", args["title"], "--idea", args["idea"]]
+    for scope in args["scope"]:
+        argv += ["--scope", scope]
+    argv += ["--owner", args["owner"]]
+    argv += _option(args, "kind", "--kind") + _option(args, "priority", "--priority")
+    argv += _option(args, "deadline", "--deadline") + _option(args, "research_on", "--research-on")
+    if args.get("tags"):
+        argv += ["--tags", ",".join(args["tags"])]
+    return argv + ["--actor", actor]
+
+
+def _run_board(argv: list[str]) -> str:
+    try:
+        done = subprocess.run([BOARD_COMMAND, *argv], capture_output=True, text=True,
+                              timeout=BOARD_TIMEOUT_SECONDS)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise RuntimeError(f"board.py did not run: {exc}") from exc
+    if done.returncode != 0:
+        raise RuntimeError((done.stderr or done.stdout).strip() or f"board.py exited {done.returncode}")
+    return done.stdout.strip()
+
+
+def _run_board_with_text(build: Any, text: str) -> str:
+    with tempfile.NamedTemporaryFile("w", suffix=".md", encoding="utf-8") as handle:
+        handle.write(text)
+        handle.flush()
+        return _run_board(build(handle.name))
+
+
+def board_tool(name: str, args: dict[str, Any], agent: str | None) -> str:
+    """Forward one board_* call to board.py as buzz:<agent>. Every rule lives in the CLI."""
+    if name not in BOARD_NAMES:
+        raise RuntimeError(f"{name} is not a board tool — the family is {', '.join(BOARD_NAMES)}")
+    if not agent:
+        raise RuntimeError("the board family needs --agent: the actor is buzz:<agent>")
+    actor = f"buzz:{agent}"
+    if name == "board_list":
+        return _run_board(["list", *_option(args, "column", "--column"), *_option(args, "owner", "--owner"),
+                           *_option(args, "kind", "--kind")])
+    if name == "board_get":
+        _need(args, "card")
+        return _run_board(["show", args["card"]])
+    if name == "board_create":
+        return _run_board(_create_argv(args, actor))
+    if name == "board_brief" and args.get("template") and not args.get("card"):
+        return _run_board(["template", "--kind", args.get("kind") or "research"])
+    verb = "brief" if name == "board_brief" else "note"
+    _need(args, "card", "text")
+    return _run_board_with_text(lambda path: [verb, args["card"], "--from-file", path, "--actor", actor], args["text"])
 
 
 class BraveProxy:
@@ -353,6 +473,8 @@ def family_of(name: str) -> str:
         return "notion"
     if name.startswith("brave_"):
         return "brave"
+    if name.startswith("board_"):
+        return "board"
     return "qmd"
 
 
@@ -363,6 +485,8 @@ def family_tools(family: str) -> tuple[str, ...]:
         return tuple(NOTION_NAMES)
     if family == "brave":
         return BRAVE_TOOLS
+    if family == "board":
+        return tuple(BOARD_NAMES)
     return QMD_TOOLS
 
 
@@ -371,7 +495,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--agent", default=None,
                         help="the buzz-agent this bridge serves; goes into serverInfo (the shim passes it)")
     parser.add_argument("--tools", default=",".join(FAMILIES),
-                        help="comma-separated families to advertise, of qmd,notion,brave (default: all)")
+                        help="comma-separated families to advertise, of qmd,notion,brave,board (default: all)")
     args = parser.parse_args(argv)
     args.families = tuple(f for f in args.tools.split(",") if f)
     unknown = [f for f in args.families if f not in FAMILIES]
@@ -388,6 +512,8 @@ def instructions_for(families: tuple[str, ...], qmd_text: str) -> str:
                  "request and your charter permit it.")
     if "brave" in families:
         text += "\n\n" + BRAVE_RULE
+    if "board" in families:
+        text += "\n\n" + BOARD_RULE
     return text
 
 
@@ -425,6 +551,8 @@ def main(argv: list[str] | None = None) -> int:
                             tools.extend(NOTION_TOOLS)
                         if "brave" in families:
                             tools.extend(brave.tools())
+                        if "board" in families:
+                            tools.extend(BOARD_TOOLS)
                         response["result"]["tools"] = [t for t in tools if family_of(t["name"]) in families]
                     emit(response)
                     continue
@@ -441,6 +569,12 @@ def main(argv: list[str] | None = None) -> int:
                         try:
                             value = notion_tool(name, params.get("arguments") or {})
                             result = tool_result(value)
+                        except Exception as exc:
+                            result = tool_result(str(exc), is_error=True)
+                        emit({"jsonrpc": "2.0", "id": request_id, "result": result})
+                    elif family == "board":
+                        try:
+                            result = tool_result(board_tool(name, params.get("arguments") or {}, args.agent))
                         except Exception as exc:
                             result = tool_result(str(exc), is_error=True)
                         emit({"jsonrpc": "2.0", "id": request_id, "result": result})
