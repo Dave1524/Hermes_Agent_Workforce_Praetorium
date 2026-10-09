@@ -699,6 +699,13 @@ from the dave shell the drop-in describes. The CLI mirrors the dialog — `sched
 TOKEN`, `retire <id> --reason R --receipts V --notion V --inbox V --note N --preview|--submit
 TOKEN` — and is the acceptance path (`tests/acceptance/control_room_proposals.sh`).
 
+**The board seam (B5).** `POST /api/v1/control/board` (`bin/control_room_board_writes.py`) admits
+`create`, `brief`, `note` and `edit` as actor `dave`, over `bin/board.py`; decision verbs answer 501
+until B9, anything else 400. The ledger root is `CONTROL_ROOM_BOARD_ROOT`
+(`/var/lib/control-room-board`), granted by `systemd/control-room.service.d/board.conf` -- hand-install
+it like `proposals.conf` (`sudo cp` to `/etc/systemd/system/control-room.service.d/`, `daemon-reload`,
+restart `control-room.service`); until then the seam answers 503 `board_unavailable`.
+
 **Landing a schedule PR (Dave, by hand — the PR body carries the same list):** merge → `git -C
 ~/dev/agent-workforce pull --ff-only` → `bin/deploy` → `sudo cp systemd/<unit>.timer
 /etc/systemd/system/ && sudo systemctl daemon-reload` → only if that timer is active, `sudo
