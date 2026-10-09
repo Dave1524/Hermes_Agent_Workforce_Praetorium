@@ -21,11 +21,12 @@ fallback and are unchanged.
 | `src/api/client.ts` | `getJson` / `getText` / `postControl` / `postProposal`; `X-Control-Room: 1` on both POST seams; `ApiError {status, body}` |
 | `src/api/useResource.ts` | `loading \| ready \| error` per resource, refresh, auto-refresh tick |
 | `src/model/` | mappers from API shapes to view types; every vocabulary has an `unknown` fallback; `Measurement<T>` is `measured \| unavailable \| unknown` |
-| `src/router/` | seven routes under `/app/`; unknown paths land on Overview flagged |
+| `src/router/` | the routes under `/app/` (`/board` and `/board/<id>` open the card popup); unknown paths land on Overview flagged |
 | `src/shell/` | `App` (sidebar, header, health footer), the refresh context, page-resource hooks |
-| `src/pages/` | Overview, Workflows, WorkflowDetail, RunDetail, Incidents, Usage, Activity |
+| `src/pages/` | Overview, Workflows, WorkflowDetail, RunDetail, Incidents, Usage, Activity, Agents, AgentDetail, Board |
 | `src/components/` | badges, measurement cells, links, panels, the data-status strip |
-| `src/components/dialogs/` | the control and proposal dialogs (T5.3a / T5.3b seams) |
+| `src/components/dialogs/` | the control and proposal dialogs (T5.3a / T5.3b seams); `CardDialog`, the read-only card popup (Dev Plan B4) |
+| `src/components/card/` | the popup's sections: header, brief, idea, research, activity, side panel, footer |
 
 Rules the code keeps: `unavailable` is a value, never 0; an unknown API value renders as
 `unknown`, never crashes; the fleet's timers are never enabled or started from here — every

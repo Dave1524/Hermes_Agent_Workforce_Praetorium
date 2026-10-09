@@ -311,6 +311,7 @@ class Creating(FixtureBox):  # (::board-create-rules)
             "buzz with a brief": self.create("v", "--brief", self.file("b.md", "t"), actor="buzz:claudius"),
             "a run creating": self.create("u", actor="run:r1"),
             "not an id": self.create("Bad Id"),
+            "an id the board API routes on": self.create("decisions"),
         }
         for name, (code, _, err) in cases.items():
             with self.subTest(name):

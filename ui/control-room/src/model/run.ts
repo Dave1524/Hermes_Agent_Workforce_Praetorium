@@ -53,6 +53,7 @@ export interface Run {
   receiptPath: string | null;
   closed: RunClosure | null;
   swept: RunSweep | null;
+  card: { id: string; page: string | null } | null;
 }
 
 export const toRun = (r: RunSummary): Run => ({
@@ -76,4 +77,5 @@ export const toRun = (r: RunSummary): Run => ({
   receiptPath: r.receiptPath ?? null,
   closed: r.closed ? { at: r.closed.at, by: r.closed.by, reason: r.closed.reason } : null,
   swept: r.swept ? { at: r.swept.at, sweepRunId: r.swept.sweep_run_id } : null,
+  card: r.card ? { id: r.card.id, page: r.card.page ?? null } : null,
 });

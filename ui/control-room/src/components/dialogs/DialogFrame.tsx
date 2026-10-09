@@ -2,6 +2,7 @@ import { useEffect, type ReactNode } from "react";
 
 interface Props {
   title: string;
+  header?: ReactNode;
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
@@ -9,7 +10,7 @@ interface Props {
   tone?: "default" | "danger";
 }
 
-export default function DialogFrame({ title, onClose, children, footer, wide = false, tone = "default" }: Props) {
+export default function DialogFrame({ title, header, onClose, children, footer, wide = false, tone = "default" }: Props) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
@@ -24,8 +25,8 @@ export default function DialogFrame({ title, onClose, children, footer, wide = f
         onClick={(e) => e.stopPropagation()}
         className={`bg-surface border ${tone === "danger" ? "border-red/40" : "border-border-2"} rounded-md shadow-xl w-full ${wide ? "max-w-3xl" : "max-w-lg"} max-h-[90vh] flex flex-col`}
       >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <h3 className={`text-sm font-semibold ${tone === "danger" ? "text-red" : "text-text"}`}>{title}</h3>
+        <div className={`flex ${header ? "items-start" : "items-center"} justify-between gap-3 px-4 py-3 border-b border-border`}>
+          {header ?? <h3 className={`text-sm font-semibold ${tone === "danger" ? "text-red" : "text-text"}`}>{title}</h3>}
           <button onClick={onClose} className="text-muted hover:text-text text-sm px-1" aria-label="Dismiss">
             ✕
           </button>

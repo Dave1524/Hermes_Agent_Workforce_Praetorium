@@ -30,6 +30,17 @@ describe("RunDetail", () => {
     expect(screen.getByTestId("assertions")).toHaveTextContent(/fail\s*proposal-or-decline\s*— neither a proposal nor DECLINE:/);
   });
 
+  it("links a card run to its card and shows no card row otherwise", async () => {
+    mockFetch({ "/api/v1/runs/run-0914": envelope({ ...measuredRun, card: { id: "vault-vector-search", workflow: "agent-proposal", page: "page-1" } }) });
+    const first = renderInShell(<RunDetail runId="run-0914" />);
+    await waitFor(() => expect(screen.getByTestId("run-card")).toHaveAttribute("href", "/app/board/vault-vector-search"));
+    first.unmount();
+    mockFetch({ "/api/v1/runs/run-0914": envelope(measuredRun) });
+    renderInShell(<RunDetail runId="run-0914" />);
+    await waitFor(() => expect(screen.getByRole("heading", { name: "run-0914" })).toBeInTheDocument());
+    expect(screen.queryByTestId("run-card")).toBeNull();
+  });
+
   it("renders a closed failure as closed, with who and why", async () => {
     const closed = { at: "2026-09-17T10:30:00Z", by: "Dave", reason: "check defect fixed in 73dea03" };
     mockFetch({ "/api/v1/runs/run-0913": envelope({ ...failedRun, closed }) });

@@ -16,6 +16,7 @@ describe("App shell", () => {
     renderInShell(<App />);
     expect(screen.getByRole("link", { name: "Workflows" })).toHaveAttribute("href", "/app/workflows");
     expect(screen.getByRole("link", { name: "Agents" })).toHaveAttribute("href", "/app/agents");
+    expect(screen.getByRole("link", { name: "Board" })).toHaveAttribute("href", "/app/board");
     expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("aria-current", "page");
     await waitFor(() => expect(screen.getByTestId("health-status")).toHaveTextContent("ok"));
     await waitFor(() => expect(screen.getByTestId("generated-at")).toHaveTextContent(/Generated/));
