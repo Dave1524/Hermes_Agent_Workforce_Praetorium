@@ -46,6 +46,7 @@ SEVERITY = {
     "auth-expired": "high",
     "blocked-next-action": "medium",
     "contract-unavailable": "medium",
+    "board-exception": "medium",
 }
 CLASSES = tuple(SEVERITY)
 IMMEDIATE_CLASSES = frozenset(CLASSES) - {"contract-unavailable"}
@@ -59,6 +60,7 @@ REQUIRED_ACTION = {
                      "check ~/.config/agent-workforce/claude_oauth.env (mint with `claude setup-token`) or /login."),
     "blocked-next-action": "Unblock the named next action.",
     "contract-unavailable": "Declare and validate the workflow contract before receipt wiring.",
+    "board-exception": "Open the card on the board and read the issue.",
 }
 DEFAULT_GRACE_SECS = 7200
 UNREADABLE_RECEIPTS = ("receipt directory unreadable", "receipt path is not a directory")

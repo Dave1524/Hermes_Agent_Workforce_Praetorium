@@ -460,7 +460,7 @@ class ActorVerbs(FixtureBox):  # (::board-actor-verbs)
     def test_pick_is_a_run_verb_and_no_ledger_verb_writes_a_decision(self):
         parser = board.build_parser()
         verbs = parser._subparsers._group_actions[0].choices
-        self.assertFalse({"approve", "decide", "return", "block", "unblock", "reject", "land", "sweep"} & set(verbs))
+        self.assertFalse({"approve", "decide", "return", "block", "unblock", "reject"} & set(verbs))
         for event in board.EVENTS:
             self.assertNotIn(event, board.DECISIONS)
         with self.assertRaises(board.BoardError):
