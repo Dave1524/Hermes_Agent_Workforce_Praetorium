@@ -15,6 +15,8 @@ describe("matchRoute", () => {
     ["/app/activity", { name: "activity" }],
     ["/app/agents", { name: "agents" }],
     ["/app/agents/marcus", { name: "agent", id: "marcus" }],
+    ["/app/board", { name: "board" }],
+    ["/app/board/vault-vector-search", { name: "card", id: "vault-vector-search" }],
   ])("%s", (path, expected) => {
     expect(matchRoute(path)).toEqual({ ...expected, unknown: false });
   });
@@ -42,6 +44,8 @@ describe("routeHref", () => {
     [{ name: "activity" as const }, "/app/activity"],
     [{ name: "agents" as const }, "/app/agents"],
     [{ name: "agent" as const, id: "marcus" }, "/app/agents/marcus"],
+    [{ name: "board" as const }, "/app/board"],
+    [{ name: "card" as const, id: "vault-vector-search" }, "/app/board/vault-vector-search"],
   ])("%o -> %s", (route, href) => {
     expect(routeHref(route)).toBe(href);
   });

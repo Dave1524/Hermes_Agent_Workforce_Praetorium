@@ -104,6 +104,13 @@ export default function RunDetail({ runId }: { runId: string }) {
 
           <Panel title="Receipt">
             <Row label="Receipt">{run.receiptPath ?? "—"}</Row>
+            {run.card && (
+              <Row label="Card">
+                <RouteLink to={{ name: "card", id: run.card.id }} className="text-accent hover:underline" data-testid="run-card">
+                  {run.card.id}
+                </RouteLink>
+              </Row>
+            )}
           </Panel>
 
           <Panel title="Agent handoff">

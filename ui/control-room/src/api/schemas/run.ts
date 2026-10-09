@@ -36,6 +36,12 @@ export const sweptSchema = z.object({
   sweep_run_id: z.string(),
 });
 
+export const runCardSchema = z.object({
+  id: z.string(),
+  workflow: z.string().nullish(),
+  page: z.string().nullish(),
+});
+
 export const runSummarySchema = z.object({
   id: z.string().nullish(),
   workflowId: z.string().nullish(),
@@ -57,6 +63,7 @@ export const runSummarySchema = z.object({
   receiptPath: z.string().nullish(),
   closed: closedSchema.nullish(),
   swept: sweptSchema.nullish(),
+  card: runCardSchema.nullish(),
 });
 
 export const runDetailResponseSchema = envelope(runSummarySchema);

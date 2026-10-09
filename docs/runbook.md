@@ -426,6 +426,16 @@ require it. T5.3f shipped this view read-only; since T5.3g (2026-09-16) the agen
 **Start / Stop / Restart agent now** — see Control Room controls § Runtime controls. The SSR
 `/portfolio` still lists all 31 rows with a `data-role` each.
 
+The **Board** (Dev Plan B4) is `/app/board`, and `/app/board/<id>` opens a card's popup over it.
+It reads `GET /api/v1/board` (the seven columns and every card in its derived column),
+`GET /api/v1/board/<id>` (fields, brief with provenance, activity, runs, the editable fields
+and moves its column states, and the card's Notion page read through `notion_research.py
+export` when a run has published one) and `GET /api/v1/board/decisions` (the broker's signed
+approvals whose card is not yet Done, for the Mac watcher). All derivation is `bin/board.py`;
+`bin/control_room_board.py` only joins and reshapes it. The service needs `CONTROL_ROOM_BOARD_ROOT`
+(the state-root drop-in is B5's); a page that cannot be read degrades to `unavailable` on the
+card, never the board. `decisions` is a reserved card id.
+
 `requires` on a manifest entry names the units a workflow cannot run without
 (`agent-model.md` §4 has the grammar and the audit rules). The row shows each requirement's
 live `ActiveState` and a tri-state `satisfied` — `true`, `false`, or `null` when the bus
