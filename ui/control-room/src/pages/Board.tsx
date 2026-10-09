@@ -1,5 +1,6 @@
 import { boardResponseSchema, type CardSummary } from "@/api/schemas/board";
 import CardPopup from "@/components/card/CardPopup";
+import NewCardPopup from "@/components/card/NewCardPopup";
 import DataStatusStrip from "@/components/DataStatusStrip";
 import { ErrorNotice, Loading } from "@/components/ResourceState";
 import RouteLink from "@/components/RouteLink";
@@ -28,7 +29,7 @@ function BoardCard({ card }: { card: CardSummary }) {
   );
 }
 
-export default function Board({ cardId }: { cardId?: string }) {
+export default function Board({ cardId, creating = false }: { cardId?: string; creating?: boolean }) {
   const board = usePageResource("/api/v1/board", boardResponseSchema);
   if (board.status === "error" && board.error) return <ErrorNotice what="the board" error={board.error} onRetry={board.refresh} />;
   if (!board.data) return <Loading what="the board" />;
@@ -37,7 +38,12 @@ export default function Board({ cardId }: { cardId?: string }) {
     <>
       <DataStatusStrip status={board.data.dataStatus} />
       <div className="p-6">
-        <p className="text-xs text-muted mb-4">Each column is derived from the card's events, decisions and receipts. Open a card to read it; a card moves only by decision.</p>
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <p className="text-xs text-muted">Each column is derived from the card's events, decisions and receipts. Open a card to read or edit it; a card moves only by decision.</p>
+          <RouteLink to={{ name: "newcard" }} className="shrink-0 px-3 py-1.5 text-xs font-medium bg-accent-dim border border-accent/30 text-accent rounded hover:bg-accent/20">
+            New card
+          </RouteLink>
+        </div>
         <div className="grid gap-3 overflow-x-auto" style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(190px, 1fr))` }}>
           {columns.map((column) => {
             const inColumn = cards.filter((c) => c.column === column);
@@ -58,6 +64,7 @@ export default function Board({ cardId }: { cardId?: string }) {
         </div>
       </div>
       {cardId !== undefined && <CardPopup cardId={cardId} />}
+      {creating && <NewCardPopup />}
     </>
   );
 }

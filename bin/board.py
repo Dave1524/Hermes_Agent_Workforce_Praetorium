@@ -66,7 +66,7 @@ DECISIONS = ("brief_approved", "brief_returned", "approved", "changes_requested"
              "rejected", "blocked", "unblocked")
 KIND_OWNERS = {"research": ("claudius",)}
 PRIORITIES = ("high", "normal", "low")
-RESERVED_IDS = ("decisions",)
+RESERVED_IDS = ("decisions", "new")
 STRIKE_LIMIT = 2
 MAX_TEXT = 60000
 RESEARCH_NOTE_DIR = "05_knowledge/research"
@@ -175,6 +175,8 @@ def read_jsonl(path: pathlib.Path) -> list[dict[str, Any]]:
 
 @contextlib.contextmanager
 def card_lock(directory: pathlib.Path) -> Iterator[None]:
+    if not (directory / "card.json").exists():
+        raise BoardError(f"no such card: {directory.name}")
     with open(directory / ".lock", "a", encoding="utf-8") as handle:
         fcntl.flock(handle, fcntl.LOCK_EX)
         try:
@@ -512,11 +514,13 @@ def brief_columns(actor: str) -> frozenset[str]:
     return frozenset({"Backlog", "Refine"}) if actor.startswith("buzz:") else _BRIEFABLE
 
 
-def add_brief(root: pathlib.Path, card_id: str, path: str, actor: str) -> str:
+def add_brief(root: pathlib.Path, card_id: str, path: str, actor: str, expect_rev: int | None = None) -> str:
     require_actor(actor, ("dave", "mac:claude", "buzz:*", "run:*"), "write a brief")
     text, directory = read_text_file(path), card_dir(root, card_id)
     with card_lock(directory):
         view, events = fresh_view(root, card_id)
+        if expect_rev is not None and len(events) != expect_rev:
+            raise BoardError(f"stale: card is at revision {len(events)}, you saved {expect_rev}")
         run_id = actor[4:] if actor.startswith("run:") else None
         earlier = [e for e in events if e.get("event") == "brief" and run_id and e.get("run_id") == run_id]
         if earlier:

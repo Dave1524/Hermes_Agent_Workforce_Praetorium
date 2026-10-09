@@ -32,6 +32,7 @@ from workflow_receipt import iso_utc, is_closed, judged, parse_time, utc_now, va
 from control_room_cadence import cadence_for, freshness, parse_systemd_timestamp  # noqa: E402
 from control_room_benefit import ELIGIBLE_OUTCOMES, benefit_row, load_ledger  # noqa: E402
 import control_room_board  # noqa: E402
+import control_room_board_writes  # noqa: E402
 import control_room_control  # noqa: E402
 import control_room_proposals  # noqa: E402
 from control_room_exceptions import KINDS, classify  # noqa: E402
@@ -1198,6 +1199,8 @@ class ControlRoomHandler(BaseHTTPRequestHandler):
             control_room_control.handle_post(self, getattr(type(self), "control", None), self.model)
         elif segments == ["api", API_VERSION, "control", "proposals"]:
             control_room_proposals.handle_post(self, getattr(type(self), "proposals", None), self.model)
+        elif segments == ["api", API_VERSION, "control", "board"]:
+            control_room_board_writes.handle_post(self, getattr(type(self), "board", None))
         elif len(segments) == 4 and segments[:3] == ["api", API_VERSION, "control"] and segments[3] in self.STUBS:
             self._control_stub(*self.STUBS[segments[3]])
         else:
@@ -1259,6 +1262,7 @@ def main(argv: list[str] | None = None) -> int:
     server = make_server(args.host, args.port, model)
     server.RequestHandlerClass.control = control
     server.RequestHandlerClass.proposals = control_room_proposals.ProposalsControl.from_env()
+    server.RequestHandlerClass.board = control_room_board_writes.BoardControl.from_env()
     print(f"control-room-api: listening on http://{args.host}:{server.server_port}/api/{API_VERSION}", flush=True)
     try:
         server.serve_forever()
