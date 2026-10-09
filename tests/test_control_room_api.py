@@ -6,6 +6,7 @@ from __future__ import annotations
 import datetime as dt
 import importlib.util
 import json
+import os
 import pathlib
 import tempfile
 import threading
@@ -19,7 +20,10 @@ SPEC = importlib.util.spec_from_file_location("control_room_api", ROOT / "bin" /
 assert SPEC and SPEC.loader
 api = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(api)
-import control_room_state as state  # noqa: E402  (bin/ is on sys.path once the module above ran)
+import board  # noqa: E402  (bin/ is on sys.path once the module above ran)
+import control_room_board  # noqa: E402
+import control_room_board_page as page_module  # noqa: E402
+import control_room_state as state  # noqa: E402
 
 
 CONTRACT = """# Contract: {unit}
@@ -701,6 +705,231 @@ class ControlRoomApiTest(unittest.TestCase):
             with self.assertRaises(urllib.error.HTTPError) as raised:
                 urllib.request.urlopen(base + "/api/v1/workflows/%2e%2e", timeout=3)
             self.assertEqual(raised.exception.code, 400)
+            raised.exception.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=3)
+
+
+BRIEF_TEXT = "# Brief: alpha-card\n\n## Acceptance\n\n- each option has a licence\n- one recommendation\n- a test query ran\n"
+PAGE_TEXT = "# Findings\n\n## Acceptance\n\n- MET: licences listed\n- PARTLY: recommendation hedged\n- NOT MET: no query\n"
+BRIEF_HASH, PAGE_HASH = "a" * 64, "c" * 64
+
+
+class BoardReadsTest(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        root = pathlib.Path(self.temp.name)
+        self.board, self.decisions, self.receipts = root / "board", root / "decisions", root / "receipts"
+        for path in (self.board / "cards", self.decisions, self.receipts):
+            path.mkdir(parents=True)
+        self.saved = dict(os.environ)
+        os.environ.update(BOARD_ROOT=str(self.board), BOARD_DECISIONS_ROOT=str(self.decisions),
+                          CONTROL_ROOM_RECEIPT_ROOT=str(self.receipts), BOARD_CANONICAL_CLONE=str(root / "clone"))
+        self.now = dt.datetime(2026, 10, 6, 12, 0, tzinfo=dt.timezone.utc)
+        self.exports = []
+        self.exported = {"page": "page-1", "url": "https://notion.example/page-1", "page_hash": PAGE_HASH,
+                         "published_hash": PAGE_HASH, "text": PAGE_TEXT}
+        self.reads = control_room_board.BoardReads(lambda: self.now, self.export)
+
+    def tearDown(self):
+        os.environ.clear()
+        os.environ.update(self.saved)
+        self.temp.cleanup()
+
+    def export(self, card_id):
+        self.exports.append(card_id)
+        if isinstance(self.exported, Exception):
+            raise self.exported
+        return self.exported
+
+    def card(self, card_id="alpha-card", events=(), **fields):
+        directory = self.board / "cards" / card_id
+        (directory / "briefs").mkdir(parents=True)
+        body = {"id": card_id, "title": f"Title of {card_id}", "idea": "A synthetic idea", "kind": "research",
+                "owner": "claudius", "scope": ["vault:05_knowledge"], "deadline": None, "research_on": None,
+                "priority": None, "tags": ["search"], **fields}
+        (directory / "card.json").write_text(json.dumps(body))
+        (directory / "events.jsonl").write_text("".join(json.dumps(e) + "\n" for e in events))
+        (directory / "briefs" / f"{BRIEF_HASH}.md").write_text(BRIEF_TEXT)
+
+    def decide(self, decision, ts, card="alpha-card", **extra):
+        with open(self.decisions / "decisions.jsonl", "a") as handle:
+            handle.write(json.dumps({"ts": ts, "decision": decision, "card": card, **extra}) + "\n")
+
+    def receipt(self, run_id="r1", page="page-1"):
+        data = {"schema_version": 1, "workflow_id": "agent-proposal", "run_id": run_id, "unit": "agent-proposal",
+                "agent": "claudius", "started_at": "2026-10-05T04:30:00Z", "ended_at": "2026-10-05T04:40:00Z",
+                "terminal": {"outcome": "artifact", "reason": None}, "artifact": {"uri": "board://alpha-card/page"},
+                "assertions": [], "usage": {"status": "unavailable"}, "cost": {"status": "unavailable"},
+                "card": {"id": "alpha-card", "workflow": "agent-proposal", "page": page, "page_hash": PAGE_HASH}}
+        (self.receipts / "agent-proposal").mkdir(exist_ok=True)
+        (self.receipts / "agent-proposal" / f"{run_id}.json").write_text(json.dumps(data))
+
+    def todo_card(self, card_id="alpha-card", picked=False, **fields):
+        events = [
+            {"ts": "2026-10-01T09:00:00Z", "event": "created", "actor": "dave"},
+            {"ts": "2026-10-02T09:00:00Z", "event": "brief", "actor": "run:b1", "run_id": "b1", "hash": BRIEF_HASH},
+            {"ts": "2026-10-03T09:00:00Z", "event": "note", "actor": "dave", "fields": {"text": "keep it local"}},
+        ]
+        if picked:
+            events.append({"ts": "2026-10-05T04:30:00Z", "event": "picked", "actor": "run:r1", "run_id": "r1",
+                           "workflow": "agent-proposal", "hash": BRIEF_HASH, "fields": {"purpose": "research"}})
+        self.card(card_id, events, **fields)
+        self.decide("brief_approved", "2026-10-03T10:00:00Z", card=card_id, brief_hash=BRIEF_HASH)
+
+    def review_card(self):
+        self.todo_card(picked=True)
+        self.receipt()
+
+    def test_the_board_lists_the_seven_columns_and_each_card_in_its_derived_column(self):  # (::control-room-board-read)
+        self.todo_card()
+        self.card("beta-card", [{"ts": "2026-10-01T09:00:00Z", "event": "created", "actor": "dave"}], priority="high")
+        items, status = self.reads.cards()
+        self.assertEqual(items["columns"], ["Backlog", "Refine", "Todo", "In Progress", "In Review", "Done", "Blocked"])
+        self.assertEqual([(c["id"], c["column"]) for c in items["cards"]], [("beta-card", "Backlog"), ("alpha-card", "Todo")])
+        self.assertEqual(items["cards"][1]["briefVersion"], 1)
+        self.assertEqual(status["board"], "available")
+
+    def test_an_empty_root_is_an_empty_board_and_a_broken_ledger_is_unavailable(self):  # (::control-room-board-read)
+        items, status = control_room_board.BoardReads(lambda: self.now, self.export, self.board / "nowhere").cards()
+        self.assertEqual((items["cards"], status["board"]), ([], "available"))
+        self.todo_card()
+        (self.board / "cards" / "alpha-card" / "events.jsonl").write_text("{not json\n")
+        items, status = self.reads.cards()
+        self.assertEqual((items["cards"], status["board"]), ([], "unavailable"))
+        self.assertIn("events.jsonl", status["errors"]["board"][0])
+
+    def test_the_card_carries_what_its_column_allows_from_the_one_table(self):  # (::control-room-board-detail)
+        self.todo_card()
+        item, _ = self.reads.card("alpha-card")
+        self.assertEqual(item["moves"], list(board.MOVES["Todo"]))
+        self.assertEqual(item["editable"], board.editable_fields("Todo", False))
+        self.assertEqual((item["locked"], item["rev"]), (list(board.LOCKED_FIELDS), 3))
+        self.assertEqual(item["fields"]["title"], "Title of alpha-card")
+        self.assertEqual(item["brief"], {"text": BRIEF_TEXT, "hash": BRIEF_HASH, "version": 1, "by": "run:b1",
+                                         "ts": "2026-10-02T09:00:00Z", "approved": True,
+                                         "approvedAt": "2026-10-03T10:00:00Z", "current": True})
+
+    def test_the_activity_is_every_event_and_decision_newest_first(self):  # (::control-room-board-detail)
+        self.todo_card()
+        item, _ = self.reads.card("alpha-card")
+        self.assertEqual([(a["kind"], a["actor"], a["detail"]) for a in item["activity"]], [
+            ("brief_approved", "dave", None), ("note", "dave", "keep it local"),
+            ("brief", "run:b1", "v1"), ("created", "dave", None)])
+
+    def test_a_returned_brief_keeps_its_text_but_is_not_current(self):  # (::control-room-board-detail)
+        self.todo_card()
+        self.decide("brief_returned", "2026-10-04T09:00:00Z", brief_hash=BRIEF_HASH, reason="too wide")
+        item, _ = self.reads.card("alpha-card")
+        self.assertEqual((item["column"], item["brief"]["text"], item["brief"]["current"]), ("Backlog", BRIEF_TEXT, False))
+        self.assertEqual(item["activity"][0]["detail"], "too wide")
+
+    def test_a_missing_card_and_a_non_card_id_are_none(self):  # (::control-room-board-detail)
+        self.assertIsNone(self.reads.card("nobody")[0])
+        self.assertIsNone(self.reads.card("Not An Id")[0])
+
+    def test_runs_link_to_their_receipts_and_carry_the_outcome(self):  # (::control-room-board-detail)
+        self.review_card()
+        item, _ = self.reads.card("alpha-card")
+        self.assertEqual((item["column"], item["runs"][0]["runId"]), ("In Review", "r1"))
+        picked = next(a for a in item["activity"] if a["kind"] == "picked")
+        self.assertEqual((picked["runId"], picked["outcome"]), ("r1", "artifact"))
+
+    def test_no_run_page_means_no_export(self):  # (::control-room-board-research)
+        self.todo_card()
+        item, _ = self.reads.card("alpha-card")
+        self.assertEqual((item["research"], self.exports), ({"status": "none"}, []))
+
+    def test_the_page_pairs_each_acceptance_line_with_its_answer(self):  # (::control-room-board-research)
+        self.review_card()
+        research = self.reads.card("alpha-card")[0]["research"]
+        self.assertEqual(self.exports, ["alpha-card"])
+        self.assertEqual((research["status"], research["url"], research["changed"], research["pageHash"]),
+                         ("available", "https://notion.example/page-1", False, PAGE_HASH))
+        self.assertEqual([(a["line"], a["answer"]) for a in research["acceptance"]], [
+            ("each option has a licence", "MET"), ("one recommendation", "PARTLY"), ("a test query ran", "NOT MET")])
+
+    def test_a_page_edited_since_it_was_published_is_marked_changed(self):  # (::control-room-board-research)
+        self.review_card()
+        self.exported = {**self.exported, "page_hash": "d" * 64}
+        self.assertTrue(self.reads.card("alpha-card")[0]["research"]["changed"])
+        self.exported = {**self.exported, "published_hash": None}
+        self.assertIsNone(self.reads.card("alpha-card")[0]["research"]["changed"])
+
+    def test_a_failed_export_degrades_the_page_not_the_card(self):  # (::control-room-board-research)
+        self.review_card()
+        self.exported = page_module.ExportError("NOTION_RESEARCH_DS not set")
+        item, status = self.reads.card("alpha-card")
+        self.assertEqual(item["research"], {"status": "unavailable", "reason": "NOTION_RESEARCH_DS not set"})
+        self.assertEqual((item["column"], status["board"]), ("In Review", "available"))
+        self.exported = None
+        self.assertEqual(self.reads.card("alpha-card")[0]["research"], {"status": "none"})
+
+    def test_the_decisions_feed_is_the_signed_approvals_not_yet_on_main(self):  # (::control-room-board-decisions)
+        self.review_card()
+        self.decide("approved", "2026-10-06T08:00:00Z", page_hash=PAGE_HASH, signature="sig-1", text="the page")
+        self.decide("blocked", "2026-10-06T09:00:00Z")
+        rows, status = self.reads.decisions()
+        self.assertEqual([(r["decision"], r["card"], r["signature"]) for r in rows], [("approved", "alpha-card", "sig-1")])
+        self.assertEqual((rows[0]["page_hash"], status["board"]), (PAGE_HASH, "available"))
+
+    def stub_notion(self, body):
+        stub = pathlib.Path(self.temp.name) / "notion_research.py"
+        stub.write_text(body)
+        original = page_module.HERE
+        page_module.HERE = stub.parent
+        self.addCleanup(setattr, page_module, "HERE", original)
+
+    def test_the_real_exporter_reads_the_helpers_json_and_its_out_file(self):  # (::control-room-board-research)
+        self.stub_notion("import json, sys\nout = sys.argv[sys.argv.index('--out') + 1]\n"
+                         "open(out, 'w').write('hello')\n"
+                         "print(json.dumps({'page': 'p1', 'url': 'u', 'page_hash': 'h', 'published_hash': ''}))\n")
+        self.assertEqual(page_module.export_page("alpha-card"),
+                         {"page": "p1", "url": "u", "page_hash": "h", "published_hash": None, "text": "hello"})
+        self.stub_notion("import json\nprint(json.dumps({'card': 'x', 'page': None}))\n")
+        self.assertIsNone(page_module.export_page("alpha-card"))
+
+    def test_the_real_exporter_names_a_failure_without_leaking_more_than_its_last_line(self):  # (::control-room-board-research)
+        self.stub_notion("import sys\nsys.exit('ERROR: NOTION_RESEARCH_DS not set')\n")
+        with self.assertRaisesRegex(page_module.ExportError, "NOTION_RESEARCH_DS not set"):
+            page_module.export_page("alpha-card")
+
+    def test_the_run_summary_names_its_card(self):  # (::control-room-board-run-link)
+        self.receipt()
+        run = self.model().run_detail("r1")[0]
+        self.assertEqual((run["card"]["id"], run["card"]["page"]), ("alpha-card", "page-1"))
+
+    def model(self):
+        return api.ControlRoomReadModel(api.SourcePaths(self.board, self.board, self.receipts), systemd=FakeSystemd(),
+                                        clock=lambda: self.now, board_reads=self.reads)
+
+    def test_http_serves_the_board_the_card_and_the_decisions_and_nothing_writes(self):  # (::control-room-board-http)
+        self.review_card()
+        self.decide("approved", "2026-10-06T08:00:00Z", page_hash=PAGE_HASH, signature="sig-1")
+        server = api.make_server("127.0.0.1", 0, self.model())
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base = f"http://127.0.0.1:{server.server_port}/api/v1/board"
+        try:
+            with urllib.request.urlopen(base, timeout=3) as response:
+                payload = json.load(response)
+            self.assertEqual(payload["items"]["cards"][0]["id"], "alpha-card")
+            self.assertEqual(payload["dataStatus"]["board"], "available")
+            with urllib.request.urlopen(base + "/alpha-card", timeout=3) as response:
+                self.assertEqual(json.load(response)["items"]["research"]["status"], "available")
+            with urllib.request.urlopen(base + "/decisions", timeout=3) as response:
+                self.assertEqual(json.load(response)["items"][0]["signature"], "sig-1")
+            for path in ("/nobody", "/alpha-card/extra"):
+                with self.assertRaises(urllib.error.HTTPError) as raised:
+                    urllib.request.urlopen(base + path, timeout=3)
+                self.assertEqual(raised.exception.code, 404)
+                raised.exception.close()
+            request = urllib.request.Request(base, method="POST", data=b"{}")
+            with self.assertRaises(urllib.error.HTTPError) as raised:
+                urllib.request.urlopen(request, timeout=3)
+            self.assertEqual(raised.exception.code, 405)
             raised.exception.close()
         finally:
             server.shutdown()

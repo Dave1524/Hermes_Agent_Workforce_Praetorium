@@ -31,6 +31,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from workflow_receipt import iso_utc, is_closed, judged, parse_time, utc_now, validate as validate_receipt  # noqa: E402
 from control_room_cadence import cadence_for, freshness, parse_systemd_timestamp  # noqa: E402
 from control_room_benefit import ELIGIBLE_OUTCOMES, benefit_row, load_ledger  # noqa: E402
+import control_room_board  # noqa: E402
 import control_room_control  # noqa: E402
 import control_room_proposals  # noqa: E402
 from control_room_exceptions import KINDS, classify  # noqa: E402
@@ -226,6 +227,7 @@ class ControlRoomReadModel:
         control_reader: Callable[[str], dict[str, Any] | None] | None = None,
         static_dir: pathlib.Path | None = None,
         retry_policy: Callable[[dict[str, Any]], tuple[bool, str | None]] | None = None,
+        board_reads: control_room_board.BoardReads | None = None,
     ) -> None:
         self.paths = paths or SourcePaths.defaults()
         self.systemd = systemd or SystemdReader()
@@ -233,6 +235,7 @@ class ControlRoomReadModel:
         self.calendar_runner = calendar_runner
         self.control_reader = control_reader
         self.retry_policy = retry_policy
+        self.board_reads = board_reads or control_room_board.BoardReads(clock)
         self.static_dir = static_dir or pathlib.Path(__file__).resolve().parent / "control_room_ui"
 
     def _manifest_docs(self) -> tuple[list[tuple[pathlib.Path, dict[str, Any]]], list[str]]:
@@ -603,6 +606,7 @@ class ControlRoomReadModel:
             "receiptPath": receipt.get("receipt_path"),
             "closed": receipt.get("closed"),
             "swept": receipt.get("swept"),
+            "card": receipt.get("card"),
         }
 
     def _envelope(self, items: Any, status: dict[str, Any]) -> dict[str, Any]:
@@ -849,6 +853,18 @@ class ControlRoomReadModel:
             })
         return items
 
+    def board(self) -> dict[str, Any]:
+        items, status = self.board_reads.cards()
+        return self._envelope(items, status)
+
+    def board_card(self, card_id: str) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+        item, status = self.board_reads.card(card_id)
+        return item, status
+
+    def board_decisions(self) -> dict[str, Any]:
+        items, status = self.board_reads.decisions()
+        return self._envelope(items, status)
+
     def agents(self) -> dict[str, Any]:
         workflows, status = self.workflows()
         return self._envelope(self._agent_items(workflows), status)
@@ -1063,6 +1079,18 @@ class ControlRoomHandler(BaseHTTPRequestHandler):
             return
         self._send(HTTPStatus.OK, "text/html; charset=utf-8", payload, head_only, self.HTML_HEADERS)
 
+    def _board(self, name: str | None, head_only: bool) -> None:
+        if name is None:
+            self._json(HTTPStatus.OK, self.model.board(), head_only)
+        elif name == "decisions":
+            self._json(HTTPStatus.OK, self.model.board_decisions(), head_only)
+        else:
+            item, status = self.model.board_card(name)
+            if item is None:
+                self._json(HTTPStatus.NOT_FOUND, {"error": "card not found"}, head_only)
+            else:
+                self._json(HTTPStatus.OK, self.model._envelope(item, status), head_only)
+
     def _route_api_extra(self, segments: list[str], head_only: bool) -> bool:
         if len(segments) == 5 and segments[:3] == ["api", API_VERSION, "workflows"] and segments[4] == "contract":
             text = self.model.contract_text(segments[3])
@@ -1124,6 +1152,9 @@ class ControlRoomHandler(BaseHTTPRequestHandler):
             return
         if segments == ["api", API_VERSION, "agents"]:
             self._json(HTTPStatus.OK, self.model.agents(), head_only)
+            return
+        if segments[:3] == ["api", API_VERSION, "board"] and len(segments) in (3, 4):
+            self._board(segments[3] if len(segments) == 4 else None, head_only)
             return
         if len(segments) == 4 and segments[:3] == ["api", API_VERSION, "agents"]:
             item, status = self.model.agent_detail(segments[3])

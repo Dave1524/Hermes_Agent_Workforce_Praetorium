@@ -62,6 +62,7 @@ DECISIONS = ("brief_approved", "brief_returned", "approved", "changes_requested"
              "rejected", "blocked", "unblocked")
 KIND_OWNERS = {"research": ("claudius",)}
 PRIORITIES = ("high", "normal", "low")
+RESERVED_IDS = ("decisions",)
 STRIKE_LIMIT = 2
 MAX_TEXT = 60000
 RESEARCH_NOTE_DIR = "05_knowledge/research"
@@ -473,6 +474,8 @@ def create_card(root: pathlib.Path, args: argparse.Namespace) -> str:
     research_on, deadline = check_date(args.research_on, "research date"), check_date(args.deadline, "deadline")
     check_dates_agree(research_on, deadline)
     card_id = args.id or slugify(args.title)
+    if card_id in RESERVED_IDS:
+        raise BoardError(f"{card_id!r} is reserved: the board API routes on it")
     directory = card_dir(root, card_id)
     brief_text = read_text_file(args.brief) if args.brief else None
     directory.parent.mkdir(parents=True, exist_ok=True)
