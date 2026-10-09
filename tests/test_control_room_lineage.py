@@ -43,7 +43,8 @@ class LineageSixStages(unittest.TestCase):  # (::lineage-six-stages)
         source = self.stages["source"]
         self.assertEqual(source["source"], "contract")
         self.assertIsInstance(source["value"], list)
-        self.assertTrue(any("04_operations/box_brief/queue.md" in v for v in source["value"]))
+        self.assertFalse(any("queue.md" in v for v in source["value"]))
+        self.assertTrue(any("04_operations/box_brief/standing_missions.md" in v for v in source["value"]))
 
     def test_selection_carries_the_rule_and_the_decline_reason(self):
         selection = self.stages["selection"]
