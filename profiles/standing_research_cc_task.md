@@ -7,7 +7,8 @@ subscription — NOT hermes/claudius on OpenRouter. This is a fresh session with
 chat memory; everything you need is below. Your working directory is the vault inbox
 worktree; `_inbox/agents/` is directly under it.
 
-Tasking comes from the published box brief (`04_operations/box_brief/`). The raw ops
+Card-less tasking comes only from the standing missions in the published box brief
+(`04_operations/box_brief/standing_missions.md`). The raw ops
 files (`04_operations/current_priorities.md`, `open_loops.md`) also publish to this
 mirror as read-only context (verify via `qmd get` before assuming absence) — box_brief
 remains the source for what to WORK, ops files are background context only. Real
@@ -20,12 +21,12 @@ the card's run directory (`$AGENT_CARD_DIR`), not the inbox worktree; the vault 
 the same way, over qmd and `~/vault`.
 
 - Tasking. `$AGENT_CARD_DIR/card.md` is the tasking and its approved brief is the acceptance
-  bar. Do not read `queue.md`; standing missions are not this run's work. STEP 0's
+  bar. Standing missions are not this run's work. STEP 0's
   "today's file exists" check does not apply; each card run is its own.
 - After a request for changes `$AGENT_CARD_DIR/research.prev.md` holds the page as Dave left it,
   his edits included. Revise it rather than start over, and keep what he edited.
 - Research as in steps 3 (Mechanism A included) with the brief's questions in view. Duplicate-title
-  gate 2b applies as written.
+  gate 2c applies as written.
 - Write exactly `$AGENT_CARD_DIR/research.md`, and nothing else, anywhere except
   `$AGENT_CARD_DIR/notes.md` for anything worth keeping that is not a finding. First line: the
   card id and the question. Then the findings (FACT / INFERENCE as below), then each acceptance
@@ -33,7 +34,7 @@ the same way, over qmd and `~/vault`.
   rests on, then the sources.
 - Never touch Notion, git, the vault, or the card's other files (`events.jsonl`, `pick.json`,
   `published.json`). The wrapper publishes your file as the card's page; the ledger is not yours.
-- Decline as in step 2c, `DECLINE: <short reason>` on its own line and no file.
+- Decline as in step 2b, `DECLINE: <short reason>` on its own line and no file.
 
 STEP 0 — Idempotency and working-memory substitute. Run `date +%F` for today's date,
 then `ls -1 _inbox/agents/ | grep standing-research`. If `<today>_standing-research.md`
@@ -42,26 +43,21 @@ already exists, this run already happened — write nothing and stop (print one 
 
 There is no hermes MEMORY store on this runtime, so recall your recent work directly:
 run `ls -1 _inbox/agents/ | grep standing-research | sort | tail -5` and read the 1-2
-most recent files to see which queue items or missions were already covered, and
+most recent files to see which missions were already covered, and
 `cat _inbox/agents/_metrics/approvals.tsv 2>/dev/null | tail -20` to see what Dave
 already approved, edited, or rejected. If a task/question you would pick has already
 been proposed recently, do NOT re-propose it as-is: either advance it (new angle, next
 step, updated data) or pick a different item.
 
 1. Without a card, use the qmd tools to read your tasking:
-   - `04_operations/box_brief/queue.md` — dated, tasking from the Mac (regenerated at
-     Dave's EOD wrap).
    - `04_operations/box_brief/standing_missions.md` — standing missions, priority order,
      acceptance bars, and the hard membrane rules.
 2. Pick your work in this order (`standing_missions.md` § Priority order):
-   a. the OPEN `queue.md` item with the soonest Deadline you can complete at quality AND
-      have not already proposed (STEP 0) — tie-break: the top row; if the queue has no
-      Deadline column yet, fall back to the top OPEN item you can complete at quality (so
-      an ad-hoc insert can never bury a deadline-bound item);
-   b. otherwise ONE standing mission that is due (respect per-mission cadence);
-   c. if nothing qualifies at quality, print exactly `DECLINE: <short reason>` and write
+   a. ONE standing mission that is due and you have not already proposed (STEP 0)
+      (respect per-mission cadence);
+   b. if nothing qualifies at quality, print exactly `DECLINE: <short reason>` and write
       no file — a clean decline beats a filler proposal.
-2b. If the item you picked produces WEBSITE / BLOG content, gate it against what is
+2c. If the item you picked produces WEBSITE / BLOG content, gate it against what is
    already published BEFORE researching or drafting:
        python3 ~/agent-workforce/bin/published_corpus.py list
        python3 ~/agent-workforce/bin/published_corpus.py check "<the title the brief names>"
@@ -83,7 +79,7 @@ step, updated data) or pick a different item.
    optional — a contradiction found and not flagged is worse than one left unfound.
 4. Write exactly ONE proposal file `_inbox/agents/<today>_standing-research.md` (today
    from `date +%F` — a FIXED filename, not a topic slug, so the run can be verified
-   deterministically) in the format below. Name the queue item (e.g. Q-2026-07-08-1) or
+   deterministically) in the format below. Name the
    mission (M1/M2/M3/M4) you worked. Do NOT touch any file outside `_inbox/agents/`; the
    runner discards any run that writes elsewhere.
 5. Never act outward. This task never emails, posts, DMs, shares, or messages anyone or
@@ -97,7 +93,7 @@ Proposal format (write the file with exactly these sections):
 # Standing Research — <2-4 word topic summary> (<YYYY-MM-DD>, claude-opus-5)
 
 ## Task
-<one short paragraph: the queue item or mission you worked, and today's date>
+<one short paragraph: the mission you worked, and today's date>
 
 ## Key findings (fact vs inference labeled)
 <one block per finding — bold one-line title, then FACT: … (with source URL/vault path),

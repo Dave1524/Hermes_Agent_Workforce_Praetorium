@@ -163,7 +163,7 @@ echo "--- standing-research: task profile carries over the load-bearing claudius
 assert "task profile exists" "[ -f '$TASK' ]"
 assert "keeps the published_corpus.py duplicate-title gate" "grep -q 'published_corpus.py' '$TASK'"
 assert "keeps FACT vs INFERENCE labelling" "grep -qi 'FACT' '$TASK' && grep -qi 'INFERENCE' '$TASK'"
-assert "keeps the queue.md soonest-Deadline priority order" "grep -q 'queue.md' '$TASK'"
+assert "profile no longer reads queue.md" "! grep -q 'queue.md' '$TASK'"
 assert "adds the Mechanism A Contradictions section" "grep -q '## Contradictions' '$TASK'"
 assert "emits the DECLINE: sentinel contract" "grep -q 'DECLINE:' '$TASK'"
 assert "never acts outward" "grep -qi 'never act outward' '$TASK'"

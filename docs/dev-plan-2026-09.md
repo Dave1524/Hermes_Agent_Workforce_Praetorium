@@ -999,7 +999,7 @@ note, not here.
   exceptions. Fixture decisions stand in until B9. Designed in §3.7, §3.6.8.
   Gate: the `land` and Done-join cases in `tests/test_board.py` and
   `tests/test_agent_inbox_branch_rows.py` green.
-- **B7** [Claude, S, B3] `queue.md` succession: the research profile stops reading it, docs
+- ~~**B7**~~ [Claude, S, B3] done 2026-10-09: `queue.md` succession: the research profile stops reading it, docs
   updated. Designed in §3.6.4, §7 decision 2.
   Gate: `tests/test_standing_research_smoke.sh` asserts the profile no longer names `queue.md`.
 - **B8** [Claude, M, B1] S1: the `board` bridge family, vault skill, pointer, README row,

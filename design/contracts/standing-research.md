@@ -37,8 +37,7 @@ registry §2 recorded this as "daily" off a next-elapse value (`agent-model.md` 
 
 | Source | Freshness requirement | If stale or absent |
 |---|---|---|
-| a Todo card on the board, through `AGENT_BOARD_PICK` (`bin/board.py pick`, B3) | the card's approved brief is the acceptance bar | **proceed**: no card falls through to the queue and the standing missions below, and to `DECLINE:` if nothing qualifies |
-| `04_operations/box_brief/queue.md` (qmd CLI over the mirror) | regenerated at Dave's EOD wrap; a run works the soonest-deadline OPEN item | **proceed**: falls through to a standing mission, and to `DECLINE:` if nothing qualifies. Nothing detects a queue that stopped being regenerated |
+| a Todo card on the board, through `AGENT_BOARD_PICK` (`bin/board.py pick`, B3) | the card's approved brief is the acceptance bar | **proceed**: no card falls through to the standing missions below, and to `DECLINE:` if nothing qualifies |
 | `04_operations/box_brief/standing_missions.md` | same mirror | same fall-through; the missions carry their own cadences |
 | `04_operations/current_priorities.md`, `open_loops.md` | same mirror, background context only | proceed-and-flag under *Confidence & gaps* |
 | `~/vault` mirror as a whole | **unguarded on this job** — `bin/run_standing_research_cc.sh` runs no `vault_sync_guard.sh check`, unlike `run_raw_ingest_cc.sh:26` and `run_bd_followup_drafts_cc.sh:26` | **proceeds silently.** This is the one input with no refusal behind it, and `mirror-was-not-dirty` is what stands in its place |
@@ -83,7 +82,7 @@ registry §2 recorded this as "daily" off a next-elapse value (`agent-model.md` 
 
 ## Decline conditions
 
-One legitimate decline: **nothing in the queue or the standing missions can be completed at
+One legitimate decline: **nothing in the standing missions can be completed at
 quality this run.** The run then prints, as its own line:
 
 ```
@@ -322,11 +321,9 @@ this box actually produces; the rest catch a bad proposal. D3 needs both.
   every sibling that writes outward-facing text runs `vault_sync_guard.sh check` first and
   this one does not. Signal: `mirror-was-not-dirty`. Closing it is a change to the runner,
   not to this file.
-- **A queue that stopped being regenerated.** `queue.md` comes from Dave's Mac-side EOD wrap.
-  A stale queue does not fail anything — the run silently falls through to standing missions
-  and keeps producing plausible proposals about the wrong week. Nothing on the box detects
-  it today. With the board join this is the card-less path only; a board with nothing in Todo
-  is a visible decline and an empty column, not a plausible proposal.
+- **A retired queue.** `queue.md` is no longer read: the card-less path is the standing missions
+  only, and a board with nothing in Todo is a visible decline and an empty column, not a
+  plausible proposal. The vault note stays until Dave removes it Mac-side.
 - **A page that is not the run's text.** The wrapper publishes, the model does not, so the
   failure is a publish that reached Notion with other text than `research.md` or no `page` on
   the receipt. Signals: `page-names-card`, `published-is-this-run`.
