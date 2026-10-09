@@ -22,7 +22,7 @@ import notion_markdown
 
 CANONICAL_REPO = os.path.expanduser("~/dev/Obsidian_AI_Operating_System")
 COMPARE_BASE = "https://github.com/Dave1524/Obsidian_AI_Operating_System/compare/main..."
-BRANCH_ROW_RE = re.compile(r"^agents/\d{4}-\d{2}-\d{2}-[A-Za-z0-9._-]+$")
+BRANCH_ROW_RE = re.compile(r"^agents/\d{4}-\d{2}-\d{2}-(?!card-)[A-Za-z0-9._-]+$")
 GIT_TIMEOUT = 60
 
 

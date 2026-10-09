@@ -25,7 +25,11 @@ brief_returned, approved, changes_requested, rejected, blocked, unblocked) live 
 root-owned stream; derive() trusts a decision from there and nowhere else. A decision-shaped
 event in the ledger is a forged-decision exception and moves nothing. Stream:
 BOARD_DECISIONS_ROOT (default /var/lib/control-room/receipts/board)/decisions.jsonl, one object
-per line: ts, decision, card, brief_hash?, page_hash?, reason?.
+per line: ts, decision, card, brief_hash?, page_hash?, text? (an approval's approved text, which
+`land` writes and refuses unless it hashes to page_hash), reason?.
+
+`board.py land [--card ID]` and `sweep` (bin/board_land.py) apply an approval as one note on
+agents/<date>-card-<id> and close the loop; they write no ledger event, since Done is the join.
 
 HASHING: sha256 of the text with CRLF turned to LF and trailing whitespace stripped. A brief
 approval, `pick` and the receipt all carry it; an artifact approval hashes the page text alike.
@@ -749,6 +753,9 @@ def build_parser() -> argparse.ArgumentParser:
     for name in ("title", "idea", "priority", "tags", "research-on", "deadline", "id", "owner", "kind"):
         edit.add_argument(f"--{name}", dest=name.replace("-", "_"))
     edit.add_argument("--scope", action="append")
+    land = verb("land", help="write each unlanded approval as one note on agents/<date>-card-<id>")
+    land.add_argument("--card")
+    verb("sweep", help="land, fetch main, mark pages, raise the card exceptions")
     return parser
 
 
@@ -764,7 +771,11 @@ def run(args: argparse.Namespace) -> int:
     if args.verb in handlers:
         handlers[args.verb]()
         return 0
-    if args.verb == "pick":
+    if args.verb in ("land", "sweep"):
+        import board_land
+        lines = board_land.land(root, args.card)[0] if args.verb == "land" else board_land.sweep(root)
+        print("\n".join(lines))
+    elif args.verb == "pick":
         picked = pick_card(root, args)
         print(picked or "", end="\n" if picked else "")
     elif args.verb == "validate-brief":
