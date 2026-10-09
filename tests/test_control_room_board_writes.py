@@ -161,6 +161,10 @@ class BoardSeamTest(unittest.TestCase):
         self.assertIn("StateDirectory=control-room-board", text)
         self.assertIn("Environment=CONTROL_ROOM_BOARD_ROOT=/var/lib/control-room-board", text)
 
+    def test_new_is_a_reserved_card_id(self):
+        status, body = self.create(id="new")
+        self.assertEqual(status, 422, body)
+
     def test_peer_rule(self):
         self.assertTrue(control_room_board_writes.peer_allowed("100.64.0.9", "100.64.0.2")[0])
         self.assertFalse(control_room_board_writes.peer_allowed("100.64.0.2", "100.64.0.2")[0])

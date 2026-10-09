@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import { type BoardWriteRequest, type BoardWriteResponse, boardWriteResponseSchema } from "./schemas/boardWrite";
 import { type ControlRequest, type ControlResponse, controlResponseSchema } from "./schemas/control";
 import { type ProposalRequest, type ProposalResponse, proposalResponseSchema } from "./schemas/proposals";
 
@@ -60,3 +61,6 @@ export const postControl = (request: ControlRequest): Promise<Posted<ControlResp
 
 export const postProposal = (request: ProposalRequest): Promise<Posted<ProposalResponse>> =>
   post("/api/v1/control/proposals", request, proposalResponseSchema);
+
+export const postBoard = (request: BoardWriteRequest): Promise<Posted<BoardWriteResponse>> =>
+  post("/api/v1/control/board", request, boardWriteResponseSchema);

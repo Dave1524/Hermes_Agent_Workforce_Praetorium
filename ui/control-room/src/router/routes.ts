@@ -11,6 +11,7 @@ export type Route =
   | { name: "agents" }
   | { name: "agent"; id: string }
   | { name: "board" }
+  | { name: "newcard" }
   | { name: "card"; id: string };
 
 export type MatchedRoute = Route & { unknown: boolean };
@@ -54,7 +55,7 @@ const matchSegments = (segments: string[]): Route | null => {
   if (head === "workflows") return { name: "workflow", id: decode(id) };
   if (head === "runs") return { name: "run", id: decode(id) };
   if (head === "agents") return { name: "agent", id: decode(id) };
-  if (head === "board") return { name: "card", id: decode(id) };
+  if (head === "board") return id === "new" ? { name: "newcard" } : { name: "card", id: decode(id) };
   return null;
 };
 
@@ -77,6 +78,8 @@ export const routeHref = (route: Route): string => {
       return `${APP_BASE}/agents/${encodeURIComponent(route.id)}`;
     case "card":
       return `${APP_BASE}/board/${encodeURIComponent(route.id)}`;
+    case "newcard":
+      return `${APP_BASE}/board/new`;
     default:
       return `${APP_BASE}/${route.name}`;
   }

@@ -28,6 +28,7 @@ const TITLES: Record<MatchedRoute["name"], string> = {
   agent: "Agent Detail",
   board: "Board",
   card: "Board",
+  newcard: "Board",
 };
 
 const HEALTH_DOT: Record<HealthStatus, string> = {
@@ -38,7 +39,7 @@ const HEALTH_DOT: Record<HealthStatus, string> = {
 };
 
 const isNavActive = (route: MatchedRoute, nav: MatchedRoute["name"]): boolean =>
-  route.name === nav || (nav === "workflows" && (route.name === "workflow" || route.name === "run")) || (nav === "agents" && route.name === "agent") || (nav === "board" && route.name === "card");
+  route.name === nav || (nav === "workflows" && (route.name === "workflow" || route.name === "run")) || (nav === "agents" && route.name === "agent") || (nav === "board" && (route.name === "card" || route.name === "newcard"));
 
 const page = (route: MatchedRoute): ReactNode => {
   switch (route.name) {
@@ -64,6 +65,8 @@ const page = (route: MatchedRoute): ReactNode => {
       return <Board />;
     case "card":
       return <Board cardId={route.id} />;
+    case "newcard":
+      return <Board creating />;
   }
 };
 

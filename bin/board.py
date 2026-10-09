@@ -62,7 +62,7 @@ DECISIONS = ("brief_approved", "brief_returned", "approved", "changes_requested"
              "rejected", "blocked", "unblocked")
 KIND_OWNERS = {"research": ("claudius",)}
 PRIORITIES = ("high", "normal", "low")
-RESERVED_IDS = ("decisions",)
+RESERVED_IDS = ("decisions", "new")
 STRIKE_LIMIT = 2
 MAX_TEXT = 60000
 RESEARCH_NOTE_DIR = "05_knowledge/research"
