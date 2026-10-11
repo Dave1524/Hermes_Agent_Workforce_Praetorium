@@ -17,11 +17,24 @@ function Problem({ problem, onReload }: { problem: EditProblem | null; onReload?
   );
 }
 
-function Save({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
+interface SaveProps {
+  disabled: boolean;
+  onClick: () => void;
+  unblock?: { disabled: boolean; onClick: () => void };
+}
+
+function Save({ disabled, onClick, unblock }: SaveProps) {
   return (
-    <button type="button" disabled={disabled} onClick={onClick} className={buttonClass.primary}>
-      Save details
-    </button>
+    <div className="flex flex-col gap-1.5">
+      <button type="button" disabled={disabled} onClick={onClick} className={buttonClass.primary}>
+        Save details
+      </button>
+      {unblock && (
+        <button type="button" disabled={unblock.disabled} onClick={unblock.onClick} className={buttonClass.secondary}>
+          Save and unblock
+        </button>
+      )}
+    </div>
   );
 }
 

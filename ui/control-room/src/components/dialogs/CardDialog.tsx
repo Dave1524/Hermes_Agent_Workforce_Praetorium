@@ -9,6 +9,7 @@ import CardNote from "@/components/card/CardNote";
 import CardResearch from "@/components/card/CardResearch";
 import CardSidePanel from "@/components/card/CardSidePanel";
 import type { CardWriter } from "@/components/card/cardWriter";
+import { useCardDecision } from "@/components/card/useCardDecision";
 import { useCardEdit } from "@/components/card/useCardEdit";
 import DialogFrame from "./DialogFrame";
 
@@ -23,7 +24,9 @@ export interface CardDialogProps {
 const DISCARD = "Discard your unsaved edits?";
 
 function EditableCardDialog({ card, onClose, writer, onChanged, onReload }: CardDialogProps & { writer: CardWriter }) {
-  const edit = useCardEdit(card, writer, onChanged ?? (() => undefined));
+  const changed = onChanged ?? (() => undefined);
+  const edit = useCardEdit(card, writer, changed);
+  const decision = useCardDecision(card, writer, edit, changed);
   const guarded = () => {
     if (!edit.dirty || window.confirm(DISCARD)) onClose();
   };
@@ -34,18 +37,18 @@ function EditableCardDialog({ card, onClose, writer, onChanged, onReload }: Card
       title={card.fields.title || "New card"}
       header={<CardHeader card={card} editing={editing} />}
       onClose={guarded}
-      footer={<CardFooter moves={card.moves} creating={edit.creating} canCreate={edit.canCreate} onCreate={edit.create} />}
+      footer={<CardFooter moves={card.moves} creating={edit.creating} canCreate={edit.canCreate} onCreate={edit.create} decision={decision} />}
     >
-      <CardEditActions problem={edit.problem} onReload={onReload} />
+      <CardEditActions problem={edit.problem ?? decision.problem} onReload={onReload} />
       <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_190px]">
         <div className="min-w-0 flex flex-col gap-3.5">
-          <CardBrief card={card} editing={editing} canSave={edit.canSaveBrief} onSave={edit.creating ? undefined : edit.saveBrief} />
+          <CardBrief card={card} editing={editing} canSave={edit.canSaveBrief} onSave={edit.creating ? undefined : edit.saveBrief} canSaveAndApprove={edit.canSaveAndApprove} onSaveAndApprove={edit.creating ? undefined : edit.saveBriefAndApprove} />
           <CardIdea card={card} editing={editing} />
           <CardResearch research={card.research} />
           {!edit.creating && <CardActivity card={card} />}
           {!edit.creating && <CardNote editing={editing} canAdd={edit.canAddNote} onAdd={edit.addNote} />}
         </div>
-        <CardSidePanel card={card} editing={editing} footer={edit.creating ? undefined : <CardEditActions.Save disabled={!edit.canSaveDetails} onClick={edit.saveDetails} />} />
+        <CardSidePanel card={card} editing={editing} footer={edit.creating ? undefined : <CardEditActions.Save disabled={!edit.canSaveDetails} onClick={edit.saveDetails} unblock={card.moves.includes("unblock") ? { disabled: !edit.canSaveAndUnblock, onClick: edit.saveDetailsAndUnblock } : undefined} />} />
       </div>
     </DialogFrame>
   );

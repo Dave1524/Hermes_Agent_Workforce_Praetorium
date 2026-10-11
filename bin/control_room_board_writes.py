@@ -3,8 +3,9 @@
 HTTP status map over bin/board.py. Bound once in control_room_api.main() as
 `RequestHandlerClass.board`. The actor is always `dave`; a body's actor is never read.
 
-Admitted: create, brief, note, edit. Dave's decisions are the broker's (B9) and answer 501 here.
-`pick`, `land`, `sweep` and every other verb are refused: 400.
+Admitted: create, brief, note, edit; and Dave's eight decision verbs (B9), which are checked here
+against the card and forwarded to the root-owned broker (control_room_board_decisions.py), never
+written to the ledger. `pick`, `land`, `sweep` and every other verb are refused: 400.
 """
 from __future__ import annotations
 
@@ -17,11 +18,14 @@ from http import HTTPStatus
 from typing import Any, Callable
 
 import board
+import control_room_board_decisions as decisions
+import control_room_board_page as page
+import control_room_control as control
 
 ACTOR = "dave"
 WRITE_VERBS = ("create", "brief", "note", "edit")
-DECISION_VERBS = ("approve_brief", "return_brief", "approve", "request_changes", "reject", "withdraw",
-                  "block", "unblock")
+DECISION_MAP = decisions.DECISION_MAP
+DECISION_VERBS = tuple(DECISION_MAP)
 EDIT_FIELDS = ("title", "idea", "scope", "priority", "tags", "research_on", "deadline")
 CREATE_STRINGS = ("id", "title", "idea", "kind", "owner", "priority", "deadline", "research_on")
 
@@ -50,12 +54,13 @@ class Bad(Exception):
 
 
 class BoardControl:
-    def __init__(self, root: pathlib.Path) -> None:
-        self.root = root
+    def __init__(self, root: pathlib.Path, broker: Any = None, export: decisions.Exporter | None = None) -> None:
+        self.root, self.broker, self.export = root, broker, export or page.export_page
 
     @classmethod
     def from_env(cls) -> "BoardControl":
-        return cls(board.board_root())
+        socket_path = os.environ.get("CONTROL_ROOM_BROKER_SOCKET", control.DEFAULT_SOCKET)
+        return cls(board.board_root(), control.BrokerClient(socket_path))
 
     def unavailable(self) -> str | None:
         return None if self.root.is_dir() else f"board_unavailable: {self.root} does not exist"
@@ -177,6 +182,22 @@ def _view(root: pathlib.Path, card: Any) -> Any:
         return None
 
 
+def _actor(handler: Any) -> dict[str, Any]:
+    remote = handler.client_address[0] if handler.client_address else None
+    try:
+        local = handler.connection.getsockname()[0]
+    except OSError:
+        local = None
+    return {"remote": remote, "local": local, "label": f"screen from {remote or 'unknown'}"}
+
+
+def _decide(handler: Any, seam: "BoardControl", body: dict[str, Any]) -> str:
+    card = _card(body)
+    request = decisions.broker_request(seam.root, body, seam.export, card)
+    decisions.forward(seam.broker, request, _actor(handler))
+    return card
+
+
 def _peer_refusal(handler: Any) -> str | None:
     remote = handler.client_address[0] if handler.client_address else None
     try:
@@ -196,11 +217,8 @@ def handle_post(handler: Any, control: BoardControl | None) -> None:
     if body is None or not isinstance(verb, str):
         _refuse(handler, HTTPStatus.BAD_REQUEST, "body must be a JSON object with a verb")
         return
-    if verb in DECISION_VERBS:
-        _refuse(handler, HTTPStatus.NOT_IMPLEMENTED, "decisions go through the broker (B9)")
-        return
-    if verb not in WRITE_VERBS:
-        _refuse(handler, HTTPStatus.BAD_REQUEST, f"verb must be one of {', '.join(WRITE_VERBS)}")
+    if verb not in WRITE_VERBS + DECISION_VERBS:
+        _refuse(handler, HTTPStatus.BAD_REQUEST, f"verb must be one of {', '.join(WRITE_VERBS + DECISION_VERBS)}")
         return
     problem = "board_unavailable: seam not bound" if control is None else control.unavailable()
     if problem:
@@ -211,7 +229,9 @@ def handle_post(handler: Any, control: BoardControl | None) -> None:
         _refuse(handler, HTTPStatus.FORBIDDEN, denied)
         return
     try:
-        card = _apply(control.root, body)
+        card = _decide(handler, control, body) if verb in DECISION_VERBS else _apply(control.root, body)
+    except decisions.Refused as exc:
+        _refuse(handler, exc.status, exc.message, _view(control.root, body.get("card")))
     except Bad as exc:
         _refuse(handler, HTTPStatus.BAD_REQUEST, str(exc))
     except board.BoardError as exc:

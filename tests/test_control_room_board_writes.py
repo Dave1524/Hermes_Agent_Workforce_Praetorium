@@ -74,13 +74,12 @@ class BoardSeamTest(unittest.TestCase):
                 "owner": "claudius", "scope": ["vault:05_knowledge"], **extra}
         return self.post(body)
 
-    def test_verb_table_admits_four_and_stubs_decisions(self):
+    def test_verb_table_admits_four_writes_and_refuses_every_other_verb(self):
         self.assertEqual(control_room_board_writes.WRITE_VERBS, ("create", "brief", "note", "edit"))
-        for verb in ("approve", "pick", "land", "delete"):
+        for verb in ("pick", "land", "sweep", "delete", "decided"):
             status, body = self.post({"verb": verb, "card": "alpha-question"})
-            self.assertIn(status, (400, 501), verb)
+            self.assertEqual(status, 400, verb)
             self.assertFalse(body.get("ok"), verb)
-        self.assertEqual(self.post({"verb": "approve_brief", "card": "alpha-question"})[0], 501)
         self.assertEqual(self.post({"verb": "pick"})[0], 400)
 
     def test_header_and_shape_are_checked(self):
