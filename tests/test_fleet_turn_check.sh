@@ -256,6 +256,28 @@ assert 'window labels are UTC, like the journal they bound' "grep -qF 'win=\$(da
 assert 'gate 7 goes red before the token lapses, and on a token with no recorded expiry' \
   "grep -qF 'TOKEN_WARN_DAYS=\${FLEET_TOKEN_WARN_DAYS:-30}' '$SCRIPT' && grep -q 'records no readable CLAUDE_OAUTH_EXPIRES' '$SCRIPT'"
 
+echo '--- gate 1 reads the credential the agents are handed, not the interactive login (2026-10-11) ---'
+# The wrapper exports the headless token before it execs claude-agent-acp. Gate 1 did not, so
+# it read ~/.claude/.credentials.json -- which no agent has used since the token landed -- and
+# was red from 01:01 to past 08:00 on 2026-10-11 while all five agents answered.
+sed -n '/^auth_status() {/,/^}/p' "$SCRIPT" >"$WORK/auth.sh"
+assert 'gate 1 runs through auth_status, never the binary bare' \
+  "[ -s '$WORK/auth.sh' ] && grep -qx 'auth_out=\$(auth_status)' '$SCRIPT' && [ \"\$(grep -c '\"\$ACP_BIN\"' '$SCRIPT')\" -eq 1 ]"
+printf '#!/usr/bin/env bash\nif [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then echo "{\\"loggedIn\\": true, \\"authMethod\\": \\"oauth_token\\"}"; else echo "{\\"loggedIn\\": false, \\"authMethod\\": \\"none\\"}"; exit 1; fi\n' >"$WORK/acp"
+chmod +x "$WORK/acp"
+auth_with() {  # auth_with <token-file> [helper]
+  env -u CLAUDE_CODE_OAUTH_TOKEN ACP_BIN="$WORK/acp" OAUTH_HELPER="${2:-$REPO_ROOT/bin/claude_oauth_env.sh}" \
+    CLAUDE_OAUTH_FILE="$1" bash -c ". '$WORK/auth.sh'; auth_status"
+}
+printf 'CLAUDE_CODE_OAUTH_TOKEN=sk-fake\nCLAUDE_OAUTH_EXPIRES=2027-10-04\n' >"$WORK/token.env"; chmod 600 "$WORK/token.env"
+out=$(auth_with "$WORK/token.env"); rc=$?
+assert 'with a token file the binary sees the token, as an agent does' "[ $rc -eq 0 ] && [[ \"\$out\" == *oauth_token* ]]"
+out=$(auth_with "$WORK/absent.env"); rc=$?
+assert 'with none it reads the interactive login, which is then the agents'"'"' credential too' \
+  "[ $rc -eq 1 ] && [[ \"\$out\" == *'\"loggedIn\": false'* ]]"
+out=$(auth_with "$WORK/token.env" "$WORK/no-helper.sh"); rc=$?
+assert 'an undeployed helper fails, as the wrapper refuses to start an agent without it' "[ $rc -ne 0 ]"
+
 echo '--- the unit and the registry agree about what execs what ---'
 assert 'the unit ExecStarts the adopted script by its box path' \
   "grep -qE '^ExecStart=.*/\\.config/buzz-team/fleet-turn-check\\.sh' '$UNIT'"
