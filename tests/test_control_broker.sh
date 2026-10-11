@@ -4,4 +4,4 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-python3 tests/test_control_broker.py
+python3 tests/test_control_broker.py && python3 tests/test_control_broker_board.py

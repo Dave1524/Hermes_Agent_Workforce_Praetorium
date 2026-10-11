@@ -12,6 +12,7 @@ const makeWriter = (result: WriteResult = OK): CardWriter => ({
   edit: vi.fn().mockResolvedValue(result),
   brief: vi.fn().mockResolvedValue(result),
   note: vi.fn().mockResolvedValue(result),
+  decide: vi.fn().mockResolvedValue(result),
 });
 
 const open = (card: CardDetail, writer = makeWriter()) => {

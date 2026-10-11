@@ -13,6 +13,13 @@ Two kinds of entry (T5.3g): a `workflows` row is a timer workflow and takes ACTI
 RUNTIME_ACTIONS — the session-scoped verbs only, never enable/disable. A runtime is read
 through RUNTIME_PROPERTIES and nothing else: never `status`, never ExecStart or Environment,
 because the launched process carries the agent's credential in its argv.
+
+Board decisions (Dev Plan B9, spec §7 decisions 10 and 12): a request with `board_verb` is one of the
+seven verbs only Dave may take on an agent-board card. The broker validates it against the
+allowlist's `board.verbs`, signs the record with a root-only OpenSSH ed25519 key (namespace
+`board-decision`) and appends one line to `<board dir>/decisions.jsonl`. It never runs bin/board.py:
+board.py reads the stream and trusts a decision from nowhere else, and the Mac checks the signature
+against a pinned public key.
 """
 from __future__ import annotations
 
@@ -48,12 +55,26 @@ REFUSAL_CODES = (
     "bad_request", "unknown_action", "unknown_workflow", "not_allowlisted", "unit_not_found",
     "masked", "peer_denied", "allowlist_invalid", "locked", "state_conflict", "preview_required",
     "preview_stale", "trigger_required", "not_idempotent", "confirmation_required",
-    "reason_required",
+    "reason_required", "hash_mismatch",
 )
 HTTP_STATUS = {"unknown_workflow": 404, "peer_denied": 403, "not_allowlisted": 403}
 REQUEST_KEYS = {"v", "workflow_id", "action", "reason", "stage", "preview_token", "trigger",
                 "confirm", "retry_of", "actor"}
 MAX_BODY_BYTES = 8192
+MAX_BOARD_BODY_BYTES = 262144
+MAX_REASON_CHARS = 2000
+BOARD_VERBS = ("brief_approved", "brief_returned", "approved", "changes_requested",
+               "rejected", "blocked", "unblocked")
+BOARD_REQUEST_KEYS = {"v", "board_verb", "card", "brief_hash", "page_hash", "text", "reason", "actor"}
+BOARD_FIELDS = {
+    "brief_approved": ("brief_hash",), "brief_returned": ("brief_hash", "reason"),
+    "approved": ("page_hash", "text"), "changes_requested": ("reason",),
+    "rejected": ("reason",), "blocked": ("reason?",), "unblocked": (),
+}
+BOARD_NAMESPACE = "board-decision"
+BOARD_CARD_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
+HASH_RE = re.compile(r"^[0-9a-f]{64}$")
+SIGN_TIMEOUT_SECONDS = 20
 MAX_FIELD_CHARS = 200
 PREVIEW_TTL_SECONDS = 600
 STOP_POLL_SECONDS = 15
@@ -106,6 +127,8 @@ class Config:
     lock: pathlib.Path
     now: dt.datetime | None = None
     start_settle: int = START_SETTLE_SECONDS
+    board_dir: pathlib.Path = pathlib.Path("/var/lib/control-room/receipts/board")
+    board_key: pathlib.Path = pathlib.Path("/etc/control-room/board_signing_key")
 
     def clock(self) -> dt.datetime:
         return self.now or dt.datetime.now(dt.timezone.utc)
@@ -166,8 +189,9 @@ def peer_allowed(remote: Any, local: Any) -> tuple[bool, str]:
 # --- the allowlist --------------------------------------------------------------------
 class Allowlist:
     def __init__(self, workflows: dict[str, dict[str, Any]], excluded: list[dict[str, Any]],
-                 runtimes: dict[str, dict[str, Any]] | None = None) -> None:
+                 runtimes: dict[str, dict[str, Any]] | None = None, board_verbs: list[str] | None = None) -> None:
         self.workflows, self.excluded, self.runtimes = workflows, excluded, runtimes or {}
+        self.board_verbs = board_verbs or []
 
     @classmethod
     def load(cls, path: pathlib.Path) -> "Allowlist":
@@ -192,7 +216,17 @@ class Allowlist:
             raise Refusal("allowlist_invalid", f"allowlist at {path}: runtimes is not a table")
         for runtime_id, entry in runtimes.items():
             cls._check_runtime_entry(path, runtime_id, entry)
-        return cls(workflows, [row for row in excluded if isinstance(row, dict)], runtimes)
+        return cls(workflows, [row for row in excluded if isinstance(row, dict)], runtimes,
+                   cls._board_verbs(path, data.get("board")))
+
+    @staticmethod
+    def _board_verbs(path: Any, section: Any) -> list[str]:
+        if section is None:
+            return []
+        verbs = section.get("verbs") if isinstance(section, dict) else None
+        if not isinstance(verbs, list) or any(verb not in BOARD_VERBS for verb in verbs):
+            raise Refusal("allowlist_invalid", f"allowlist at {path}: board.verbs must list board verbs only")
+        return sorted(set(verbs))
 
     @staticmethod
     def _check_entry(path: pathlib.Path, workflow_id: Any, entry: Any) -> None:
@@ -914,6 +948,115 @@ def _response(receipt: dict[str, Any], out: dict[str, Any]) -> dict[str, Any]:
             "receipt": receipt, "preview": preview}
 
 
+# --- board decisions (B9) -----------------------------------------------------------------
+def is_board_request(request: Any) -> bool:
+    return isinstance(request, dict) and "board_verb" in request
+
+
+def page_text_hash(text: str) -> str:
+    """sha256 over the text with LF endings and trailing whitespace stripped: bin/board.py text_hash."""
+    return hashlib.sha256(text.replace("\r\n", "\n").replace("\r", "\n").rstrip().encode("utf-8")).hexdigest()
+
+
+def _board_string(request: dict[str, Any], key: str, limit: int) -> str:
+    value = request.get(key)
+    if not isinstance(value, str) or not value:
+        raise Refusal("bad_request", f"{key} must be a non-empty string")
+    if len(value) > limit:
+        raise Refusal("bad_request", f"{key} is longer than {limit} characters")
+    return value
+
+
+def validate_board_request(request: dict[str, Any]) -> dict[str, Any]:
+    unknown = sorted(set(request) - BOARD_REQUEST_KEYS)
+    if unknown:
+        raise Refusal("bad_request", f"unknown request keys: {', '.join(_short(key) for key in unknown)}")
+    if request.get("v", 1) != 1:
+        raise Refusal("bad_request", "unsupported protocol version")
+    verb = request["board_verb"]
+    if verb not in BOARD_VERBS:
+        raise Refusal("unknown_action", f"board_verb must be one of {', '.join(BOARD_VERBS)}")
+    card = request.get("card")
+    if not isinstance(card, str) or not BOARD_CARD_RE.match(card):
+        raise Refusal("bad_request", "card must be a card id")
+    wanted = {name.rstrip("?") for name in BOARD_FIELDS[verb]}
+    extra = sorted(set(request) & {"brief_hash", "page_hash", "text", "reason"} - wanted)
+    if extra:
+        raise Refusal("bad_request", f"{verb} does not take: {', '.join(extra)}")
+    fields: dict[str, Any] = {}
+    for name in BOARD_FIELDS[verb]:
+        key, optional = name.rstrip("?"), name.endswith("?")
+        if optional and request.get(key) is None:
+            continue
+        if key == "reason":
+            fields[key] = _board_string(request, key, MAX_REASON_CHARS)
+            if not fields[key].strip():
+                raise Refusal("reason_required", f"{verb} needs a reason")
+        elif key == "text":
+            fields[key] = _board_string(request, key, MAX_BOARD_BODY_BYTES)
+        else:
+            fields[key] = _board_string(request, key, 64)
+            if not HASH_RE.match(fields[key]):
+                raise Refusal("bad_request", f"{key} must be 64 lowercase hex characters")
+    if "text" in fields and page_text_hash(fields["text"]) != fields["page_hash"]:
+        raise Refusal("hash_mismatch", "text does not hash to page_hash")
+    return {"decision": verb, "card": card, **fields}
+
+
+def sign_record(payload: bytes, cfg: Config) -> str:
+    try:
+        done = subprocess.run(["ssh-keygen", "-Y", "sign", "-f", str(cfg.board_key), "-n", BOARD_NAMESPACE],
+                              input=payload, capture_output=True, check=False, timeout=SIGN_TIMEOUT_SECONDS, env=CHILD_ENV)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise CommandFailed(f"signing failed: {exc}") from exc
+    if done.returncode != 0 or not done.stdout.startswith(b"-----BEGIN SSH SIGNATURE-----"):
+        raise CommandFailed(f"signing failed: {done.stderr.decode('utf-8', 'replace').strip()[:200]}")
+    return done.stdout.decode("utf-8")
+
+
+def canonical_record(record: dict[str, Any]) -> bytes:
+    body = {key: value for key, value in record.items() if key != "sig"}
+    return json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
+def append_decision(record: dict[str, Any], directory: pathlib.Path) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    os.chmod(directory, 0o755)
+    fd = os.open(directory / "decisions.jsonl", os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        os.write(fd, (json.dumps(record, sort_keys=True, ensure_ascii=False) + "\n").encode("utf-8"))
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    os.chmod(directory / "decisions.jsonl", 0o644)
+
+
+def handle_board(request: Any, cfg: Config, actor: dict[str, Any] | None = None) -> dict[str, Any]:
+    actor = actor or _default_actor()
+    now = cfg.clock()
+    try:
+        if isinstance(request, Refusal):
+            raise request
+        if actor["kind"] == "screen":
+            allowed, why = peer_allowed(actor.get("remote"), actor.get("local"))
+            if not allowed:
+                raise Refusal("peer_denied", why)
+        decision = validate_board_request(request)
+        if decision["decision"] not in Allowlist.load(cfg.allowlist).board_verbs:
+            raise Refusal("not_allowlisted", f"{decision['decision']} is not an allowlisted board verb")
+        record = {"v": 1, "id": _receipt_id(now, decision["decision"]), "ts": iso(now), **decision,
+                  "via": actor["kind"], "remote": actor.get("remote")}
+        record["sig"] = sign_record(canonical_record(record), cfg)
+        append_decision(record, cfg.board_dir)
+    except Refusal as refusal:
+        return {"v": 1, "result": "refused", "refusal": {"code": refusal.code, "message": refusal.message, "choices": None}}
+    except (CommandFailed, OSError) as exc:
+        return {"v": 1, "result": "failed", "note": str(exc), "refusal": None}
+    return {"v": 1, "result": "applied", "refusal": None,
+            "decision": {key: value for key, value in record.items() if key not in ("text", "sig")}}
+
+
 # --- transport --------------------------------------------------------------------------
 def _peer_credentials(fd: int) -> dict[str, int] | None:
     try:
@@ -930,13 +1073,16 @@ def _peer_credentials(fd: int) -> dict[str, int] | None:
 
 
 def read_request(stream: Any) -> Any:
-    line = stream.readline(MAX_BODY_BYTES + 1)
-    if len(line) > MAX_BODY_BYTES:
-        return Refusal("bad_request", f"body exceeds {MAX_BODY_BYTES} bytes")
+    line = stream.readline(MAX_BOARD_BODY_BYTES + 1)
+    if len(line) > MAX_BOARD_BODY_BYTES:
+        return Refusal("bad_request", f"body exceeds {MAX_BOARD_BODY_BYTES} bytes")
     try:
-        return json.loads(line.decode("utf-8"))
+        request = json.loads(line.decode("utf-8"))
     except (UnicodeDecodeError, ValueError):
         return Refusal("bad_request", "body must be one JSON object")
+    if len(line) > MAX_BODY_BYTES and not is_board_request(request):
+        return Refusal("bad_request", f"body exceeds {MAX_BODY_BYTES} bytes")
+    return request
 
 
 def _screen_actor(request: Any, peer: dict[str, int] | None) -> dict[str, Any]:
@@ -957,7 +1103,7 @@ def serve(stdin: Any, stdout: Any, cfg: Config) -> int:
         request = Refusal("peer_denied", f"peer uid {peer['uid'] if peer else 'unknown'} is not allowed to connect")
     else:
         actor = _screen_actor(request, peer) if is_socket else _default_actor()
-    response = handle(request, cfg, actor=actor)
+    response = handle_board(request, cfg, actor) if is_board_request(request) else handle(request, cfg, actor=actor)
     stdout.write((json.dumps(response, sort_keys=True) + "\n").encode("utf-8"))
     stdout.flush()
     return 0
@@ -980,7 +1126,8 @@ def config_from(args: argparse.Namespace) -> Config:
     return Config(allowlist=pathlib.Path(args.allowlist), receipts=pathlib.Path(args.receipts), peer_uids=uids,
                   user_manager=args.user_manager, system_stamp_dir=pathlib.Path(args.system_stamp_dir),
                   user_stamp_dir=pathlib.Path(args.user_stamp_dir), lock=pathlib.Path(args.lock), now=now,
-                  start_settle=args.start_settle)
+                  start_settle=args.start_settle, board_dir=pathlib.Path(args.board_dir),
+                  board_key=pathlib.Path(args.board_key))
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -998,6 +1145,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--start-settle", type=int,
                         default=int(env("CONTROL_BROKER_START_SETTLE_SECONDS", str(START_SETTLE_SECONDS))),
                         help="seconds to watch a started or restarted runtime for a Restart= loop")
+    parser.add_argument("--board-dir", default=env("CONTROL_BROKER_BOARD_DIR", "/var/lib/control-room/receipts/board"),
+                        help="where the signed board decisions stream lives")
+    parser.add_argument("--board-key", default=env("CONTROL_BROKER_BOARD_KEY", "/etc/control-room/board_signing_key"),
+                        help="root-only ed25519 private key the board decisions are signed with")
     modes = parser.add_subparsers(dest="mode")
     act_parser = modes.add_parser("act", help="build one request from the command line and print the response")
     act_parser.add_argument("action", choices=ALL_ACTIONS)

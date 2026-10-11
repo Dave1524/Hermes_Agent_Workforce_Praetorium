@@ -699,12 +699,45 @@ from the dave shell the drop-in describes. The CLI mirrors the dialog — `sched
 TOKEN`, `retire <id> --reason R --receipts V --notion V --inbox V --note N --preview|--submit
 TOKEN` — and is the acceptance path (`tests/acceptance/control_room_proposals.sh`).
 
-**The board seam (B5).** `POST /api/v1/control/board` (`bin/control_room_board_writes.py`) admits
-`create`, `brief`, `note` and `edit` as actor `dave`, over `bin/board.py`; decision verbs answer 501
-until B9, anything else 400. The ledger root is `CONTROL_ROOM_BOARD_ROOT`
+**The board seam (B5, B9).** `POST /api/v1/control/board` (`bin/control_room_board_writes.py`) admits
+`create`, `brief`, `note` and `edit` as actor `dave`, over `bin/board.py`, and Dave's eight decision
+verbs (`approve_brief`, `return_brief`, `approve`, `request_changes`, `reject`, `withdraw`, `block`,
+`unblock`), which `bin/control_room_board_decisions.py` checks against the card (the move is offered in
+its column, the brief or page hash is the one the popup rendered, `expect_rev` is current) and forwards
+to the broker; anything else is 400. The ledger root is `CONTROL_ROOM_BOARD_ROOT`
 (`/var/lib/control-room-board`), granted by `systemd/control-room.service.d/board.conf` -- hand-install
 it like `proposals.conf` (`sudo cp` to `/etc/systemd/system/control-room.service.d/`, `daemon-reload`,
-restart `control-room.service`); until then the seam answers 503 `board_unavailable`.
+restart `control-room.service`); until then the seam answers 503 `board_unavailable`, and 503
+`broker_unavailable` for a decision while the broker has no board verbs or cannot be reached.
+
+**Board decisions in the broker (B9).** A request carrying `board_verb` is one of the seven decisions
+only Dave may take (`brief_approved`, `brief_returned`, `approved`, `changes_requested`, `rejected`,
+`blocked`, `unblocked`; `withdraw` is `rejected` outside In Review). The root-owned broker checks the verb
+against `board.verbs` in `/etc/control-room/allowlist.json`, signs the record with
+`/etc/control-room/board_signing_key` (OpenSSH ed25519, namespace `board-decision`) and appends one line to
+`/var/lib/control-room/receipts/board/decisions.jsonl` (0644 in a 0755 directory; `BOARD_DECISIONS_ROOT` for
+`bin/board.py` defaults to it). It never runs `board.py`; `board.py` trusts a decision from that file and
+nowhere else. A line is `{v, id, ts, decision, card, brief_hash?, page_hash?, text?, reason?, via, remote, sig}`;
+`text` is an approval's page text, kept beside the signature and hashed (LF endings, trailing whitespace
+stripped, sha256) to the signed `page_hash`. `sig` signs the record without `sig`: its keys sorted,
+compact separators, `ensure_ascii=False`, UTF-8.
+
+*Install (Dave, by hand, after merge; never through `bin/deploy`):*
+
+```
+sudo install -D -o root -g root -m 0755 bin/control_broker.py /usr/local/lib/control-room/control_broker.py
+python3 bin/control_broker_allowlist.py render | sudo install -D -o root -g root -m 0644 /dev/stdin /etc/control-room/allowlist.json
+sudo ssh-keygen -q -t ed25519 -N '' -C board-broker -f /etc/control-room/board_signing_key   # once; 0600 root
+sudo chmod 0644 /etc/control-room/board_signing_key.pub
+sudo install -d -o root -g root -m 0755 /var/lib/control-room/receipts/board
+cd ~/dev/agent-workforce && bin/deploy && sudo systemctl restart control-room.service
+```
+
+*Pin on the Mac (B10 reads it):* `python3 bin/board_decision_sig.py allowed-signers /etc/control-room/board_signing_key.pub`
+prints the one `allowed_signers` line (`board-broker namespaces="board-decision" ssh-ed25519 …`) to copy to the Mac.
+A line verifies with `ssh-keygen -Y verify -f allowed_signers -I board-broker -n board-decision -s <sig file> < <canonical bytes>`;
+`python3 bin/board_decision_sig.py verify --allowed-signers FILE [decisions.jsonl]` does the whole stream and exits 1
+on any line that fails. Rotating the key means a new pin on the Mac before the first decision after it.
 
 **Landing a schedule PR (Dave, by hand — the PR body carries the same list):** merge → `git -C
 ~/dev/agent-workforce pull --ff-only` → `bin/deploy` → `sudo cp systemd/<unit>.timer

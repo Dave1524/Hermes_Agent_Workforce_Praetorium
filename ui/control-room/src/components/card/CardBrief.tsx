@@ -9,9 +9,11 @@ interface Props {
   editing?: Editing;
   canSave?: boolean;
   onSave?: () => void;
+  canSaveAndApprove?: boolean;
+  onSaveAndApprove?: () => void;
 }
 
-export default function CardBrief({ card, editing, canSave = false, onSave }: Props) {
+export default function CardBrief({ card, editing, canSave = false, onSave, canSaveAndApprove = false, onSaveAndApprove }: Props) {
   const { brief } = card;
   const editable = card.editable.includes("brief");
   const writable = editing !== undefined && editable;
@@ -48,6 +50,11 @@ export default function CardBrief({ card, editing, canSave = false, onSave }: Pr
           <button type="button" disabled={!canSave} onClick={onSave} className={buttonClass.primary}>
             Save brief
           </button>
+          {onSaveAndApprove && card.moves.includes("approve_brief") && (
+            <button type="button" disabled={!canSaveAndApprove} onClick={onSaveAndApprove} className={buttonClass.secondary}>
+              Save and approve
+            </button>
+          )}
           <span className="text-[11px] text-muted">A changed brief goes back to Refine</span>
         </div>
       )}

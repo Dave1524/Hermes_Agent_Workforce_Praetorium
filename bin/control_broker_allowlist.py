@@ -6,7 +6,8 @@ The broker (bin/control_broker.py, root) trusts nothing it did not read from
 standing timer workflow whose timer and service unit both exist under systemd/, keyed by its
 logical id, with `retry` taken from the contract's Identity `Retry` row; and, under `runtimes`
 (T5.3g), every standing `kind = "service"` entry whose template unit file exists, keyed by the
-instance name the screen already uses (buzz-agent@marcus). The bytes are deterministic (sorted
+instance name the screen already uses (buzz-agent@marcus); and, under `board` (B9), the seven
+decision verbs only Dave may take on an agent-board card (bin/board.py DECISIONS). The bytes are deterministic (sorted
 keys, no timestamp) so the drift check can compare them.
 
     render [--repo R]                              print the JSON
@@ -22,6 +23,8 @@ import re
 import sys
 import tomllib
 from typing import Any
+
+import board
 
 UNIT_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 RUNTIME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}@[a-z0-9][a-z0-9-]{0,63}$")
@@ -136,7 +139,7 @@ def render(repo: pathlib.Path | str) -> dict[str, Any]:
         workflow["contract"], workflow["retry"], workflow["retry_reason"] = _retry(repo, contracts.get(logical, set()))
         workflow["triggers"].sort(key=lambda trigger: trigger["unit"])
     return {"schema": 1, "workflows": workflows, "runtimes": dict(sorted(runtimes.items())),
-            "excluded": sorted(excluded, key=lambda row: row["unit"])}
+            "board": {"verbs": sorted(board.DECISIONS)}, "excluded": sorted(excluded, key=lambda row: row["unit"])}
 
 
 def dumps(data: dict[str, Any]) -> str:
