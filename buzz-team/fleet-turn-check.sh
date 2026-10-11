@@ -65,16 +65,23 @@ info_() { printf '        %s\n' "$*"; }
 note "fleet-turn-check  $(date -Is)  host=$(hostname)"
 
 # ---------------------------------------------------------------- gate 1
-# The credential, read through the exact binary the Claude-backed agents spawn.
+# The credential the Claude-backed agents are handed, read through the exact binary they spawn.
 # Scope: covers every Claude-backed agent, including augustus after his harness migration.
-gate 1 "auth-live (claude-agent-acp --cli auth status)"
-auth_out=$("$ACP_BIN" --cli auth status 2>&1)
+# claude-agent-wrapper.sh exports the headless token before that exec, so this does too, and an
+# undeployed helper fails here as it stops the wrapper. Run bare, this gate read the interactive
+# login no agent uses and was red all morning on 2026-10-11 while all five answered. auth status
+# does not validate a token (gate 2 does): with one, this proves the agents are handed it.
+auth_status() {
+  ( . "$OAUTH_HELPER" && claude_oauth_export && exec "$ACP_BIN" --cli auth status ) 2>&1
+}
+gate 1 "auth-live (claude-agent-acp --cli auth status, with the agents' credential)"
+auth_out=$(auth_status)
 auth_rc=$?
 if [ $auth_rc -ne 0 ]; then
   fail_ "auth status exited $auth_rc"
   info_ "$(printf '%s' "$auth_out" | head -5)"
 elif printf '%s' "$auth_out" | grep -qi '"\?loggedIn"\?[: ]\+true'; then
-  pass_ "loggedIn: true  ($(printf '%s' "$auth_out" | grep -oi 'subscriptionType[": ]*[a-z]*' | head -1))"
+  pass_ "loggedIn: true  ($(printf '%s' "$auth_out" | grep -oi 'authMethod[": ]*[a-z_.]*' | head -1))"
 else
   fail_ "claude-agent-acp does not report loggedIn: true"
   info_ "$(printf '%s' "$auth_out" | head -5)"

@@ -25,8 +25,10 @@ assert() {
 assert 'a found pattern is never reported as a failure' "yes | grep -q y"
 
 echo '--- every claude launch in bin/ and buzz-team/ goes through a token seam (::claude-launch-through-seams) ---'
-# A launch is a non-comment line that runs "$CLAUDE_BIN" or "$BREW/claude"; `[ -x … ]` is a
-# probe of the path, not a launch. It is through a seam when the line hands it to cc_run.sh.
+# A launch is a non-comment line that runs "$CLAUDE_BIN", "$BREW/claude" or "$ACP_BIN"; `[ -x … ]`
+# is a probe of the path, not a launch. It is through a seam when the line hands it to cc_run.sh,
+# or execs it after claude_oauth_export on the same line. "$ACP_BIN" joined 2026-10-11: gate 1 of
+# fleet-turn-check launched it bare and read a login no agent uses.
 # The seams themselves are exempt, and so is a script that reads the token itself — named
 # here, and held to sourcing the reader.
 SEAMS="bin/cc_run.sh buzz-team/claude-agent-wrapper.sh"
@@ -37,8 +39,9 @@ launches() {
     [ -f "$f" ] || continue
     head -c 200 "$f" | grep -qE '^#!.*(ba)?sh' || continue
     case " $SEAMS $SELF_SET " in *" $f "*) continue ;; esac
-    grep -nE '"\$(CLAUDE_BIN|BREW/claude)"' "$f" | grep -vE '^[0-9]+:[[:space:]]*#' \
-      | grep -vE '\[ -x "\$CLAUDE_BIN" \]' | grep -v 'cc_run\.sh' | sed "s|^|$f:|"
+    grep -nE '"\$(CLAUDE_BIN|BREW/claude|ACP_BIN)"' "$f" | grep -vE '^[0-9]+:[[:space:]]*#' \
+      | grep -vE '\[ -x "\$CLAUDE_BIN" \]' | grep -v 'cc_run\.sh' | grep -v 'claude_oauth_export && exec' \
+      | sed "s|^|$f:|"
   done
 }
 bypass=$(launches)
