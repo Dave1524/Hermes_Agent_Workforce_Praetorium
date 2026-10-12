@@ -4,6 +4,7 @@ import { inputClass } from "@/components/dialogs/DialogFrame";
 import { FIELD_LABELS } from "@/model/card";
 import { type Draft, type Editing, lockReason } from "@/model/cardDraft";
 import LockNote from "./LockNote";
+import ScopePicker from "./ScopePicker";
 
 const label = "block text-text-2 mb-1";
 const valueClass = "text-xs text-text";
@@ -32,6 +33,7 @@ function Control({ name, editing }: { name: keyof Draft; editing: Editing }) {
       </select>
     );
   }
+  if (name === "scope") return <ScopePicker value={editing.draft.scope} onChange={(v) => editing.set("scope", v)} />;
   const type = name === "research_on" || name === "deadline" ? "date" : "text";
   return <input {...common} type={type} onChange={on} placeholder={type === "text" ? "comma separated" : undefined} />;
 }
@@ -75,7 +77,7 @@ export default function CardSidePanel({ card, editing, footer }: { card: CardDet
           </span>
         )}
       </SideField>
-      <SideField {...shared} name="scope" mono hint="Until the first run; re-briefs">
+      <SideField {...shared} name="scope" mono hint="Where the run reads first. Pick folders or repos; locked after the first run">
         {fields.scope.join(", ")}
       </SideField>
       {footer}
