@@ -161,7 +161,9 @@ describe("CardDialog, edit mode", () => {
       fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Alpha question" } });
       fireEvent.change(screen.getByLabelText("Idea"), { target: { value: "Does it hold?" } });
       expect(create).toBeDisabled();
-      fireEvent.change(screen.getByLabelText("Scope"), { target: { value: "vault:05_knowledge" } });
+      fireEvent.focus(screen.getByLabelText("Scope"));
+      fireEvent.change(screen.getByLabelText("Scope"), { target: { value: "05_know" } });
+      fireEvent.mouseDown(screen.getByRole("option", { name: "vault:05_knowledge" }));
       fireEvent.change(screen.getByLabelText("Brief"), { target: { value: "# Question\nq\n" } });
       fireEvent.click(create);
       await waitFor(() =>
