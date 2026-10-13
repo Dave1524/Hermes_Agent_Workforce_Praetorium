@@ -19,7 +19,8 @@ Applies to every plan, design and recommendation, in any project.
 
 - **Never choose, rank or recommend a direction because it is cheaper, quicker or smaller.**
   Tokens, build time and diff size are not criteria; there is budget for the right design.
-  "Pilot", "MVP" and "for now" are not reasons.
+  "Pilot", "MVP" and "for now" are not reasons. This governs design direction only; which model
+  runs a task, and how to pace a session, are operational choices made under their own rules.
 - **Research before designing.** Work out how production systems solve this class of problem,
   and ground it: context7 for the libraries involved, web search for architecture write-ups,
   standards and post-mortems, the codebase for what already exists. Record it in the brief under
