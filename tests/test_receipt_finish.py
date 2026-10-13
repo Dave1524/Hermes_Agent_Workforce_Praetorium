@@ -83,14 +83,21 @@ class Sandbox:
     def env(self, **extra: str) -> dict[str, str]:
         return {"PATH": f"{self.fakebin}:{os.environ['PATH']}", "HOME": str(self.home), **extra}
 
-    def finish(self, invocation: str | None, result: str, status: str = "0", code: str = "exited",
+    def finish(self, invocation: str | None, result: str, status: str | None = "0", code: str | None = "exited",
                *args: str, unit: str = UNIT, **env: str) -> subprocess.CompletedProcess:
-        stop_post = {"SERVICE_RESULT": result, "EXIT_CODE": code, "EXIT_STATUS": status, **env}
+        stop_post = {"SERVICE_RESULT": result, **env}
+        if code is not None:
+            stop_post.update(EXIT_CODE=code, EXIT_STATUS=status or "")
         if invocation is not None:
             stop_post["INVOCATION_ID"] = invocation
         cmd = [sys.executable, str(FINISH), "--receipt-root", str(self.receipts), "--manifest-dir", str(self.agents),
                "--repo-root", str(ROOT), *args, unit]
         return subprocess.run(cmd, env=self.env(**stop_post), capture_output=True, text=True, cwd=str(ROOT), timeout=60)
+
+    def sweep(self) -> subprocess.CompletedProcess:
+        return subprocess.run([sys.executable, str(SWEEP), "--tsv", str(self.tsv), "--manifest-dir", str(self.agents),
+                               "--repo-root", str(ROOT), "--receipt-root", str(self.receipts)],
+                              env=self.env(INVOCATION_ID="5e" * 16), capture_output=True, text=True, cwd=str(ROOT))
 
     def files(self) -> list[str]:
         return sorted(str(p.relative_to(self.receipts)) for p in self.receipts.rglob("*.json"))
@@ -155,6 +162,41 @@ class FinishStep(unittest.TestCase):
         self.assertLine(self.box.finish(run_id(4), "exit-code", "1"),
                         f"receipt: written {UNIT}/{run_id(4)}.json (artifact -> failed)")
 
+    def test_a_failed_sweep_check_is_not_undone_by_the_next_clean_run(self):
+        # (::finish-compares-systemd-verdict) — the run exited 0 and its alert check failed at
+        # 05:50; only the sweep can clear that, or the incident flaps resolved/reopened daily
+        (self.box.home / "alert-missing").write_text("")
+        self.box.finish(run_id(1), "success")
+        self.box.sweep()
+        self.assertEqual(self.box.read(run_id(1))["terminal"]["outcome"], "failed")
+        self.assertLine(self.box.finish(run_id(2), "success"), "receipt: unchanged (artifact)")
+        self.assertLine(self.box.finish(run_id(3), "exit-code", "1"),
+                        f"receipt: written {UNIT}/{run_id(3)}.json (artifact -> failed)")
+
+    def test_newest_is_by_end_time_not_by_run_id(self):
+        # (::finish-compares-judged) — systemd's invocation ids are random, so their order is not time
+        self.box.finish(run_id(0xf0), "success")
+        self.box.finish(run_id(0x01), "exit-code", "1")
+        self.assertLine(self.box.finish(run_id(0x80), "success"),
+                        f"receipt: written {UNIT}/{run_id(0x80)}.json (failed -> artifact)")
+
+    def test_a_malformed_receipt_is_not_the_one_compared(self):
+        # (::finish-compares-judged) — the Control Room drops what does not validate, so does this
+        self.box.finish(run_id(1), "success")
+        bad = self.box.read(run_id(1))
+        bad.update(run_id=None, ended_at="2099-01-01T00:00:00Z", terminal={"outcome": "failed", "reason": "x"},
+                   state_change={"evidence": f"systemd: {UNIT}.service x Result=exit-code ExecMainStatus=1"})
+        (self.box.receipts / UNIT / "malformed.json").write_text(json.dumps(bad))
+        self.assertLine(self.box.finish(run_id(2), "success"), "receipt: unchanged (artifact)")
+
+    def test_a_failed_start_pre_still_gets_systemd_numbers(self):
+        # (::finish-same-evidence-as-sweep) — EXIT_CODE/EXIT_STATUS are unset when ExecStartPre=
+        # failed; the sweep would read ExecMainStatus from systemctl, so the finish step does too
+        self.box.state(run_id(1), "exit-code", "0")
+        done = self.box.finish(run_id(1), "exit-code", None, None)
+        self.assertLine(done, "receipt: written")
+        self.assertEqual(self.box.read(run_id(1))["terminal"]["reason"], "Result=exit-code ExecMainStatus=0")
+
     def test_a_signal_is_recorded_as_systemctl_numbers_it(self):
         # (::finish-same-evidence-as-sweep)
         done = self.box.finish(run_id(1), "signal", "TERM", "killed")
@@ -203,9 +245,7 @@ class FinishStep(unittest.TestCase):
         self.box.state(run_id(5), "exit-code", "1")
         (self.box.home / "alert-missing").write_text("")
         self.assertLine(self.box.finish(run_id(5), "exit-code", "1"), "receipt: written")
-        swept = subprocess.run([sys.executable, str(SWEEP), "--tsv", str(self.box.tsv), "--manifest-dir", str(self.box.agents),
-                                "--repo-root", str(ROOT), "--receipt-root", str(self.box.receipts)],
-                               env=self.box.env(INVOCATION_ID="5e" * 16), capture_output=True, text=True, cwd=str(ROOT))
+        swept = self.box.sweep()
         log = (self.box.home / "agent-workforce" / "logs" / "receipt_sweep.log").read_text()
         self.assertIn(f"amended: {UNIT} — {UNIT}/{run_id(5)}.json", log, swept.stdout + swept.stderr)
         got = self.box.read(run_id(5))

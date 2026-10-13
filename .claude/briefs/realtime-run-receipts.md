@@ -56,8 +56,14 @@ as backfill and to decide the after-the-run checks.
   - `EXIT_STATUS` is a signal *name* when `EXIT_CODE=killed`/`dumped`. It is normalised to the
     number `ExecMainStatus` reports, so the two producers' evidence cannot drift.
 - **D4. "Changed" is judged against the newest judged receipt**, the same filter the incident
-  derivation uses for `lastEligibleRun`. A write therefore is exactly a run that would move the
-  incident.
+  derivation uses for `lastEligibleRun`, and it compares **systemd's verdict** on that run (the
+  `Result=` in its evidence), not the receipt's outcome.
+  - A receipt can be `failed` because a `sweep` check failed while the run exited 0. If the next
+    clean run compared against that outcome, it would resolve the incident, and the 05:50 sweep
+    would reopen it every day.
+  - The `sweep` checks are the sweep's to clear. Added after the 2026-10-13 independent review;
+    `test_a_failed_sweep_check_is_not_undone_by_the_next_clean_run` pins it.
+  - Malformed receipts are skipped, as the Control Room skips them.
 - **D5. The sweep stays**, for three reasons:
   - it catches a timer that stopped firing;
   - it decides `when=sweep` checks (an OnFailure alert fires *after* stop-post, so "the failure
@@ -75,7 +81,9 @@ as backfill and to decide the after-the-run checks.
   - on change, calls `contract_exec.py <unit> --vantage run --run-id $INVOCATION_ID
     <evidence> --run-started-at <epoch>` with a 20 s timeout;
   - logs the one line and exits 0 always.
-  Fixture overrides: `SYSTEMCTL`, `CONTRACT_EXEC`, `--receipt-root`, `--now`, matching `receipt_sweep.py`.
+  Fixture overrides: `SYSTEMCTL`, `CONTRACT_EXEC` / `--executor`, `--receipt-root`, `--timeout`.
+  It reads no clock of its own, so it takes no `--now`. If `EXIT_STATUS` is unset (a failed
+  `ExecStartPre=`), `ExecMainStatus` comes from `systemctl show`, as the sweep's does.
 - `tests/test_receipt_finish.py` and the wrapper `tests/test_receipt_finish.sh`. Cases are in *Test plan*.
 - `tests/test_systemd_evidence.py`, or a section of the above. One file per concept, so its own file.
 
@@ -196,7 +204,9 @@ already written are valid and stay.
   - Tell: `receipt: errored … exit 2` lines.
   - Response: the job is unaffected (D1), the sweep backfills; restore `main` in the checkout.
 - **A finish receipt can resolve an incident the 05:50 amendment re-opens.** This happens when
-  the run exited 0 but a sweep check (e.g. the alert check) fails.
+  a run that systemd failed is followed by a clean run whose own sweep check (e.g. the alert
+  check) then fails at 05:50. The reverse, a clean run clearing an older sweep-check failure, is
+  prevented by D4.
   - Tell: an incident `resolvedAt` followed by a reopen at 05:5x.
   - Response: accept; it is the same verdict the sweep reaches today, one morning later.
 - **Sweep checks on a finish receipt for a non-latest invocation stay `not_applicable: vantage`
@@ -207,8 +217,9 @@ already written are valid and stay.
   alternating every 5 min, at 288/day.
   - Tell: `find ~/agent-workforce/var/workflow-receipts/<id> -newermt '-1 day' | wc -l` > 50.
   - Response: fix the flap; add a backoff only if it recurs.
-- **Stop-post timeout.** The executor's own bound is 20 s, well inside `TimeoutStopSec` (90 s
-  default). A wedged filesystem could still hold the stop.
+- **Stop-post timeout.** The step's bounds are `systemctl show` at 30 s plus the executor at
+  20 s, so at most ~50 s, inside `TimeoutStopSec` (90 s default). A wedged filesystem could still
+  hold the stop.
   - Tell: `receipt: errored timeout` lines, or a unit stuck in `deactivating`.
   - Response: rollback step 1 for that unit.
 

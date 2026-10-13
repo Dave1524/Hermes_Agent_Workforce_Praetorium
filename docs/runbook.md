@@ -381,13 +381,14 @@ degraded" on all 31 workflow pages.
 
 **How fresh a run page is (2026-10-13).** A workflow page's systemd fields are read on every
 request. Its run list and incidents come from receipts, and a platform timer's receipt arrives
-two ways: its last `ExecStopPost=-…/bin/receipt_finish.py %N` writes one the moment a run
-**changes** the outcome (a fix, or a new failure), and the 05:50 sweep writes the latest
-invocation otherwise. So a flip is on the run page within seconds and opens or resolves its
+two ways: its last `ExecStopPost=-…/bin/receipt_finish.py %N` writes one the moment systemd's
+verdict **changes** (a fix, or a new failure), and the 05:50 sweep writes the latest invocation
+otherwise. A failed after-the-run check (no alert followed a failure) is cleared only by the
+sweep, never by the next clean run. So a flip is on the run page within seconds and opens or resolves its
 incident within one 5-minute `workflow-incidents` tick; an unchanged run shows up the next
 morning. Each run leaves exactly one line in that unit's journal — `receipt: written <path>
 (<old> -> <new>)`, `receipt: unchanged (<outcome>), left to the sweep`, or `receipt: errored
-<why>` — and the step never changes the job's result (`-`, last, 20 s bound). An `errored`
+<why>` — and the step never changes the job's result (`-`, last, at most ~50 s). An `errored`
 line every run means the receipts stopped: the usual cause is `~/dev/agent-workforce` checked
 out on a branch whose contracts the executor refuses (exit 2).
 

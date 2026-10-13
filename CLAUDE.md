@@ -80,10 +80,9 @@ ls design/agents/                                   # the personas — one manif
   (T5.1), shape owned by `bin/workflow_receipt.py`. One receipt per run with **exactly one**
   terminal outcome — `artifact`, `decline`, `failed` or `skipped` — never defaulted to success.
   `usage` and `cost` are `measured` or `unavailable` (null fields, never 0). Five producers:
-  `bin/agent_propose.sh`, `bin/content_change_dispatch.sh`, `bin/receipt_finish.py` (every other
-  standing timer's last `ExecStopPost=`: a change of outcome, recorded as the run ends),
-  `bin/receipt_sweep.py` (`workflow-receipt-sweep.timer`, 05:50: itself, plus a daily backfill of
-  those timers' unchanged runs) and `bin/interaction_receipt.py` (each `buzz-agent@*` turn);
+  `bin/agent_propose.sh`, `bin/content_change_dispatch.sh`, `bin/receipt_finish.py` (other
+  standing timers' last `ExecStopPost=`, on a flip), `bin/receipt_sweep.py` (05:50: itself, and
+  the daily backfill) and `bin/interaction_receipt.py` (each `buzz-agent@*` turn);
   `tests/test_receipt_coverage.sh` proves every standing row has one. `when=sweep` checks a run cannot decide are recorded `not_applicable: vantage` and the
   next sweep amends them once (`contract_exec.py --amend`, `tests/test_receipt_sweep.sh`). A
   failed receipt whose defect is fixed is **closed, not rewritten**: `bin/receipt_close.py`.

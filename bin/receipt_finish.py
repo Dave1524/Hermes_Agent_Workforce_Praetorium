@@ -8,16 +8,19 @@ Each platform timer unit runs it as its LAST `ExecStopPost=-…/receipt_finish.p
 hands stop-post commands the run's INVOCATION_ID, SERVICE_RESULT, EXIT_CODE and EXIT_STATUS; the
 start and exit times come from `systemctl show`, already final for the main process. The receipt
 is written at vantage `run`, with the evidence bin/receipt_sweep.py would have written
-(bin/systemd_evidence.py), only when this run's outcome differs from the workflow's newest judged
-receipt — the run that would move its incident. An unchanged outcome is left to
-workflow-receipt-sweep, which still writes each unit's daily receipt and amends this one's
-`sweep` checks while it is the unit's latest invocation. Every run would be ~400 receipts a day
+(bin/systemd_evidence.py), only when systemd's verdict on this run differs from its verdict on
+the run behind the workflow's newest judged receipt — the run that would move its incident. The
+comparison is systemd's verdict and never the receipt's outcome: a run that exited 0 but failed a
+`sweep` check (no alert followed) is the sweep's to clear, or every clean run would resolve the
+incident and every 05:50 reopen it. An unchanged verdict is left to workflow-receipt-sweep, which
+still writes each unit's daily receipt and amends this one's `sweep` checks while it is the unit's
+latest invocation. Every run would be ~400 receipts a day
 for the Control Room to re-read on each request; the flips are what it needs to see at once.
 
 Prints exactly one line, which lands in the unit's journal — `receipt: written|unchanged|errored
 …` — and exits 0 whatever happened: a receipt must never change the job's result. The `-` prefix
-on the unit line is the second guard. The executor is cut off at --timeout because stop-post
-time counts against the unit's TimeoutStopSec.
+on the unit line is the second guard. Stop-post time counts against the unit's TimeoutStopSec
+(90 s): `systemctl show` is bounded at 30 s and the executor at --timeout, 20 s by default.
 """
 from __future__ import annotations
 
@@ -26,6 +29,7 @@ import datetime as dt
 import json
 import os
 import pathlib
+import re
 import subprocess
 import sys
 from typing import Any, Iterator, Mapping
@@ -38,6 +42,8 @@ from systemd_evidence import epoch_of, evidence_flags, exit_status_number  # noq
 
 BIN_DIR = pathlib.Path(__file__).resolve().parent
 TIMES = ("ExecMainStartTimestamp", "ExecMainExitTimestamp")
+SHOWN = (*TIMES, "ExecMainStatus")
+RESULT = re.compile(r"\bResult=(\S+)")
 EARLIEST = dt.datetime.min.replace(tzinfo=dt.timezone.utc)
 
 
@@ -66,10 +72,12 @@ def run_record(args: argparse.Namespace, env: Mapping[str, str]) -> dict[str, st
     """systemd's record of the run that just ended, in the shape `systemctl show` answers."""
     if not env.get("INVOCATION_ID"):
         raise Errored("no INVOCATION_ID: not run by systemd as ExecStopPost")
-    times = show("user" if args.user else "system", f"{args.unit}.service", TIMES)
+    shown = show("user" if args.user else "system", f"{args.unit}.service", SHOWN)
+    status = env.get("EXIT_STATUS")
+    if status:
+        status = exit_status_number(env.get("EXIT_CODE", ""), status)
     return {"InvocationID": env["INVOCATION_ID"], "Result": env.get("SERVICE_RESULT") or "unknown",
-            "ExecMainStatus": exit_status_number(env.get("EXIT_CODE", ""), env.get("EXIT_STATUS", "")),
-            **{key: times.get(key, "") for key in TIMES}}
+            "ExecMainStatus": status or shown.get("ExecMainStatus", ""), **{key: shown.get(key, "") for key in TIMES}}
 
 
 def workflow_id(args: argparse.Namespace) -> str:
@@ -86,15 +94,25 @@ def judged_receipts(root: pathlib.Path, workflow: str) -> Iterator[dict[str, Any
             data = json.loads(path.read_text())
         except (OSError, ValueError):
             continue
-        if isinstance(data, dict) and workflow_receipt.judged(data):
+        if isinstance(data, dict) and not workflow_receipt.validate(data) and workflow_receipt.judged(data):
             yield data
 
 
-def newest_judged_outcome(root: pathlib.Path, workflow: str) -> str | None:
-    """The outcome the incident derivation would read: the newest receipt no reader skips."""
+def verdict(result: str) -> str:
+    return "artifact" if result == "success" else "failed"
+
+
+def systemd_verdict(receipt: dict[str, Any]) -> str | None:
+    """systemd's verdict on the receipted run, from its evidence; the outcome where none is recorded."""
+    found = RESULT.search((receipt.get("state_change") or {}).get("evidence") or "")
+    return verdict(found.group(1)) if found else (receipt.get("terminal") or {}).get("outcome")
+
+
+def newest_judged_verdict(root: pathlib.Path, workflow: str) -> str | None:
+    """systemd's verdict on the run the incident derivation reads: the newest receipt no reader skips."""
     newest = max(judged_receipts(root, workflow), default=None,
                  key=lambda r: workflow_receipt.parse_time(r.get("ended_at")) or EARLIEST)
-    return None if newest is None else (newest.get("terminal") or {}).get("outcome")
+    return None if newest is None else systemd_verdict(newest)
 
 
 def executor_argv(args: argparse.Namespace, record: dict[str, str]) -> list[str]:
@@ -123,8 +141,8 @@ def write(args: argparse.Namespace, record: dict[str, str], workflow: str) -> No
 def finish(args: argparse.Namespace, env: Mapping[str, str]) -> str:
     record = run_record(args, env)
     workflow = workflow_id(args)
-    now = "artifact" if record["Result"] == "success" else "failed"
-    before = newest_judged_outcome(args.receipt_root, workflow)
+    now = verdict(record["Result"])
+    before = newest_judged_verdict(args.receipt_root, workflow)
     if before == now:
         return f"receipt: unchanged ({now}), left to the sweep"
     write(args, record, workflow)

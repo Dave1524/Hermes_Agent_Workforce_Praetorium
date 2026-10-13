@@ -23,8 +23,10 @@ import importlib.util
 import json
 import pathlib
 import re
+import tempfile
 import tomllib
 import unittest
+from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 MANIFESTS = ROOT / "design" / "agents"
@@ -173,6 +175,27 @@ class EveryStandingRow(unittest.TestCase):
         for unit in platform:
             with self.subTest(unit):
                 self.assertEqual(last_stop_post(timers[unit]), finish_step(timers[unit]))
+
+    def test_the_classifier_tells_finish_from_sweep_on_fixture_units(self):
+        # (::receipt-coverage-finish-step) — on fixture unit files, so a classifier that always
+        # answered `finish` could not pass on the real tree alone
+        step = "ExecStopPost=-/home/dave/agent-workforce/bin/receipt_finish.py"
+        cases = {
+            "no stop-post": ("system", "ExecStart=/bin/true\n", "sweep"),
+            "finish last": ("system", f"ExecStart=/bin/true\n{step} %N\n", "finish"),
+            "finish, then another": ("system", f"ExecStart=/bin/true\n{step} %N\nExecStopPost=/bin/true\n", "sweep"),
+            "no dash": ("system", "ExecStopPost=/home/dave/agent-workforce/bin/receipt_finish.py %N\n", "sweep"),
+            "user unit without --user": ("user", f"{step} %N\n", "sweep"),
+            "user unit with --user": ("user", f"{step} --user %N\n", "finish"),
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            for name, (scope, body, want) in cases.items():
+                with self.subTest(name):
+                    path = pathlib.Path(tmp) / "fixture-job.service"
+                    path.write_text(f"[Service]\nType=oneshot\n{body}")
+                    row = {"unit": "fixture-job", "scope": scope, "owner": "fixture", "kind": "timer"}
+                    with mock.patch(f"{__name__}.unit_file", return_value=path):
+                        self.assertEqual(producer_classes(row, {"fixture-job"}), {want})
 
     def test_no_self_receipting_unit_carries_the_finish_step(self):
         # (::receipt-coverage-finish-step) — it would be a second producer for the same run id

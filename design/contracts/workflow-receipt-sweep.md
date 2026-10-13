@@ -24,8 +24,9 @@ once. Skipped, closed and already-swept receipts are left alone, with the reason
 **Since 2026-10-13 the platform timers record their own flips; the sweep backfills.** Each
 platform timer ends on `ExecStopPost=-…/bin/receipt_finish.py %N`, which writes the run's
 vantage-`run` receipt the moment the run ends — systemd's verdict, the evidence this sweep would
-have written (`bin/systemd_evidence.py`, one builder for both) — when its outcome differs from
-the workflow's newest judged receipt. A fix or a new failure reaches the Control Room within
+have written (`bin/systemd_evidence.py`, one builder for both) — when systemd's verdict differs
+from its verdict on the run behind the workflow's newest judged receipt. It compares verdicts,
+never outcomes, so a `sweep` check this sweep failed stays failed until this sweep passes it. A fix or a new failure reaches the Control Room within
 seconds and its incident within one `workflow-incidents` tick, instead of the next 05:50. An
 unchanged run is still written here, from systemd's record, as before; and a finish receipt is
 amended here like any run-vantage receipt. Every run was not recorded on purpose: the Control

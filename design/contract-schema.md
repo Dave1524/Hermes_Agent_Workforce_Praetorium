@@ -179,9 +179,10 @@ receipts its own run were recorded and decided by nobody.
 
 A platform timer's run-vantage receipt comes from its finish step (2026-10-13):
 `ExecStopPost=-…/bin/receipt_finish.py %N`, last in the unit. It records systemd's verdict on
-the run — the evidence the sweep would have written — and nothing else, and only when the
-outcome differs from the workflow's newest judged receipt. An unchanged run is left to the
-sweep, which backfills each unit's latest invocation daily and amends a finish receipt's
+the run — the evidence the sweep would have written — and nothing else, and only when that
+verdict differs from systemd's verdict on the run behind the workflow's newest judged receipt.
+A failed `sweep` check is never undone by it: the next clean run compares equal and leaves the
+incident to the sweep. An unchanged run is left to the sweep, which backfills each unit's latest invocation daily and amends a finish receipt's
 `sweep` checks while it is still that invocation.
 
 A contract for an always-on unit has no run to be decided from — no `RUN_DATE`, no attempt log,
