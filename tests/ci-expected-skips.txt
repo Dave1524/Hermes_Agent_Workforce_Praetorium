@@ -120,3 +120,4 @@ SKIP: test_retired_residue.sh — the installed units and home tree a checkout c
 SKIP: test_workflow_retirements.sh — the deployed trees a live residue scan reads (absent: ~/agent-workforce/bin ~/agent-workforce/systemd)
 SKIP: test_vault_credential.sh — the canonical vault clone and its installed hooks (absent: ~/dev/Obsidian_AI_Operating_System/.git)
 SKIP: test_vault_symlink_unrecorded.sh — the installed units, qmd config and vault worktrees (absent: ~/.config/qmd/index.yml ~/agent-worktrees)
+SKIP: test_production_first.sh — the box user-scope instruction files and plan commands (absent: ~/.claude/CLAUDE.md ~/.codex/AGENTS.md ~/.claude/commands/plan-feature.md ~/.claude/commands/ship.md)
