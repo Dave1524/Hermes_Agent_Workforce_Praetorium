@@ -22,5 +22,6 @@ ExecStart=/home/dave/agent-workforce/bin/scorecard.sh
 # with nothing new, so a newer-than-marker test would silence the rollup exactly
 # when it is most worth reading. deliver_scorecard.sh composes from current state.
 ExecStartPost=/home/dave/agent-workforce/bin/deliver_scorecard.sh
+ExecStopPost=-/home/dave/agent-workforce/bin/receipt_finish.py %N
 TimeoutStartSec=10min
 NoNewPrivileges=true
