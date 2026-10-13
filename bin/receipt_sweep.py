@@ -51,6 +51,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import contract_exec  # noqa: E402
 import workflow_receipt  # noqa: E402
+from systemd_evidence import epoch_of, evidence_flags  # noqa: E402
 
 BIN_DIR = pathlib.Path(__file__).resolve().parent
 SELF_UNIT = workflow_receipt.SWEEP_WORKFLOW_ID
@@ -116,25 +117,6 @@ def timer_is_active(scope: str, unit: str) -> bool:
     except (OSError, subprocess.TimeoutExpired):
         return False
     return done.returncode == 0 and done.stdout.strip() == "active"
-
-
-def epoch_of(stamp: str) -> int | None:
-    """`@1789452600` (the --timestamp=unix form) -> 1789452600; anything else -> None."""
-    if stamp.startswith("@") and stamp[1:].isdigit():
-        return int(stamp[1:])
-    return None
-
-
-def evidence_flags(unit: str, record: dict[str, str]) -> list[str]:
-    """systemd's verdict as executor evidence: a clean exit is a state change, the rest failed."""
-    result = record.get("Result") or "unknown"
-    status = record.get("ExecMainStatus") or "?"
-    exited = epoch_of(record.get("ExecMainExitTimestamp", ""))
-    when = workflow_receipt.iso_utc(dt.datetime.fromtimestamp(exited, UTC)) if exited else "unknown time"
-    summary = f"systemd: {unit}.service {record['InvocationID']} Result={result} ExecMainStatus={status} exited {when}"
-    if result == "success":
-        return ["--state-change", summary]
-    return ["--failed", f"Result={result} ExecMainStatus={status}", "--state-change", summary]
 
 
 # --- the sweep ------------------------------------------------------------------------------
