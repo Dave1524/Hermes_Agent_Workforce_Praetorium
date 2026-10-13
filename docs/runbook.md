@@ -36,7 +36,7 @@ Scheduled **proposal** agent jobs share `bin/agent_propose.sh` (lock, preflight,
 | Daily plan (ops) | **Mon–Fri 06:00** | `praetorium-daily-plan.{service,timer}` | `~/.config/agent-workforce/daily_plan.env` | `profiles/daily_plan_task.md` | *(headless Claude Code)* |
 | EOD summary (ops) | daily **22:15** | `praetorium-eod-summary.{service,timer}` | `~/.config/agent-workforce/eod_summary.env` | `profiles/eod_summary_task.md` | *(headless Claude Code)* |
 | Agent inbox → Notion sync | `agent-inbox-sync.timer` | `agent-inbox-sync.{service,timer}` | *(service embeds the pipeline cmd)* | n/a | n/a |
-| Workflow receipt sweep (no LLM; T5.2) | daily **05:50** — shipped disabled; `systemctl is-enabled workflow-receipt-sweep.timer` read `enabled` on 2026-09-17 (fires at 05:50, last 09-17 05:50:03) | `workflow-receipt-sweep.{service,timer}` | n/a | `bin/receipt_sweep.py` — one receipt per finished platform invocation, from systemd's own record; since T7.3 it also decides the `when=sweep` checks of every self-receipted run in place (`contract_exec.py --amend`) | n/a |
+| Workflow receipt sweep (no LLM; T5.2) | daily **05:50** — shipped disabled; `systemctl is-enabled workflow-receipt-sweep.timer` read `enabled` on 2026-09-17 (fires at 05:50, last 09-17 05:50:03) | `workflow-receipt-sweep.{service,timer}` | n/a | `bin/receipt_sweep.py` — each platform timer's latest invocation, from systemd's own record, when its finish step left it unrecorded (2026-10-13: `bin/receipt_finish.py` records only flips); since T7.3 it also decides the `when=sweep` checks of every run-vantage receipt in place (`contract_exec.py --amend`) | n/a |
 
 **Two rows above were corrected 2026-09-02 (W1).** They named `profiles/weekly_pre_assembly_task.md`
 and `profiles/overnight_morning_report_task.md` — both archived to `profiles/archive/` on 2026-09-01 —
@@ -378,6 +378,18 @@ failures such as a manifest that does not parse stay on every page. A spent entr
 `contract_exempt` is `contractStatus: exempt` with the reason, never a degraded contracts source:
 until 2026-09-16 the two spent NeKoVri entries read `contract not declared` and put "contracts
 degraded" on all 31 workflow pages.
+
+**How fresh a run page is (2026-10-13).** A workflow page's systemd fields are read on every
+request. Its run list and incidents come from receipts, and a platform timer's receipt arrives
+two ways: its last `ExecStopPost=-…/bin/receipt_finish.py %N` writes one the moment a run
+**changes** the outcome (a fix, or a new failure), and the 05:50 sweep writes the latest
+invocation otherwise. So a flip is on the run page within seconds and opens or resolves its
+incident within one 5-minute `workflow-incidents` tick; an unchanged run shows up the next
+morning. Each run leaves exactly one line in that unit's journal — `receipt: written <path>
+(<old> -> <new>)`, `receipt: unchanged (<outcome>), left to the sweep`, or `receipt: errored
+<why>` — and the step never changes the job's result (`-`, last, 20 s bound). An `errored`
+line every run means the receipts stopped: the usual cause is `~/dev/agent-workforce` checked
+out on a branch whose contracts the executor refuses (exit 2).
 
 **What it never writes:** anything of its own. Every HTTP write method is 405 except the two
 control endpoints (`POST /api/v1/control/{actions,proposals}`), which validate the request and

@@ -4,6 +4,11 @@
     receipt_sweep.py [--tsv FILE] [--receipt-root DIR] [--now ISO] [--executor PATH]
                      [--repo-root DIR] [--manifest-dir DIR]
 
+Since 2026-10-13 a platform timer's flips are receipted as the run ends by its finish step
+(bin/receipt_finish.py, the same evidence via bin/systemd_evidence.py); this sweep backfills the
+latest invocation the finish step left unrecorded and amends the one it wrote, like any
+run-vantage receipt.
+
 Walks config/fleet-units.tsv rows `status=standing kind=timer` — itself excluded — and for
 each asks systemd about the unit, in this order:
 
