@@ -845,6 +845,7 @@ path    = "tests/test_receipt_coverage.sh"
 owner   = "fleet"
 asserts = [
   "receipt-coverage-every-standing-row",  # every standing row has exactly one receipt producer, decided by what systemd execs; the producible workflow_ids equal the logical set
+  "receipt-coverage-finish-step",         # every standing platform timer but the sweep ends on the `-` finish step, last; no self-receipting unit carries it
 ]
 why_no_workflow = """
 It joins every standing row to the producer that receipts it. A coverage claim over all of

@@ -26,6 +26,7 @@ WorkingDirectory=/home/dave
 Environment=QMD_LLAMA_GPU=vulkan
 SupplementaryGroups=render video
 ExecStart=/home/dave/agent-workforce/bin/fleet_eval.sh --deliver
+ExecStopPost=-/home/dave/agent-workforce/bin/receipt_finish.py %N
 TimeoutStartSec=30min
 NoNewPrivileges=true
 Nice=5

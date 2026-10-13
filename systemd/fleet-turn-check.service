@@ -13,5 +13,6 @@ Type=oneshot
 User=dave
 Environment=XDG_RUNTIME_DIR=/run/user/1000
 ExecStart=/home/dave/.config/buzz-team/fleet-turn-check.sh
+ExecStopPost=-/home/dave/agent-workforce/bin/receipt_finish.py %N
 TimeoutStartSec=5min
 NoNewPrivileges=true

@@ -21,6 +21,18 @@ replaces the placeholders by id, turns the receipt `failed` on a failed one and 
 reverse, and stamps a `swept` block naming this sweep's run id, so the receipt is looked at
 once. Skipped, closed and already-swept receipts are left alone, with the reason logged.
 
+**Since 2026-10-13 the platform timers record their own flips; the sweep backfills.** Each
+platform timer ends on `ExecStopPost=-…/bin/receipt_finish.py %N`, which writes the run's
+vantage-`run` receipt the moment the run ends — systemd's verdict, the evidence this sweep would
+have written (`bin/systemd_evidence.py`, one builder for both) — when systemd's verdict differs
+from its verdict on the run behind the workflow's newest judged receipt. It compares verdicts,
+never outcomes, so a `sweep` check this sweep failed stays failed until this sweep passes it. A fix or a new failure reaches the Control Room within
+seconds and its incident within one `workflow-incidents` tick, instead of the next 05:50. An
+unchanged run is still written here, from systemd's record, as before; and a finish receipt is
+amended here like any run-vantage receipt. Every run was not recorded on purpose: the Control
+Room parses every receipt on every request (795 → 0.77 s, measured 2026-10-12), and twelve units
+at their cadences would add ~400 a day.
+
 ## Identity
 
 | | |
@@ -32,8 +44,8 @@ once. Skipped, closed and already-swept receipts are left alone, with the reason
 | Cadence | daily, `OnCalendar=*-*-* 05:50`, `Persistent=true` — **disabled at ship** |
 | Alerted | yes — `OnFailure=agent-alert@%n.service`; fires on an executor that left no receipt, never on a paused timer |
 | Remediation owner | trajan |
-| Retirement condition | every platform runner receipts its own run (then the sweep has nothing to write) |
-| Contract version | 1 (2026-09-15) |
+| Retirement condition | none while a timer can stop firing: even with every platform runner recording its flips (2026-10-13), only this sweep sees a timer that never fired, decides the `sweep` checks and backfills unchanged runs |
+| Contract version | 2 (2026-10-13: platform timers' finish step; the sweep backfills) |
 | Retry | idempotent: a receipt that exists is skipped or, once, amended — a rerun writes only what the last one missed and amends nothing twice |
 
 ## Trigger
@@ -64,7 +76,8 @@ deploy step; `systemctl is-enabled workflow-receipt-sweep.timer` reads `disabled
   `never ran:`, `running:`, `already receipted:` with its reason, `amended:`, `refused:`,
   `written:`, `errored:`) and the `swept` summary.
 - **Beneficiary:** the Control Room (`bin/control_room_api.py`), which reads receipts and
-  nothing else — without the sweep every platform row is `no receipt` forever.
+  nothing else — without the sweep an unchanged platform row would show its last flip, however
+  old, and a timer that stopped firing would show nothing at all.
 - **Next actor:** none
 - **Next action:** none
 - **Benefit hypothesis:** every standing timer's last run is visible on the screen with an

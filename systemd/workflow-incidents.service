@@ -20,5 +20,6 @@ Environment=DELIVERY_RUNTIME=none
 Environment=CONTROL_ROOM_REPO_ROOT=/home/dave/dev/agent-workforce
 Environment=INCIDENT_LINK_TEMPLATE=http://praetorium:8787/api/v1/incidents#{key}
 ExecStart=/home/dave/agent-workforce/bin/deliver_incidents.sh
+ExecStopPost=-/home/dave/agent-workforce/bin/receipt_finish.py %N
 TimeoutStartSec=4min
 NoNewPrivileges=true

@@ -177,6 +177,14 @@ sweep check turns the receipt `failed`; a `swept` block marks it done. Until 202
 sweep skipped every receipt that already existed, so the `sweep` checks of every unit that
 receipts its own run were recorded and decided by nobody.
 
+A platform timer's run-vantage receipt comes from its finish step (2026-10-13):
+`ExecStopPost=-…/bin/receipt_finish.py %N`, last in the unit. It records systemd's verdict on
+the run — the evidence the sweep would have written — and nothing else, and only when that
+verdict differs from systemd's verdict on the run behind the workflow's newest judged receipt.
+A failed `sweep` check is never undone by it: the next clean run compares equal and leaves the
+incident to the sweep. An unchanged run is left to the sweep, which backfills each unit's latest invocation daily and amends a finish receipt's
+`sweep` checks while it is still that invocation.
+
 A contract for an always-on unit has no run to be decided from — no `RUN_DATE`, no attempt log,
 no `LastTriggerUSec`. Where every declaring `[[workflows]]` entry carries `kind = "service"` the
 check rules are skipped and the exemption is printed by name on every run; `kind` is joined
@@ -271,9 +279,9 @@ fourteen — `local-tier-eval` and `ttm-pool-drain` — were retired 2026-09-18 
 them** — trigger and cadence, the artifact or state change, where the evidence of a run is,
 who fixes a failure, and the retirement condition — and exactly two `sweep` checks: the timer
 fired inside its cadence window, and the run's own evidence (journal verdict, dated artifact,
-adapter log, receipt) exists for the run `LastTriggerUSec` names. There is no `run` vantage,
+adapter log, receipt) exists for the run `LastTriggerUSec` names. There are no `run` checks,
 because none of these jobs runs under `bin/agent_propose.sh`; the anchor is the timer, not an
-attempt log. Every one answers `Unknown` for the benefit signal, with the reason. Two things
+attempt log. Their run-vantage receipt carries systemd's verdict alone (the finish step above). Every one answers `Unknown` for the benefit signal, with the reason. Two things
 they surfaced by being written: `buzz-pr-watch` retires itself the day block/buzz#3816 closes,
 and its second check is the status transition the manifest note said nothing would announce;
 and `ttm-pool-drain`'s runner lived outside the repo and was drift-checked by nothing (moot

@@ -34,6 +34,7 @@ Type=oneshot
 User=dave
 Environment=DELIVERY_JOB=%n
 ExecStart=/home/dave/agent-workforce/bin/buzz_acp_update.sh check
+ExecStopPost=-/home/dave/agent-workforce/bin/receipt_finish.py %N
 SuccessExitStatus=10
 TimeoutStartSec=20min
 NoNewPrivileges=true

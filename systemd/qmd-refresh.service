@@ -21,6 +21,7 @@ Type=oneshot
 User=dave
 ExecStart=/home/dave/agent-workforce/bin/vault_sync_guard.sh sync
 ExecStart=/bin/bash -lc 'qmd update && qmd embed --timeout 20'
+ExecStopPost=-/home/dave/agent-workforce/bin/receipt_finish.py %N
 TimeoutStartSec=30min
 NoNewPrivileges=true
 ProtectSystem=full

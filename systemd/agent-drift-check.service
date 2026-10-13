@@ -19,5 +19,6 @@ Type=oneshot
 User=dave
 Environment=DELIVERY_JOB=%n
 ExecStart=/home/dave/dev/agent-workforce/bin/check_deploy_drift.sh
+ExecStopPost=-/home/dave/agent-workforce/bin/receipt_finish.py %N
 TimeoutStartSec=5min
 NoNewPrivileges=true
