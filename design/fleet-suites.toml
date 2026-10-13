@@ -1056,3 +1056,16 @@ why_no_workflow = """
 The Control Room's board write seam, ahead of the workflows that read what it records. It forwards
 Dave's decisions to the root-owned broker, which no scheduled workflow does.
 """
+
+[[suite]]
+path    = "tests/test_production_first.sh"
+owner   = "fleet"
+asserts = [
+  "production-first-block",   # the canonical rule is one marked block carrying every clause: no ranking by cost or speed, research first, triggers and failure, decisions for Dave, increments on the same architecture
+  "production-first-apply",   # the sync appends to a file keeping its text, replaces a stale block, is idempotent and creates a missing target only when asked
+  "production-first-check",   # a drifted copy, a missing block, a missing file and a plan or ship command that lost a required section are each named and fail the check
+]
+why_no_workflow = """
+Instruction hygiene for every agent session on the box and the Mac, not a scheduled job. No workflow
+runs it; the live half of the suite checks the user-scope files.
+"""
