@@ -6,18 +6,15 @@ pick), `bin/run_research_brief_cc.sh`, `bin/brief_or_decline.sh`, `bin/board.py`
 `systemd/research-brief.{service,timer}` and `.claude/briefs/agent-board-refinement-2026-09-23.md`
 §3.2a, §3.5 and §3.6.3-§3.6.8. No live brief was read: the board has no card yet.
 
-**Since 2026-10-13 the board reactor starts it.** `board-brief@<card>.service` runs the same
-wrapper, runner and profile with `AGENT_BOARD_CARD=<card>`: the pick takes that card, the lock is
-per card, and the run starts within seconds of a card wanting a brief (created, returned, or
-answered). The run writes either `questions.out.md` — recorded as a `questions` note, at most
-`board.QUESTION_ROUNDS` (two) per card — or `brief.out.md`. The hourly timer retires through its
-own `control-room/retire-research-brief-*` PR.
+**Dormant since 2026-10-14.** The board reactor's `board-brief@<card>.service` took over the
+brief, with its own files (`design/contracts/board-brief.md`); this timer retires through its own
+`control-room/retire-research-brief-*` PR.
 
 ## Identity
 
 | | |
 |---|---|
-| Unit | `board-brief@.service` (one instance per card, started by `board-reactor`); `research-brief.service` / `.timer`, dormant since 2026-10-14 (timer disabled), until its retirement PR merges |
+| Unit | `research-brief.service` / `.timer`, dormant since 2026-10-14 (timer disabled), until its retirement PR merges |
 | Owner | **claudius** (`design/agents/claudius.toml`) |
 | Surface | S2 — scheduled headless Claude Code |
 | Executor | `claude -p --model claude-opus-5`, box subscription (`bin/run_research_brief_cc.sh`) |
@@ -28,9 +25,7 @@ own `control-room/retire-research-brief-*` PR.
 
 ## Trigger
 
-`board-brief@<card>.service`: started by `board-reactor` (`design/contracts/board-reactor.md`)
-when the card wants a brief and no run of it is active, within its cooldown, cap and slot limit.
-Until retirement, the timer: `OnCalendar=Mon..Fri 08..18:07`, `RandomizedDelaySec=3min`, `Persistent=false` — hourly on
+The timer, disabled since 2026-10-14: `OnCalendar=Mon..Fri 08..18:07`, `RandomizedDelaySec=3min`, `Persistent=false` — hourly on
 weekdays; a tick missed while the box was off must not fire at boot. Recurring; no expiry. The
 longest legitimate gap between runs is the weekend plus the overnight gap, 72 hours.
 
@@ -167,7 +162,6 @@ and exits 0. The STEP 0 idempotency skip prints `skip: …`, exits 3 and is rece
    72-hour weekend plus jitter; a never-fired timer fails rather than reading as 1970.
 
    ```check id=timer-fired-this-window when=sweep
-   [ "$UNIT" = board-brief ] && { echo "n/a: board-brief is started by the reactor, not a timer"; exit 77; }
    t="$($SYSTEMCTL show "$UNIT.timer" -p LastTriggerUSec --value --timestamp=unix)"
    case "$t" in @*) ;; *) echo "the timer has never fired"; exit 1 ;; esac
    age=$(( $(date +%s) - ${t#@} ))
@@ -180,7 +174,6 @@ and exits 0. The STEP 0 idempotency skip prints `skip: …`, exits 3 and is rece
    shared file naming no job; journald scopes by unit.
 
    ```check id=not-lock-skipped when=sweep
-   [ "$UNIT" = board-brief ] && { echo "n/a: board-brief is started by the reactor, not a timer"; exit 77; }
    t="$($SYSTEMCTL show "$UNIT.timer" -p LastTriggerUSec --value --timestamp=unix)"
    case "$t" in @*) ;; *) echo "the timer has never fired"; exit 1 ;; esac
    [ -z "$($JOURNALCTL --unit "$UNIT.service" --since "$t" --no-pager \

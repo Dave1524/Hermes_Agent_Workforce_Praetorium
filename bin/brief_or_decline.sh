@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AGENT_VERIFY_CMD for the research-brief run (Dev Plan B2), on proposal_or_decline.sh's exit
+# AGENT_VERIFY_CMD for the board brief run (board-brief@<card>, first shipped as research-brief, Dev Plan B2), on proposal_or_decline.sh's exit
 # contract: a run is legitimate only if it produced THIS run's valid brief, or declined in its
 # own output, or printed its own idempotent skip.
 #

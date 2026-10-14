@@ -22,7 +22,7 @@ notes       = "Isolated like marcus (2026-09-18): the wrapper flags, agent-setti
 # the box of a capability that exists per-workflow rather than per-agent.
 [surfaces.scheduled]
 present     = true
-governed_by = "bin/run_knowledge_digest_cc.sh, bin/run_standing_research_cc.sh, bin/run_raw_ingest_cc.sh, bin/run_m1_signal_scan_cc.sh, bin/run_bd_stall_radar_cc.sh, bin/run_bd_followup_drafts_cc.sh, bin/run_research_brief_cc.sh"
+governed_by = "bin/run_knowledge_digest_cc.sh, bin/run_standing_research_cc.sh, bin/run_raw_ingest_cc.sh, bin/run_m1_signal_scan_cc.sh, bin/run_bd_stall_radar_cc.sh, bin/run_bd_followup_drafts_cc.sh, bin/run_board_brief_cc.sh"
 tools       = ["Bash", "Read", "Write", "Edit", "Glob", "Grep"]   # the common floor
 tools_web   = ["WebSearch", "WebFetch"]                            # standing-research, m1 and research-brief only
 mcp         = []
@@ -98,17 +98,17 @@ surface  = "scheduled"
 kind     = "template"    # board-brief@<card>.service, started by board-reactor; no timer
 trigger  = "event-driven — board-reactor starts one instance per card that wants a brief"
 model    = "claude-opus-5"
-profile  = "profiles/research_brief_cc_task.md"
-runner   = "bin/run_research_brief_cc.sh"
+profile  = "profiles/board_brief_cc_task.md"
+runner   = "bin/run_board_brief_cc.sh"
 route    = "research"
 web      = true
 tools_without = ["Edit"]
 board    = "research"
-contract = "design/contracts/research-brief.md"
+contract = "design/contracts/board-brief.md"
 status   = "standing"
-suite    = ["tests/test_research_brief_smoke.sh", "tests/test_board_reactor.sh"]
+suite    = ["tests/test_board_brief_smoke.sh", "tests/test_board_reactor.sh"]
 skills   = ["investment-research", "meeting-prep", "prospect-research", "board-cards"]
-notes    = "The research-brief workflow per card: same profile, runner and contract, keyed by AGENT_BOARD_CARD=%i instead of a timer pick. Writes questions.out.md (at most two rounds) or brief.out.md."
+notes    = "One card's brief, keyed by AGENT_BOARD_CARD=%i. Writes questions.out.md (at most two rounds) or brief.out.md; the wrapper records it. Split from research-brief's files 2026-10-14."
 
 [[workflows]]
 unit     = "board-work"

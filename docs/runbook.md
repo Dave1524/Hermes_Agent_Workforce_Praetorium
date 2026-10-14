@@ -24,7 +24,7 @@ Scheduled **proposal** agent jobs share `bin/agent_propose.sh` (lock, preflight,
 | Standing research (Opus 5, NUC research pipeline brief 2026-07-30) | `agent-proposal.timer` Mon–Fri 04:30 | `agent-proposal.{service,timer}` | `~/.config/agent-workforce/standing_research.env` | `profiles/standing_research_cc_task.md` | *(headless Claude Code)* |
 | Raw source ingestion (Mechanism B) | **Tue–Sat 03:00** | `raw-ingest.{service,timer}` | `~/.config/agent-workforce/raw_ingest.env` | `profiles/raw_ingest_cc_task.md` | *(headless Claude Code)* |
 | Board brief run (Dev Plan B2) — **dormant 2026-10-14**, replaced by `board-brief@`; retirement PR follows | timer disabled at the board reactor install | `research-brief.{service,timer}` | `~/.config/agent-workforce/research_brief.env` | `profiles/research_brief_cc_task.md` | *(headless Claude Code; `AGENT_RUN_MODE=board`)* |
-| Board brief, per card (board reactor) | started by `board-reactor` within 5 s of a card wanting a brief | `board-brief@<card>.service` | `~/.config/agent-workforce/research_brief.env` | `profiles/research_brief_cc_task.md` | *(headless Claude Code; `AGENT_RUN_MODE=board`, `AGENT_BOARD_CARD=%i`)* |
+| Board brief, per card (board reactor) | started by `board-reactor` within 5 s of a card wanting a brief | `board-brief@<card>.service` | `~/.config/agent-workforce/board_brief.env` | `profiles/board_brief_cc_task.md` | *(headless Claude Code; `AGENT_RUN_MODE=board`, `AGENT_BOARD_CARD=%i`)* |
 | Board research, per card (board reactor) | started by `board-reactor` within 5 s of a card's brief approval | `board-work@<card>.service` | `~/.config/agent-workforce/board_work.env` | `profiles/standing_research_cc_task.md` | *(headless Claude Code; `AGENT_BOARD_CARD=%i`)* |
 | Board reactor (no LLM) | always on; reconcile every **5 min** | `board-reactor.service`, `board-reconcile.{service,timer}` | `~/.config/agent-workforce/board_reactor.env` (optional) | `bin/board_reactor.py` | n/a |
 | Knowledge digest (Mechanism C) | **Sun 09:00** | `knowledge-digest.{service,timer}` | `~/.config/agent-workforce/knowledge_digest.env` | `profiles/knowledge_digest_cc_task.md` | *(headless Claude Code)* |
@@ -856,6 +856,7 @@ sudo install -m 0644 systemd/board-reactor.service systemd/board-reconcile.servi
   systemd/board-reconcile.timer 'systemd/board-brief@.service' 'systemd/board-work@.service' /etc/systemd/system/
 sudo install -m 0644 config/polkit/50-board-reactor.rules /etc/polkit-1/rules.d/
 cp profiles/board_work.env.example ~/.config/agent-workforce/board_work.env && chmod 600 ~/.config/agent-workforce/board_work.env
+cp profiles/board_brief.env.example ~/.config/agent-workforce/board_brief.env && chmod 600 ~/.config/agent-workforce/board_brief.env
 sudo systemctl daemon-reload
 sudo systemctl disable --now research-brief.timer   # dormant: board-brief@ owns the Backlog pick
 sudo systemctl enable --now board-reactor.service board-reconcile.timer
