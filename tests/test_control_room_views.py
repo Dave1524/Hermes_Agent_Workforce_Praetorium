@@ -28,7 +28,7 @@ import control_room_views as views  # noqa: E402
 import control_room_view_workflow as view_workflow  # noqa: E402
 
 STANDING_ENTRIES = 34   # MEASURED 2026-10-14 (board reactor: +4 entries, research-brief dormant)
-LOGICAL_WORKFLOWS = 33
+LOGICAL_WORKFLOWS = 32
 ROW = re.compile(r'<tr[^>]*\bdata-workflow="([^"]+)"[^>]*>(.*?)</tr>', re.DOTALL)
 CSP = "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'"
 
