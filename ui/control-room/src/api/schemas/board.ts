@@ -9,6 +9,7 @@ export const cardSummarySchema = z.object({
   outcome: z.string().nullish(),
   blockedCause: z.string().nullish(),
   approvedLanding: z.boolean().default(false),
+  awaitingAnswer: z.boolean().default(false),
   owner: z.string(),
   kind: z.string(),
   priority: z.string().nullish(),
@@ -26,7 +27,6 @@ export const boardSchema = z.object({
 
 export const cardFieldsSchema = z.object({
   title: z.string(),
-  idea: z.string(),
   scope: z.array(z.string()).default([]),
   deadline: z.string().nullish(),
   research_on: z.string().nullish(),
@@ -62,6 +62,7 @@ export const cardActivitySchema = z.object({
   runId: z.string().nullish(),
   detail: z.string().nullish(),
   outcome: z.string().nullish(),
+  noteKind: z.string().nullish(),
 });
 
 export const acceptanceLineSchema = z.object({
@@ -91,13 +92,24 @@ export const cardDetailSchema = cardSummarySchema.extend({
   runs: z.array(cardRunSchema).default([]),
   activity: z.array(cardActivitySchema).default([]),
   research: cardResearchSchema,
+  // The card's busy run as the broker's instance id (board-work@<card>); null when none runs.
+  runningUnit: z.string().nullish(),
+});
+
+export const trashItemSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  deletedAt: z.string().nullish(),
+  purgeAfter: z.string().nullish(),
 });
 
 export const boardResponseSchema = envelope(boardSchema);
+export const trashResponseSchema = envelope(z.array(trashItemSchema));
 export const cardResponseSchema = envelope(cardDetailSchema);
 
 export type CardSummary = z.infer<typeof cardSummarySchema>;
 export type CardDetail = z.infer<typeof cardDetailSchema>;
 export type Board = z.infer<typeof boardSchema>;
 export type CardActivity = z.infer<typeof cardActivitySchema>;
+export type TrashItem = z.infer<typeof trashItemSchema>;
 export type CardResearch = z.infer<typeof cardResearchSchema>;

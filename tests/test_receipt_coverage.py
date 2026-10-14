@@ -9,10 +9,12 @@ which records a change of outcome when the run ends (2026-10-13); `receipt_sweep
 itself and backfills those timers daily from systemd's record, so a timer without the finish
 step is `sweep` and is the finding; the `buzz-agent@*` services are receipted per turn by
 bin/interaction_receipt.py, from the Claude Code Stop hook (claude-agent-acp) or codex
-`notify` (codex-acp). A row the chain leaves with zero producers, or two, is the finding.
+`notify` (codex-acp); `board-reactor.service` receipts its own health flips
+(bin/reactor_receipt.py), and its per-card templates (`kind = "template"`, board-brief@ and
+board-work@) run agent_propose.sh like any scheduled row. A row the chain leaves with zero producers, or two, is the finding.
 The producible workflow_ids — what each producer would write as `workflow_id` — must equal
 the logical set the Control Room lists, so no row can be visible on the screen and
-unreceiptable. The tallies are MEASURED 2026-09-22 (T8.4 added agent-config-eval, a swept timer),
+unreceiptable. The tallies are MEASURED 2026-10-14 (the board reactor: two templates, the daemon, the reconcile; research-brief dormant),
 pinned the way tests/test_control_room_views.py pins its 32/31. Anchors are the `::` comments;
 tests/test_receipt_coverage.sh is the gate entry point.
 """
@@ -38,8 +40,10 @@ FINISH_STEP = "-/home/dave/agent-workforce/bin/receipt_finish.py"
 
 SELF_RECEIPTING = {"agent_propose.sh": "scheduled", "content_change_dispatch.sh": "dispatch",
                    "receipt_sweep.py": "sweep-self"}
-EXPECTED_TALLY = {"scheduled": 12, "dispatch": 1, "finish": 12, "sweep-self": 1, "interaction": 5}
-LOGICAL_WORKFLOWS = 30
+EXPECTED_TALLY = {"scheduled": 13, "dispatch": 1, "finish": 13, "sweep-self": 1, "interaction": 5,
+                  "reactor": 1}
+LOGICAL_WORKFLOWS = 33
+REACTOR_DAEMON = "board_reactor.py"
 
 
 def load(name):
@@ -67,7 +71,8 @@ def standing_rows() -> list[dict[str, str]]:
 
 def unit_file(row: dict[str, str]) -> pathlib.Path:
     unit_dir = ROOT / "systemd" / "user" if row["scope"] == "user" else ROOT / "systemd"
-    return unit_dir / f"{row['unit']}.service"
+    suffix = "@.service" if row["kind"] == "template" else ".service"
+    return unit_dir / f"{row['unit']}{suffix}"
 
 
 def exec_start(row: dict[str, str]) -> str | None:
@@ -83,6 +88,8 @@ def producer_classes(row: dict[str, str], swept: set[str]) -> set[str]:
     if row["kind"] == "service" and row["unit"].startswith("buzz-agent@"):
         classes.add("interaction")
     program = exec_start(row)
+    if row["kind"] == "service" and program == REACTOR_DAEMON:
+        classes.add("reactor")
     if program in SELF_RECEIPTING:
         classes.add(SELF_RECEIPTING[program])
     if row["kind"] == "timer" and row["unit"] in swept and program not in SELF_RECEIPTING:
@@ -171,7 +178,7 @@ class EveryStandingRow(unittest.TestCase):
         # change the job's result or be skipped by an earlier stop-post line that failed
         timers = {row["unit"]: row for row in self.rows if row["kind"] == "timer"}
         platform = sorted(platform_units() & timers.keys())
-        self.assertEqual(len(platform), 12, platform)
+        self.assertEqual(len(platform), 13, platform)
         for unit in platform:
             with self.subTest(unit):
                 self.assertEqual(last_stop_post(timers[unit]), finish_step(timers[unit]))

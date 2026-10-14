@@ -4,9 +4,9 @@ import CardBrief from "@/components/card/CardBrief";
 import CardEditActions from "@/components/card/CardEditActions";
 import CardFooter from "@/components/card/CardFooter";
 import CardHeader from "@/components/card/CardHeader";
-import CardIdea from "@/components/card/CardIdea";
 import CardNote from "@/components/card/CardNote";
 import CardResearch from "@/components/card/CardResearch";
+import CardRunStop from "@/components/card/CardRunStop";
 import CardSidePanel from "@/components/card/CardSidePanel";
 import type { CardWriter } from "@/components/card/cardWriter";
 import { useCardDecision } from "@/components/card/useCardDecision";
@@ -40,10 +40,10 @@ function EditableCardDialog({ card, onClose, writer, onChanged, onReload }: Card
       footer={<CardFooter moves={card.moves} creating={edit.creating} canCreate={edit.canCreate} onCreate={edit.create} decision={decision} />}
     >
       <CardEditActions problem={edit.problem ?? decision.problem} onReload={onReload} />
+      {card.runningUnit && !edit.creating && <CardRunStop unit={card.runningUnit} onStopped={() => changed(null)} />}
       <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_190px]">
         <div className="min-w-0 flex flex-col gap-3.5">
           <CardBrief card={card} editing={editing} canSave={edit.canSaveBrief} onSave={edit.creating ? undefined : edit.saveBrief} canSaveAndApprove={edit.canSaveAndApprove} onSaveAndApprove={edit.creating ? undefined : edit.saveBriefAndApprove} />
-          <CardIdea card={card} editing={editing} />
           <CardResearch research={card.research} />
           {!edit.creating && <CardActivity card={card} />}
           {!edit.creating && <CardNote editing={editing} canAdd={edit.canAddNote} onAdd={edit.addNote} />}
@@ -62,7 +62,6 @@ export default function CardDialog(props: CardDialogProps) {
       <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_190px]">
         <div className="min-w-0 flex flex-col gap-3.5">
           <CardBrief card={card} />
-          <CardIdea card={card} />
           <CardResearch research={card.research} />
           <CardActivity card={card} />
         </div>

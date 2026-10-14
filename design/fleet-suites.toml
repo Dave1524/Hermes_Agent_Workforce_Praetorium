@@ -331,11 +331,12 @@ asserts = [
   "control-room-swept-run",      # T7.3: a receipt the sweep amended reads as the sweep left it — failed health, the failed sweep check named on the incident, `swept` on lastRun and the run detail
   "control-room-last-eligible-run", # lastEligibleRun is the newest receipt that ran (skipped excluded); lastRun and health still show the skip, and it yields no missing-artifact row and no incident
   "control-room-board-read",    # B4: the board lists the seven columns, each card in its derived column; an empty root is an empty board and a broken ledger is unavailable
-  "control-room-board-detail",  # B4: a card carries what its column allows from the one table; activity is every event and decision newest first; a returned brief is not current
+  "control-room-board-detail",  # B4: a card carries what its column allows from the one table; activity is every event and decision newest first, a note with its noteKind; a returned brief is not current; a run's open questions are awaitingAnswer with their round
   "control-room-board-research", # B4: the research page pairs each acceptance line with its answer, no run page means no export, an edit since publication is marked changed
   "control-room-board-run-link", # B4: runs link to their receipts and carry the outcome
   "control-room-board-decisions", # B4: GET /api/v1/board/decisions reads the broker stream
   "control-room-board-http",    # B4: the board routes answer over HTTP, a non-card id is 404
+  "control-room-board-trash",   # reactor: a deleted card leaves every column and the card read; GET /api/v1/board/trash lists the trashed cards with deletedAt and purgeAfter
 ]
 why_no_workflow = """
 It tests the portfolio projection and HTTP trust boundary. Assigning it to one rendered
@@ -401,9 +402,10 @@ asserts = [
   "broker-resume-preview-before-apply", # resume applies only with a fresh preview token bound to the state fingerprint; the preview states the Persistent catch-up
   "broker-peer-gate",                   # SO_PEERCRED uid and the remote-not-local rule in screen mode; a pipe is a cli actor
   "broker-concurrency-lock",            # two concurrent pauses serialise to one applied and one state_conflict, never two disables
-  "broker-allowlist-render",            # the rendered allowlist over the real checkout: every standing timer once, exclusions reasoned, retry for the five declared contracts, deterministic bytes, check exits 1 on a diff; T5.3g: every standing kind = service entry with its template under runtimes
+  "broker-allowlist-render",            # the rendered allowlist over the real checkout: every standing timer once, exclusions reasoned, retry for the five declared contracts, deterministic bytes, check exits 1 on a diff; T5.3g: every standing kind = service entry under runtimes (template, or null for a single-instance service); every standing kind = template entry under instances with stop only
   "broker-runtime-actions",             # T5.3g: start/stop/restart on a runtimes entry — confirm (and a reason for stop/restart), live-state conflicts, session-scoped `--user --machine` verbs only, never status/ExecStart, a Restart= loop inside the settle window is a note, workflow verbs on a runtime are unknown_action
-  "broker-board-verbs",                 # B9: the seven board verbs append one record each, the vocabulary is board.DECISIONS, an approval's text hashes to its page_hash, board.py reads what the broker wrote, a large page fits where a large workflow request does not
+  "broker-board-reactor-controls",      # reactor: board-reactor takes start/stop/restart in system scope and an applied stop is receipted under receipts/board-reactor/; a board-brief@/board-work@ instance takes stop only; an unlisted template or a malformed instances section is refused
+  "broker-board-verbs",                 # B9: the nine board verbs append one record each (deleted and restored take no reason and no hash), the vocabulary is board.DECISIONS, an approval's text hashes to its page_hash, board.py reads what the broker wrote, a large page fits where a large workflow request does not
   "broker-board-signature",             # B9: every line verifies against the public key; any changed signed field, a missing sig or another key fails; a missing key writes nothing
   "broker-board-refusals",              # B9: unknown verb, card or key, a missing field or reason, a verb outside board.verbs and a denied peer are refused and write nothing
   "broker-board-stream",                # B9: the stream is 0644 in a 0755 directory, appends stay valid under concurrency, ids are unique, the broker never imports board.py
@@ -1024,19 +1026,27 @@ why_no_workflow = "T8.2's interactive ship workflow distinguishes deployment dri
 path    = "tests/test_board.sh"
 owner   = "fleet"
 asserts = [
-  "board-derive-columns",     # every column is derived from events, broker decisions and receipts; a research date ahead reads scheduled; an approval waits in review until its hash is on main; rejection is Done, withdrawn outside review
+  "board-derive-columns",     # every column is derived from events, broker decisions and receipts; a research time ahead reads scheduled; an approval waits in review until its hash is on main; rejection is Done, withdrawn outside review
   "board-strikes",            # two returns, two requests for changes or two declines block; a passed deadline blocks; only an unblocked decision lifts it and an edit never does
   "board-decisions-trust",    # a decision-shaped ledger event is forged and moves nothing; a decision naming another brief or card moves nothing; derivation is order-independent
   "board-void-pick",          # a failed or skipped run, or an artifact naming no page, voids the pick without a strike; a pick past the timeout is a stale-pick; brief-run declines count
   "board-fields-and-moves",   # the editable fields and the moves per column come from one table; locked fields stay locked
-  "board-create-rules",       # create lands in Backlog and refuses a duplicate id, an owner with no runner, a bad scope, a research date after the deadline, a buzz brief, a run
+  "board-create-rules",       # create takes a title and a brief, derives the id from the title, and refuses a collision (board or trash), a reserved id, an owner with no runner, a bad scope, a research date after the deadline, a run
   "board-brief-hashing",      # the hash ignores line endings and trailing whitespace only; a returned or unchanged text is refused; a run writes one brief, only into Backlog
-  "board-edit-rules",         # only dave and the Mac edit; id, owner and kind are refused; stale revisions refused; idea and scope void the brief and close after the first run; the research date holds the pick
+  "board-edit-rules",         # only dave and the Mac edit; id, owner and kind are refused; stale revisions refused; scope voids the brief and closes after the first run; the research time holds the pick
   "board-actor-verbs",        # the actor vocabulary is closed; notes are open; no ledger verb is a decision
   "board-pick",               # priority then deadline order; idempotent per run id; passes over scheduled and non-Todo cards; refuses a tampered brief; a voided pick returns the card; changes requested reach the next card.md
   "board-reads-and-main",     # list, next, status, show and decisions; Done is a join with origin/main by content hash
   "board-template",           # the template's headings are exactly what validate-brief requires; acceptance is three to five lines; the brief names its card
   "board-help",               # --help is the mechanism document: layout, actors, decisions, hashing, columns
+  "board-card-time",          # research_on is a date (00:00) or a box-local minute; a bad time is refused; scheduled until the minute arrives
+  "board-held",               # only the reactor's held event blocks, with its reason code; anyone else's is forged; unblock releases it
+  "board-wants",              # what run a card wants: a brief until one answers the latest human input, research in an unscheduled Todo, nothing when deleted
+  "board-deleted",            # the latest of deleted and restored decides; a deleted card leaves every listing
+  "board-trash",              # trash and restore move the card dir whole and are idempotent; the listing dates the purge; purge keeps a card with no deletion on record
+  "board-note-kinds",         # questions come only from a run, answers only from a person; the round count reaches card.md
+  "board-migrate-idea",       # each idea becomes brief v1 (or a note beside a written brief), once
+  "board-pick-card",          # --card picks that card only, re-checked under its lock
 ]
 why_no_workflow = """
 The ledger's shape and derivation, ahead of the workflows that call it (the brief run, the
@@ -1048,8 +1058,9 @@ suite in its own join; until then it belongs to the fleet.
 path    = "tests/test_control_room_board_writes.sh"
 owner   = "fleet"
 asserts = [
-  "board-seam-moves",      # B9: the popup's eight verbs map onto the broker's seven; every move the board offers is a verb the seam takes; a move the column does not offer is 409 and the broker is not called; reasons are required
-  "board-seam-decisions",  # B9: each decision reaches a signed line board.py derives from: brief approved and returned, block and unblock, withdraw, approve with the page text, request changes, reject
+  "board-seam-moves",      # B9: each popup verb maps onto one broker verb; every move the board offers is a verb the seam takes, restore is the one that is not a move; a move the column does not offer is 409 and the broker is not called; reasons are required
+  "board-seam-decisions",  # B9: each decision reaches a signed line board.py derives from: brief approved and returned, block and unblock, approve with the page text, request changes, reject; withdraw is gone
+  "board-seam-delete",     # reactor: delete takes no reason, signs `deleted`, is refused in In Review and on a stale revision; restore needs a deleted card on the board or in the trash
   "board-seam-stale",      # B9: a brief hash, a page hash or a card revision that is not the current one is 409 and nothing is signed; a missing hash is 400
   "board-seam-broker",     # B9: an unreachable or unbound broker is 503, its refusals map onto 400/403/409, a failed signing is 502, and the actor comes from the connection, never the body
 ]

@@ -8,6 +8,6 @@ export const boardWriteResponseSchema = z.object({
 });
 
 export type BoardWriteResponse = z.infer<typeof boardWriteResponseSchema>;
-export const DECISION_VERBS = ["approve_brief", "return_brief", "approve", "request_changes", "reject", "withdraw", "block", "unblock"] as const;
+export const DECISION_VERBS = ["approve_brief", "return_brief", "approve", "request_changes", "reject", "block", "unblock", "delete", "restore"] as const;
 export type DecisionVerb = (typeof DECISION_VERBS)[number];
 export type BoardWriteRequest = { verb: "create" | "brief" | "note" | "edit" | DecisionVerb } & Record<string, unknown>;

@@ -2,7 +2,6 @@ import type { CardDetail } from "@/api/schemas/board";
 
 export interface Draft {
   title: string;
-  idea: string;
   brief: string;
   research_on: string;
   deadline: string;
@@ -17,7 +16,7 @@ export interface Editing {
   set: (name: keyof Draft, value: string) => void;
 }
 
-export const DETAIL_FIELDS = ["title", "idea", "scope", "priority", "tags", "research_on", "deadline"] as const;
+export const DETAIL_FIELDS = ["title", "scope", "priority", "tags", "research_on", "deadline"] as const;
 const LIST_FIELDS = new Set<string>(["tags", "scope"]);
 
 export const listOf = (text: string): string[] =>
@@ -28,7 +27,6 @@ export const listOf = (text: string): string[] =>
 
 export const draftOf = (card: CardDetail): Draft => ({
   title: card.fields.title,
-  idea: card.fields.idea,
   brief: card.brief?.text ?? "",
   research_on: card.fields.research_on ?? "",
   deadline: card.fields.deadline ?? "",
@@ -63,20 +61,21 @@ export const lockReason = (card: CardDetail, name: string): string | null => {
   if (card.editable.includes(name)) return null;
   if (card.column === "Done") return "Locked: the card is closed";
   if (card.column === "In Progress") return "Locked while a run works on the card";
-  if ((name === "idea" || name === "scope") && card.runs.some((run) => run.purpose === "research")) return "Locked after the first research run";
+  if (name === "scope" && card.runs.some((run) => run.purpose === "research")) return "Locked after the first research run";
   return `Locked in ${card.column}`;
 };
 
-export const NEW_CARD_FIELDS = ["title", "idea", "scope", "priority", "tags", "research_on", "deadline", "brief"];
+export const NEW_CARD_FIELDS = ["title", "scope", "priority", "tags", "research_on", "deadline", "brief"];
 
 export const emptyCard = (): CardDetail => ({
   id: "",
   title: "",
-  column: "Backlog",
+  column: "Refine",
   scheduled: false,
   outcome: null,
   blockedCause: null,
   approvedLanding: false,
+  awaitingAnswer: false,
   owner: "claudius",
   kind: "research",
   priority: "normal",
@@ -85,7 +84,7 @@ export const emptyCard = (): CardDetail => ({
   researchOn: null,
   briefVersion: 0,
   exceptions: [],
-  fields: { title: "", idea: "", scope: [], deadline: null, research_on: null, priority: "normal", tags: [] },
+  fields: { title: "", scope: [], deadline: null, research_on: null, priority: "normal", tags: [] },
   rev: 0,
   editable: NEW_CARD_FIELDS,
   moves: [],

@@ -4,7 +4,7 @@ import type { CardDetail } from "@/api/schemas/board";
 import { MOVE_LABELS } from "@/model/card";
 import CardDialog from "./CardDialog";
 
-const FIELDS = ["title", "brief", "idea", "research_on", "deadline", "priority", "tags", "scope"];
+const FIELDS = ["title", "brief", "research_on", "deadline", "priority", "tags", "scope"];
 
 const open = (column: (typeof COLUMNS)[number], over: Partial<CardDetail> = {}) => {
   const onClose = vi.fn();
@@ -38,7 +38,7 @@ describe("CardDialog, read-only", () => {
     });
   });
 
-  it("lays out the mockup: title, chips, id, brief provenance, idea, activity newest first, side panel", () => {
+  it("lays out the mockup: title, chips, id, brief provenance, no idea, activity newest first, side panel", () => {
     open("Todo", { scheduled: true });
     expect(screen.getByRole("dialog", { name: "Vector search options for the vault" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Vector search options for the vault" })).toBeInTheDocument();
@@ -46,7 +46,7 @@ describe("CardDialog, read-only", () => {
     expect(screen.getByText("vault-vector-search")).toBeInTheDocument();
     expect(screen.getByTestId("brief-provenance")).toHaveTextContent("v2 by A run, approved 28 Sep");
     expect((screen.getByLabelText("Brief") as HTMLTextAreaElement).value).toContain("## Acceptance");
-    expect(screen.getByLabelText("Idea")).toHaveValue("Can the vault search run locally instead of over an API?");
+    expect(screen.queryByLabelText("Idea")).toBeNull();
     const rows = within(screen.getByTestId("activity")).getAllByRole("listitem");
     expect(rows).toHaveLength(ACTIVITY.length);
     expect(rows[0]).toHaveTextContent("Brief approved by Dave");
@@ -65,7 +65,33 @@ describe("CardDialog, read-only", () => {
 
   it("badges an approved card that waits in In Review for main", () => {
     open("In Review", { approvedLanding: true, moves: [] });
-    expect(screen.getByTestId("card-landing")).toHaveTextContent("approved, lands within the hour");
+    expect(screen.getByTestId("card-landing")).toHaveTextContent("approved, awaiting Mac");
+  });
+
+  it("labels a card whose agent asked questions, and shows the latest questions note", () => {
+    open("Refine", {
+      awaitingAnswer: true,
+      activity: [
+        { ts: "2026-10-14T09:00:00Z", kind: "note", actor: "run:b3", runId: "b3", detail: "Which vendors count as local?", noteKind: "questions" },
+        { ts: "2026-10-13T09:00:00Z", kind: "note", actor: "run:b2", runId: "b2", detail: "Old question", noteKind: "questions" },
+        ...ACTIVITY,
+      ],
+    });
+    const asked = screen.getByTestId("brief-questions");
+    expect(asked).toHaveTextContent("questions for you");
+    expect(asked).toHaveTextContent("Which vendors count as local?");
+    expect(asked).not.toHaveTextContent("Old question");
+  });
+
+  it("shows no questions label when nothing waits on Dave", () => {
+    open("Refine");
+    expect(screen.queryByTestId("brief-questions")).toBeNull();
+  });
+
+  it("shows a datetime research time as date and time, and a date-only one as a date", () => {
+    open("Todo", { scheduled: true, researchOn: "2026-10-14T06:30", fields: { ...cardDetail("Todo").fields, research_on: "2026-10-14T06:30" } });
+    expect(screen.getByRole("complementary", { name: "Card details" })).toHaveTextContent("2026-10-14 06:30");
+    expect(screen.getByTestId("card-scheduled")).toHaveTextContent("Scheduled Wed 14 Oct 06:30");
   });
 
   it("shows a Done card's outcome", () => {

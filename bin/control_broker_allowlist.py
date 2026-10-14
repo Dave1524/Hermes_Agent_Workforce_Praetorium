@@ -5,9 +5,12 @@ The broker (bin/control_broker.py, root) trusts nothing it did not read from
 /etc/control-room/allowlist.json, and that file is a pure function of this checkout: every
 standing timer workflow whose timer and service unit both exist under systemd/, keyed by its
 logical id, with `retry` taken from the contract's Identity `Retry` row; and, under `runtimes`
-(T5.3g), every standing `kind = "service"` entry whose template unit file exists, keyed by the
-instance name the screen already uses (buzz-agent@marcus); and, under `board` (B9), the seven
-decision verbs only Dave may take on an agent-board card (bin/board.py DECISIONS). The bytes are deterministic (sorted
+(T5.3g), every standing `kind = "service"` entry whose unit file exists, keyed by the name the
+screen already uses: a template instance (buzz-agent@marcus, template set) or a single-instance
+service (board-reactor, template null); under `instances`, every standing `kind = "template"`
+entry whose `<unit>@.service` exists, keyed by the template name, whose run-time instances
+(board-brief@<card>) take stop only; and, under `board` (B9), the decision verbs only Dave may
+take on an agent-board card (bin/board.py DECISIONS). The bytes are deterministic (sorted
 keys, no timestamp) so the drift check can compare them.
 
     render [--repo R]                              print the JSON
@@ -28,6 +31,7 @@ import board
 
 UNIT_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 RUNTIME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}@[a-z0-9][a-z0-9-]{0,63}$")
+INSTANCE_ACTIONS = ["stop"]
 INSTALLED = "/etc/control-room/allowlist.json"
 NOT_DECLARED = "contract declares no idempotent operation"
 
@@ -74,14 +78,29 @@ def _template_of(repo: pathlib.Path, unit: str, scope: str) -> str | None:
     return template if (base / template).is_file() else None
 
 
+def _service_present(repo: pathlib.Path, unit: str, scope: str) -> bool:
+    base = repo / "systemd" / ("user" if scope == "user" else "")
+    return (base / f"{unit}.service").is_file()
+
+
 def _runtime_exclusion_reason(repo: pathlib.Path, entry: dict[str, Any], scope: str) -> str | None:
+    unit = str(entry["unit"])
     if entry.get("status") != "standing":
         return f"status = {entry.get('status')}"
-    if not RUNTIME_RE.match(str(entry["unit"])):
+    if RUNTIME_RE.match(unit):
+        return None if _template_of(repo, unit, scope) else "no service file in systemd/"
+    if UNIT_RE.match(unit):
+        return None if _service_present(repo, unit, scope) else "no service file in systemd/"
+    return "unit name outside the broker's grammar"
+
+
+def _instances_exclusion_reason(repo: pathlib.Path, entry: dict[str, Any], scope: str) -> str | None:
+    unit = str(entry["unit"])
+    if entry.get("status") != "standing":
+        return f"status = {entry.get('status')}"
+    if not UNIT_RE.match(unit):
         return "unit name outside the broker's grammar"
-    if _template_of(repo, str(entry["unit"]), scope) is None:
-        return "no service file in systemd/"
-    return None
+    return None if _service_present(repo, f"{unit}@", scope) else "no service file in systemd/"
 
 
 def _exclusion_reason(repo: pathlib.Path, entry: dict[str, Any], logical: str, scope: str) -> str | None:
@@ -114,6 +133,7 @@ def render(repo: pathlib.Path | str) -> dict[str, Any]:
     repo = pathlib.Path(repo)
     workflows: dict[str, dict[str, Any]] = {}
     runtimes: dict[str, dict[str, Any]] = {}
+    instances: dict[str, dict[str, Any]] = {}
     contracts: dict[str, set[str]] = {}
     excluded: list[dict[str, Any]] = []
     for entry in _manifest_entries(repo):
@@ -125,7 +145,15 @@ def render(repo: pathlib.Path | str) -> dict[str, Any]:
                 excluded.append({"unit": unit, "owner": entry["owner"], "reason": reason})
             else:
                 runtimes[unit] = {"owner": entry["owner"], "unit": unit, "scope": scope,
-                                  "template": _template_of(repo, unit, scope)}
+                                  "template": _template_of(repo, unit, scope) if "@" in unit else None}
+            continue
+        if entry.get("kind") == "template":
+            reason = _instances_exclusion_reason(repo, entry, scope)
+            if reason:
+                excluded.append({"unit": unit, "owner": entry["owner"], "reason": reason})
+            else:
+                instances[unit] = {"owner": entry["owner"], "scope": scope, "template": f"{unit}@.service",
+                                   "actions": list(INSTANCE_ACTIONS)}
             continue
         reason = _exclusion_reason(repo, entry, logical, scope)
         if reason:
@@ -139,6 +167,7 @@ def render(repo: pathlib.Path | str) -> dict[str, Any]:
         workflow["contract"], workflow["retry"], workflow["retry_reason"] = _retry(repo, contracts.get(logical, set()))
         workflow["triggers"].sort(key=lambda trigger: trigger["unit"])
     return {"schema": 1, "workflows": workflows, "runtimes": dict(sorted(runtimes.items())),
+            "instances": dict(sorted(instances.items())),
             "board": {"verbs": sorted(board.DECISIONS)}, "excluded": sorted(excluded, key=lambda row: row["unit"])}
 
 

@@ -49,7 +49,6 @@ describe("CardDialog, decisions", () => {
 
   it.each([
     ["Refine", "return_brief", { brief_hash: "a".repeat(64) }],
-    ["Refine", "withdraw", {}],
     ["In Review", "request_changes", {}],
     ["In Review", "reject", {}],
   ] as const)("asks for a reason before %s %s, and sends it", async (column, verb, extra) => {
@@ -65,10 +64,24 @@ describe("CardDialog, decisions", () => {
 
   it("lets a reason be cancelled, sending nothing", () => {
     const { writer } = open("Refine");
-    fireEvent.click(move("withdraw"));
+    fireEvent.click(move("return_brief"));
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.queryByLabelText("Reason")).toBeNull();
     expect(writer.decide).not.toHaveBeenCalled();
+  });
+
+  it.each(["Backlog", "Refine", "Todo", "In Progress", "Done", "Blocked"] as const)("deletes from %s at once, with no reason prompt", async (column) => {
+    const { writer, onChanged } = open(column);
+    fireEvent.click(move("delete"));
+    expect(screen.queryByLabelText("Reason")).toBeNull();
+    await waitFor(() => expect(writer.decide).toHaveBeenCalledWith("delete", 5, {}));
+    await waitFor(() => expect(onChanged).toHaveBeenCalledWith(null));
+  });
+
+  it("offers no Delete in In Review, where Reject stays", () => {
+    open("In Review", { research: PAGE });
+    expect(move("delete")).toBeNull();
+    expect(move("reject")).toBeEnabled();
   });
 
   it("blocks with an optional reason", async () => {
@@ -95,7 +108,7 @@ describe("CardDialog, decisions", () => {
     open("Refine", { brief: { ...cardDetail("Refine").brief!, current: false } });
     expect(move("approve_brief")).toBeDisabled();
     expect(move("return_brief")).toBeDisabled();
-    expect(move("withdraw")).toBeEnabled();
+    expect(move("delete")).toBeEnabled();
   });
 
   it("will not approve a brief over unsaved edits to it", () => {

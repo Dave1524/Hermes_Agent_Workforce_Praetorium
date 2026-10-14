@@ -1,0 +1,35 @@
+# One brief run for one card (board reactor, D1). Started only by bin/board_reactor.py with
+# `systemctl start --no-block board-brief@<card>.service`; never enabled, never timed. %i is the
+# card id, a slug, so it needs no unescaping. The run takes /tmp/agent_board_card_<id>.lock, not
+# the fleet lock (AGENT_BOARD_CARD); its per-instance attempt log and usage file keep two cards'
+# runs apart, and ReadOnlyPaths= is the guarantee that it never writes a vault tree.
+[Unit]
+Description=Board brief run for card %i (headless Claude Code) — board reactor
+After=network-online.target
+Wants=network-online.target
+OnFailure=agent-alert@%n.service
+
+[Service]
+Type=oneshot
+User=dave
+Environment=AGENT_JOB_OVERRIDES=/home/dave/.config/agent-workforce/research_brief.env
+Environment=AGENT_BOARD_CARD=%i
+Environment=AGENT_RECEIPT_UNIT=board-brief
+Environment=AGENT_ATTEMPT_LOG=/home/dave/agent-workforce/logs/last-attempt/board-brief-%i.log
+Environment=AGENT_USAGE_JSON=/home/dave/agent-workforce/logs/last-attempt/board-brief-%i.usage.json
+Environment="REPORT_SUBJECT=[Praetorium] Board brief"
+Environment=DELIVERY_ROUTE=research
+Environment=DELIVERY_JOB=%n
+Environment=DELIVERY_TASK=research-brief
+Environment=DELIVERY_CARD=%i
+Environment=DELIVERY_RUN_MARKER=/home/dave/logs/run-markers/%n
+EnvironmentFile=/home/dave/.config/agent-workforce/secrets.env
+EnvironmentFile=-/home/dave/.config/agent-workforce/board_reactor.env
+ExecCondition=/home/dave/agent-workforce/bin/board.py exists %i
+ExecStartPre=/usr/bin/mkdir -p /home/dave/logs/run-markers
+ExecStartPre=/usr/bin/touch /home/dave/logs/run-markers/%n
+ExecStart=/home/dave/agent-workforce/bin/agent_propose.sh
+ExecStartPost=/home/dave/agent-workforce/bin/deliver_board_brief.sh
+ReadOnlyPaths=/home/dave/agent-worktrees /home/dave/dev/Obsidian_AI_Operating_System /home/dave/dev/obsidian-ai-os-boxsafe
+TimeoutStartSec=20min
+NoNewPrivileges=true

@@ -85,6 +85,9 @@ class FakeSystemd:
         self.user_units = user_units
         self.active_since = active_since
 
+    def instances(self, template: str, scope: str):
+        return [], None
+
     def show(self, name: str, scope: str):
         if scope == "user":
             if self.user_units is None:
@@ -717,6 +720,37 @@ PAGE_TEXT = "# Findings\n\n## Acceptance\n\n- MET: licences listed\n- PARTLY: re
 BRIEF_HASH, PAGE_HASH = "a" * 64, "c" * 64
 
 
+class TemplateRowsTest(unittest.TestCase):
+    """A `kind = "template"` row (board-brief@<card>): its state is its instances', never paused."""
+
+    def template(self, busy):
+        class Instances(FakeSystemd):
+            def instances(self, template, scope):
+                return (busy if template == "board-brief" else []), None
+        model = api.ControlRoomReadModel(systemd=Instances())
+        return model._systemd_for({"unit": "board-brief", "kind": "template", "scope": "system"})
+
+    def test_an_idle_template_is_armed_not_paused(self):
+        systemd = self.template([])
+        self.assertEqual((systemd["service"]["name"], state.trigger_state(systemd)), ("board-brief@.service", "active"))
+
+    def test_a_busy_instance_makes_the_template_running(self):
+        systemd = self.template(["board-brief@alpha.service"])
+        self.assertEqual((systemd["instances"], state.trigger_state(systemd)), (["board-brief@alpha.service"], "running"))
+
+    def test_a_template_row_offers_no_action(self):
+        trigger = {"kind": "template", "systemd": self.template([]), "state": "active"}
+        control = state.control_for("board-brief", [trigger], {"persistent": None})
+        self.assertTrue(control["actions"])
+        self.assertEqual({(a["enabled"], a["reason"]) for a in control["actions"]}, {(False, state.TEMPLATE_REASON)})
+
+    def test_list_units_rows_are_busy_by_their_active_column(self):
+        listing = ("board-brief@a.service loaded active running x\n"
+                   "board-brief@b.service loaded inactive dead x\n"
+                   "board-brief@c.service loaded activating start x\n")
+        self.assertEqual(api.busy_units(listing), ["board-brief@a.service", "board-brief@c.service"])
+
+
 class BoardReadsTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -792,6 +826,19 @@ class BoardReadsTest(unittest.TestCase):
         self.assertEqual(items["cards"][1]["briefVersion"], 1)
         self.assertEqual(status["board"], "available")
 
+    def test_a_card_names_its_busy_run_so_the_popup_can_stop_it(self):  # (::control-room-board-read)
+        self.todo_card()
+
+        class Busy(FakeSystemd):
+            def show(self, name, scope):
+                if name == "board-work@alpha-card.service":
+                    return {"ActiveState": "active", "SubState": "running"}, None
+                return super().show(name, scope)
+        model = api.ControlRoomReadModel(systemd=Busy(), board_reads=self.reads)
+        self.assertEqual(model.board_card("alpha-card")[0]["runningUnit"], "board-work@alpha-card")
+        idle = api.ControlRoomReadModel(systemd=FakeSystemd(), board_reads=self.reads)
+        self.assertIsNone(idle.board_card("alpha-card")[0]["runningUnit"])
+
     def test_an_empty_root_is_an_empty_board_and_a_broken_ledger_is_unavailable(self):  # (::control-room-board-read)
         items, status = control_room_board.BoardReads(lambda: self.now, self.export, self.board / "nowhere").cards()
         self.assertEqual((items["cards"], status["board"]), ([], "available"))
@@ -825,6 +872,34 @@ class BoardReadsTest(unittest.TestCase):
         item, _ = self.reads.card("alpha-card")
         self.assertEqual((item["column"], item["brief"]["text"], item["brief"]["current"]), ("Backlog", BRIEF_TEXT, False))
         self.assertEqual(item["activity"][0]["detail"], "too wide")
+
+    def test_a_run_waiting_on_dave_shows_its_questions_round(self):  # (::control-room-board-detail)
+        self.card("beta-card", [
+            {"ts": "2026-10-01T09:00:00Z", "event": "created", "actor": "dave"},
+            {"ts": "2026-10-01T09:00:00Z", "event": "brief", "actor": "dave", "hash": BRIEF_HASH},
+            {"ts": "2026-10-02T09:00:00Z", "event": "note", "actor": "run:b1", "run_id": "b1",
+             "fields": {"text": "Which vault folders?", "kind": "questions"}},
+        ])
+        item, _ = self.reads.card("beta-card")
+        self.assertEqual((item["awaitingAnswer"], item["questionRounds"]), (True, 1))
+        self.assertTrue(next(c for c in self.reads.cards()[0]["cards"] if c["id"] == "beta-card")["awaitingAnswer"])
+        notes = [a for a in item["activity"] if a["kind"] == "note"]
+        self.assertEqual([(a["noteKind"], a["detail"]) for a in notes], [("questions", "Which vault folders?")])
+        self.assertTrue(all(a["noteKind"] is None for a in item["activity"] if a["kind"] != "note"))
+
+    def test_a_deleted_card_leaves_the_board_and_is_listed_in_the_trash(self):  # (::control-room-board-trash)
+        self.todo_card()
+        self.todo_card("beta-card")
+        self.decide("deleted", "2026-10-06T09:00:00Z", card="beta-card")
+        self.assertEqual([c["id"] for c in self.reads.cards()[0]["cards"]], ["alpha-card"])
+        self.assertIsNone(self.reads.card("beta-card")[0])
+        self.assertTrue(board.trash_card(self.board, "beta-card"))
+        items, status = self.reads.trash()
+        self.assertEqual((items, status["board"]), ([{"id": "beta-card", "title": "Title of beta-card",
+                                                      "deletedAt": "2026-10-06T09:00:00Z",
+                                                      "purgeAfter": "2026-11-05T09:00:00Z"}], "available"))
+        empty = control_room_board.BoardReads(lambda: self.now, self.export, self.board / "nowhere").trash()
+        self.assertEqual((empty[0], empty[1]["board"]), ([], "available"))
 
     def test_a_missing_card_and_a_non_card_id_are_none(self):  # (::control-room-board-detail)
         self.assertIsNone(self.reads.card("nobody")[0])
@@ -921,6 +996,9 @@ class BoardReadsTest(unittest.TestCase):
                 self.assertEqual(json.load(response)["items"]["research"]["status"], "available")
             with urllib.request.urlopen(base + "/decisions", timeout=3) as response:
                 self.assertEqual(json.load(response)["items"][0]["signature"], "sig-1")
+            with urllib.request.urlopen(base + "/trash", timeout=3) as response:
+                trash = json.load(response)
+            self.assertEqual((trash["items"], trash["dataStatus"]["board"]), ([], "available"))
             for path in ("/nobody", "/alpha-card/extra"):
                 with self.assertRaises(urllib.error.HTTPError) as raised:
                     urllib.request.urlopen(base + path, timeout=3)

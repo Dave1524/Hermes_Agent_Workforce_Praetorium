@@ -54,6 +54,9 @@ class FakeSystemd:
             return {}, f"Unit {name} could not be found."
         return dict(default), None
 
+    def instances(self, template: str, scope: str):
+        return list(self._doc.get("instances", {}).get(scope, {}).get(template, [])), None
+
 
 class FakeCalendar:
     """Stands in for `systemd-analyze calendar`: [T0, T0 + seconds] per mapped spec."""

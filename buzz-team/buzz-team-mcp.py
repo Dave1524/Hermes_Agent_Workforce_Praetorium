@@ -45,7 +45,7 @@ FAMILIES = ("qmd", "notion", "brave", "board")
 BOARD_COMMAND = os.environ.get("BUZZ_BOARD_COMMAND") or os.path.expanduser("~/agent-workforce/bin/board.py")
 BOARD_TIMEOUT_SECONDS = 30
 BOARD_RULE = (
-    "Board: board_list and board_get read the card board; board_create puts a card in Backlog; "
+    "Board: board_list and board_get read the card board; board_create puts a card in Backlog with its brief v1, which starts the brief run; "
     "board_brief records a brief on a Backlog or Refine card (template=true returns the skeleton, "
     "writes nothing); board_note adds a note. Approving, returning, picking and editing are not "
     "offered here and are never claimed: a card whose brief you wrote waits in Refine for Dave."
@@ -218,16 +218,16 @@ BOARD_TOOLS: list[dict[str, Any]] = [
         {"card": {"type": "string"}}, ["card"], read_only=True),
     _board_tool(
         "board_create", "Create Board Card",
-        "Create a card in Backlog. scope entries are vault:<dir> or repo:<name>. Check board_list "
-        "for a duplicate first.",
-        {"title": {"type": "string"}, "idea": {"type": "string"},
+        "Create a card in Backlog: a title and its brief v1, the text the brief run starts from. "
+        "scope entries are vault:<dir> or repo:<name>. Check board_list for a duplicate first.",
+        {"title": {"type": "string"}, "brief": {"type": "string"},
          "scope": {"type": "array", "items": {"type": "string"}, "minItems": 1},
          "owner": {"type": "string"}, "kind": {"type": "string"},
          "priority": {"type": "string", "enum": ["high", "normal", "low"]},
          "deadline": {"type": "string", "description": "YYYY-MM-DD"},
          "research_on": {"type": "string", "description": "YYYY-MM-DD"},
          "tags": {"type": "array", "items": {"type": "string"}}},
-        ["title", "idea", "scope", "owner"], read_only=False),
+        ["title", "brief", "scope", "owner"], read_only=False),
     _board_tool(
         "board_brief", "Write Board Brief",
         "Record a brief on a card in Backlog or Refine (never an approval). With template=true and "
@@ -290,9 +290,8 @@ def _option(args: dict[str, Any], key: str, flag: str) -> list[str]:
     return [flag, str(args[key])] if args.get(key) else []
 
 
-def _create_argv(args: dict[str, Any], actor: str) -> list[str]:
-    _need(args, "title", "idea", "scope", "owner")
-    argv = ["create", "--title", args["title"], "--idea", args["idea"]]
+def _create_argv(args: dict[str, Any], actor: str, brief_path: str) -> list[str]:
+    argv = ["create", "--title", args["title"], "--brief", brief_path]
     for scope in args["scope"]:
         argv += ["--scope", scope]
     argv += ["--owner", args["owner"]]
@@ -335,7 +334,8 @@ def board_tool(name: str, args: dict[str, Any], agent: str | None) -> str:
         _need(args, "card")
         return _run_board(["show", args["card"]])
     if name == "board_create":
-        return _run_board(_create_argv(args, actor))
+        _need(args, "title", "brief", "scope", "owner")
+        return _run_board_with_text(lambda path: _create_argv(args, actor, path), args["brief"])
     if name == "board_brief" and args.get("template") and not args.get("card"):
         return _run_board(["template", "--kind", args.get("kind") or "research"])
     verb = "brief" if name == "board_brief" else "note"

@@ -61,6 +61,10 @@ agent-proposal	system	standing	claudius	timer
 augustus-content	system	standing	augustus	timer
 bd-followup-drafts	system	standing	claudius	timer
 bd-stall-radar	system	standing	claudius	timer
+board-brief	system	standing	claudius	template
+board-reactor	system	standing	claudius	service
+board-reconcile	system	standing	claudius	timer
+board-work	system	standing	claudius	template
 buzz-agent@augustus	user	standing	augustus	service
 buzz-agent@aurelian	user	standing	aurelian	service
 buzz-agent@claudius	user	standing	claudius	service
@@ -81,7 +85,7 @@ praetorium-daily-plan	system	standing	marcus	timer
 praetorium-eod-summary	system	standing	marcus	timer
 qmd-refresh	system	standing	trajan	timer
 raw-ingest	system	standing	claudius	timer
-research-brief	system	standing	claudius	timer
+research-brief	system	dormant	claudius	timer
 scorecard	system	standing	trajan	timer
 workflow-receipt-sweep	system	standing	trajan	timer
 workflow-incidents	system	standing	trajan	timer

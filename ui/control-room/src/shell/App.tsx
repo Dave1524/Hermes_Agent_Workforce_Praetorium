@@ -13,6 +13,7 @@ import Activity from "@/pages/Activity";
 import Agents from "@/pages/Agents";
 import AgentDetail from "@/pages/AgentDetail";
 import Board from "@/pages/Board";
+import BoardTrash from "@/pages/BoardTrash";
 import { useRefresh } from "./RefreshContext";
 import { type HealthStatus, useHealth } from "./useHealth";
 
@@ -29,6 +30,7 @@ const TITLES: Record<MatchedRoute["name"], string> = {
   board: "Board",
   card: "Board",
   newcard: "Board",
+  trash: "Board",
 };
 
 const HEALTH_DOT: Record<HealthStatus, string> = {
@@ -39,7 +41,7 @@ const HEALTH_DOT: Record<HealthStatus, string> = {
 };
 
 const isNavActive = (route: MatchedRoute, nav: MatchedRoute["name"]): boolean =>
-  route.name === nav || (nav === "workflows" && (route.name === "workflow" || route.name === "run")) || (nav === "agents" && route.name === "agent") || (nav === "board" && (route.name === "card" || route.name === "newcard"));
+  route.name === nav || (nav === "workflows" && (route.name === "workflow" || route.name === "run")) || (nav === "agents" && route.name === "agent") || (nav === "board" && (route.name === "card" || route.name === "newcard" || route.name === "trash"));
 
 const page = (route: MatchedRoute): ReactNode => {
   switch (route.name) {
@@ -67,6 +69,8 @@ const page = (route: MatchedRoute): ReactNode => {
       return <Board cardId={route.id} />;
     case "newcard":
       return <Board creating />;
+    case "trash":
+      return <BoardTrash />;
   }
 };
 

@@ -1,0 +1,16 @@
+# The reactor's second path (R0): the same observe/plan/apply as board-reactor.service, once.
+# With the daemon down and not paused it also receipts the daemon `permanent daemon-dead`.
+[Unit]
+Description=Board reconcile pass (the reactor's second path) — board reactor
+OnFailure=agent-alert@%n.service
+
+[Service]
+Type=oneshot
+User=dave
+Environment=DELIVERY_JOB=%n
+EnvironmentFile=-/home/dave/.config/agent-workforce/board_reactor.env
+ExecCondition=/home/dave/agent-workforce/bin/board.py exists
+ExecStart=/home/dave/agent-workforce/bin/board_reactor.py --once
+ExecStopPost=-/home/dave/agent-workforce/bin/receipt_finish.py %N
+TimeoutStartSec=4min
+NoNewPrivileges=true

@@ -36,7 +36,7 @@ export default function CardHeader({ card, editing }: { card: CardDetail; editin
       {editing && <LockNote name="title" reason={lockReason(card, "title")} />}
       <div className="flex gap-2 items-center flex-wrap mt-2">
         <span data-testid="card-column" className={`${chip} bg-accent-dim text-accent`}>
-          {card.id === "" ? "New card, starts in Backlog" : card.column}
+          {card.id === "" ? "New card, starts in Refine" : card.column}
         </span>
         {card.outcome && (
           <span data-testid="card-outcome" className={`${chip} bg-surface-2 text-text-2`}>
@@ -50,7 +50,7 @@ export default function CardHeader({ card, editing }: { card: CardDetail; editin
         )}
         {card.approvedLanding && (
           <span data-testid="card-landing" className={`${chip} bg-green-dim text-green`}>
-            approved, lands within the hour
+            approved, awaiting Mac
           </span>
         )}
         {schedule && (

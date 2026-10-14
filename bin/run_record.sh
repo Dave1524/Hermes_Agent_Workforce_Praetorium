@@ -13,9 +13,14 @@
 
 COST_LOG="${AGENT_COST_LOG:-$HOME/agent-workforce/logs/cost.log}"
 
-run_record() {  # last cost.log record for this task; fields are space-separated
+run_record() {  # last cost.log record for this task (and DELIVERY_CARD's card); fields are space-separated
   [ -n "$TASK" ] || return 1
   [ -r "$COST_LOG" ] || return 1
+  if [ -n "${DELIVERY_CARD:-}" ]; then
+    # Parallel card runs share a task; the card a per-card unit ran for is the record's proposal=.
+    grep " task=$TASK " "$COST_LOG" | grep " proposal=$DELIVERY_CARD " | tail -1
+    return 0
+  fi
   grep " task=$TASK " "$COST_LOG" | tail -1
 }
 

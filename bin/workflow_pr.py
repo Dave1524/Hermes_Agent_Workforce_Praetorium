@@ -365,6 +365,9 @@ class _NullSystemd:
     def show(self, name: str, scope: str) -> tuple[dict[str, Any], str | None]:
         return {}, f"Unit {name} could not be found."
 
+    def instances(self, template: str, scope: str) -> tuple[list[str], str | None]:
+        return [], f"Unit {template}@.service could not be found."
+
 
 # --- CLI ---------------------------------------------------------------------------------------
 def _worker(args: argparse.Namespace) -> Worker:

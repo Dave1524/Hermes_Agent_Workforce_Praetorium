@@ -23,7 +23,10 @@ Scheduled **proposal** agent jobs share `bin/agent_propose.sh` (lock, preflight,
 |---|---|---|---|---|---|
 | Standing research (Opus 5, NUC research pipeline brief 2026-07-30) | `agent-proposal.timer` Mon–Fri 04:30 | `agent-proposal.{service,timer}` | `~/.config/agent-workforce/standing_research.env` | `profiles/standing_research_cc_task.md` | *(headless Claude Code)* |
 | Raw source ingestion (Mechanism B) | **Tue–Sat 03:00** | `raw-ingest.{service,timer}` | `~/.config/agent-workforce/raw_ingest.env` | `profiles/raw_ingest_cc_task.md` | *(headless Claude Code)* |
-| Board brief run (Dev Plan B2) | **Mon–Fri 08:07–18:07 hourly**, quiet ticks receipted `skipped` | `research-brief.{service,timer}` | `~/.config/agent-workforce/research_brief.env` | `profiles/research_brief_cc_task.md` | *(headless Claude Code; `AGENT_RUN_MODE=board`)* |
+| Board brief run (Dev Plan B2) — **dormant 2026-10-14**, replaced by `board-brief@`; retirement PR follows | timer disabled at the board reactor install | `research-brief.{service,timer}` | `~/.config/agent-workforce/research_brief.env` | `profiles/research_brief_cc_task.md` | *(headless Claude Code; `AGENT_RUN_MODE=board`)* |
+| Board brief, per card (board reactor) | started by `board-reactor` within 5 s of a card wanting a brief | `board-brief@<card>.service` | `~/.config/agent-workforce/research_brief.env` | `profiles/research_brief_cc_task.md` | *(headless Claude Code; `AGENT_RUN_MODE=board`, `AGENT_BOARD_CARD=%i`)* |
+| Board research, per card (board reactor) | started by `board-reactor` within 5 s of a card's brief approval | `board-work@<card>.service` | `~/.config/agent-workforce/board_work.env` | `profiles/standing_research_cc_task.md` | *(headless Claude Code; `AGENT_BOARD_CARD=%i`)* |
+| Board reactor (no LLM) | always on; reconcile every **5 min** | `board-reactor.service`, `board-reconcile.{service,timer}` | `~/.config/agent-workforce/board_reactor.env` (optional) | `bin/board_reactor.py` | n/a |
 | Knowledge digest (Mechanism C) | **Sun 09:00** | `knowledge-digest.{service,timer}` | `~/.config/agent-workforce/knowledge_digest.env` | `profiles/knowledge_digest_cc_task.md` | *(headless Claude Code)* |
 | M1 signal scan (NUC-32/34) | **Mon,Wed 05:30** | `m1-signal-scan.{service,timer}` | `~/.config/agent-workforce/m1_signal_scan.env` | `profiles/m1_signal_scan_cc_task.md` | *(headless Claude Code)* |
 | Augustus content pitch+draft | daily **01:30** (backstop) | `augustus-content.{service,timer}` | `~/.config/agent-workforce/augustus-content.env` | `profiles/augustus_content_task.md` | **`buzz-agent@augustus`** via `bin/run_content_via_buzz.sh` (NUC-46) |
@@ -793,6 +796,75 @@ fails naming each pending item and the `clear` command; off the box that group s
 is clean. The W19 table the scanner renders (`| # | residue | tree | has a check? | who clears it
 | how |`) is the same shape the 2026-09-11 retirement audit used, so the next audit reads the
 registry instead of the box.
+
+## Board reactor (2026-10-13)
+
+`board-reactor.service` starts a card's run the moment the card wants one: a brief
+(`board-brief@<card>.service`) when it is created, returned or answered, research
+(`board-work@<card>.service`) when its brief is approved. It is a control loop: inotify on the
+board, the cards, the trash, the decisions stream and the two templates' receipt directories only
+wakes it; each pass reads the whole board and systemd (`bin/board_source.py`), plans from that state
+alone (`bin/board_plan.py`, pure) and applies. `board-reconcile.timer` runs the same pass every
+five minutes (`board_reactor.py --once`) under the same flock (`$BOARD_ROOT/reactor/lock`), so a
+lost event costs at most five minutes. Contracts: `design/contracts/board-reactor.md`,
+`board-reconcile.md`.
+
+**Limits** (`~/.config/agent-workforce/board_reactor.env`, optional; restart to apply):
+`BOARD_REACTOR_MAX_RUNS` (2 at once, both templates), `BOARD_REACTOR_DAILY_CAP` (24 starts per
+box-local day), `BOARD_REACTOR_COOLDOWN` (600 s between starts of one card). Each run takes its
+own per-card lock, not the fleet propose lock; a card-less proposal run still serialises on the
+inbox worktree through `AGENT_INBOX_LOCK` (`/tmp/agent_inbox.lock`).
+
+**Pause.** Stop `board-reactor` from the Control Room (Agents → board-reactor). The broker's
+receipt under `/var/lib/control-room/receipts/board-reactor/` is what makes it a pause: the
+reconcile then logs `paused` and does nothing. A `systemctl stop` by hand leaves no receipt, so
+the reconcile reads the reactor as dead and receipts it `permanent daemon-dead`. A card's running
+`board-*@<card>` instance is stopped from that card's popup on the board (Stop run, with a reason);
+the templates' own rows on the Agents screen carry no actions.
+
+**Board root.** `BOARD_ROOT` in `board_reactor.env` is read by all four units (reactor, reconcile,
+both templates), so they always agree. Each unit's `ExecCondition=board.py exists [%i]` skips the
+start, without failing, when the board or the card is gone.
+
+**Health and reason codes.** The reactor writes a `board-reactor` receipt only when its health
+flips (`bin/reactor_receipt.py`):
+
+| Health | Reason | Means | Response |
+|---|---|---|---|
+| `ok` | — | the last pass applied cleanly | none |
+| `transient` | `systemctl-failed`, `systemctl-timeout`, `trash-conflict`, `ledger-refused` | one action failed; the card backs off 30 s doubling to 15 min | none unless it persists |
+| `capped` | `daily-cap` | the day's starts are spent; nothing starts until midnight | raise the cap or wait |
+| `permanent` | `polkit-denied` | dave may not start or stop the templates | install the polkit rule below |
+| `permanent` | `unit-missing` | a template unit file is not installed | install the units below |
+| `permanent` | `inotify-limit` | `fs.inotify.max_user_watches` is spent | raise it (`sysctl`) |
+| `permanent` | `daemon-dead` | the reconcile found the reactor down and not paused | read `journalctl -u board-reactor --utc` |
+
+A permanent reason exits 2; `Restart=on-failure` retries from 5 s stepping to 5 min, and past
+`StartLimitBurst=10` in an hour `OnFailure=agent-alert@` fires. **Poison** is per card, not
+health: three void runs (`poison-attempts`) or three starts that never reached a pick
+(`poison-start`) write a `held` event by actor `reactor`; the card shows Blocked with the reason
+until Dave unblocks it.
+
+**Delete and restore.** Deleting a card (Control Room) stops its running unit, then moves the
+card to `$BOARD_ROOT/trash/`; Restore within 30 days brings it back whole; after that the reactor
+purges it.
+
+**Hand install** (root files; after the PR merges and `bin/deploy`):
+
+```
+sudo install -m 0644 systemd/board-reactor.service systemd/board-reconcile.service \
+  systemd/board-reconcile.timer 'systemd/board-brief@.service' 'systemd/board-work@.service' /etc/systemd/system/
+sudo install -m 0644 config/polkit/50-board-reactor.rules /etc/polkit-1/rules.d/
+cp profiles/board_work.env.example ~/.config/agent-workforce/board_work.env && chmod 600 ~/.config/agent-workforce/board_work.env
+sudo systemctl daemon-reload
+sudo systemctl disable --now research-brief.timer   # dormant: board-brief@ owns the Backlog pick
+sudo systemctl enable --now board-reactor.service board-reconcile.timer
+```
+
+Then drop `AGENT_BOARD_PICK` from the live `~/.config/agent-workforce/standing_research.env`,
+re-render and install the broker allowlist and broker copy (§ Control Room controls), and retire
+the dormant `research-brief` through its `control-room/retire-*` PR. Proof: create a test card and see
+`board-brief@<id>.service` start within 5 s (`journalctl -u board-reactor --utc -n 20`).
 
 ## S1 — the Buzz interactive surface (brief 7, 2026-09-03)
 

@@ -3,7 +3,9 @@
 # contract: a run is legitimate only if it produced THIS run's valid brief, or declined in its
 # own output, or printed its own idempotent skip.
 #
-# exit 0: this run's brief.out.md passes `board.py validate-brief`, or its own `^DECLINE:`.
+# exit 0: this run's brief.out.md passes `board.py validate-brief`, or it wrote a non-empty
+#         questions.out.md (D7: the wrapper records it, or refuses it once the rounds are spent),
+#         or its own `^DECLINE:`.
 # exit 3: its own `^skip:` line (the card already carries a brief by this run id).
 # exit 1: anything else, including a brief the template refuses.
 #
@@ -22,6 +24,7 @@ SKIP_EXIT=3
 BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BOARD_PY="${BOARD_PY:-$BIN_DIR/board.py}"
 brief_file="$AGENT_CARD_DIR/brief.out.md"
+questions_file="$AGENT_CARD_DIR/questions.out.md"
 
 # Never `find … | grep -q`: grep exits on its first match and pipefail reports 141.
 newer_than_run() {  # newer_than_run <path>
@@ -35,12 +38,17 @@ brief_is_valid() {
   python3 "$BOARD_PY" validate-brief "$brief_file" --card "$AGENT_CARD" >&2
 }
 
+questions_written() {
+  newer_than_run "$questions_file" && [ -s "$questions_file" ]
+}
+
 attempt_says() {  # attempt_says <ERE>
   newer_than_run "$AGENT_ATTEMPT_LOG" || return 1
   grep -qE "$1" "$AGENT_ATTEMPT_LOG"
 }
 
 brief_is_valid && exit 0
+questions_written && exit 0
 attempt_says '^DECLINE:' && exit 0
 attempt_says '^skip: ' && exit "$SKIP_EXIT"
 exit 1

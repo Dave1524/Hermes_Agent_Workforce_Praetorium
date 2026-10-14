@@ -24,6 +24,7 @@ record=$(run_record)
 card=$(field "$record" proposal)
 case "$(field "$record" outcome)" in
   BOARD) line="card \`$card\`: brief in Refine" ;;
+  QUESTIONS) line="card \`$card\`: questions for you" ;;
   NOPROPOSAL)
     reason=$(grep '^DECLINE:' "$ATTEMPT_LOG" 2>/dev/null | tail -1)
     line="brief run declined — ${reason#DECLINE: }" ;;

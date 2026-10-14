@@ -4,7 +4,7 @@ import type { DecisionVerb } from "@/api/schemas/boardWrite";
 import type { CardWriter } from "./cardWriter";
 import type { EditProblem } from "./useCardEdit";
 
-const REASONED = new Set<string>(["return_brief", "request_changes", "reject", "withdraw"]);
+const REASONED = new Set<string>(["return_brief", "request_changes", "reject"]);
 const ASKS = new Set<string>([...REASONED, "block"]);
 
 export interface CardDecision {

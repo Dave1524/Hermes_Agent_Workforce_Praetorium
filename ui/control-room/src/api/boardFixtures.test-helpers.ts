@@ -4,17 +4,17 @@ export const COLUMNS = ["Backlog", "Refine", "Todo", "In Progress", "In Review",
 
 const LABEL_FIELDS = ["priority", "tags", "title"];
 const NOT_RUNNING = [...LABEL_FIELDS, "deadline", "research_on"];
-const BRIEFABLE = [...NOT_RUNNING, "brief", "idea", "notes", "scope"];
+const BRIEFABLE = [...NOT_RUNNING, "brief", "notes", "scope"];
 
 // What the read model states per column (bin/board.py EDITABLE and MOVES); the dialog renders it and keeps no copy.
 export const STATED: Record<(typeof COLUMNS)[number], { editable: string[]; moves: string[] }> = {
-  Backlog: { editable: BRIEFABLE, moves: ["withdraw"] },
-  Refine: { editable: BRIEFABLE, moves: ["approve_brief", "return_brief", "withdraw"] },
-  Todo: { editable: BRIEFABLE, moves: ["block", "withdraw"] },
-  "In Progress": { editable: [...LABEL_FIELDS, "notes"], moves: [] },
+  Backlog: { editable: BRIEFABLE, moves: ["delete"] },
+  Refine: { editable: BRIEFABLE, moves: ["approve_brief", "return_brief", "delete"] },
+  Todo: { editable: BRIEFABLE, moves: ["block", "delete"] },
+  "In Progress": { editable: [...LABEL_FIELDS, "notes"], moves: ["delete"] },
   "In Review": { editable: [...NOT_RUNNING, "notes"], moves: ["approve", "request_changes", "reject"] },
-  Done: { editable: ["notes"], moves: [] },
-  Blocked: { editable: BRIEFABLE, moves: ["unblock", "withdraw"] },
+  Done: { editable: ["notes"], moves: ["delete"] },
+  Blocked: { editable: BRIEFABLE, moves: ["unblock", "delete"] },
 };
 
 export const ACTIVITY: CardDetail["activity"] = [
@@ -33,6 +33,7 @@ export const cardDetail = (column: (typeof COLUMNS)[number], over: Partial<CardD
   outcome: null,
   blockedCause: null,
   approvedLanding: false,
+  awaitingAnswer: false,
   owner: "claudius",
   kind: "research",
   priority: "high",
@@ -43,7 +44,6 @@ export const cardDetail = (column: (typeof COLUMNS)[number], over: Partial<CardD
   exceptions: [],
   fields: {
     title: "Vector search options for the vault",
-    idea: "Can the vault search run locally instead of over an API?",
     scope: ["vault:05_knowledge"],
     deadline: "2026-10-16",
     research_on: "2026-10-06",

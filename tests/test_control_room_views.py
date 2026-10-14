@@ -27,8 +27,8 @@ import control_room_static as static  # noqa: E402
 import control_room_views as views  # noqa: E402
 import control_room_view_workflow as view_workflow  # noqa: E402
 
-STANDING_ENTRIES = 31   # MEASURED 2026-10-07 (B2 added research-brief)
-LOGICAL_WORKFLOWS = 30
+STANDING_ENTRIES = 34   # MEASURED 2026-10-14 (board reactor: +4 entries, research-brief dormant)
+LOGICAL_WORKFLOWS = 33
 ROW = re.compile(r'<tr[^>]*\bdata-workflow="([^"]+)"[^>]*>(.*?)</tr>', re.DOTALL)
 CSP = "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'"
 
@@ -144,7 +144,8 @@ class AgentsApi(ServedCase):  # (::control-room-agents)
 
 
 class RequiresRows(ServedCase):  # (::control-room-requires)
-    GUARDED = ["agent-drift-check", "fleet-turn-check", "qmd-refresh", "workflow-incidents", "workflow-receipt-sweep"]
+    GUARDED = ["agent-drift-check", "board-reactor", "board-reconcile", "fleet-turn-check", "qmd-refresh",
+               "workflow-incidents", "workflow-receipt-sweep"]
 
     def test_requires_read_the_fixture_bus_and_required_by_carries_the_paused_dependent(self):
         _, _, body = get(self.base, "/api/v1/workflows?role=all")
@@ -158,7 +159,7 @@ class RequiresRows(ServedCase):  # (::control-room-requires)
         _, _, agent = get(self.base, "/api/v1/agents/augustus")
         self.assertEqual(json.loads(agent)["items"]["requiredBy"], [{"workflow": "augustus-content", "enabled": False}])
 
-    def test_guards_sit_on_the_five_platform_rows_only(self):
+    def test_guards_sit_on_the_platform_rows_that_declare_them_only(self):
         _, _, body = get(self.base, "/api/v1/workflows?role=all")
         rows = {item["id"]: item for item in json.loads(body)["items"]}
         guarded = sorted(id_ for id_, row in rows.items() if row["guards"])
@@ -218,7 +219,7 @@ class ArtifactRunHasNoReason(ServedCase):  # (::control-room-failed-check-named)
 class PausedOwned(ServedCase):  # (::control-room-paused-owned)
     def test_paused_chips_rows_tiles_and_queue(self):
         html = self.html("/portfolio")
-        self.assertEqual(len(re.findall(r'class="chip[^"]*trigger-state[^"]*"[^>]*>paused<', html)), 12)
+        self.assertEqual(len(re.findall(r'class="chip[^"]*trigger-state[^"]*"[^>]*>paused<', html)), 13)
         paused_rows = re.findall(r'<tr[^>]*data-workflow="([^"]+)"[^>]*data-health="paused"', html)
         self.assertEqual(len(paused_rows), 11)
         self.assertIn('data-workflow="raw-ingest" data-health="failed"', html)

@@ -21,6 +21,8 @@ const send = async (request: BoardWriteRequest): Promise<WriteResult> => {
   }
 };
 
+export const restoreCard = (card: string): Promise<WriteResult> => send({ verb: "restore", card });
+
 export const cardWriter = (card: string): CardWriter => ({
   create: (fields) => send({ verb: "create", ...fields }),
   edit: (rev, fields) => send({ verb: "edit", card, expect_rev: rev, fields }),

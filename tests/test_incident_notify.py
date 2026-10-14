@@ -81,6 +81,8 @@ def sha256_tree(root: pathlib.Path) -> dict[str, str]:
 
 
 class NotifierCase(unittest.TestCase):
+    debounce_env = {"INCIDENT_OPEN_AFTER": "0", "INCIDENT_RECOVER_AFTER": "0"}
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         root = pathlib.Path(self.temp.name)
@@ -122,6 +124,7 @@ class NotifierCase(unittest.TestCase):
             **os.environ, "TZ": tz, "HOME": str(self.home), "PATH": f"{FIXTURES / 'bin'}:{os.environ['PATH']}",
             "FAKE_DIR": str(self.fake), "FAKE_SYSTEMD_STATE": str(self.systemd_state), "FAKE_DELIVER_MODE": mode,
             "FAKE_EVENT_ID": "e1e1e1", "FAKE_CHANNEL": "0f1e2d3c-4b5a-4697-8877-665544332211",
+            **self.debounce_env,
         }
         argv = [sys.executable, str(NOTIFY), "--now", now, "--state-dir", str(self.state_dir),
                 "--routes-file", str(FIXTURES / routes), "--deliver-bin", str(deliver_bin or FIXTURES / "bin" / "deliver.sh"),
