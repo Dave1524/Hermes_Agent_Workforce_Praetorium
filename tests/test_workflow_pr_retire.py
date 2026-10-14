@@ -185,6 +185,20 @@ class Removal(TempState):
         text, changed = retire.decrement_count_literals(f"LOGICAL_WORKFLOWS = {after['logical_standing']}\n", after, 1, 1)
         self.assertEqual(text, f"LOGICAL_WORKFLOWS = {after['logical_standing'] - 1}\n", changed)
 
+    def test_a_dormant_entry_moves_no_logical_count(self):
+        """(::retire-count-literals-by-producer) — LOGICAL_WORKFLOWS counts standing entries, so
+        retiring a dormant one leaves it; research-brief (2026-10-14) took 33 to 32
+        in the views suite while the coverage suite rightly kept 33."""
+        before = {"standing_all": 34, "standing_scheduled": 20, "logical_all": 34, "logical_standing": 33, "logical_scheduled": 19}
+        subjects = {"units": [{"name": "gone"}]}
+        for lifecycle, want in (("dormant", 33), ("standing", 32)):
+            with self.subTest(lifecycle):
+                wt = pathlib.Path(self.tmp) / f"dormant-{lifecycle}"
+                (wt / "tests").mkdir(parents=True)
+                (wt / retire.VIEWS_SUITE).write_text("LOGICAL_WORKFLOWS = 33\n")
+                retire._decrement(wt, before, {}, subjects, {"lifecycle": lifecycle}, [])
+                self.assertEqual((wt / retire.VIEWS_SUITE).read_text(), f"LOGICAL_WORKFLOWS = {want}\n")
+
     def test_count_literals_by_producer(self):
         """(::retire-count-literals-by-producer) — the receipt-coverage tally drops under the class the
         retired unit's ExecStart decides (a swept timer, not a self-receipting one), once per unit;
