@@ -12,7 +12,7 @@ OnFailure=agent-alert@%n.service
 [Service]
 Type=oneshot
 User=dave
-Environment=AGENT_JOB_OVERRIDES=/home/dave/.config/agent-workforce/research_brief.env
+Environment=AGENT_JOB_OVERRIDES=/home/dave/.config/agent-workforce/board_brief.env
 Environment=AGENT_BOARD_CARD=%i
 Environment=AGENT_RECEIPT_UNIT=board-brief
 Environment=AGENT_ATTEMPT_LOG=/home/dave/agent-workforce/logs/last-attempt/board-brief-%i.log
@@ -20,7 +20,7 @@ Environment=AGENT_USAGE_JSON=/home/dave/agent-workforce/logs/last-attempt/board-
 Environment="REPORT_SUBJECT=[Praetorium] Board brief"
 Environment=DELIVERY_ROUTE=research
 Environment=DELIVERY_JOB=%n
-Environment=DELIVERY_TASK=research-brief
+Environment=DELIVERY_TASK=board-brief
 Environment=DELIVERY_CARD=%i
 Environment=DELIVERY_RUN_MARKER=/home/dave/logs/run-markers/%n
 EnvironmentFile=/home/dave/.config/agent-workforce/secrets.env

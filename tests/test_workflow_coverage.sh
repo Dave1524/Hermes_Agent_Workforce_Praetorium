@@ -327,12 +327,12 @@ fx_what_two=$(guards_fixture what trajan qmd-refresh 's/^what *= .*/what = "Vaul
 
 # Dev Plan B2: the same shape for the board join. A fixture is a checkout-shaped copy with
 # the unit's committed override example mutated; each result is `<entries checked>:<ids>`.
-board_fixture() {  # board_fixture <name> <sed-expr over profiles/research_brief.env.example>
+board_fixture() {  # board_fixture <name> <sed-expr over profiles/board_brief.env.example>
   local name=$1 expr=$2
   local dir="$fx/board-$name"
   mkdir -p "$dir"
   cp -r design tests bin systemd skills profiles buzz-team "$dir"/
-  [ -z "$expr" ] || sed -i "$expr" "$dir/profiles/research_brief.env.example"
+  [ -z "$expr" ] || sed -i "$expr" "$dir/profiles/board_brief.env.example"
   python3 "$dir/tests/test_workflow_coverage.py" >"$dir/report" 2>/dev/null
   printf '%s:%s\n' \
     "$(sed -n 's/^SUMMARY.* board_checked=\([0-9]\{1,\}\).*/\1/p' "$dir/report")" \

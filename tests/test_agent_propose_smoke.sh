@@ -766,7 +766,7 @@ echo "\$@" >> "$home/hermes_argv.log"
 exit 0
 MOCK
   chmod +x "$home/stub_board.py" "$home/mock_hermes.sh"
-  printf '\nAGENT_RUN_MODE=board\nAGENT_TASK_SLUG=research-brief\nAGENT_BOARD_PICK="--owner claudius --kind research --column backlog"\n' \
+  printf '\nAGENT_RUN_MODE=board\nAGENT_TASK_SLUG=board-brief\nAGENT_BOARD_PICK="--owner claudius --kind research --column backlog"\n' \
     >> "$home/.config/agent-workforce/secrets.env"
 }
 echo "--- scenario 42: board mode picks a card, records the model's brief, receipts BOARD (::board-mode-records-brief) ---"
