@@ -1,0 +1,32 @@
+# The board reactor (R0): starts a card's run within seconds of the card, a brief, an answer note
+# or a signed decision, at most BOARD_REACTOR_MAX_RUNS at once and BOARD_REACTOR_DAILY_CAP a day.
+# Supervised by systemd: READY=1 after its watches are up, WATCHDOG=1 every third of WatchdogSec,
+# restart with growing backoff (5 s to 5 min), and after 10 failures in an hour the start limit
+# stops it and OnFailure alerts. board-reconcile.timer runs the same pass every 5 minutes, so a
+# dead or paused reactor loses no card. Stop from the Control Room is its pause; the reconcile
+# reads that stop's broker receipt and does nothing while it stands.
+[Unit]
+Description=Board reactor (event-driven card runs) — board reactor
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=1h
+StartLimitBurst=10
+OnFailure=agent-alert@%n.service
+
+[Service]
+Type=notify
+NotifyAccess=main
+User=dave
+EnvironmentFile=-/home/dave/.config/agent-workforce/board_reactor.env
+ExecCondition=/home/dave/agent-workforce/bin/board.py exists
+ExecStart=/home/dave/agent-workforce/bin/board_reactor.py
+WatchdogSec=60
+Restart=on-failure
+RestartSec=5
+RestartSteps=6
+RestartMaxDelaySec=300
+TimeoutStartSec=60
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

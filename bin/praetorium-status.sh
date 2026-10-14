@@ -21,9 +21,9 @@ fi
 # services with no timer; appending ".timer" to them asks the manager for a unit that does
 # not exist, and `systemctl list-timers` answers that by SILENTLY DROPPING the name — rc=0,
 # empty stderr, "1 timers listed" for six units requested. Measured 2026-09-03.
-fleet_units() {  # $1 = scope, $2 = kind (timer|service|any)
+fleet_units() {  # $1 = scope, $2 = kind (timer|service|any); any = a unit of its own, never a template
   awk -F'\t' -v want="$1" -v kind="${2:-any}" \
-    '!/^#/ && NF>=5 && $2==want && $3=="standing" && (kind=="any" || $5==kind) {print $1}' \
+    '!/^#/ && NF>=5 && $2==want && $3=="standing" && (kind=="any" ? ($5=="timer" || $5=="service") : $5==kind) {print $1}' \
     "$FLEET_UNITS"
 }
 

@@ -10,6 +10,11 @@ alerted, and one `[incident digest]` a day while anything stays unresolved. Ever
 through bin/deliver.sh; a send that fails is recorded on the entry and never fails the sweep.
 Exit is non-zero only when the sweep itself cannot run (state unwritable).
 
+Debounce (criterion 15, bin/incident_state.py `Debounce`): an incident is sent only once it has
+been red for INCIDENT_OPEN_AFTER seconds (default 900) or three consecutive sweeps, and it
+resolves — sending `[recovered]` if it was alerted — only after green for INCIDENT_RECOVER_AFTER
+seconds (default 900) or three consecutive sweeps. Both are whole seconds; 0 sends at once.
+
 Runs only as workflow-incidents.service or by hand. No run path references it.
 """
 from __future__ import annotations
@@ -68,6 +73,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--max-attempts", type=int, default=env_int("INCIDENT_MAX_SEND_ATTEMPTS", 6))
     p.add_argument("--retention-days", type=int, default=env_int("INCIDENT_RESOLVED_RETENTION_DAYS", 14))
     p.add_argument("--deliver-timeout", type=int, default=env_int("INCIDENT_DELIVER_TIMEOUT_SECS", 90))
+    p.add_argument("--open-after", type=int, default=env_int("INCIDENT_OPEN_AFTER", 900))
+    p.add_argument("--recover-after", type=int, default=env_int("INCIDENT_RECOVER_AFTER", 900))
     return p.parse_args(argv)
 
 
@@ -129,7 +136,7 @@ def render_digest(entries: list[dict[str, Any]], template: str) -> tuple[str, st
                 f"(seen {entry['observations']}×, last {entry['last_seen']}) — {entry['required_action']} — "
                 f"{link(template, entry['key'])}")
         if entry.get("notified_at") is None:
-            line += f" — unsent ({entry.get('last_send_error') or 'route unset'})"
+            line += f" — unsent ({entry.get('last_send_error') or 'holding or route unset'})"
         lines.append(line)
     return f"[incident digest] {len(entries)} unresolved", "\n".join(lines)
 
@@ -186,6 +193,7 @@ class Sweep:
         self.log_path = HOME / "logs" / "workflow-incidents.log"
         self.sender = Sender(args)
         self.state_path = args.state_dir / "state.json"
+        self.debounce = state_io.Debounce(args.open_after, args.recover_after)
         self.sent = 0
 
     def log(self, message: str) -> None:
@@ -232,7 +240,8 @@ class Sweep:
     def send_opens(self, state: dict[str, Any]) -> None:
         pending = [e for e in state_io.open_entries(state)
                    if e["class"] in wi.IMMEDIATE_CLASSES and e.get("notified_at") is None
-                   and e.get("send_attempts", 0) < self.args.max_attempts]
+                   and e.get("send_attempts", 0) < self.args.max_attempts
+                   and state_io.due_to_open(e, self.now, self.debounce)]
         for entry in pending[: self.args.max_sends]:
             subject, body = render_immediate(entry, self.args.link_template)
 
@@ -281,7 +290,7 @@ class Sweep:
         state, notice = state_io.load(self.state_path, self.now)
         if notice:
             self.log(notice)
-        transitions = state_io.reconcile(state, observed, self.now, sources_ok)
+        transitions = state_io.reconcile(state, observed, self.now, sources_ok, self.debounce)
         pruned = state_io.prune(state, self.now, self.args.retention_days)
         if not sources_ok:
             self.log("a source is degraded: closing nothing this sweep")

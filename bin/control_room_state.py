@@ -54,7 +54,9 @@ def service_running(systemd: dict[str, Any]) -> bool:
 
 def trigger_state(systemd: dict[str, Any]) -> str:
     """An always-on service that failed is paused, not unknown: it is startable, and the raw
-    ActiveState still travels on the runtime chip."""
+    ActiveState still travels on the runtime chip. A template is never paused: idle is armed."""
+    if systemd["kind"] == "template":
+        return "running" if systemd.get("instances") else "active"
     if systemd["kind"] == "timer":
         if service_running(systemd):
             return "running"
@@ -96,6 +98,9 @@ def control_state(triggers: list[dict[str, Any]]) -> str:
     if "active" in states:
         return "active"
     return "unknown"
+
+
+TEMPLATE_REASON = "one run per card: stop a card's run from that card on the board"
 
 
 def _action(action_id: str, enabled: bool, reason: str) -> dict[str, Any]:
@@ -165,8 +170,14 @@ def control_for(
         "lastFiredAt": last_fires[-1] if last_fires else None,
         "persistent": persistent,
         "lastAction": control_reader(logical_id) if control_reader else None,
-        "actions": control_actions(state, source, role),
+        "actions": (template_actions(state) if triggers and all(t["kind"] == "template" for t in triggers)
+                    else control_actions(state, source, role)),
     }
+
+
+def template_actions(state: str) -> list[dict[str, Any]]:
+    """Per-card instances are stopped from their card; the template row has nothing to act on."""
+    return [_action(action["id"], False, TEMPLATE_REASON) for action in control_actions(state, "systemd")]
 
 
 def no_cadence(error: str) -> dict[str, Any]:

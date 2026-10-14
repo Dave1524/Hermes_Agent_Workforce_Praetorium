@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { CardDetail } from "@/api/schemas/board";
 import { inputClass } from "@/components/dialogs/DialogFrame";
-import { FIELD_LABELS } from "@/model/card";
+import { FIELD_LABELS, formatResearchOn, joinResearchOn, splitResearchOn } from "@/model/card";
 import { type Draft, type Editing, lockReason } from "@/model/cardDraft";
 import LockNote from "./LockNote";
 import ScopePicker from "./ScopePicker";
@@ -19,6 +19,17 @@ interface FieldProps {
   children: ReactNode;
 }
 
+function ResearchOnControl({ editing }: { editing: Editing }) {
+  const { date, time } = splitResearchOn(editing.draft.research_on);
+  const set = (nextDate: string, nextTime: string) => editing.set("research_on", joinResearchOn(nextDate, nextTime));
+  return (
+    <div className="flex gap-1.5">
+      <input aria-label={FIELD_LABELS.research_on} type="date" value={date} onChange={(e) => set(e.target.value, time)} className={inputClass} />
+      <input aria-label={FIELD_LABELS.research_time} type="time" value={time} disabled={!date} onChange={(e) => set(date, e.target.value)} className={`${inputClass} w-24`} />
+    </div>
+  );
+}
+
 function Control({ name, editing }: { name: keyof Draft; editing: Editing }) {
   const common = { "aria-label": FIELD_LABELS[name] ?? name, value: editing.draft[name], className: inputClass };
   const on = (e: { target: { value: string } }) => editing.set(name, e.target.value);
@@ -33,8 +44,9 @@ function Control({ name, editing }: { name: keyof Draft; editing: Editing }) {
       </select>
     );
   }
+  if (name === "research_on") return <ResearchOnControl editing={editing} />;
   if (name === "scope") return <ScopePicker value={editing.draft.scope} onChange={(v) => editing.set("scope", v)} />;
-  const type = name === "research_on" || name === "deadline" ? "date" : "text";
+  const type = name === "deadline" ? "date" : "text";
   return <input {...common} type={type} onChange={on} placeholder={type === "text" ? "comma separated" : undefined} />;
 }
 
@@ -57,8 +69,8 @@ export default function CardSidePanel({ card, editing, footer }: { card: CardDet
   const shared = { card, editing };
   return (
     <aside className="flex flex-col gap-3 text-xs" aria-label="Card details">
-      <SideField {...shared} name="research_on" hint="Not before this morning's run">
-        {fields.research_on ?? none}
+      <SideField {...shared} name="research_on" hint="Not before this time, box-local (Amsterdam); no time means midnight">
+        {formatResearchOn(fields.research_on) ?? none}
       </SideField>
       <SideField {...shared} name="deadline">
         {fields.deadline ?? none}

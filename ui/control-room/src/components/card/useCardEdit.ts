@@ -32,7 +32,7 @@ export interface CardEdit {
   create: () => void;
 }
 
-const DETAIL_KEYS: Array<keyof Draft> = ["title", "idea", "scope", "priority", "tags", "research_on", "deadline"];
+const DETAIL_KEYS: Array<keyof Draft> = ["title", "scope", "priority", "tags", "research_on", "deadline"];
 
 export const useCardEdit = (card: CardDetail, writer: CardWriter, onChanged: (created: string | null) => void): CardEdit => {
   const creating = card.id === "";
@@ -83,7 +83,6 @@ export const useCardEdit = (card: CardDetail, writer: CardWriter, onChanged: (cr
       () =>
         writer.create({
           title: draft.title.trim(),
-          idea: draft.idea.trim(),
           scope: listOf(draft.scope),
           priority: draft.priority,
           tags: listOf(draft.tags),
@@ -91,7 +90,7 @@ export const useCardEdit = (card: CardDetail, writer: CardWriter, onChanged: (cr
           kind: card.kind,
           ...(draft.research_on.trim() ? { research_on: draft.research_on.trim() } : {}),
           ...(draft.deadline.trim() ? { deadline: draft.deadline.trim() } : {}),
-          ...(draft.brief.trim() ? { brief: draft.brief } : {}),
+          brief: draft.brief,
         }),
       () => undefined,
     );
@@ -107,7 +106,7 @@ export const useCardEdit = (card: CardDetail, writer: CardWriter, onChanged: (cr
     canSaveBrief: !busy && !creating && briefChanged(base, draft),
     canSaveDetails: !busy && !creating && Object.keys(changes).length > 0,
     canAddNote: !busy && !creating && draft.note.trim() !== "",
-    canCreate: !busy && creating && [draft.title, draft.idea, draft.scope].every((v) => v.trim() !== "") && listOf(draft.scope).length > 0,
+    canCreate: !busy && creating && [draft.title, draft.brief, draft.scope].every((v) => v.trim() !== "") && listOf(draft.scope).length > 0,
     canSaveAndApprove: !busy && !creating && briefChanged(base, draft) && card.moves.includes("approve_brief"),
     canSaveAndUnblock: !busy && !creating && Object.keys(changes).length > 0 && card.moves.includes("unblock"),
     saveBriefAndApprove,

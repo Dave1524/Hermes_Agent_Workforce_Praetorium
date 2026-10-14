@@ -10,7 +10,7 @@ card instead of date.
 
   publish --card ID --from-file F [--title T] [--run-id R]   create or rewrite; prints page + hash
   export  --card ID [--out F] [--if-exists]                  the page as it stands, as markdown
-  mark    --card ID --state published|merged|rejected [--path P]
+  mark    --card ID --state published|merged|rejected|withdrawn|deleted [--path P]
 
 `page_hash` is the board's text hash (board.text_hash): of the file for publish, of the exported
 text for export. Both are the hash an approval carries.
@@ -32,7 +32,7 @@ from notion_rest import SECRETS, load_token  # noqa: E402
 DS_VARIABLE = "NOTION_RESEARCH_DS"
 TITLE, CARD, RUN, VERSION, PUBLISHED, STATE, VAULT_PATH = (
     "Name", "Card", "Run", "Version", "Published", "State", "Vault path")
-STATES = ("published", "merged", "rejected")
+STATES = ("published", "merged", "rejected", "withdrawn", "deleted")
 
 
 def data_source():

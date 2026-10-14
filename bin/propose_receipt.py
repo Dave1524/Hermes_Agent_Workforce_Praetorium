@@ -5,7 +5,7 @@
                        [--brief-hash HASH] [--page PAGE --page-hash HASH]
 
 OUTCOME is the word agent_propose.sh logs to cost.log: SKIP, DEDUP, BLOCKED, FAIL, CRASHED,
-VIOLATION, OPS, BOARD, CARD, PROPOSAL or NOPROPOSAL — or AUTHDOWN, the claude-auth pre-flight's refusal,
+VIOLATION, OPS, BOARD, QUESTIONS (a brief run's questions note, D7), CARD, PROPOSAL or NOPROPOSAL — or AUTHDOWN, the claude-auth pre-flight's refusal,
 which cost.log records as BLOCKED and the receipt as a skipped dependency-down. Each maps to exactly one executor evidence flag —
 the outcome map in .claude/briefs/t5-2-executor-wiring.md — and the executor derives the
 terminal outcome from there; nothing here defaults to success.
@@ -41,7 +41,7 @@ REASON_TAIL = 400
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("outcome", choices=["SKIP", "DEDUP", "BLOCKED", "AUTHDOWN", "FAIL", "CRASHED", "VIOLATION",
-                                       "OPS", "BOARD", "CARD", "PROPOSAL", "NOPROPOSAL"])
+                                       "OPS", "BOARD", "QUESTIONS", "CARD", "PROPOSAL", "NOPROPOSAL"])
     p.add_argument("--rc", type=int, help="the runtime's exit status (FAIL, CRASHED)")
     p.add_argument("--reason", help="the gate that refused (BLOCKED, AUTHDOWN) or the limit that ended it (FAIL)")
     p.add_argument("--proposal", metavar="RELPATH", help="the proposal, relative to the inbox worktree (PROPOSAL)")
@@ -135,6 +135,8 @@ def evidence_flags(args: argparse.Namespace, env: dict[str, str]) -> list[str]:
         return ["--artifact", report] if report else []
     if outcome == "BOARD":
         return ["--artifact", f"board://{env.get('AGENT_CARD', '')}/brief/{args.brief_hash or ''}"]
+    if outcome == "QUESTIONS":
+        return ["--artifact", f"board://{env.get('AGENT_CARD', '')}/questions/{env.get('AGENT_RUN_ID', '')}"]
     if outcome == "CARD":
         return ["--artifact", f"notion://{args.page}"]
     if outcome == "PROPOSAL":

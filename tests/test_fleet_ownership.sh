@@ -89,8 +89,10 @@ assert 'scope is only system or user' \
   "[ \"\$(fleet_rows | awk -F'\t' '\$2!=\"system\" && \$2!=\"user\"' | wc -l)\" -eq 0 ]"
 # The vocabulary is closed for the same reason scope's is: a consumer branches on the value,
 # so a third spelling is not a new category, it is a row that every branch skips.
-assert 'kind is only timer or service' \
-  "[ \"\$(fleet_rows | awk -F'\t' '\$5!=\"timer\" && \$5!=\"service\"' | wc -l)\" -eq 0 ]"
+# `template` is a per-instance unit with no timer and no instance of its own until something
+# starts one (board-brief@<card>); a timer or always-on reading of it is the defect this guards.
+assert 'kind is only timer, service or template' \
+  "[ \"\$(fleet_rows | awk -F'\t' '\$5!=\"timer\" && \$5!=\"service\" && \$5!=\"template\"' | wc -l)\" -eq 0 ]"
 assert 'at least one row of each kind, or the column is asserting nothing' \
   "[ \"\$(fleet_rows | awk -F'\t' '\$5==\"timer\"' | wc -l)\" -gt 0 ] && [ \"\$(fleet_rows | awk -F'\t' '\$5==\"service\"' | wc -l)\" -gt 0 ]"
 assert 'the list is not empty (a silently empty list is the defect it replaced)' \
@@ -115,6 +117,8 @@ import os, pathlib
 root = pathlib.Path(os.environ["REPO_ROOT"])
 
 def evidence(d, unit):
+    if (d / f"{unit}@.service").is_file() and not (d / f"{unit}.service").is_file():
+        return "template"
     names = {f"{unit}.timer", f"{unit}.service"}
     if unit.endswith("@"):
         names |= {p.name for p in d.glob(f"{unit}*.timer")}
@@ -123,8 +127,9 @@ def evidence(d, unit):
         base = unit.split("@")[0] + "@"
         names |= {f"{base}.timer", f"{base}.service"}
     present = {n for n in names if (d / n).is_file()}
-    return (any(n.endswith(".timer") for n in present),
-            any(n.endswith(".service") for n in present))
+    if any(n.endswith(".timer") for n in present):
+        return "timer"
+    return "service" if present else None
 
 unjudgeable = []
 judged = 0
@@ -136,12 +141,8 @@ for line in pathlib.Path(os.environ["FLEET"]).read_text().splitlines():
         continue
     unit, scope, status, _owner, kind = cols[0], cols[1], cols[2], cols[3], cols[4]
     d = root / ("systemd/user" if scope == "user" else "systemd")
-    has_timer, has_service = evidence(d, unit)
-    if has_timer:
-        expected = "timer"
-    elif has_service:
-        expected = "service"
-    else:
+    expected = evidence(d, unit)
+    if expected is None:
         unjudgeable.append(f"{unit} ({status})")
         continue
     judged += 1

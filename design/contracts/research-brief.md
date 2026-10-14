@@ -6,22 +6,31 @@ pick), `bin/run_research_brief_cc.sh`, `bin/brief_or_decline.sh`, `bin/board.py`
 `systemd/research-brief.{service,timer}` and `.claude/briefs/agent-board-refinement-2026-09-23.md`
 §3.2a, §3.5 and §3.6.3-§3.6.8. No live brief was read: the board has no card yet.
 
+**Since 2026-10-13 the board reactor starts it.** `board-brief@<card>.service` runs the same
+wrapper, runner and profile with `AGENT_BOARD_CARD=<card>`: the pick takes that card, the lock is
+per card, and the run starts within seconds of a card wanting a brief (created, returned, or
+answered). The run writes either `questions.out.md` — recorded as a `questions` note, at most
+`board.QUESTION_ROUNDS` (two) per card — or `brief.out.md`. The hourly timer retires through its
+own `control-room/retire-research-brief-*` PR.
+
 ## Identity
 
 | | |
 |---|---|
-| Unit | `research-brief.service` / `.timer` |
+| Unit | `board-brief@.service` (one instance per card, started by `board-reactor`); `research-brief.service` / `.timer`, dormant since 2026-10-14 (timer disabled), until its retirement PR merges |
 | Owner | **claudius** (`design/agents/claudius.toml`) |
 | Surface | S2 — scheduled headless Claude Code |
 | Executor | `claude -p --model claude-opus-5`, box subscription (`bin/run_research_brief_cc.sh`) |
 | Task slug | `research-brief` |
-| Contract version | 1 (2026-10-07) |
+| Contract version | 2 (2026-10-13: the board reactor starts it per card; questions before the brief) |
 | Alerted | yes — `OnFailure=agent-alert@%n.service` |
 | Retry | not idempotent as a restart: a new start is a new run id and picks the next Backlog card, or none. Within one run id it is: `board.py pick` returns the card the id already holds and `board.py brief` the hash it already recorded |
 
 ## Trigger
 
-`OnCalendar=Mon..Fri 08..18:07`, `RandomizedDelaySec=3min`, `Persistent=false` — hourly on
+`board-brief@<card>.service`: started by `board-reactor` (`design/contracts/board-reactor.md`)
+when the card wants a brief and no run of it is active, within its cooldown, cap and slot limit.
+Until retirement, the timer: `OnCalendar=Mon..Fri 08..18:07`, `RandomizedDelaySec=3min`, `Persistent=false` — hourly on
 weekdays; a tick missed while the box was off must not fire at boot. Recurring; no expiry. The
 longest legitimate gap between runs is the weekend plus the overnight gap, 72 hours.
 
@@ -73,12 +82,16 @@ and exits 0. The STEP 0 idempotency skip prints `skip: …`, exits 3 and is rece
 ## Acceptance checks
 
 1. **The brief is this run's**, not an earlier one left in place. Not applicable on a run that
-   declined.
+   declined or asked questions.
 
    ```check id=brief-is-this-run
    f="$AGENT_CARD_DIR/brief.out.md"
    if [ ! -f "$f" ] && grep -qE '^DECLINE:' "$AGENT_ATTEMPT_LOG" 2>/dev/null; then
      echo "n/a: no brief and a declared decline"
+     exit 77
+   fi
+   if [ ! -f "$f" ] && [ -s "$AGENT_CARD_DIR/questions.out.md" ]; then
+     echo "n/a: this run asked questions"
      exit 77
    fi
    [ -n "$(find "$AGENT_CARD_DIR" -maxdepth 1 -name brief.out.md -newermt "@$AGENT_RUN_STARTED_AT" 2>/dev/null)" ]
@@ -89,6 +102,7 @@ and exits 0. The STEP 0 idempotency skip prints `skip: …`, exits 3 and is rece
 
    ```check id=decline-is-this-runs-own
    [ -f "$AGENT_CARD_DIR/brief.out.md" ] && { echo "n/a: the run produced a brief"; exit 77; }
+   [ -s "$AGENT_CARD_DIR/questions.out.md" ] && { echo "n/a: the run asked questions"; exit 77; }
    fresh="$(find "$(dirname "$AGENT_ATTEMPT_LOG")" -maxdepth 1 \
               -name "$(basename "$AGENT_ATTEMPT_LOG")" \
               -newermt "@$AGENT_RUN_STARTED_AT" 2>/dev/null)"
@@ -153,6 +167,7 @@ and exits 0. The STEP 0 idempotency skip prints `skip: …`, exits 3 and is rece
    72-hour weekend plus jitter; a never-fired timer fails rather than reading as 1970.
 
    ```check id=timer-fired-this-window when=sweep
+   [ "$UNIT" = board-brief ] && { echo "n/a: board-brief is started by the reactor, not a timer"; exit 77; }
    t="$($SYSTEMCTL show "$UNIT.timer" -p LastTriggerUSec --value --timestamp=unix)"
    case "$t" in @*) ;; *) echo "the timer has never fired"; exit 1 ;; esac
    age=$(( $(date +%s) - ${t#@} ))
@@ -165,6 +180,7 @@ and exits 0. The STEP 0 idempotency skip prints `skip: …`, exits 3 and is rece
    shared file naming no job; journald scopes by unit.
 
    ```check id=not-lock-skipped when=sweep
+   [ "$UNIT" = board-brief ] && { echo "n/a: board-brief is started by the reactor, not a timer"; exit 77; }
    t="$($SYSTEMCTL show "$UNIT.timer" -p LastTriggerUSec --value --timestamp=unix)"
    case "$t" in @*) ;; *) echo "the timer has never fired"; exit 1 ;; esac
    [ -z "$($JOURNALCTL --unit "$UNIT.service" --since "$t" --no-pager \
@@ -173,6 +189,18 @@ and exits 0. The STEP 0 idempotency skip prints `skip: …`, exits 3 and is rece
 
 A card left in Refine waits on Dave, not on this run, so it is the board sweep's `refine-stale`
 exception (B6), not a check here.
+
+10. **Questions are this run's, and within the rounds.** A run that asked questions wrote a
+    fresh, non-empty `questions.out.md`; the wrapper refuses a third round and fails the run, so
+    a `QUESTIONS` receipt past round two cannot exist.
+
+    ```check id=questions-are-this-runs-own
+    q="$AGENT_CARD_DIR/questions.out.md"
+    [ -f "$q" ] || { echo "n/a: no questions this run"; exit 77; }
+    [ -s "$q" ] || { echo "questions.out.md is empty"; exit 1; }
+    [ -n "$(find "$AGENT_CARD_DIR" -maxdepth 1 -name questions.out.md -newermt "@$AGENT_RUN_STARTED_AT" 2>/dev/null)" ] \
+      || { echo "questions.out.md predates this run"; exit 1; }
+    ```
 
 ## Known failure modes
 

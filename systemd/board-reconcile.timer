@@ -1,0 +1,13 @@
+# Every 5 minutes, 24/7 (D2): no weekday or office-hour window anywhere in the board path.
+# Persistent=false: a missed tick is the next tick's work, because each pass reads the whole board.
+[Unit]
+Description=Schedule the board reconcile pass — board reactor
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Persistent=false
+
+[Install]
+WantedBy=timers.target

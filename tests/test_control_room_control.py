@@ -67,6 +67,9 @@ class StateFileSystemd:
             return {k: v for k, v in state[name].items() if not k.startswith("_")}, None
         return self.fallback.show(name, scope)
 
+    def instances(self, template: str, scope: str):
+        return self.fallback.instances(template, scope)
+
 
 class Served:
     def __init__(self, control_obj=None, receipts: pathlib.Path | None = None, systemd=None,

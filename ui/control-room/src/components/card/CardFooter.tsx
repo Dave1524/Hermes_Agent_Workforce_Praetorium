@@ -2,7 +2,7 @@ import { buttonClass, inputClass } from "@/components/dialogs/DialogFrame";
 import { moveLabel } from "@/model/card";
 import type { CardDecision } from "./useCardDecision";
 
-const DANGER = new Set(["withdraw", "reject"]);
+const DANGER = new Set(["delete", "reject"]);
 const READ_ONLY = "This view only reads; open the card from the board to decide.";
 
 interface Props {

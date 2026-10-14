@@ -94,7 +94,7 @@ class Landing(LandBox):  # (::board-land)
         note = sh("git", "-C", str(self.origin), "show", f"{branch}:05_knowledge/research/alpha-card.md")
         front, body = note.split("---\n")[1], note.split("---\n", 2)[2]
         self.assertEqual(board.text_hash(body), HASH)
-        for line in ("type: research", "card: alpha-card", 'title: "Title of alpha-card"',
+        for line in ("type: research", "card: alpha-card", 'title: "alpha-card"',
                      'question: "Does the synthetic thing hold?"', 'tags: ["synthetic", "alpha"]',
                      f"approved: {self.approval_date()}", "notion: https://www.notion.so/0a1b2c3dpage",
                      "run: r1", f"content: {HASH}"):
@@ -188,6 +188,29 @@ class Closing(LandBox):  # (::board-done-join)
         self.assertEqual(self.cli("sweep")[0], 0)
         self.assertEqual(self.column(), "Done")
         self.assertEqual(self.marks(), ["mark --card alpha-card --state rejected"])
+
+    def paged(self, card_id: str = "alpha-card") -> None:
+        self.assertEqual(self.create(card_id)[0], 0)
+        self.decide("brief_approved", card_id, brief_hash=self.write_brief(card_id, BRIEF))
+        self.cli("pick", "--owner", "claudius", "--run-id", "r1", "--workflow", "agent-proposal")
+        self.receipt("r1", "artifact", page="0a1b2c3d-page")
+
+    def test_a_withdrawn_card_marks_its_page_withdrawn(self):
+        self.paged()
+        self.decide("changes_requested", "alpha-card", reason="redo")
+        self.decide("rejected", "alpha-card", reason="no longer needed")
+        self.assertEqual(json.loads(self.cli("status", "alpha-card", "--json")[1])["outcome"], "withdrawn")
+        self.assertIn("marked alpha-card withdrawn", self.cli("sweep")[1])
+        self.assertEqual(self.marks(), ["mark --card alpha-card --state withdrawn"])
+
+    def test_a_deleted_card_marks_its_page_deleted_once_from_the_trash(self):
+        self.paged()
+        self.decide("deleted", "alpha-card")
+        board.trash_card(board.board_root(), "alpha-card")
+        self.assertIn("marked alpha-card deleted", self.cli("sweep")[1])
+        self.assertNotIn("marked", self.cli("sweep")[1])
+        self.assertEqual(self.marks(), ["mark --card alpha-card --state deleted"])
+        self.assertTrue((self.tmp / "board/trash/alpha-card/marked.json").exists())
 
     def test_a_failed_mark_is_retried_by_the_next_sweep(self):
         self.reviewed()

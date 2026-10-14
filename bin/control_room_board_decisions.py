@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """The board seam's decision verbs (Dev Plan B9, spec §3.7, §3.8, §7 decision 10).
 
-Dave's seven decisions are the broker's, never a ledger event. This module is the screen side of
-that fork: it checks a popup's decision against the card as it stands now (the move is offered in
-its column, the brief or page hash is the one the popup rendered, the revision is current), maps
-the popup's eight verbs onto the broker's seven, and forwards. It signs nothing and writes nothing;
-board.py derives the result from the stream the broker wrote.
+Dave's decisions are the broker's, never a ledger event. This module is the screen side of that
+fork: it checks a popup's decision against the card as it stands now (the move is offered in its
+column, the brief or page hash is the one the popup rendered, the revision is current), maps each
+popup verb onto one broker verb, and forwards. It signs nothing and writes nothing; board.py
+derives the result from the stream the broker wrote.
 
-`withdraw` is `rejected` taken outside In Review (§3.8), so the broker keeps its seven verbs. An
-approval carries the page text the seam read just now, which the broker keeps beside the signature.
+`delete` takes no reason and is offered wherever the board offers it (everywhere but In Review).
+`restore` is never a column move: it is taken on a deleted card, on the board or in the trash, and
+the reactor moves a trashed card back. An approval carries the page text the seam read just now,
+which the broker keeps beside the signature.
 """
 from __future__ import annotations
 
@@ -22,11 +24,11 @@ from control_room_control import BrokerUnavailable
 
 DECISION_MAP = {
     "approve_brief": "brief_approved", "return_brief": "brief_returned", "approve": "approved",
-    "request_changes": "changes_requested", "reject": "rejected", "withdraw": "rejected",
-    "block": "blocked", "unblock": "unblocked",
+    "request_changes": "changes_requested", "reject": "rejected",
+    "block": "blocked", "unblock": "unblocked", "delete": "deleted", "restore": "restored",
 }
 BRIEF_HASHED = ("approve_brief", "return_brief")
-REASONED = ("return_brief", "request_changes", "reject", "withdraw")
+REASONED = ("return_brief", "request_changes", "reject")
 REFUSAL_STATUS = {
     "bad_request": HTTPStatus.BAD_REQUEST, "reason_required": HTTPStatus.BAD_REQUEST,
     "unknown_action": HTTPStatus.BAD_REQUEST, "peer_denied": HTTPStatus.FORBIDDEN,
@@ -77,8 +79,21 @@ def _page_fields(card: str, body: dict[str, Any], export: Exporter) -> dict[str,
     return {"page_hash": rendered, "text": exported["text"]}
 
 
+def _check_restorable(root: pathlib.Path, card: str) -> None:
+    if any(row["id"] == card for row in board.trash_list(root)):
+        return
+    view = board.collect(root, include_deleted=True).get(card)
+    if view is None:
+        raise Refused(HTTPStatus.NOT_FOUND, f"no such card: {card}")
+    if not view["deleted"]:
+        raise Refused(HTTPStatus.CONFLICT, f"{card} is not deleted; nothing to restore")
+
+
 def broker_request(root: pathlib.Path, body: dict[str, Any], export: Exporter, card: str) -> dict[str, Any]:
     verb = body["verb"]
+    if verb == "restore":
+        _check_restorable(root, card)
+        return {"v": 1, "board_verb": DECISION_MAP[verb], "card": card}
     view = board.view_of(root, card)
     _check_move(view, verb, body)
     request: dict[str, Any] = {"v": 1, "board_verb": DECISION_MAP[verb], "card": card}

@@ -579,19 +579,28 @@ if s1_entries and skills_s1 < len(s1_entries):
 # two: the pick must name the declaring persona, the declared kind and a column the board
 # knows, and no column of one kind may have two pickers — "one owner, one kind, one runner"
 # asserted rather than remembered. B3 adds the todo-side entry and tightens this to exactly
-# one picker per column.
+# one picker per column. A `kind = "template"` entry (board-brief@<card>) is joined through its
+# template unit, which must pin the instance's card (AGENT_BOARD_CARD=%i); only standing entries
+# count as pickers, so a dormant timer awaiting retirement shares its overrides file harmlessly.
 BOARD_PICK_COLUMNS = {"backlog", "todo"}
 OVERRIDES = re.compile(r"AGENT_JOB_OVERRIDES=\S*?/([A-Za-z0-9_.-]+)\.env\b")
 PICK_LINE = re.compile(r'^AGENT_BOARD_PICK="?([^"\n]*)"?\s*$', re.M)
 
 
-def board_pick(unit):
-    service = ROOT / "systemd" / f"{unit}.service"
+CARD_INSTANCE = re.compile(r"^Environment=AGENT_BOARD_CARD=%i$", re.M)
+
+
+def board_pick(unit, kind="timer"):
+    name = f"{unit}@.service" if kind == "template" else f"{unit}.service"
+    service = ROOT / "systemd" / name
     if not service.is_file():
-        return None, f"systemd/{unit}.service does not exist"
-    found = OVERRIDES.search(service.read_text())
+        return None, f"systemd/{name} does not exist"
+    text = service.read_text()
+    if kind == "template" and not CARD_INSTANCE.search(text):
+        return None, f"systemd/{name} is a template without Environment=AGENT_BOARD_CARD=%i, so every instance would pick the column"
+    found = OVERRIDES.search(text)
     if not found:
-        return None, f"systemd/{unit}.service names no AGENT_JOB_OVERRIDES file"
+        return None, f"systemd/{name} names no AGENT_JOB_OVERRIDES file"
     example = ROOT / "profiles" / f"{found.group(1)}.env.example"
     if not example.is_file():
         return None, f"profiles/{found.group(1)}.env.example does not exist"
@@ -615,7 +624,7 @@ for owner, w in entries:
     if w.get("surface") != "scheduled":
         problem("board-join", f"{unit} ({owner}): board on a surface = {w.get('surface')!r} entry — only a scheduled workflow picks cards")
         continue
-    pick, why = board_pick(unit)
+    pick, why = board_pick(unit, w.get("kind", "timer"))
     if why:
         problem("board-join", f"{unit} ({owner}): {why}")
         continue
@@ -628,7 +637,8 @@ for owner, w in entries:
         problem("board-join", f"{unit} ({owner}): AGENT_BOARD_PICK names kind {flags.get('kind')!r}, the entry declares board = {kind!r}")
     if flags.get("column") not in BOARD_PICK_COLUMNS:
         problem("board-join", f"{unit} ({owner}): AGENT_BOARD_PICK column {flags.get('column')!r} is not one of {sorted(BOARD_PICK_COLUMNS)}")
-    pickers.setdefault((kind, flags.get("column")), []).append(unit)
+    if w.get("status") == "standing":
+        pickers.setdefault((kind, flags.get("column")), []).append(unit)
 for (kind, column), units_picking in sorted(pickers.items(), key=str):
     if len(units_picking) > 1:
         problem("board-join", f"board {kind!r} column {column!r} is picked by {units_picking} — one runner per column")

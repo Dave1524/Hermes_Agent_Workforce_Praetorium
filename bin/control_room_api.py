@@ -31,6 +31,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from workflow_receipt import iso_utc, is_closed, judged, parse_time, utc_now, validate as validate_receipt  # noqa: E402
 from control_room_cadence import cadence_for, freshness, parse_systemd_timestamp  # noqa: E402
 from control_room_benefit import ELIGIBLE_OUTCOMES, benefit_row, load_ledger  # noqa: E402
+import board_plan  # noqa: E402
 import control_room_board  # noqa: E402
 import control_room_board_writes  # noqa: E402
 import control_room_control  # noqa: E402
@@ -63,6 +64,7 @@ from control_room_state import (  # noqa: E402
 
 
 API_VERSION = "v1"
+BUSY_ACTIVE_STATES = {"active", "activating", "deactivating", "reloading"}
 TASK_ID = re.compile(r"\bT\d+\.\d+[a-d]?\b")
 OUTPUT_LABELS = (
     "Beneficiary",
@@ -217,6 +219,23 @@ class SystemdReader:
                 values[key] = value
         return values, None
 
+    def instances(self, template: str, scope: str) -> tuple[list[str], str | None]:
+        """The busy instances of `<template>@.service` (board-brief@<card>), by query."""
+        command = ["systemctl", *(["--user"] if scope == "user" else []), "list-units", "--all", "--plain",
+                   "--no-legend", "--no-pager", f"{template}@*.service"]
+        try:
+            completed = subprocess.run(command, check=False, capture_output=True, text=True, timeout=3)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return [], f"{type(exc).__name__}: {exc}"
+        if completed.returncode != 0:
+            return [], (completed.stderr or completed.stdout).strip() or f"systemctl exited {completed.returncode}"
+        return busy_units(completed.stdout), None
+
+
+def busy_units(listing: str) -> list[str]:
+    rows = (line.split() for line in listing.splitlines())
+    return sorted(cols[0] for cols in rows if len(cols) >= 3 and cols[2] in BUSY_ACTIVE_STATES)
+
 
 class ControlRoomReadModel:
     def __init__(
@@ -365,10 +384,25 @@ class ControlRoomReadModel:
         parsed = parse_systemd_timestamp(raw)
         return (iso_utc(parsed) if parsed else None), raw
 
+    def _template_systemd(self, unit: str, scope: str) -> dict[str, Any]:
+        """A template has no unit of its own: its state is whether any instance is busy."""
+        busy, error = self.systemd.instances(unit, scope)
+        return {
+            "scope": scope, "kind": "template",
+            "service": {"name": f"{unit}@.service", "activeState": "active" if busy else "inactive",
+                        "subState": "running" if busy else "dead", "result": "unknown", "startedAt": None,
+                        "endedAt": None, "exitStatus": None, "unitFileState": "unknown",
+                        "raw": {"startedAt": None, "endedAt": None}},
+            "timer": None, "instances": busy,
+            "status": "available" if error is None else "unavailable", "errors": [error] if error else [],
+        }
+
     def _systemd_for(self, workflow: dict[str, Any]) -> dict[str, Any]:
         scope = str(workflow.get("scope") or "system")
         kind = str(workflow.get("kind") or "timer")
         unit = str(workflow["unit"])
+        if kind == "template":
+            return self._template_systemd(unit, scope)
         service_name = unit if unit.endswith(".service") else f"{unit}.service"
         service, service_error = self.systemd.show(service_name, scope)
         timer: dict[str, str] = {}
@@ -860,10 +894,24 @@ class ControlRoomReadModel:
 
     def board_card(self, card_id: str) -> tuple[dict[str, Any] | None, dict[str, Any]]:
         item, status = self.board_reads.card(card_id)
+        if item is not None:
+            item = {**item, "runningUnit": self._running_unit(card_id)}
         return item, status
+
+    def _running_unit(self, card_id: str) -> str | None:
+        """The card's busy run as the broker's instance id (board-work@<card>), or None."""
+        for unit in board_plan.card_units(card_id):
+            values, error = self.systemd.show(unit, "system")
+            if error is None and values.get("ActiveState") in BUSY_ACTIVE_STATES:
+                return unit.removesuffix(".service")
+        return None
 
     def board_decisions(self) -> dict[str, Any]:
         items, status = self.board_reads.decisions()
+        return self._envelope(items, status)
+
+    def board_trash(self) -> dict[str, Any]:
+        items, status = self.board_reads.trash()
         return self._envelope(items, status)
 
     def agents(self) -> dict[str, Any]:
@@ -1085,6 +1133,8 @@ class ControlRoomHandler(BaseHTTPRequestHandler):
             self._json(HTTPStatus.OK, self.model.board(), head_only)
         elif name == "decisions":
             self._json(HTTPStatus.OK, self.model.board_decisions(), head_only)
+        elif name == "trash":
+            self._json(HTTPStatus.OK, self.model.board_trash(), head_only)
         else:
             item, status = self.model.board_card(name)
             if item is None:

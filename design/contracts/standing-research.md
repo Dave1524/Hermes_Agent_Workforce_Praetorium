@@ -18,7 +18,7 @@ only for systemd and the journal, which know it by the other name.
 
 | | |
 |---|---|
-| Unit | `agent-proposal.service` / `.timer` |
+| Unit | `agent-proposal.service` / `.timer` (card-less standing missions); `board-work@.service` (one approved card each, started by `board-reactor`, since 2026-10-13) |
 | Owner | **claudius** (`design/agents/claudius.toml`) |
 | Surface | S2 — scheduled headless Claude Code |
 | Executor | `claude -p --model claude-opus-5`, box subscription (`bin/run_standing_research_cc.sh:43`) |
@@ -242,6 +242,7 @@ Ids are the stable names; `## Known failure modes` references them, never the nu
    to a shared file naming no job. journald scopes by unit; the shared file does not.
 
    ```check id=not-lock-skipped when=sweep
+   [ "$UNIT" = board-work ] && { echo "n/a: board-work is started by the reactor, not a timer"; exit 77; }
    t="$($SYSTEMCTL show "$UNIT.timer" -p LastTriggerUSec --value --timestamp=unix)"
    case "$t" in @*) ;; *) echo "the timer has never fired"; exit 1 ;; esac
    [ -z "$($JOURNALCTL --unit "$UNIT.service" --since "$t" --no-pager \
@@ -254,6 +255,7 @@ Ids are the stable names; `## Known failure modes` references them, never the nu
     reading as 1970.
 
     ```check id=timer-fired-this-window when=sweep
+    [ "$UNIT" = board-work ] && { echo "n/a: board-work is started by the reactor, not a timer"; exit 77; }
     t="$($SYSTEMCTL show "$UNIT.timer" -p LastTriggerUSec --value --timestamp=unix)"
     case "$t" in @*) ;; *) echo "the timer has never fired"; exit 1 ;; esac
     age=$(( $(date +%s) - ${t#@} ))

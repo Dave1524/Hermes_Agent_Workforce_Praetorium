@@ -92,6 +92,8 @@ VALID = {
     "rejected": {"reason": "not worth a note"},
     "blocked": {"reason": "waiting on a decision"},
     "unblocked": {},
+    "deleted": {},
+    "restored": {},
 }
 
 
@@ -109,7 +111,7 @@ class BoardCase(unittest.TestCase):
 
 
 class Verbs(BoardCase):  # (::broker-board-verbs)
-    def test_the_vocabulary_is_boards_seven_decisions(self):
+    def test_the_vocabulary_is_boards_nine_decisions(self):
         self.assertEqual(broker.BOARD_VERBS, board.DECISIONS)
         self.assertEqual(set(VALID), set(board.DECISIONS))
 
@@ -208,6 +210,9 @@ class Refusals(BoardCase):  # (::broker-board-refusals)
 
     def test_fields_a_verb_does_not_take_are_refused(self):
         self.assertRefused(self.box.call(board_req("unblocked", text="x")), "bad_request")
+        for verb in ("deleted", "restored"):
+            self.assertRefused(self.box.call(board_req(verb, reason="tidy up")), "bad_request")
+            self.assertRefused(self.box.call(board_req(verb, brief_hash=HASH_A)), "bad_request")
         self.assertRefused(self.box.call(board_req("rejected", reason="r", brief_hash=HASH_A)), "bad_request")
 
     def test_a_verb_outside_the_allowlist_is_refused(self):
@@ -258,7 +263,7 @@ class Stream(BoardCase):  # (::broker-board-stream)
 
 
 class AllowlistBoardRender(unittest.TestCase):  # (::broker-board-allowlist-render)
-    def test_render_carries_the_seven_verbs_and_loads(self):
+    def test_render_carries_the_nine_verbs_and_loads(self):
         rendered = allowlist.render(ROOT)
         self.assertEqual(rendered["board"], {"verbs": sorted(board.DECISIONS)})
         self.assertEqual(broker.Allowlist.load_data(rendered).board_verbs, sorted(board.DECISIONS))

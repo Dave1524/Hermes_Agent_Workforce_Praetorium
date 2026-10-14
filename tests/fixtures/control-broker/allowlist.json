@@ -6,7 +6,31 @@
       "unit": "nekovri-subsidy-kickoff"
     }
   ],
+  "instances": {
+    "board-brief": {
+      "actions": [
+        "stop"
+      ],
+      "owner": "claudius",
+      "scope": "system",
+      "template": "board-brief@.service"
+    },
+    "board-work": {
+      "actions": [
+        "stop"
+      ],
+      "owner": "claudius",
+      "scope": "system",
+      "template": "board-work@.service"
+    }
+  },
   "runtimes": {
+    "board-reactor": {
+      "owner": "claudius",
+      "scope": "system",
+      "template": null,
+      "unit": "board-reactor"
+    },
     "buzz-agent@augustus": {
       "owner": "augustus",
       "scope": "user",

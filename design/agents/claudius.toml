@@ -85,10 +85,74 @@ web      = true
 tools_without = ["Edit"]   # the common floor minus Edit: the run writes one new file, never edits one
 board    = "research"        # works cards of this kind off the board; joined to the unit's AGENT_BOARD_PICK
 contract = "design/contracts/research-brief.md"
-status   = "standing"
+status   = "dormant"     # 2026-10-14: board-brief@ took the Backlog pick; timer disabled at install, retirement PR follows
 suite    = ["tests/test_research_brief_smoke.sh"]
 skills   = ["investment-research", "meeting-prep", "prospect-research", "board-cards"]
 notes    = "A quiet tick is receipted skipped before any model; the model runs only when Backlog holds a card. The wrapper, not the model, records the brief (agent_propose.sh AGENT_RUN_MODE=board)."
+
+# --- Board reactor (2026-10-13). The reactor starts one templated run per card the moment a card
+# --- wants one; research-brief and agent-proposal's todo pick retire behind it.
+[[workflows]]
+unit     = "board-brief"
+surface  = "scheduled"
+kind     = "template"    # board-brief@<card>.service, started by board-reactor; no timer
+trigger  = "event-driven — board-reactor starts one instance per card that wants a brief"
+model    = "claude-opus-5"
+profile  = "profiles/research_brief_cc_task.md"
+runner   = "bin/run_research_brief_cc.sh"
+route    = "research"
+web      = true
+tools_without = ["Edit"]
+board    = "research"
+contract = "design/contracts/research-brief.md"
+status   = "standing"
+suite    = ["tests/test_research_brief_smoke.sh", "tests/test_board_reactor.sh"]
+skills   = ["investment-research", "meeting-prep", "prospect-research", "board-cards"]
+notes    = "The research-brief workflow per card: same profile, runner and contract, keyed by AGENT_BOARD_CARD=%i instead of a timer pick. Writes questions.out.md (at most two rounds) or brief.out.md."
+
+[[workflows]]
+unit     = "board-work"
+surface  = "scheduled"
+kind     = "template"    # board-work@<card>.service, started by board-reactor; no timer
+trigger  = "event-driven — board-reactor starts one instance per approved research card"
+model    = "claude-opus-5"
+profile  = "profiles/standing_research_cc_task.md"
+runner   = "bin/run_standing_research_cc.sh"
+route    = "research"
+web      = true
+board    = "research"
+contract = "design/contracts/standing-research.md"
+status   = "standing"
+suite    = ["tests/test_standing_research_smoke.sh", "tests/test_board_reactor.sh"]
+skills   = ["investment-research", "meeting-prep", "prospect-research", "board-cards"]
+notes    = "Standing research on one approved card. agent-proposal keeps the card-less standing run; the todo pick moved here."
+
+[[workflows]]
+unit     = "board-reactor"
+surface  = "platform"
+kind     = "service"
+contract = "design/contracts/board-reactor.md"
+status   = "standing"
+suite    = ["tests/test_board_reactor.sh", "tests/test_board_plan.sh", "tests/test_inotify_watch.sh", "tests/test_board_polkit.sh"]
+skills   = []
+trigger  = "always on — inotify on the board and run receipts, plus its own wake time"
+what     = "Starts a card's brief or research run within seconds of the card wanting one, at most two at once and a daily cap, and stops, trashes, restores and purges deleted cards."
+guards   = "Without it no card moves: briefs and research runs start only from here."
+alerted  = true
+in_repo  = true
+
+[[workflows]]
+unit     = "board-reconcile"
+surface  = "platform"
+contract = "design/contracts/board-reconcile.md"
+status   = "standing"
+suite    = ["tests/test_board_reactor.sh"]
+skills   = []
+trigger  = "every 5 min (OnUnitActiveSec, 2 min after boot)"
+what     = "Runs one reactor pass every five minutes, so a missed inotify event costs at most five minutes, and receipts the reactor dead when its unit is down and not paused."
+guards   = "Without it a dead or wedged reactor is silent and a lost wake-up waits for the next event."
+alerted  = true
+in_repo  = true
 
 [[workflows]]
 unit     = "raw-ingest"

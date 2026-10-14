@@ -21,13 +21,24 @@
 #   board    — ops-style, plus a card: the pick (AGENT_BOARD_PICK) is required and a quiet
 #              tick is a receipted skip before any model. The run's one output is
 #              $AGENT_CARD_DIR/brief.out.md, which the wrapper records as the card's `brief`
-#              event after the model exits (design: agent-board-refinement §3.6.3).
+#              event after the model exits (design: agent-board-refinement §3.6.3). A
+#              run may instead write $AGENT_CARD_DIR/questions.out.md, recorded as a
+#              `questions` note while the card has question rounds left (D7).
+#
+# AGENT_BOARD_CARD=<id> (the board reactor's per-card units, board-brief@ / board-work@) picks
+# that card only and narrows the lock: the run holds /tmp/agent_board_card_<id>.lock instead of
+# the fleet lock, so N card runs proceed in parallel. Such a run never checks out, inspects or
+# resets the inbox worktree; the unit's ReadOnlyPaths= is that guarantee. Card-less proposal
+# runs hold AGENT_INBOX_LOCK from checkout to exit; the scorecard takes it without waiting.
 set -euo pipefail
 
 SECRETS="$HOME/.config/agent-workforce/secrets.env"
 WORKTREE="$HOME/agent-worktrees/inbox"
 LOG_DIR="$HOME/agent-workforce/logs"
 LOCK="${AGENT_PROPOSE_LOCK:-/tmp/agent_propose.lock}"
+INBOX_LOCK="${AGENT_INBOX_LOCK:-/tmp/agent_inbox.lock}"
+BOARD_CARD="${AGENT_BOARD_CARD:-}"
+inbox_locked=false
 mkdir -p "$LOG_DIR"
 # The graft Claude Code hooks (~/.claude/settings.json, user scope, since 2026-09-11) write
 # their index and per-session telemetry into the session's cwd — this worktree — and the Stop
@@ -154,7 +165,16 @@ refresh_scorecard() {
   # worktree as a plain dir — that would silently defeat the [ -d "$WORKTREE" ] gate
   # on the next run. Skip the refresh when the worktree isn't a real git checkout.
   [ -e "$WORKTREE/.git" ] || { log "scorecard skip: inbox worktree absent"; return 0; }
-  "$sc" >>"$LOG_DIR/scorecard.log" 2>&1 || log "scorecard refresh failed (non-fatal)"
+  if $inbox_locked; then
+    "$sc" >>"$LOG_DIR/scorecard.log" 2>&1 || log "scorecard refresh failed (non-fatal)"
+    return 0
+  fi
+  # A card run shares the worktree with the card-less proposal run that may hold it: skip, never wait.
+  (
+    exec 7>"$INBOX_LOCK"
+    flock -n 7 || { log "scorecard skip: inbox worktree busy"; exit 0; }
+    "$sc" >>"$LOG_DIR/scorecard.log" 2>&1 || log "scorecard refresh failed (non-fatal)"
+  )
 }
 
 BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -221,6 +241,10 @@ brave_healthy() {
   ss -ltn 2>/dev/null | grep ':8766' >/dev/null
 }
 
+if [ -n "$BOARD_CARD" ]; then
+  [[ "$BOARD_CARD" =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]] || block_exit "AGENT_BOARD_CARD is not a card id: $BOARD_CARD"
+  LOCK="${AGENT_BOARD_CARD_LOCK_DIR:-/tmp}/agent_board_card_${BOARD_CARD}.lock"
+fi
 exec 9>"$LOCK"
 flock -n 9 || { log "SKIP: previous run still active"; write_receipt SKIP; exit 0; }
 
@@ -379,8 +403,10 @@ pick_card() {
   local picked rc=0 workflow
   workflow="${requires_unit:-$run_task}"
   export BOARD_ROOT="${BOARD_ROOT:-${CONTROL_ROOM_BOARD_ROOT:-/var/lib/control-room-board}}"
+  local card_flag=()
+  [ -z "$BOARD_CARD" ] || card_flag=(--card "$BOARD_CARD")
   # shellcheck disable=SC2086  # AGENT_BOARD_PICK is a flag list by contract
-  picked=$(python3 "$BOARD_PY" pick $AGENT_BOARD_PICK --run-id "$AGENT_RUN_ID" --workflow "$workflow") || rc=$?
+  picked=$(python3 "$BOARD_PY" pick $AGENT_BOARD_PICK "${card_flag[@]}" --run-id "$AGENT_RUN_ID" --workflow "$workflow") || rc=$?
   [ "$rc" -eq 0 ] || block_exit "board pick failed (exit $rc)"
   if [ -z "$picked" ]; then
     if [ "$run_mode" = board ] || [ "${AGENT_BOARD_REQUIRED:-0}" = 1 ]; then
@@ -396,6 +422,7 @@ pick_card() {
   mkdir -p "$AGENT_CARD_DIR"
   printf '{"card": "%s", "run_id": "%s", "brief_hash": "%s"}\n' "$AGENT_CARD" "$AGENT_RUN_ID" "$card_brief_hash" \
     > "$AGENT_CARD_DIR/pick.json"
+  run_proposal="$AGENT_CARD"
   log "board: picked card $AGENT_CARD for run $AGENT_RUN_ID (brief ${card_brief_hash:-none})"
 }
 # One field of the picked card's view (`board.py show --json`); empty when the verb or the field is absent.
@@ -438,6 +465,10 @@ esac
 # The NUC-21 episodic store (~/.hermes/profiles/<owner>/memories) is retired (T6.1);
 # mem_status stays na on every run.
 if [ "$run_mode" = proposal ] && ! $card_run; then
+  [ -z "$BOARD_CARD" ] || block_exit "AGENT_BOARD_CARD=$BOARD_CARD picked nothing in proposal mode; a card run never touches the inbox"
+  exec 8>"$INBOX_LOCK"
+  flock -w 300 8 || block_exit "inbox worktree lock busy for 300s: $INBOX_LOCK"
+  inbox_locked=true
   git -C "$WORKTREE" checkout -q agents/inbox
   git -C "$WORKTREE" pull -q --ff-only origin agents/inbox 2>/dev/null || true
 fi
@@ -610,13 +641,13 @@ while [ "$attempt" -lt "$max_attempts" ]; do
   mkdir -p "$(dirname "$attempt_out")"
   : > "$attempt_out"
   rm -f "$AGENT_USAGE_JSON"
-  [ "$run_mode" != board ] || rm -f "$AGENT_CARD_DIR/brief.out.md"
+  [ "$run_mode" != board ] || rm -f "$AGENT_CARD_DIR/brief.out.md" "$AGENT_CARD_DIR/questions.out.md"
   ! $card_run || rm -f "$AGENT_CARD_DIR/research.md"
   attempt_started=$(date +%s)
   timeout --kill-after=30 "${attempt_limit}s" bash -lc "$run_cmd" \
     >"$attempt_out" 2>&1 || rc=$?
   attempt_seconds=$(( $(date +%s) - attempt_started ))
-  cat "$attempt_out" >>"$LOG_DIR/agent_run.log"
+  { flock -w 10 6 || true; cat "$attempt_out" >>"$LOG_DIR/agent_run.log"; } 6>"$LOG_DIR/agent_run.log.lock"
   if ledger_grew; then
     log_cost VIOLATION
     write_receipt VIOLATION --reason "wrote the card ledger during the model phase"
@@ -696,7 +727,7 @@ if ! $ok; then
     fail_reason="FAIL: runtime failed after $max_attempts attempts"
     [ "$attempt" -eq "$max_attempts" ] || fail_reason="FAIL: runtime failed after $attempt of $max_attempts attempts (no retry)"
   fi
-  if [ "$run_mode" = proposal ]; then
+  if [ "$run_mode" = proposal ] && [ -z "$BOARD_CARD" ]; then
     log "$fail_reason — resetting worktree, NO proposal emitted"
     git -C "$WORKTREE" reset --hard -q && git -C "$WORKTREE" clean -fdq
   else
@@ -724,6 +755,35 @@ if [ "$run_mode" = ops ]; then
   exit 0
 fi
 
+fresh_card_file() {  # fresh_card_file <name>: written in $AGENT_CARD_DIR by this run
+  [ -f "$AGENT_CARD_DIR/$1" ] && [ -n "$(find "$AGENT_CARD_DIR" -maxdepth 1 -name "$1" -newermt "@$AGENT_RUN_STARTED_AT")" ]
+}
+# D7: questions instead of a brief, while the card has rounds left; the round limit is board.py's.
+record_questions() {
+  local rounds limit note_rc=0
+  rounds=$(card_field question_rounds); rounds="${rounds:-0}"
+  limit=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import board; print(board.QUESTION_ROUNDS)' "$BIN_DIR")
+  if [ "$rounds" -ge "$limit" ]; then
+    log "FAIL: card $AGENT_CARD has used its $limit question rounds; this run had to write the brief"
+    log_cost FAIL
+    write_receipt FAIL --rc 1 --reason "questions after $limit rounds: the brief was due"
+    return 1
+  fi
+  python3 "$BOARD_PY" note "$AGENT_CARD" --from-file "$AGENT_CARD_DIR/questions.out.md" --kind questions \
+    --actor "run:$AGENT_RUN_ID" || note_rc=$?
+  if [ "$note_rc" -ne 0 ]; then
+    log "FAIL: board.py refused the questions for $AGENT_CARD (exit $note_rc)"
+    log_cost FAIL
+    write_receipt FAIL --rc "$note_rc" --reason "board.py note refused the questions for card $AGENT_CARD"
+    return 1
+  fi
+  log "OK: board run asked question round $((rounds + 1)) of $limit on card $AGENT_CARD"
+  run_outcome=QUESTIONS
+  run_proposal="$AGENT_CARD"
+  log_cost QUESTIONS
+  write_receipt QUESTIONS
+}
+
 # ── board mode: the run's one output is the card's brief; the wrapper, not the model, records it ──
 if [ "$run_mode" = board ]; then
   brief_file="$AGENT_CARD_DIR/brief.out.md"
@@ -742,6 +802,8 @@ if [ "$run_mode" = board ]; then
     run_proposal="$AGENT_CARD"
     log_cost BOARD
     write_receipt BOARD --brief-hash "$brief_hash"
+  elif fresh_card_file questions.out.md; then
+    record_questions || { refresh_scorecard; exit 1; }
   else
     log "OK: board run declined card $AGENT_CARD"
     run_outcome=NOPROPOSAL
@@ -754,7 +816,9 @@ fi
 
 # ── card run: the run's one output is research.md; the wrapper, not the model, publishes it ──
 if $card_run; then
-  dirty=$(git -C "$WORKTREE" status --porcelain)
+  # Under the fleet lock only: a reactor card run shares the worktree with nothing it may reset.
+  dirty=""
+  [ -n "$BOARD_CARD" ] || dirty=$(git -C "$WORKTREE" status --porcelain)
   if [ -n "$dirty" ]; then
     log "FATAL: a card run touched the inbox mirror — discarding everything: $dirty"
     git -C "$WORKTREE" reset --hard -q && git -C "$WORKTREE" clean -fdq

@@ -22,7 +22,7 @@ import board  # noqa: E402
 import workflow_receipt as wr  # noqa: E402
 
 NOW = dt.datetime(2026, 10, 6, 12, 0, tzinfo=dt.timezone.utc)
-CARD = {"id": "alpha-card", "title": "Alpha question", "idea": "Does the synthetic thing hold?",
+CARD = {"id": "alpha-card", "title": "Alpha question",
         "kind": "research", "owner": "claudius", "scope": ["vault:05_knowledge"],
         "deadline": None, "research_on": None, "priority": None, "tags": []}
 BRIEF_A, BRIEF_B, PAGE = "a" * 64, "b" * 64, "c" * 64
@@ -76,9 +76,9 @@ class Columns(unittest.TestCase):  # (::board-derive-columns)
             with self.subTest(column=column):
                 self.assertEqual(derive(**kwargs)["column"], column)
 
-    def test_a_returned_brief_or_an_edited_idea_sends_the_card_back_to_backlog(self):
+    def test_a_returned_brief_or_an_edited_scope_sends_the_card_back_to_backlog(self):
         returned = derive([CREATED, BRIEF], [dec("brief_returned", at(3), brief_hash=BRIEF_A, reason="narrow it")])
-        edited = derive([CREATED, BRIEF, ev("edited", at(4), fields={"idea": {"old": "x", "new": "y"}})], [APPROVE])
+        edited = derive([CREATED, BRIEF, ev("edited", at(4), fields={"scope": {"old": ["vault:a"], "new": ["vault:b"]}})], [APPROVE])
         self.assertEqual((returned["column"], edited["column"]), ("Backlog", "Backlog"))
 
     def test_a_title_edit_leaves_an_approved_brief_standing(self):
@@ -86,7 +86,8 @@ class Columns(unittest.TestCase):  # (::board-derive-columns)
         self.assertEqual((view["column"], view["fields"]["title"]), ("Todo", "y"))
 
     def test_a_research_date_ahead_is_scheduled_and_today_is_not(self):
-        for research_on, scheduled in (("2026-10-07", True), ("2026-10-06", False), ("2026-10-01", False)):
+        for research_on, scheduled in (("2026-10-07", True), ("2026-10-06", False), ("2026-10-01", False),
+                                       ("2026-10-06T14:01", True), ("2026-10-06T14:00", False)):
             with self.subTest(research_on=research_on):
                 view = derive([CREATED, BRIEF], [APPROVE], card={**CARD, "research_on": research_on})
                 self.assertEqual((view["column"], view["scheduled"]), ("Todo", scheduled))
@@ -201,9 +202,9 @@ class Picks(unittest.TestCase):  # (::board-void-pick)
 class Moves(unittest.TestCase):  # (::board-fields-and-moves)
     def test_each_column_offers_its_fields_and_moves_from_the_one_table(self):
         expected = {
-            "Backlog": ["withdraw"], "Refine": ["approve_brief", "return_brief", "withdraw"],
-            "Todo": ["block", "withdraw"], "In Progress": [], "In Review": ["approve", "request_changes", "reject"],
-            "Blocked": ["unblock", "withdraw"], "Done": [],
+            "Backlog": ["delete"], "Refine": ["approve_brief", "return_brief", "delete"],
+            "Todo": ["block", "delete"], "In Progress": ["delete"], "In Review": ["approve", "request_changes", "reject"],
+            "Blocked": ["unblock", "delete"], "Done": ["delete"],
         }
         for column, moves in expected.items():
             with self.subTest(column=column):
@@ -212,10 +213,10 @@ class Moves(unittest.TestCase):  # (::board-fields-and-moves)
     def test_in_progress_allows_only_labels_and_notes(self):
         self.assertEqual(board.editable_fields("In Progress", True), ["notes", "priority", "tags", "title"])
 
-    def test_idea_and_scope_close_after_the_first_research_run(self):
-        self.assertIn("idea", board.editable_fields("Todo", False))
-        self.assertNotIn("idea", board.editable_fields("Todo", True))
+    def test_scope_closes_after_the_first_research_run_and_idea_is_no_field(self):
+        self.assertIn("scope", board.editable_fields("Todo", False))
         self.assertNotIn("scope", board.editable_fields("Blocked", True))
+        self.assertFalse(any("idea" in board.editable_fields(c, False) for c in board.COLUMNS))
 
     def test_done_allows_notes_only_and_the_view_locks_owner_kind_and_id(self):
         self.assertEqual(board.editable_fields("Done", True), ["notes"])
@@ -251,7 +252,7 @@ class FixtureBox(unittest.TestCase):
         return str(path)
 
     def create(self, card_id: str = "alpha-card", *extra: str, actor: str = "dave") -> tuple[int, str, str]:
-        return self.cli("create", "--id", card_id, "--title", f"Title of {card_id}", "--idea", "A synthetic idea",
+        return self.cli("create", "--title", card_id, "--brief", self.file(f"v1-{card_id}.md", f"A synthetic idea for {card_id}"),
                         "--owner", "claudius", "--scope", "vault:05_knowledge", "--actor", actor, *extra)
 
     def write_brief(self, card_id: str = "alpha-card", text: str = "first brief", actor: str = "dave") -> str:
@@ -287,31 +288,41 @@ class FixtureBox(unittest.TestCase):
 
 
 class Creating(FixtureBox):  # (::board-create-rules)
-    def test_create_lands_in_backlog_and_writes_one_created_event(self):
+    def test_create_records_the_text_as_brief_v1_by_the_creator_and_lands_in_refine(self):
         self.assertEqual(self.create()[0], 0)
-        events = (self.tmp / "board/cards/alpha-card/events.jsonl").read_text().splitlines()
-        self.assertEqual([json.loads(e)["event"] for e in events], ["created"])
-        self.assertEqual(self.column(), "Backlog")
+        events = [json.loads(e) for e in (self.tmp / "board/cards/alpha-card/events.jsonl").read_text().splitlines()]
+        self.assertEqual([(e["event"], e["actor"]) for e in events], [("created", "dave"), ("brief", "dave")])
+        view = json.loads(self.cli("status", "alpha-card", "--json")[1])
+        self.assertEqual((view["column"], view["brief_version"], view["brief_by"]), ("Refine", 1, "dave"))
+        self.assertNotIn("idea", view["fields"])
+        self.assertNotIn("idea", json.loads((self.tmp / "board/cards/alpha-card/card.json").read_text()))
 
-    def test_create_with_a_brief_lands_in_refine(self):
-        code, _, err = self.create("alpha-card", "--brief", self.file("b.md", "text"))
-        self.assertEqual((code, self.column()), (0, "Refine"), err)
+    def test_the_id_is_the_slug_of_the_title(self):
+        code, out, err = self.cli("create", "--title", "What Does X Cost?", "--brief", self.file("b.md", "text"),
+                                  "--owner", "claudius", "--scope", "vault:a", "--actor", "dave")
+        self.assertEqual((code, out.strip()), (0, "what-does-x-cost"), err)
+
+    def test_buzz_creates_with_a_brief_too(self):
+        self.assertEqual(self.create("buzz-card", actor="buzz:claudius")[0], 0)
+        self.assertEqual(self.column("buzz-card"), "Refine")
 
     def test_refusals(self):
         self.assertEqual(self.create()[0], 0)
         cases = {
-            "duplicate id": self.create(),
-            "owner without a runner": self.cli("create", "--id", "x", "--title", "t", "--idea", "i", "--owner", "marcus",
+            "duplicate title": self.create(),
+            "owner without a runner": self.cli("create", "--title", "x", "--brief", self.file("b.md", "t"), "--owner", "marcus",
                                                "--scope", "vault:a", "--actor", "dave"),
-            "kind not in the pilot": self.cli("create", "--id", "y", "--kind", "dev", "--title", "t", "--idea", "i",
+            "kind not in the pilot": self.cli("create", "--title", "y", "--kind", "dev", "--brief", self.file("b.md", "t"),
                                               "--owner", "claudius", "--scope", "vault:a", "--actor", "dave"),
-            "bad scope": self.cli("create", "--id", "z", "--title", "t", "--idea", "i", "--owner", "claudius",
+            "bad scope": self.cli("create", "--title", "z", "--brief", self.file("b.md", "t"), "--owner", "claudius",
                                   "--scope", "somewhere", "--actor", "dave"),
+            "no brief": self.cli("create", "--title", "n", "--owner", "claudius", "--scope", "vault:a", "--actor", "dave"),
             "research date after deadline": self.create("w", "--research-on", "2026-11-02", "--deadline", "2026-11-01"),
-            "buzz with a brief": self.create("v", "--brief", self.file("b.md", "t"), actor="buzz:claudius"),
             "a run creating": self.create("u", actor="run:r1"),
-            "not an id": self.create("Bad Id"),
+            "the reactor creating": self.create("r", actor="reactor"),
+            "a title with no slug": self.create("!!!"),
             "an id the board API routes on": self.create("decisions"),
+            "the trash route": self.create("trash"),
         }
         for name, (code, _, err) in cases.items():
             with self.subTest(name):
@@ -347,10 +358,11 @@ class Briefs(FixtureBox):  # (::board-brief-hashing)
         self.assertIn("already returned", err)
         self.assertEqual(self.write_brief(text="a new one"), board.text_hash("a new one"))
 
-    def test_a_run_writes_a_brief_once_per_run_and_only_into_backlog(self):
+    def test_a_run_writes_a_brief_once_per_run_and_only_before_approval(self):
         self.assertEqual(self.create()[0], 0)
         first = self.write_brief(actor="run:b1")
         self.assertEqual(self.write_brief(text="a different file", actor="run:b1"), first)
+        self.decide("brief_approved", brief_hash=first)
         code, _, err = self.cli("brief", "alpha-card", "--from-file", self.file("c.md", "later"), "--actor", "run:b2")
         self.assertEqual(code, 1, err)
 
@@ -399,15 +411,15 @@ class Edits(FixtureBox):  # (::board-edit-rules)
         self.assertEqual(self.create()[0], 0)
         self.edit("--title", "Renamed", "--priority", "high")
         last = json.loads((self.tmp / "board/cards/alpha-card/events.jsonl").read_text().splitlines()[-1])
-        self.assertEqual(last["fields"]["title"], {"old": "Title of alpha-card", "new": "Renamed"})
+        self.assertEqual(last["fields"]["title"], {"old": "alpha-card", "new": "Renamed"})
         self.assertEqual(last["fields"]["priority"]["new"], "high")
 
-    def test_a_new_idea_voids_a_brief_and_a_new_scope_too(self):
-        for flag, value in (("--idea", "A different idea"), ("--scope", "vault:04_operations")):
-            with self.subTest(flag):
-                self.approved_card("card-" + flag[2:])
-                code, _, err = self.cli("edit", "card-" + flag[2:], "--expect-rev", "2", "--actor", "dave", flag, value)
-                self.assertEqual((code, self.column("card-" + flag[2:])), (0, "Backlog"), err)
+    def test_a_new_scope_voids_the_brief(self):
+        self.approved_card()
+        code, _, err = self.cli("edit", "alpha-card", "--expect-rev", "3", "--actor", "dave", "--scope", "vault:04_operations")
+        self.assertEqual((code, self.column()), (0, "Backlog"), err)
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+            board.main(["edit", "alpha-card", "--expect-rev", "4", "--actor", "dave", "--idea", "x"])
 
     def test_the_research_date_must_not_follow_the_deadline_in_either_order(self):
         self.assertEqual(self.create("alpha-card", "--deadline", "2026-12-01")[0], 0)
@@ -433,12 +445,12 @@ class Edits(FixtureBox):  # (::board-edit-rules)
         self.assertEqual(self.edit("--deadline", "2999-01-01")[0], 0)
         self.assertEqual(self.column(), "Blocked")
 
-    def test_idea_is_closed_after_the_first_research_run(self):
+    def test_scope_is_closed_after_the_first_research_run(self):
         self.approved_card()
         self.cli("pick", "--owner", "claudius", "--run-id", "r1", "--workflow", "agent-proposal")
         self.receipt("r1", "decline")
         self.assertEqual(self.column(), "Todo")
-        self.assertEqual(self.edit("--idea", "Another idea")[0], 1)
+        self.assertEqual(self.edit("--scope", "vault:04_operations")[0], 1)
 
 
 class ActorVerbs(FixtureBox):  # (::board-actor-verbs)
@@ -455,7 +467,7 @@ class ActorVerbs(FixtureBox):  # (::board-actor-verbs)
             with self.subTest(actor):
                 self.assertEqual(self.cli("note", "alpha-card", "--from-file", self.file("n.md", f"by {actor}"), "--actor", actor)[0], 0)
         events = [json.loads(e) for e in (self.tmp / "board/cards/alpha-card/events.jsonl").read_text().splitlines()]
-        self.assertEqual([e["event"] for e in events], ["created"] + ["note"] * 4)
+        self.assertEqual([e["event"] for e in events], ["created", "brief"] + ["note"] * 4)
 
     def test_pick_is_a_run_verb_and_no_ledger_verb_writes_a_decision(self):
         parser = board.build_parser()
@@ -493,7 +505,7 @@ class Picking(FixtureBox):  # (::board-pick)
         text = (self.tmp / "board/runs/r1/card.md").read_text()
         self.assertIn("## Approved brief", text)
         self.assertIn("first brief", text)
-        self.assertIn("A synthetic idea", text)
+        self.assertIn("A synthetic idea for alpha-card", text)
 
     def test_a_pick_passes_over_a_card_that_is_not_in_todo_or_is_scheduled(self):
         self.assertEqual(self.create("backlog-card")[0], 0)
@@ -634,6 +646,249 @@ class Template(FixtureBox):  # (::board-template)
         self.assertEqual(code, 1)
         self.assertIn("# Brief: alpha-card", out)
         self.assertEqual(self.cli("template", "--kind", "dev")[0], 1)
+
+
+AMS = board.box_tz()
+
+
+def local(day: int, hour: int, minute: int = 0) -> dt.datetime:
+    return dt.datetime(2026, 10, day, hour, minute, tzinfo=AMS)
+
+
+class CardTime(unittest.TestCase):  # (::board-card-time)
+    def test_a_date_or_a_minute_is_accepted_and_anything_else_refused(self):
+        for value in ("2026-10-14", "2026-10-14T06:30", "2026-10-14T00:00"):
+            with self.subTest(value):
+                self.assertEqual(board.check_research_on(value), value)
+        for value in ("2026-10-14 06:30", "2026-10-14T6:30", "2026-10-14T24:00", "2026-10-14T06:30:00",
+                      "2026-02-30", "2026-10-14T06:30Z", "tomorrow"):
+            with self.subTest(value), self.assertRaises(board.BoardError):
+                board.check_research_on(value)
+
+    def test_the_due_time_is_box_local_and_a_date_means_midnight(self):
+        self.assertEqual(board.due_at("2026-10-14"), local(14, 0))
+        self.assertEqual(board.due_at("2026-10-14T06:30"), local(14, 6, 30))
+
+    def test_scheduled_to_the_minute(self):
+        card = {**CARD, "research_on": "2026-10-14T06:30"}
+        for now, scheduled in ((local(14, 6, 29), True), (local(14, 6, 30), False), (local(14, 6, 31), False)):
+            with self.subTest(now=now):
+                view = derive([CREATED, BRIEF], [APPROVE], card=card, now=now)
+                self.assertEqual((view["column"], view["scheduled"]), ("Todo", scheduled))
+                self.assertEqual(view["due_at"], local(14, 6, 30).isoformat())
+
+    def test_the_deadline_is_compared_on_the_date_part(self):
+        board.check_dates_agree("2026-11-01T23:59", "2026-11-01")
+        with self.assertRaises(board.BoardError):
+            board.check_dates_agree("2026-11-02T00:00", "2026-11-01")
+
+
+class Held(unittest.TestCase):  # (::board-held)
+    def test_a_reactor_hold_blocks_with_its_reason_until_dave_unblocks(self):
+        held = ev("held", at(4), "reactor", fields={"reason": "poison-attempts"})
+        view = derive([CREATED, BRIEF, held], [APPROVE])
+        self.assertEqual((view["column"], view["blocked_cause"]), ("Blocked", "held: poison-attempts"))
+        self.assertEqual(derive([CREATED, BRIEF, held], [APPROVE, dec("unblocked", at(5))])["column"], "Todo")
+
+    def test_a_hold_from_anyone_but_the_reactor_moves_nothing(self):
+        forged = ev("held", at(4), "dave", fields={"reason": "x"})
+        view = derive([CREATED, BRIEF, forged], [APPROVE])
+        self.assertEqual(view["column"], "Todo")
+        self.assertIn({"kind": "forged-hold", "actor": "dave"}, view["exceptions"])
+
+    def test_the_failed_streak_counts_void_runs_since_the_last_success_or_unblock(self):
+        runs = [pick(at(5, h), f"r{h}") for h in (9, 10, 11)]
+        failed = {f"r{h}": rcpt("failed", None) for h in (9, 10, 11)}
+        self.assertEqual(derive([CREATED, BRIEF, *runs], [APPROVE], failed)["failed_streak"], 3)
+        self.assertEqual(derive([CREATED, BRIEF, *runs], [APPROVE, dec("unblocked", at(5, 10, ))], failed)["failed_streak"], 1)
+        mixed = {**failed, "r10": rcpt("decline", None)}
+        self.assertEqual(derive([CREATED, BRIEF, *runs], [APPROVE], mixed)["failed_streak"], 1)
+
+
+V1 = ev("brief", at(1, 10), "dave", hash=BRIEF_A)
+
+
+def questions(ts: str, run: str) -> dict:
+    return ev("note", ts, f"run:{run}", run_id=run, fields={"text": "which market?", "kind": "questions"})
+
+
+def answer(ts: str) -> dict:
+    return ev("note", ts, "dave", fields={"text": "the Dutch one"})
+
+
+class Wants(unittest.TestCase):  # (::board-wants)
+    def test_a_new_card_wants_its_brief_run(self):
+        view = derive([CREATED, V1])
+        self.assertEqual((view["column"], view["wants"], view["question_rounds"]), ("Refine", "brief", 0))
+
+    def test_a_brief_run_in_flight_or_done_satisfies_it(self):
+        running = derive([CREATED, V1, pick(at(2), "b1", "brief")])
+        written = derive([CREATED, V1, pick(at(2), "b1", "brief"), ev("brief", at(2, 10), "run:b1", hash=BRIEF_B, run_id="b1")],
+                         receipts={"b1": rcpt("artifact", None)})
+        self.assertEqual((running["wants"], written["wants"]), (None, None))
+
+    def test_a_failed_brief_run_leaves_it_wanted(self):
+        view = derive([CREATED, V1, pick(at(2), "b1", "brief")], receipts={"b1": rcpt("failed", None)})
+        self.assertEqual(view["wants"], "brief")
+
+    def test_questions_wait_for_dave_and_his_answer_wakes_the_next_round(self):
+        asked = [CREATED, V1, pick(at(2), "b1", "brief"), questions(at(2, 10), "b1")]
+        waiting = derive(asked, receipts={"b1": rcpt("artifact", None)})
+        self.assertEqual((waiting["wants"], waiting["awaiting_answer"], waiting["question_rounds"]), (None, True, 1))
+        answered = derive([*asked, answer(at(3))], receipts={"b1": rcpt("artifact", None)})
+        self.assertEqual((answered["wants"], answered["awaiting_answer"]), ("brief", False))
+
+    def test_daves_own_rewrite_of_an_agent_brief_waits_for_his_approval(self):
+        events = [CREATED, V1, pick(at(2), "b1", "brief"), ev("brief", at(2, 10), "run:b1", hash=BRIEF_B, run_id="b1"),
+                  ev("brief", at(3), "dave", hash="d" * 64)]
+        self.assertIsNone(derive(events, receipts={"b1": rcpt("artifact", None)})["wants"])
+
+    def test_a_returned_brief_wants_a_new_one(self):
+        events = [CREATED, V1, pick(at(2), "b1", "brief"), ev("brief", at(2, 10), "run:b1", hash=BRIEF_B, run_id="b1")]
+        view = derive(events, [dec("brief_returned", at(3), brief_hash=BRIEF_B, reason="narrower")], {"b1": rcpt("artifact", None)})
+        self.assertEqual((view["column"], view["wants"]), ("Backlog", "brief"))
+
+    def test_todo_wants_research_unless_scheduled_and_other_columns_want_nothing(self):
+        self.assertEqual(derive([CREATED, BRIEF], [APPROVE])["wants"], "research")
+        later = derive([CREATED, BRIEF], [APPROVE], card={**CARD, "research_on": "2026-10-07"})
+        self.assertIsNone(later["wants"])
+        blocked = derive([CREATED, V1], [dec("blocked", at(2))])
+        self.assertIsNone(blocked["wants"])
+
+
+class Deleted(unittest.TestCase):  # (::board-deleted)
+    def test_the_latest_of_deleted_and_restored_decides(self):
+        gone = derive([CREATED, V1], [dec("deleted", at(2))])
+        back = derive([CREATED, V1], [dec("deleted", at(2)), dec("restored", at(3))])
+        self.assertEqual((gone["deleted"], gone["deleted_at"], gone["wants"]), (True, at(2), None))
+        self.assertEqual((back["deleted"], back["column"]), (False, "Refine"))
+
+
+class Trash(FixtureBox):  # (::board-trash)
+    def test_a_trashed_card_leaves_every_listing_and_comes_back_on_restore(self):
+        self.assertEqual(self.create()[0], 0)
+        self.decide("deleted")
+        self.assertEqual(self.cli("list")[1].strip(), "")
+        board.trash_card(board.board_root(), "alpha-card")
+        self.assertFalse((self.tmp / "board/cards/alpha-card").exists())
+        listed = board.trash_list(board.board_root())
+        self.assertEqual([(t["id"], t["title"]) for t in listed], [("alpha-card", "alpha-card")])
+        self.decide("restored")
+        board.restore_card(board.board_root(), "alpha-card")
+        self.assertEqual(self.column(), "Refine")
+        self.assertEqual(board.trash_list(board.board_root()), [])
+
+    def test_trash_and_restore_are_idempotent(self):
+        self.assertEqual(self.create()[0], 0)
+        self.decide("deleted")
+        root = board.board_root()
+        self.assertTrue(board.trash_card(root, "alpha-card"))
+        self.assertFalse(board.trash_card(root, "alpha-card"))
+        self.decide("restored")
+        self.assertTrue(board.restore_card(root, "alpha-card"))
+        self.assertFalse(board.restore_card(root, "alpha-card"))
+
+    def test_a_trashed_id_cannot_be_taken_by_a_new_card(self):
+        self.assertEqual(self.create()[0], 0)
+        self.decide("deleted")
+        board.trash_card(board.board_root(), "alpha-card")
+        code, _, err = self.create()
+        self.assertEqual(code, 1)
+        self.assertIn("trash", err)
+
+    def test_purge_removes_only_trash_older_than_the_retention(self):
+        for card in ("old-card", "new-card"):
+            self.assertEqual(self.create(card)[0], 0)
+            board.trash_card(board.board_root(), card)
+        stream = self.tmp / "decisions" / "decisions.jsonl"
+        stream.write_text(json.dumps(dec("deleted", "2026-09-01T00:00:00Z", card="old-card")) + "\n"
+                          + json.dumps(dec("deleted", "2026-10-10T00:00:00Z", card="new-card")) + "\n")
+        purged = board.purge_trash(board.board_root(), dt.datetime(2026, 10, 14, tzinfo=dt.timezone.utc))
+        self.assertEqual(purged, ["old-card"])
+        self.assertEqual([t["id"] for t in board.trash_list(board.board_root())], ["new-card"])
+
+    def test_unapplied_keeps_the_approval_of_a_trashed_card(self):
+        self.approved_card()
+        self.decide("approved", page_hash=PAGE)
+        self.decide("deleted")
+        board.trash_card(board.board_root(), "alpha-card")
+        self.assertEqual(len(self.cli("decisions", "--unapplied")[1].strip().splitlines()), 1)
+
+
+class Notes(FixtureBox):  # (::board-note-kinds)
+    def test_only_a_run_may_ask_questions_and_the_kind_is_closed(self):
+        self.assertEqual(self.create()[0], 0)
+        path = self.file("q.md", "which market?")
+        self.assertEqual(self.cli("note", "alpha-card", "--from-file", path, "--actor", "run:b1", "--kind", "questions")[0], 0)
+        self.assertEqual(self.cli("note", "alpha-card", "--from-file", path, "--actor", "dave", "--kind", "questions")[0], 1)
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+            board.main(["note", "alpha-card", "--from-file", path, "--actor", "dave", "--kind", "gossip"])
+
+    def test_hold_is_the_reactors_verb_only(self):
+        self.assertEqual(self.create()[0], 0)
+        self.assertEqual(self.cli("hold", "alpha-card", "--reason", "poison-attempts", "--actor", "dave")[0], 1)
+        self.assertEqual(self.cli("hold", "alpha-card", "--reason", "Not A Code", "--actor", "reactor")[0], 1)
+        self.assertEqual(self.cli("hold", "alpha-card", "--reason", "poison-attempts", "--actor", "reactor")[0], 0)
+        self.assertEqual(self.column(), "Blocked")
+
+
+class MigrateIdea(FixtureBox):  # (::board-migrate-idea)
+    def legacy(self, card_id: str, briefs: tuple[str, ...] = ()) -> None:
+        directory = self.tmp / "board/cards" / card_id
+        (directory / "briefs").mkdir(parents=True)
+        card = {**CARD, "id": card_id, "idea": f"old idea of {card_id}", "created": "2026-10-01T00:00:00Z"}
+        (directory / "card.json").write_text(json.dumps(card))
+        rows = [ev("created", at(1), "buzz:claudius")]
+        for i, text in enumerate(briefs):
+            digest = board.text_hash(text)
+            (directory / "briefs" / f"{digest}.md").write_text(text + "\n")
+            rows.append(ev("brief", at(2, 9 + i), "run:b1", hash=digest, run_id="b1"))
+        (directory / "events.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+
+    def test_an_idea_becomes_brief_v1_or_a_note_beside_existing_briefs_once(self):
+        self.legacy("bare-card")
+        self.legacy("briefed-card", ("an agent brief",))
+        self.assertEqual(self.cli("migrate-idea")[0], 0)
+        bare = json.loads(self.cli("status", "bare-card", "--json")[1])
+        self.assertEqual((bare["column"], bare["brief_version"], bare["brief_by"]), ("Refine", 1, "buzz:claudius"))
+        stored = self.tmp / "board/cards/bare-card/briefs" / f"{board.text_hash('old idea of bare-card')}.md"
+        self.assertTrue(stored.exists())
+        briefed = [json.loads(line) for line in (self.tmp / "board/cards/briefed-card/events.jsonl").read_text().splitlines()]
+        self.assertEqual(briefed[-1]["fields"], {"text": "old idea of briefed-card", "kind": "idea"})
+        before = {c: (self.tmp / f"board/cards/{c}/events.jsonl").read_text() for c in ("bare-card", "briefed-card")}
+        self.assertEqual(self.cli("migrate-idea")[0], 0)
+        self.assertEqual({c: (self.tmp / f"board/cards/{c}/events.jsonl").read_text() for c in before}, before)
+
+    def test_a_migrated_idea_note_wakes_no_brief_run(self):
+        self.legacy("briefed-card", ("an agent brief",))
+        self.cli("migrate-idea")
+        view = json.loads(self.cli("status", "briefed-card", "--json")[1])
+        self.assertIsNone(view["wants"])
+
+
+class PickOne(FixtureBox):  # (::board-pick-card)
+    def test_pick_card_takes_that_card_only_when_it_wants_the_run(self):
+        self.assertEqual(self.create("first-card")[0], 0)
+        self.assertEqual(self.create("second-card", "--priority", "high")[0], 0)
+        out = self.cli("pick", "--owner", "claudius", "--column", "backlog", "--card", "first-card",
+                       "--run-id", "b1", "--workflow", "board-brief")[1]
+        self.assertEqual(out.strip(), "first-card")
+        again = self.cli("pick", "--owner", "claudius", "--column", "backlog", "--card", "first-card",
+                         "--run-id", "b2", "--workflow", "board-brief")[1]
+        self.assertEqual(again, "")
+        wrong = self.cli("pick", "--owner", "claudius", "--column", "todo", "--card", "second-card",
+                         "--run-id", "r1", "--workflow", "board-work")[1]
+        self.assertEqual(wrong, "")
+
+    def test_the_brief_run_card_carries_v1_the_notes_and_the_round(self):
+        self.assertEqual(self.create()[0], 0)
+        self.cli("note", "alpha-card", "--from-file", self.file("q.md", "which market?"), "--actor", "run:b0", "--kind", "questions")
+        self.cli("note", "alpha-card", "--from-file", self.file("a.md", "the Dutch one"), "--actor", "dave")
+        self.cli("pick", "--owner", "claudius", "--column", "backlog", "--card", "alpha-card", "--run-id", "b1", "--workflow", "board-brief")
+        text = (self.tmp / "board/runs/b1/card.md").read_text()
+        for needle in ("A synthetic idea for alpha-card", "which market?", "the Dutch one", "question round 2 of 2"):
+            with self.subTest(needle):
+                self.assertIn(needle, text)
 
 
 class Help(FixtureBox):  # (::board-help)

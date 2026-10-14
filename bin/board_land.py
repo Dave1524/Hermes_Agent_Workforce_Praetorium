@@ -38,7 +38,7 @@ BLOCK_KINDS = {"returned twice": "double-return", "changes requested twice": "do
                "declined twice": "double-decline", "deadline passed": "expired"}
 ACTIONS = {
     "stale-pick": "A pick has no receipt past its timeout; check the run's unit and attempt log.",
-    "double-return": "Dave: the brief was returned twice; rewrite the idea or unblock the card.",
+    "double-return": "Dave: the brief was returned twice; rewrite the brief or unblock the card.",
     "double-changes": "Dave: changes were requested twice; reject the card or unblock it.",
     "double-decline": "Dave: the research run declined twice; read the declines, then edit or unblock.",
     "expired": "Dave: the deadline passed; move the date or leave the card Blocked.",
@@ -68,7 +68,9 @@ def git(clone: pathlib.Path, *args: str, check: bool = True) -> subprocess.Compl
 
 
 def marker(root: pathlib.Path, card_id: str, name: str) -> pathlib.Path:
-    return board.card_dir(root, card_id) / f"{name}.json"
+    directory = board.card_dir(root, card_id)
+    trashed = board.trash_root(root) / directory.name
+    return (trashed if not directory.exists() and trashed.exists() else directory) / f"{name}.json"
 
 
 def read_marker(root: pathlib.Path, card_id: str, name: str) -> dict[str, Any] | None:
@@ -222,11 +224,17 @@ def notion_mark(card_id: str, state: str, path: str | None) -> bool:
     return subprocess.run(argv, capture_output=True, text=True, check=False).returncode == 0
 
 
+def page_state(view: dict[str, Any]) -> str | None:
+    if view.get("deleted"):
+        return "deleted"
+    return view["outcome"] if view["column"] == "Done" and view["outcome"] in ("merged", "rejected", "withdrawn") else None
+
+
 def mark_pages(root: pathlib.Path, views: dict[str, dict[str, Any]]) -> list[str]:
     marked = []
     for view in views.values():
-        state = {"merged": "merged", "rejected": "rejected"}.get(view["outcome"] or "")
-        if view["column"] != "Done" or not state or not any(r["page"] for r in view["runs"]):
+        state = page_state(view)
+        if not state or not any(r["page"] for r in view["runs"]):
             continue
         if (read_marker(root, view["id"], "marked") or {}).get("state") == state:
             continue
@@ -265,4 +273,5 @@ def sweep(root: pathlib.Path) -> list[str]:
         raised += [{"card": view["id"], **e} for e in card_exceptions(view, events, read_marker(root, view["id"], "landed"), now)]
     unique = list({(r["card"], r["kind"]): r for r in raised}.values())
     owners = {v["id"]: v["owner"] for v in views.values()}
-    return landed + mark_pages(root, views) + publish(unique, owners)
+    closing = {**board.collect(root, include_deleted=True), **board.trash_views(root)}
+    return landed + mark_pages(root, closing) + publish(unique, owners)

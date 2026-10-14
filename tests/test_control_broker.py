@@ -555,6 +555,68 @@ class RuntimeStartStopRestart(BrokerCase):  # (::broker-runtime-actions)
         self.assertEqual(response["receipt"]["actor"]["kind"], "cli")
 
 
+class BoardReactorControls(BrokerCase):  # (::broker-board-reactor-controls)
+    """The board reactor is a single-instance system service with the runtime verbs; a per-card run
+    (board-brief@<card>, board-work@<card>) is an `instances` template whose only verb is stop. An
+    operator stop is receipted under receipts/board-reactor/, which the reconcile reads as paused."""
+
+    def test_the_reactor_takes_stop_start_and_restart_in_system_scope(self):
+        response = self.box.call(req("board-reactor", "stop", confirm=True, reason="pause the board"))
+        self.assertEqual(response["result"], "applied", response)
+        self.assertEqual(mutating(self.box.log()), ["systemctl stop --no-block board-reactor.service --no-pager"])
+        receipt = response["receipt"]
+        self.assertEqual(broker.validate_receipt(receipt), [])
+        self.assertEqual((receipt["workflow_id"], receipt["action"], receipt["after"]["state"]),
+                         ("board-reactor", "stop", "paused"))
+        self.assertEqual(receipt["after"]["units"][0]["scope"], "system")
+        self.assertEqual(receipt["links"]["agent"], "/agents/claudius")
+        written = sorted((self.box.receipts / "board-reactor").glob("*.json"))
+        self.assertEqual([path.stem for path in written], [receipt["receipt_id"]])
+        self.box.clear_log()
+        self.assertEqual(self.box.call(req("board-reactor", "start", confirm=True))["result"], "applied")
+        self.assertEqual(self.box.call(req("board-reactor", "restart", confirm=True, reason="new env"))["result"], "applied")
+        self.assertEqual(mutating(self.box.log()), ["systemctl start --no-block board-reactor.service --no-pager",
+                                                    "systemctl restart --no-block board-reactor.service --no-pager"])
+
+    def test_a_card_run_can_be_stopped_and_nothing_else(self):
+        response = self.box.call(req("board-brief@alpha-card", "stop", confirm=True, reason="wrong brief"))
+        self.assertEqual(response["result"], "applied", response)
+        self.assertEqual(mutating(self.box.log()), ["systemctl stop --no-block board-brief@alpha-card.service --no-pager"])
+        self.assertEqual(response["receipt"]["workflow_id"], "board-brief@alpha-card")
+        self.assertEqual(response["receipt"]["after"]["state"], "paused")
+        for action in ("start", "restart", "pause", "run_now"):
+            refused = self.assertRefused(self.box.call(req("board-work@alpha-card", action, confirm=True)), "unknown_action", 400)
+            self.assertIn("board-work instances take stop", refused["refusal"]["message"])
+        state = self.box.state()
+        state["board-work@beta-card.service"] = {"LoadState": "loaded", "ActiveState": "inactive", "SubState": "dead",
+                                                 "UnitFileState": "static", "NRestarts": "0"}
+        (self.box.root / "state.json").write_text(json.dumps(state))
+        self.assertRefused(self.box.call(req("board-work@beta-card", "stop", confirm=True, reason="x")), "state_conflict", 400)
+        self.assertRefused(self.box.call(req("board-work@gamma-card", "stop", confirm=True, reason="x")), "unit_not_found", 400)
+        self.assertEqual(len(mutating(self.box.log())), 1)
+
+    def test_an_instance_of_an_unlisted_template_or_a_bare_template_is_unknown(self):
+        for workflow_id in ("board-other@alpha-card", "board-brief", "board-work"):
+            self.assertRefused(self.box.call(req(workflow_id, "stop", confirm=True, reason="x")), "unknown_workflow", 404)
+        self.assertEqual(self.box.log(), [])
+
+    def test_a_malformed_instances_section_refuses_everything(self):
+        allowlist = json.loads(self.box.allowlist.read_text())
+        for bad in ({"board-brief": {"actions": ["stop", "enable"], "owner": "claudius", "scope": "system",
+                                     "template": "board-brief@.service"}},
+                    {"board-brief": {"actions": ["stop"], "owner": "claudius", "scope": "system",
+                                     "template": "board-work@.service"}},
+                    {"Board_Brief": {"actions": ["stop"], "owner": "claudius", "scope": "system",
+                                     "template": "Board_Brief@.service"}},
+                    []):
+            allowlist["instances"] = bad
+            path = self.box.root / "allowlist-bad-instances.json"
+            path.write_text(json.dumps(allowlist))
+            self.assertRefused(self.box.call(req("board-brief@alpha-card", "stop", confirm=True, reason="x"),
+                                             allowlist=path), "allowlist_invalid", 400)
+        self.assertEqual(self.box.log(), [])
+
+
 class ScopeAddressing(BrokerCase):  # (::broker-scope-addressing)
     def test_user_units_go_through_the_user_manager_and_system_units_do_not(self):
         self.box.stamp("buzz-pr-watch", "2026-09-13T09:23:00Z", scope="user")
@@ -691,7 +753,7 @@ class PeerRuleTable(unittest.TestCase):
 
 
 RETRY_DECLARED = {"knowledge-digest", "agent-proposal", "weekly-pre-assembly", "m1-signal-scan", "scorecard",
-                  "workflow-receipt-sweep", "workflow-incidents"}
+                  "workflow-receipt-sweep", "workflow-incidents", "board-reconcile"}
 
 
 def manifest_entries() -> list[dict]:
@@ -719,19 +781,29 @@ class AllowlistRender(unittest.TestCase):  # (::broker-allowlist-render)
         self.assertEqual(rendered["workflows"]["buzz-pr-watch"]["triggers"][0]["scope"], "user")
         excluded = {row["unit"]: row for row in rendered["excluded"]}
         services = [e for e in entries if e.get("status") == "standing" and e.get("kind") == "service"]
-        self.assertTrue(services)
+        agents = [e for e in services if "@" in e["unit"]]
+        self.assertTrue(agents)
         self.assertEqual(set(rendered["runtimes"]), {e["unit"] for e in services})
-        for entry in services:
+        for entry in agents:
             self.assertNotIn(entry["unit"], excluded)
             self.assertEqual(rendered["runtimes"][entry["unit"]], {
                 "owner": entry["owner"], "unit": entry["unit"], "scope": "user", "template": "buzz-agent@.service"})
             self.assertRegex(entry["unit"], broker.RUNTIME_RE)
             self.assertNotRegex(entry["unit"], broker.UNIT_RE)
+        for entry in (e for e in services if "@" not in e["unit"]):
+            self.assertEqual(rendered["runtimes"][entry["unit"]], {
+                "owner": entry["owner"], "unit": entry["unit"], "scope": entry.get("scope", "system"), "template": None})
+        templates = [e for e in entries if e.get("status") == "standing" and e.get("kind") == "template"]
+        self.assertEqual(set(rendered["instances"]), {e["unit"] for e in templates})
+        for entry in templates:
+            self.assertEqual(rendered["instances"][entry["unit"]], {
+                "owner": entry["owner"], "scope": entry.get("scope", "system"), "template": f"{entry['unit']}@.service",
+                "actions": ["stop"]})
         spent = [e for e in entries if e.get("status") == "spent"]
         self.assertEqual(len(spent), 2)
         for entry in spent:
             self.assertEqual(excluded[entry["unit"]]["reason"], "status = spent")
-        self.assertEqual(len(rendered["excluded"]), len(entries) - len(timers) - len(services))
+        self.assertEqual(len(rendered["excluded"]), len(entries) - len(timers) - len(services) - len(templates))
         for name, workflow in rendered["workflows"].items():
             self.assertEqual(workflow["retry"], name in RETRY_DECLARED, name)
             self.assertIsInstance(workflow["retry_reason"], str, name)
@@ -770,7 +842,17 @@ class AllowlistRender(unittest.TestCase):  # (::broker-allowlist-render)
                 '[[workflows]]\nunit = "buzz-agent@ok"\nstatus = "standing"\nscope = "user"\nkind = "service"\n'
                 '[[workflows]]\nunit = "lone-daemon@x"\nstatus = "standing"\nscope = "user"\nkind = "service"\n'
                 '[[workflows]]\nunit = "Bad@Name"\nstatus = "standing"\nscope = "user"\nkind = "service"\n'
-                '[[workflows]]\nunit = "buzz-agent@spent"\nstatus = "spent"\nscope = "user"\nkind = "service"\n')
+                '[[workflows]]\nunit = "buzz-agent@spent"\nstatus = "spent"\nscope = "user"\nkind = "service"\n'
+                '[[workflows]]\nunit = "board-reactor"\nstatus = "standing"\nkind = "service"\n'
+                '[[workflows]]\nunit = "ghost-daemon"\nstatus = "standing"\nkind = "service"\n'
+                '[[workflows]]\nunit = "board-brief"\nstatus = "standing"\nkind = "template"\n'
+                '[[workflows]]\nunit = "ghost-run"\nstatus = "standing"\nkind = "template"\n'
+                '[[workflows]]\nunit = "Bad_Run"\nstatus = "standing"\nkind = "template"\n'
+                '[[workflows]]\nunit = "board-work"\nstatus = "planned"\nkind = "template"\n')
+            (repo / "systemd" / "board-reactor.service").write_text("")
+            (repo / "systemd" / "board-brief@.service").write_text("")
+            (repo / "systemd" / "board-work@.service").write_text("")
+            (repo / "systemd" / "Bad_Run@.service").write_text("")
             (repo / "systemd" / "user" / "buzz-agent@.service").write_text("")
             for unit in ("Bad_Name", "twin-a", "twin-b", "lonely"):
                 (repo / "systemd" / f"{unit}.timer").write_text("")
@@ -786,8 +868,18 @@ class AllowlistRender(unittest.TestCase):  # (::broker-allowlist-render)
             self.assertEqual(excluded["lone-daemon@x"], "no service file in systemd/")
             self.assertEqual(excluded["Bad@Name"], "unit name outside the broker's grammar")
             self.assertEqual(excluded["buzz-agent@spent"], "status = spent")
-            self.assertEqual(rendered["runtimes"], {"buzz-agent@ok": {
-                "owner": "trajan", "unit": "buzz-agent@ok", "scope": "user", "template": "buzz-agent@.service"}})
+            self.assertEqual(excluded["ghost-daemon"], "no service file in systemd/")
+            self.assertEqual(excluded["ghost-run"], "no service file in systemd/")
+            self.assertEqual(excluded["Bad_Run"], "unit name outside the broker's grammar")
+            self.assertEqual(excluded["board-work"], "status = planned")
+            self.assertEqual(rendered["runtimes"], {
+                "buzz-agent@ok": {"owner": "trajan", "unit": "buzz-agent@ok", "scope": "user", "template": "buzz-agent@.service"},
+                "board-reactor": {"owner": "trajan", "unit": "board-reactor", "scope": "system", "template": None}})
+            self.assertEqual(rendered["instances"], {"board-brief": {
+                "owner": "trajan", "scope": "system", "template": "board-brief@.service", "actions": ["stop"]}})
+            loaded = broker.Allowlist.load_data(rendered)
+            self.assertEqual(loaded.lookup("board-brief@alpha")["actions"], ["stop"])
+            self.assertEqual(loaded.lookup("board-reactor")["kind"], "runtime")
             self.assertEqual(set(rendered["workflows"]), {"twin", "lonely", "user-job"})
             twin = rendered["workflows"]["twin"]
             self.assertIs(twin["retry"], False)

@@ -262,16 +262,18 @@ class BridgeTest(unittest.TestCase):
         bridge.close()
 
     def test_board_writes_carry_the_buzz_actor_and_the_text_by_file(self):
-        # (::bridge-board-writes) — create, brief and note pass --actor buzz:<agent>, never a
+        # (::bridge-board-writes) — create (title + brief v1), brief and note pass --actor buzz:<agent>, never a
         # caller-supplied actor, and text reaches the CLI as a file with the exact text
         bridge, log = self.board_bridge()
-        bridge.call("board_create", {"title": "T", "idea": "I", "scope": ["vault:05_knowledge"], "owner": "claudius",
-                                     "tags": ["a", "b"], "actor": "dave"})
+        bridge.call("board_create", {"title": "T", "brief": "v1 text", "scope": ["vault:05_knowledge"],
+                                     "owner": "claudius", "tags": ["a", "b"], "actor": "dave"})
         bridge.call("board_brief", {"card": "t", "text": "# Brief: t\nbody\n"})
         bridge.call("board_note", {"card": "t", "text": "a note"})
         created, briefed, noted = self.board_calls(log)
-        self.assertEqual(created["argv"], ["create", "--title", "T", "--idea", "I", "--scope", "vault:05_knowledge",
-                                           "--owner", "claudius", "--tags", "a,b", "--actor", "buzz:claudius"])
+        self.assertEqual(created["argv"][:3], ["create", "--title", "T"])
+        self.assertEqual(created["argv"][5:], ["--scope", "vault:05_knowledge", "--owner", "claudius",
+                                               "--tags", "a,b", "--actor", "buzz:claudius"])
+        self.assertEqual(created["files"]["--brief"], "v1 text")
         self.assertEqual(briefed["argv"][:2], ["brief", "t"])
         self.assertEqual(briefed["argv"][-2:], ["--actor", "buzz:claudius"])
         self.assertEqual(briefed["files"]["--from-file"], "# Brief: t\nbody\n")

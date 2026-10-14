@@ -1,0 +1,16 @@
+// The board reactor (board-reactor.service, User=dave) starts and stops exactly its own per-card
+// run units, and nothing else: board-brief@<card>.service and board-work@<card>.service, verbs
+// start and stop. Installed by hand to /etc/polkit-1/rules.d/ (docs/runbook.md § Board reactor);
+// tests/test_board_polkit.py pins the unit pattern to the card slug grammar in bin/board.py.
+polkit.addRule(function(action, subject) {
+    if (action.id != "org.freedesktop.systemd1.manage-units" || subject.user != "dave") {
+        return polkit.Result.NOT_HANDLED;
+    }
+    var unit = action.lookup("unit");
+    var verb = action.lookup("verb");
+    if (/^board-(brief|work)@[a-z0-9][a-z0-9-]{0,62}\.service$/.test(unit) &&
+        (verb == "start" || verb == "stop")) {
+        return polkit.Result.YES;
+    }
+    return polkit.Result.NOT_HANDLED;
+});

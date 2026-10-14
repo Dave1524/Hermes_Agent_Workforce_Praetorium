@@ -20,7 +20,8 @@ function BoardCard({ card }: { card: CardSummary }) {
         {card.priority && card.priority !== "normal" && <span className="text-accent">{card.priority}</span>}
         {scheduled && <span className="text-text-2">Scheduled {scheduled}</span>}
         {card.blockedCause && <span className="text-red">{card.blockedCause}</span>}
-        {card.approvedLanding && <span className="text-green">approved, landing</span>}
+        {card.approvedLanding && <span className="text-green">approved, awaiting Mac</span>}
+        {card.awaitingAnswer && <span className="text-amber">questions for you</span>}
         {card.outcome && <span className="text-text-2">{card.outcome}</span>}
         {card.exceptions.length > 0 && <span className="text-amber">{card.exceptions.join(", ")}</span>}
         <span className="font-mono text-muted">{card.owner}</span>
@@ -40,9 +41,14 @@ export default function Board({ cardId, creating = false }: { cardId?: string; c
       <div className="p-6">
         <div className="flex items-center justify-between gap-3 mb-4">
           <p className="text-xs text-muted">Each column is derived from the card's events, decisions and receipts. Open a card to read or edit it; a card moves only by decision.</p>
-          <RouteLink to={{ name: "newcard" }} className="shrink-0 px-3 py-1.5 text-xs font-medium bg-accent-dim border border-accent/30 text-accent rounded hover:bg-accent/20">
-            New card
-          </RouteLink>
+          <div className="flex shrink-0 gap-2">
+            <RouteLink to={{ name: "trash" }} className="px-3 py-1.5 text-xs font-medium border border-border text-text-2 rounded hover:border-border-2">
+              Trash
+            </RouteLink>
+            <RouteLink to={{ name: "newcard" }} className="px-3 py-1.5 text-xs font-medium bg-accent-dim border border-accent/30 text-accent rounded hover:bg-accent/20">
+              New card
+            </RouteLink>
+          </div>
         </div>
         <div className="grid gap-3 overflow-x-auto" style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(190px, 1fr))` }}>
           {columns.map((column) => {

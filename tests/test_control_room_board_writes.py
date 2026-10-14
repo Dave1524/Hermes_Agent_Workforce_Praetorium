@@ -70,13 +70,13 @@ class BoardSeamTest(unittest.TestCase):
                 return err.code, json.load(err)
 
     def create(self, **extra):
-        body = {"verb": "create", "title": "Alpha question", "idea": "Does the synthetic thing hold?",
+        body = {"verb": "create", "title": "Alpha question", "brief": "Does the synthetic thing hold?",
                 "owner": "claudius", "scope": ["vault:05_knowledge"], **extra}
         return self.post(body)
 
     def test_verb_table_admits_four_writes_and_refuses_every_other_verb(self):
         self.assertEqual(control_room_board_writes.WRITE_VERBS, ("create", "brief", "note", "edit"))
-        for verb in ("pick", "land", "sweep", "delete", "decided"):
+        for verb in ("pick", "land", "sweep", "withdraw", "hold", "decided"):
             status, body = self.post({"verb": verb, "card": "alpha-question"})
             self.assertEqual(status, 400, verb)
             self.assertFalse(body.get("ok"), verb)
@@ -95,6 +95,18 @@ class BoardSeamTest(unittest.TestCase):
         self.assertEqual({json.loads(l)["actor"] for l in events.splitlines()}, {"dave"})
         self.assertEqual(self.create()[0], 422)
 
+    def test_a_card_is_a_title_and_a_brief_and_its_id_comes_from_the_title(self):
+        status, body = self.create(title="Beta: the second question!")
+        self.assertEqual((status, body["card"]), (200, "beta-the-second-question"), body)
+        self.assertEqual(body["view"]["brief_version"], 1)
+        for extra in ({"id": "chosen"}, {"idea": "old field"}):
+            status, body = self.create(title="Gamma", **extra)
+            self.assertEqual(status, 400, (extra, body))
+        status, body = self.create(title="Gamma", brief="  ")
+        self.assertEqual(status, 400, body)
+        self.assertIn("brief", body["error"])
+        self.assertFalse((pathlib.Path(self.tmp.name) / "board/cards/gamma").exists())
+
     def test_actor_in_the_body_is_ignored(self):
         status, body = self.create(actor="run:x")
         self.assertEqual(status, 200, body)
@@ -105,12 +117,24 @@ class BoardSeamTest(unittest.TestCase):
         self.create()
         status, body = self.post({"verb": "brief", "card": "alpha-question", "text": "# Question\nfirst\n"})
         self.assertEqual(status, 200, body)
-        self.assertEqual(body["view"]["brief_version"], 1)
+        self.assertEqual(body["view"]["brief_version"], 2)
         status, body = self.post({"verb": "brief", "card": "alpha-question", "text": "# Question\nfirst\n"})
         self.assertEqual((status, "unchanged" in body["error"]), (422, True))
         status, body = self.post({"verb": "note", "card": "alpha-question", "text": "keep it local"})
         self.assertEqual(status, 200, body)
         self.assertEqual(self.post({"verb": "note", "card": "alpha-question", "text": "  "})[0], 400)
+
+    def test_the_screen_answers_questions_and_never_asks_them(self):
+        self.create()
+        status, body = self.post({"verb": "note", "card": "alpha-question", "text": "only the vault", "kind": "answer"})
+        self.assertEqual(status, 200, body)
+        events = (pathlib.Path(self.tmp.name) / "board/cards/alpha-question/events.jsonl").read_text().splitlines()
+        self.assertEqual(json.loads(events[-1])["fields"], {"text": "only the vault", "kind": "answer"})
+        for kind in ("questions", "idea", 3):
+            status, body = self.post({"verb": "note", "card": "alpha-question", "text": "x", "kind": kind})
+            self.assertEqual(status, 400, (kind, body))
+        self.assertEqual(len((pathlib.Path(self.tmp.name) / "board/cards/alpha-question/events.jsonl").read_text().splitlines()),
+                         len(events))
 
     def test_edit_applies_and_stale_revision_is_refused(self):
         _, created = self.create()
@@ -136,7 +160,7 @@ class BoardSeamTest(unittest.TestCase):
     def test_edit_refuses_locked_fields_and_bad_shapes(self):
         _, created = self.create()
         rev = created["view"]["rev"]
-        for fields in ({"owner": "x"}, {"id": "y"}, {"kind": "dev"}, {"priority": "urgent"}, {}):
+        for fields in ({"owner": "x"}, {"id": "y"}, {"kind": "dev"}, {"priority": "urgent"}, {"idea": "i"}, {}):
             status, _ = self.post({"verb": "edit", "card": "alpha-question", "expect_rev": rev, "fields": fields})
             self.assertIn(status, (400, 422), fields)
         self.assertEqual(self.post({"verb": "edit", "card": "alpha-question", "fields": {"title": "t"}})[0], 400)
@@ -160,9 +184,10 @@ class BoardSeamTest(unittest.TestCase):
         self.assertIn("StateDirectory=control-room-board", text)
         self.assertIn("Environment=CONTROL_ROOM_BOARD_ROOT=/var/lib/control-room-board", text)
 
-    def test_new_is_a_reserved_card_id(self):
-        status, body = self.create(id="new")
-        self.assertEqual(status, 422, body)
+    def test_new_and_trash_are_reserved_card_ids(self):
+        for title in ("New", "Trash"):
+            status, body = self.create(title=title)
+            self.assertEqual(status, 422, body)
 
     def test_peer_rule(self):
         self.assertTrue(control_room_board_writes.peer_allowed("100.64.0.9", "100.64.0.2")[0])

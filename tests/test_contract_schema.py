@@ -230,6 +230,8 @@ def units_in(cell):
     the empty string and is dropped; `(--user scope)` yields nothing. A token carrying a
     systemd specifier (`agent-alert@%n.service`) is a template naming no unit and is
     dropped — a Unit row that names only such tokens declares no unit and goes red as one.
+    A bare template file (`board-brief@.service`) names the template's workflow, `board-brief`,
+    which is how a `kind = "template"` entry is declared.
     """
     expanded = BRACES.sub(
         lambda m: " ".join(m.group(1) + alt.strip() + m.group(3)
@@ -238,7 +240,7 @@ def units_in(cell):
     for token in TOKEN.findall(expanded):
         if "%" in token or not UNIT_SUFFIX.search(token):
             continue
-        name = UNIT_SUFFIX.sub("", token)
+        name = UNIT_SUFFIX.sub("", token).removesuffix("@")
         if name:
             found.add(name)
     return found

@@ -3,9 +3,10 @@
 HTTP status map over bin/board.py. Bound once in control_room_api.main() as
 `RequestHandlerClass.board`. The actor is always `dave`; a body's actor is never read.
 
-Admitted: create, brief, note, edit; and Dave's eight decision verbs (B9), which are checked here
+Admitted: create (a title and a brief; the id is the title's slug), brief, note (an `answer` to a
+run's questions, or a plain note), edit; and Dave's decision verbs (B9), which are checked here
 against the card and forwarded to the root-owned broker (control_room_board_decisions.py), never
-written to the ledger. `pick`, `land`, `sweep` and every other verb are refused: 400.
+written to the ledger. `pick`, `land`, `sweep`, `hold` and every other verb are refused: 400.
 """
 from __future__ import annotations
 
@@ -26,8 +27,10 @@ ACTOR = "dave"
 WRITE_VERBS = ("create", "brief", "note", "edit")
 DECISION_MAP = decisions.DECISION_MAP
 DECISION_VERBS = tuple(DECISION_MAP)
-EDIT_FIELDS = ("title", "idea", "scope", "priority", "tags", "research_on", "deadline")
-CREATE_STRINGS = ("id", "title", "idea", "kind", "owner", "priority", "deadline", "research_on")
+EDIT_FIELDS = ("title", "scope", "priority", "tags", "research_on", "deadline")
+CREATE_STRINGS = ("title", "kind", "owner", "priority", "deadline", "research_on")
+CREATE_KEYS = ("verb", "brief", "scope", "tags", "actor", "expect_rev") + CREATE_STRINGS
+SCREEN_NOTE_KINDS = ("answer",)
 
 
 def _is_loopback(address: Any) -> bool:
@@ -106,23 +109,30 @@ def _with_text(text: str, call: Callable[[str], Any]) -> Any:
 
 
 def _create(root: pathlib.Path, body: dict[str, Any]) -> str:
-    for key in CREATE_STRINGS + ("brief",):
+    unknown = sorted(set(body) - set(CREATE_KEYS))
+    if unknown:
+        raise Bad(f"create takes a title and a brief, not: {', '.join(unknown)}")
+    for key in CREATE_STRINGS:
         if body.get(key) is not None and not isinstance(body[key], str):
             raise Bad(f"{key} must be a string")
+    brief = _text(body, "brief")
     args = argparse.Namespace(
         **{key: body.get(key) for key in CREATE_STRINGS}, scope=_strings(body.get("scope", []), "scope"),
         tags=_strings(body.get("tags", []), "tags"), brief=None, actor=ACTOR)
-    args.kind, args.owner = args.kind or "research", args.owner or ""
-    args.title, args.idea = args.title or "", args.idea or ""
-    brief = body.get("brief")
-    if not brief or not brief.strip():
-        return board.create_card(root, args)
+    args.kind, args.owner, args.title = args.kind or "research", args.owner or "", args.title or ""
 
     def with_brief(path: str) -> str:
         args.brief = path
         return board.create_card(root, args)
 
     return _with_text(brief, with_brief)
+
+
+def _note_kind(body: dict[str, Any]) -> str | None:
+    kind = body.get("kind")
+    if kind is not None and kind not in SCREEN_NOTE_KINDS:
+        raise Bad(f"a note from the screen is plain or kind {', '.join(SCREEN_NOTE_KINDS)}")
+    return kind
 
 
 def _edit_args(fields: Any) -> argparse.Namespace:
@@ -156,7 +166,8 @@ def _apply(root: pathlib.Path, body: dict[str, Any]) -> str:
         _with_text(_text(body, "text"), lambda p: board.add_brief(root, card, p, ACTOR, rev))
         return card
     if verb == "note":
-        _with_text(_text(body, "text"), lambda p: board.add_note(root, card, p, ACTOR))
+        kind = _note_kind(body)
+        _with_text(_text(body, "text"), lambda p: board.add_note(root, card, p, ACTOR, kind))
         return card
     changes = board.parse_edit(_edit_args(body.get("fields")))
     board.edit_card(root, card, changes, _rev(body, True) or 0, ACTOR)

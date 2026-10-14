@@ -9,13 +9,17 @@ only, no sibling import — the copy under /usr/local/lib must never execute any
 dave-writable bin/ tree.
 
 Two kinds of entry (T5.3g): a `workflows` row is a timer workflow and takes ACTIONS; a
-`runtimes` row is an always-on template instance such as buzz-agent@marcus and takes
-RUNTIME_ACTIONS — the session-scoped verbs only, never enable/disable. A runtime is read
-through RUNTIME_PROPERTIES and nothing else: never `status`, never ExecStart or Environment,
-because the launched process carries the agent's credential in its argv.
+`runtimes` row is an always-on service — a template instance such as buzz-agent@marcus or a
+single-instance system service such as board-reactor — and takes RUNTIME_ACTIONS, the
+session-scoped verbs only, never enable/disable. An `instances` row names a template whose
+instances are created at run time (board-brief@<card>) and takes only the verbs it lists,
+from INSTANCE_ACTIONS. A runtime is read through RUNTIME_PROPERTIES and nothing else: never
+`status`, never ExecStart or Environment, because the launched process carries the agent's
+credential in its argv. An applied stop is receipted under <receipts>/<id>/ like every
+request; the board reactor's reconcile reads its own as an operator pause.
 
 Board decisions (Dev Plan B9, spec §7 decisions 10 and 12): a request with `board_verb` is one of the
-seven verbs only Dave may take on an agent-board card. The broker validates it against the
+nine verbs only Dave may take on an agent-board card. The broker validates it against the
 allowlist's `board.verbs`, signs the record with a root-only OpenSSH ed25519 key (namespace
 `board-decision`) and appends one line to `<board dir>/decisions.jsonl`. It never runs bin/board.py:
 board.py reads the stream and trusts a decision from nowhere else, and the Mac checks the signature
@@ -48,6 +52,7 @@ RUNTIME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}@[a-z0-9][a-z0-9-]{0,63}$")
 TOKEN_RE = re.compile(r"^\d{8}T\d{6}Z-[a-z_]+-[0-9a-f]{6}$")
 ACTIONS = ("pause", "resume", "run_now", "retry", "stop")
 RUNTIME_ACTIONS = ("start", "stop", "restart")
+INSTANCE_ACTIONS = ("stop",)
 ALL_ACTIONS = ACTIONS + tuple(action for action in RUNTIME_ACTIONS if action not in ACTIONS)
 STAGES = ("preview", "apply")
 RESULTS = ("applied", "refused", "failed", "previewed")
@@ -64,12 +69,12 @@ MAX_BODY_BYTES = 8192
 MAX_BOARD_BODY_BYTES = 262144
 MAX_REASON_CHARS = 2000
 BOARD_VERBS = ("brief_approved", "brief_returned", "approved", "changes_requested",
-               "rejected", "blocked", "unblocked")
+               "rejected", "blocked", "unblocked", "deleted", "restored")
 BOARD_REQUEST_KEYS = {"v", "board_verb", "card", "brief_hash", "page_hash", "text", "reason", "actor"}
 BOARD_FIELDS = {
     "brief_approved": ("brief_hash",), "brief_returned": ("brief_hash", "reason"),
     "approved": ("page_hash", "text"), "changes_requested": ("reason",),
-    "rejected": ("reason",), "blocked": ("reason?",), "unblocked": (),
+    "rejected": ("reason",), "blocked": ("reason?",), "unblocked": (), "deleted": (), "restored": (),
 }
 BOARD_NAMESPACE = "board-decision"
 BOARD_CARD_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
@@ -189,9 +194,10 @@ def peer_allowed(remote: Any, local: Any) -> tuple[bool, str]:
 # --- the allowlist --------------------------------------------------------------------
 class Allowlist:
     def __init__(self, workflows: dict[str, dict[str, Any]], excluded: list[dict[str, Any]],
-                 runtimes: dict[str, dict[str, Any]] | None = None, board_verbs: list[str] | None = None) -> None:
+                 runtimes: dict[str, dict[str, Any]] | None = None, board_verbs: list[str] | None = None,
+                 instances: dict[str, dict[str, Any]] | None = None) -> None:
         self.workflows, self.excluded, self.runtimes = workflows, excluded, runtimes or {}
-        self.board_verbs = board_verbs or []
+        self.board_verbs, self.instances = board_verbs or [], instances or {}
 
     @classmethod
     def load(cls, path: pathlib.Path) -> "Allowlist":
@@ -216,8 +222,13 @@ class Allowlist:
             raise Refusal("allowlist_invalid", f"allowlist at {path}: runtimes is not a table")
         for runtime_id, entry in runtimes.items():
             cls._check_runtime_entry(path, runtime_id, entry)
+        instances = data.get("instances", {})
+        if not isinstance(instances, dict):
+            raise Refusal("allowlist_invalid", f"allowlist at {path}: instances is not a table")
+        for template_id, entry in instances.items():
+            cls._check_instance_entry(path, template_id, entry)
         return cls(workflows, [row for row in excluded if isinstance(row, dict)], runtimes,
-                   cls._board_verbs(path, data.get("board")))
+                   cls._board_verbs(path, data.get("board")), instances)
 
     @staticmethod
     def _board_verbs(path: Any, section: Any) -> list[str]:
@@ -244,7 +255,7 @@ class Allowlist:
 
     @staticmethod
     def _check_runtime_entry(path: pathlib.Path, runtime_id: Any, entry: Any) -> None:
-        if not isinstance(runtime_id, str) or not RUNTIME_RE.match(runtime_id):
+        if not isinstance(runtime_id, str) or not (RUNTIME_RE.match(runtime_id) or UNIT_RE.match(runtime_id)):
             raise Refusal("allowlist_invalid", f"allowlist at {path}: runtime id outside the runtime grammar")
         unit = entry.get("unit") if isinstance(entry, dict) else None
         scope = entry.get("scope") if isinstance(entry, dict) else None
@@ -253,6 +264,26 @@ class Allowlist:
             raise Refusal("allowlist_invalid",
                           f"allowlist at {path}: runtime {runtime_id} needs unit = id, scope and owner")
 
+    @staticmethod
+    def _check_instance_entry(path: pathlib.Path, template_id: Any, entry: Any) -> None:
+        fields = entry if isinstance(entry, dict) else {}
+        actions = fields.get("actions")
+        if (not isinstance(template_id, str) or not UNIT_RE.match(template_id)
+                or fields.get("template") != f"{template_id}@.service" or fields.get("scope") not in ("system", "user")
+                or not isinstance(fields.get("owner"), str) or not isinstance(actions, list) or not actions
+                or any(action not in INSTANCE_ACTIONS for action in actions)):
+            raise Refusal("allowlist_invalid", f"allowlist at {path}: instances row {_short(template_id)} needs "
+                          f"template = <id>@.service, scope, owner and actions from {', '.join(INSTANCE_ACTIONS)}")
+
+    def _instance(self, workflow_id: str) -> dict[str, Any] | None:
+        template_id, _, name = workflow_id.partition("@")
+        entry = self.instances.get(template_id) if name and RUNTIME_RE.match(workflow_id) else None
+        if entry is None:
+            return None
+        return {"id": workflow_id, "kind": "runtime", "unit": workflow_id, "scope": entry["scope"],
+                "owner": entry["owner"], "template": entry["template"], "instance_of": template_id,
+                "actions": list(entry["actions"])}
+
     def lookup(self, workflow_id: str) -> dict[str, Any]:
         entry = self.workflows.get(workflow_id)
         if entry is not None:
@@ -260,6 +291,9 @@ class Allowlist:
         runtime = self.runtimes.get(workflow_id)
         if runtime is not None:
             return {"id": workflow_id, "kind": "runtime", **runtime}
+        instance = self._instance(workflow_id)
+        if instance is not None:
+            return instance
         for row in self.excluded:
             if row.get("unit") == workflow_id:
                 raise Refusal("not_allowlisted",
@@ -628,6 +662,9 @@ def choose_trigger(workflow: dict[str, Any], request: dict[str, Any], candidates
 
 
 def check_vocabulary(entry: dict[str, Any], action: str) -> None:
+    if "instance_of" in entry and action not in entry["actions"]:
+        raise Refusal("unknown_action",
+                      f"{action} is not an instance action; {entry['instance_of']} instances take {', '.join(entry['actions'])}")
     if entry["kind"] == "runtime" and action not in RUNTIME_ACTIONS:
         raise Refusal("unknown_action",
                       f"{action} is not a runtime action; runtimes take {', '.join(RUNTIME_ACTIONS)}")

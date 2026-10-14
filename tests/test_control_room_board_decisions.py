@@ -122,14 +122,16 @@ class DecisionSeam(unittest.TestCase):
 
 
 class Moves(DecisionSeam):  # (::board-seam-moves)
-    def test_the_popup_verbs_map_onto_the_brokers_seven(self):
-        self.assertEqual(sorted(set(writes.DECISION_MAP.values())), sorted(board.DECISIONS))
+    def test_the_popup_verbs_map_one_to_one_onto_the_brokers_decisions(self):
+        self.assertEqual(sorted(writes.DECISION_MAP.values()), sorted(board.DECISIONS))
         self.assertEqual(set(writes.DECISION_MAP), set(writes.DECISION_VERBS))
-        self.assertEqual(writes.DECISION_MAP["withdraw"], "rejected")
+        self.assertEqual((writes.DECISION_MAP["delete"], writes.DECISION_MAP["restore"]), ("deleted", "restored"))
+        self.assertNotIn("withdraw", writes.DECISION_MAP)
 
     def test_every_move_the_board_offers_is_a_verb_the_seam_takes(self):
         offered = {move for moves in board.MOVES.values() for move in moves}
-        self.assertEqual(offered, set(writes.DECISION_VERBS))
+        self.assertEqual(set(writes.DECISION_VERBS) - offered, {"restore"})
+        self.assertLessEqual(offered, set(writes.DECISION_VERBS))
 
     def test_a_move_the_column_does_not_offer_is_refused_and_the_broker_not_called(self):
         self.create()
@@ -146,11 +148,11 @@ class Moves(DecisionSeam):  # (::board-seam-moves)
         self.assertEqual(self.post({"verb": "approve", "card": "ghost"})[0], 404)
 
     def test_reasons_are_required_where_the_broker_requires_them(self):
-        self.todo()
-        for verb in ("withdraw",):
-            self.assertEqual(self.decide(verb)[0], 400)
-            self.assertEqual(self.decide(verb, reason="  ")[0], 400)
-        self.assertEqual(self.broker.calls[1:], [])
+        digest = self.refine()
+        for verb in ("return_brief",):
+            self.assertEqual(self.decide(verb, brief_hash=digest)[0], 400)
+            self.assertEqual(self.decide(verb, brief_hash=digest, reason="  ")[0], 400)
+        self.assertEqual(self.broker.calls, [])
 
 
 class Flow(DecisionSeam):  # (::board-seam-decisions)
@@ -177,10 +179,10 @@ class Flow(DecisionSeam):  # (::board-seam-decisions)
         self.assertEqual(self.decide("unblock")[0], 200)
         self.assertEqual(self.view()["column"], "Todo")
 
-    def test_withdraw_closes_the_card_as_withdrawn_and_reject_in_review_as_rejected(self):
+    def test_withdraw_is_gone_from_the_screen(self):
         self.todo()
-        self.assertEqual(self.decide("withdraw", reason="not wanted")[0], 200)
-        self.assertEqual((self.view()["column"], self.view()["outcome"]), ("Done", "withdrawn"))
+        self.assertEqual(self.decide("withdraw", reason="not wanted")[0], 400)
+        self.assertEqual(self.broker.calls[1:], [])
 
     def test_approve_in_review_hands_the_text_to_the_broker_and_waits_for_main(self):
         self.in_review()
@@ -200,6 +202,54 @@ class Flow(DecisionSeam):  # (::board-seam-decisions)
         self.in_review()
         self.assertEqual(self.decide("reject", reason="no note")[0], 200)
         self.assertEqual((self.view()["column"], self.view()["outcome"]), ("Done", "rejected"))
+
+
+class Delete(DecisionSeam):  # (::board-seam-delete)
+    def test_delete_takes_no_reason_signs_deleted_and_the_card_leaves_the_board(self):
+        self.todo()
+        status, body = self.decide("delete", reason="ignored", expect_rev=self.view()["rev"])
+        self.assertEqual(status, 200, body)
+        self.assertEqual((body["card"], body["view"]), ("alpha-question", None))
+        record = self.records()[-1]
+        self.assertEqual(record["decision"], "deleted")
+        self.assertNotIn("reason", record)
+        self.assertEqual({k for k in self.broker.calls[-1]}, {"v", "board_verb", "card", "actor"})
+        self.assertNotIn("alpha-question", board.collect(pathlib.Path(self.tmp.name) / "board"))
+        self.assertEqual(sig.verify_stream(self.stream, self.signers), [])
+
+    def test_delete_is_offered_everywhere_but_in_review(self):
+        self.in_review()
+        status, body = self.decide("delete")
+        self.assertEqual(status, 409, body)
+        self.assertIn("not offered", body["error"])
+
+    def test_a_stale_revision_refuses_the_delete(self):
+        self.todo()
+        status, _ = self.decide("delete", expect_rev=self.view()["rev"] - 1)
+        self.assertEqual(status, 409)
+        self.assertEqual(self.records()[1:], [])
+
+    def test_restore_brings_a_deleted_card_back_before_and_after_the_trash(self):
+        self.todo()
+        self.decide("delete")
+        status, body = self.decide("restore")
+        self.assertEqual(status, 200, body)
+        self.assertEqual(self.records()[-1]["decision"], "restored")
+        self.assertEqual(body["view"]["column"], "Todo")
+        self.decide("delete")
+        self.assertTrue(board.trash_card(pathlib.Path(self.tmp.name) / "board", "alpha-question"))
+        status, body = self.decide("restore")
+        self.assertEqual(status, 200, body)
+        self.assertEqual(self.records()[-1]["decision"], "restored")
+
+    def test_restore_needs_a_deleted_card(self):
+        self.todo()
+        before = len(self.records())
+        status, body = self.decide("restore")
+        self.assertEqual(status, 409, body)
+        self.assertIn("not deleted", body["error"])
+        self.assertEqual(self.post({"verb": "restore", "card": "ghost"})[0], 404)
+        self.assertEqual(self.signed_since(before), [])
 
 
 class Stale(DecisionSeam):  # (::board-seam-stale)

@@ -56,6 +56,14 @@ class BoardReads:
         except (board.BoardError, OSError, ValueError, KeyError) as exc:
             return [], _status("unavailable", str(exc))
 
+    def trash(self) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        try:
+            rows = board.trash_list(self._root())
+        except (board.BoardError, OSError, ValueError, KeyError) as exc:
+            return [], _status("unavailable", str(exc))
+        return [{"id": r["id"], "title": r["title"], "deletedAt": r["deleted_at"], "purgeAfter": r["purge_after"]}
+                for r in rows], _status("available")
+
     def _detail(self, view: dict[str, Any]) -> dict[str, Any]:
         root, card_id = self._root(), view["id"]
         _, events = board.read_card(root, card_id)
@@ -63,7 +71,7 @@ class BoardReads:
         return {
             **summary(view),
             "fields": view["fields"], "rev": view["rev"], "editable": view["editable"],
-            "moves": view["moves"], "locked": view["locked"],
+            "moves": view["moves"], "locked": view["locked"], "questionRounds": view["question_rounds"],
             "brief": brief_block(root, view, events, decisions),
             "runs": [run_block(r) for r in view["runs"]],
             "activity": activity(events, decisions, view["runs"]),
@@ -98,7 +106,7 @@ def summary(view: dict[str, Any]) -> dict[str, Any]:
         "approvedLanding": view["approved_landing"], "owner": view["owner"], "kind": view["kind"],
         "priority": fields["priority"], "tags": fields["tags"], "deadline": fields.get("deadline"),
         "researchOn": fields.get("research_on"), "briefVersion": view["brief_version"],
-        "exceptions": [e["kind"] for e in view["exceptions"]],
+        "exceptions": [e["kind"] for e in view["exceptions"]], "awaitingAnswer": view["awaiting_answer"],
     }
 
 
@@ -142,12 +150,12 @@ def activity(events: list[dict[str, Any]], decisions: list[dict[str, Any]],
     for event in board._ordered(events):
         kind, fields = event["event"], event.get("fields") or {}
         row = {"ts": event.get("ts"), "kind": kind, "actor": event["actor"], "runId": event.get("run_id"),
-               "detail": None, "outcome": None}
+               "detail": None, "outcome": None, "noteKind": None}
         if kind == "brief":
             version += 1
             row["detail"] = f"v{version}"
         elif kind == "note":
-            row["detail"] = fields.get("text")
+            row["detail"], row["noteKind"] = fields.get("text"), board._note_kind(event)
         elif kind == "edited":
             row["detail"] = ", ".join(sorted(fields))
         elif kind == "picked":
@@ -155,6 +163,6 @@ def activity(events: list[dict[str, Any]], decisions: list[dict[str, Any]],
             row["detail"], row["outcome"] = fields.get("purpose", "research"), run.get("outcome")
         rows.append(row)
     rows += [{"ts": d.get("ts"), "kind": d["decision"], "actor": "dave", "runId": None,
-              "detail": d.get("reason"), "outcome": None} for d in decisions]
+              "detail": d.get("reason"), "outcome": None, "noteKind": None} for d in decisions]
     order = sorted(enumerate(rows), key=lambda pair: (board._t(pair[1]["ts"]), pair[0]), reverse=True)
     return [row for _, row in order]

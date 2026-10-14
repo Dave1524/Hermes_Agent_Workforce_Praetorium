@@ -23,7 +23,7 @@ const open = (card: CardDetail, writer = makeWriter()) => {
   return { writer, onClose, onChanged, onReload };
 };
 
-const NAMED: Record<string, string> = { title: "Title", idea: "Idea", brief: "Brief", research_on: "Research date", deadline: "Deadline", priority: "Priority", tags: "Tags", scope: "Scope" };
+const NAMED: Record<string, string> = { title: "Title", brief: "Brief", research_on: "Research date", deadline: "Deadline", priority: "Priority", tags: "Tags", scope: "Scope" };
 
 describe("CardDialog, edit mode", () => {
   afterEach(() => vi.restoreAllMocks());
@@ -47,9 +47,32 @@ describe("CardDialog, edit mode", () => {
     });
   });
 
-  it("locks the idea and scope after the first research run, with the reason", () => {
+  it("locks the scope after the first research run, with the reason", () => {
     open(cardDetail("Todo", { editable: ["title", "brief", "priority", "tags", "notes"], runs: [{ runId: "r1", purpose: "research", void: false }] }));
-    expect(screen.getByRole("dialog").querySelector('[data-lock="idea"]')?.textContent).toMatch(/after the first research run/);
+    expect(screen.getByRole("dialog").querySelector('[data-lock="scope"]')?.textContent).toMatch(/after the first research run/);
+    expect(screen.queryByLabelText("Idea")).toBeNull();
+  });
+
+  it.each([
+    ["2026-10-06", "06:30", "2026-10-06T06:30"],
+    ["2026-10-06T06:30", "", "2026-10-06"],
+    ["2026-10-06T06:30", "07:15", "2026-10-06T07:15"],
+  ] as const)("round-trips the research time: %s with time %s saves %s", async (stored, time, sent) => {
+    const fields = { ...cardDetail("Todo").fields, research_on: stored };
+    const { writer } = open(cardDetail("Todo", { fields }));
+    expect(screen.getByLabelText("Research date")).toHaveValue("2026-10-06");
+    expect(screen.getByLabelText("Research time")).toHaveValue(stored.slice(11));
+    fireEvent.change(screen.getByLabelText("Research time"), { target: { value: time } });
+    fireEvent.click(screen.getByRole("button", { name: "Save details" }));
+    await waitFor(() => expect(writer.edit).toHaveBeenCalledWith(5, { research_on: sent }));
+  });
+
+  it("clears the time when the date is cleared", async () => {
+    const fields = { ...cardDetail("Todo").fields, research_on: "2026-10-06T06:30" };
+    const { writer } = open(cardDetail("Todo", { fields }));
+    fireEvent.change(screen.getByLabelText("Research date"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save details" }));
+    await waitFor(() => expect(writer.edit).toHaveBeenCalledWith(5, { research_on: null }));
   });
 
   it("enables Save on the brief only once the text has changed, and saves it at the rendered revision", async () => {
@@ -154,22 +177,22 @@ describe("CardDialog, edit mode", () => {
   });
 
   describe("creating a card in the same popup, empty", () => {
-    it("offers Create only with a title, an idea and a scope, then sends them with the brief", async () => {
+    it("offers Create only with a title, a brief and a scope, and sends no idea and no id", async () => {
       const { writer, onChanged } = open(emptyCard());
       const create = screen.getByRole("button", { name: "Create card" });
       expect(create).toBeDisabled();
+      expect(screen.queryByLabelText("Idea")).toBeNull();
       fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Alpha question" } });
-      fireEvent.change(screen.getByLabelText("Idea"), { target: { value: "Does it hold?" } });
-      expect(create).toBeDisabled();
       fireEvent.focus(screen.getByLabelText("Scope"));
       fireEvent.change(screen.getByLabelText("Scope"), { target: { value: "05_know" } });
       fireEvent.mouseDown(screen.getByRole("option", { name: "vault:05_knowledge" }));
+      expect(create).toBeDisabled();
       fireEvent.change(screen.getByLabelText("Brief"), { target: { value: "# Question\nq\n" } });
+      expect(create).toBeEnabled();
       fireEvent.click(create);
       await waitFor(() =>
         expect(writer.create).toHaveBeenCalledWith({
           title: "Alpha question",
-          idea: "Does it hold?",
           scope: ["vault:05_knowledge"],
           priority: "normal",
           tags: [],
@@ -179,6 +202,19 @@ describe("CardDialog, edit mode", () => {
         }),
       );
       await waitFor(() => expect(onChanged).toHaveBeenCalledWith("new-card"));
+    });
+
+    it("sends a datetime research time with the create", async () => {
+      const { writer } = open(emptyCard());
+      fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Timed" } });
+      fireEvent.focus(screen.getByLabelText("Scope"));
+      fireEvent.change(screen.getByLabelText("Scope"), { target: { value: "05_know" } });
+      fireEvent.mouseDown(screen.getByRole("option", { name: "vault:05_knowledge" }));
+      fireEvent.change(screen.getByLabelText("Brief"), { target: { value: "rough thought" } });
+      fireEvent.change(screen.getByLabelText("Research date"), { target: { value: "2026-10-14" } });
+      fireEvent.change(screen.getByLabelText("Research time"), { target: { value: "06:30" } });
+      fireEvent.click(screen.getByRole("button", { name: "Create card" }));
+      await waitFor(() => expect(writer.create).toHaveBeenCalledWith(expect.objectContaining({ research_on: "2026-10-14T06:30", brief: "rough thought" })));
     });
 
     it("has no note box and no moves", () => {
