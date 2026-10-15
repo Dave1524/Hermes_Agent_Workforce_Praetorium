@@ -33,30 +33,6 @@
 # stale exclusion list is prevented from quietly becoming permanent. An exclusion that
 # outlives its subject is the same defect as no exclusion at all, pointing the other way.
 
-# Pruned 2026-09-17 (T6.3) and 2026-09-28 (auto-sync): each window cleared by one
-# `bin/deploy --prune`; the list is empty
-# until the next source deletion opens a window.
-
-[[runtime_only]]
-path  = "research_brief_cc_task.md"
-tree  = "profiles"
-since = "2026-10-14"
-why   = "research-brief retired via Control Room proposal 20261014T144739Z-retire-research-brief-04e5cc; the deployed copy waits for bin/deploy --prune."
-
-[[runtime_only]]
-path  = "research_brief.env.example"
-tree  = "profiles"
-since = "2026-10-14"
-why   = "research-brief retired via Control Room proposal 20261014T144739Z-retire-research-brief-04e5cc; the deployed copy waits for bin/deploy --prune."
-
-[[runtime_only]]
-path  = "research-brief.timer"
-tree  = "systemd"
-since = "2026-10-14"
-why   = "research-brief retired via Control Room proposal 20261014T144739Z-retire-research-brief-04e5cc; the deployed copy waits for bin/deploy --prune."
-
-[[runtime_only]]
-path  = "research-brief.service"
-tree  = "systemd"
-since = "2026-10-14"
-why   = "research-brief retired via Control Room proposal 20261014T144739Z-retire-research-brief-04e5cc; the deployed copy waits for bin/deploy --prune."
+# Pruned 2026-09-17 (T6.3), 2026-09-28 (auto-sync) and 2026-10-15 (research-brief): each
+# window cleared by one `bin/deploy --prune`; the list is empty until the next source deletion
+# opens a window.
