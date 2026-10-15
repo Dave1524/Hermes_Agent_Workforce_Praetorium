@@ -72,7 +72,7 @@ retired_on = "2026-10-14"
 reason = "board-brief@ owns the Backlog brief since the board reactor (PR #108, #109)"
 proposal = "20261014T144739Z-retire-research-brief-04e5cc"
 branch = "control-room/retire-research-brief-20261014T144739Z"
-pr = ""
+pr = "110"
 runners = ["bin/run_research_brief_cc.sh"]
 profiles = ["profiles/research_brief_cc_task.md", "profiles/research_brief.env.example"]
 contract = "design/archive/contracts/research-brief.md"
@@ -80,5 +80,5 @@ suites = ["tests/test_research_brief_smoke.sh"]
 env_override = "/home/dave/.config/agent-workforce/research_brief.env"
 run_markers = ["/home/dave/logs/run-markers/research-brief.service"]
 artifact_retention = { receipts = "keep", notion = "keep", inbox = "keep", note = "Superseded by board-brief@; timer disabled 2026-10-14." }
-residue_cleared_on = ""
-env_removed_attested = false
+residue_cleared_on = "2026-10-15"
+env_removed_attested = true
