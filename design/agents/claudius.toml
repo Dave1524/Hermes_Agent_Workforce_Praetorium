@@ -73,25 +73,7 @@ skills   = ["investment-research", "meeting-prep", "prospect-research", "board-c
 rule1_exempt = "the unit is the generic agent-proposal; the workflow, the artifact and AGENT_VERIFY_CMD are all standing-research, and naming the file after the unit would hide it from every reader who knows the job by its slug"
 notes    = "Unit name is the generic one; the workflow is standing research."
 
-[[workflows]]
-unit     = "research-brief"
-surface  = "scheduled"
-trigger  = "Mon..Fri 08-18 hourly (+3min jitter)"
-model    = "claude-opus-5"
-profile  = "profiles/research_brief_cc_task.md"
-runner   = "bin/run_research_brief_cc.sh"
-route    = "research"        # one notice line naming the card, never the brief
-web      = true
-tools_without = ["Edit"]   # the common floor minus Edit: the run writes one new file, never edits one
-board    = "research"        # works cards of this kind off the board; joined to the unit's AGENT_BOARD_PICK
-contract = "design/contracts/research-brief.md"
-status   = "dormant"     # 2026-10-14: board-brief@ took the Backlog pick; timer disabled at install, retirement PR follows
-suite    = ["tests/test_research_brief_smoke.sh"]
-skills   = ["investment-research", "meeting-prep", "prospect-research", "board-cards"]
-notes    = "A quiet tick is receipted skipped before any model; the model runs only when Backlog holds a card. The wrapper, not the model, records the brief (agent_propose.sh AGENT_RUN_MODE=board)."
-
-# --- Board reactor (2026-10-13). The reactor starts one templated run per card the moment a card
-# --- wants one; research-brief and agent-proposal's todo pick retire behind it.
+# research-brief retired 2026-10-14 via Control Room proposal 20261014T144739Z-retire-research-brief-04e5cc (branch control-room/retire-research-brief-20261014T144739Z): board-brief@ owns the Backlog brief since the board reactor (PR #108, #109). Artifacts: receipts=keep notion=keep inbox=keep. Record: design/retired-workflows.toml.
 [[workflows]]
 unit     = "board-brief"
 surface  = "scheduled"

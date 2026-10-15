@@ -1,3 +1,5 @@
+> RETIRED 2026-10-14 — Control Room proposal 20261014T144739Z-retire-research-brief-04e5cc; the workflow no longer exists. Kept as history for T5.4's evidence.
+
 # Contract: research-brief
 
 B2, 2026-10-07. Read for this contract: `bin/agent_propose.sh` (the `board` run mode and the

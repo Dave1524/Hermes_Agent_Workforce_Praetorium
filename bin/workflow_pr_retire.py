@@ -570,7 +570,7 @@ def _decrement(worktree: pathlib.Path, before: dict[str, int], classes: dict[str
     removed_units = len(subjects["units"])
     removed_standing = removed_units if standing else 0
     transforms = (
-        (VIEWS_SUITE, VIEWS_SUITE[:-3] + ".sh", lambda text: decrement_count_literals(text, before, removed_standing, 1)),
+        (VIEWS_SUITE, VIEWS_SUITE[:-3] + ".sh", lambda text: decrement_count_literals(text, before, removed_standing, 1 if standing else 0)),
         (COVERAGE_SUITE, COVERAGE_SUITE[:-3] + ".sh", lambda text: _decrement_coverage(text, classes if standing else {}, 1 if standing else 0)),
         (DEV_PLAN_SCRIPT, DEV_PLAN_SUITE, lambda text: decrement_named_literal(text, "WORKFLOW_ENTRIES", removed_units)),
     )
