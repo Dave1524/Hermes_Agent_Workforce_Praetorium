@@ -128,16 +128,11 @@ line above prints the authoritative count on its first line, e.g. `agent-inbox-s
 review.` — quote that number verbatim, or write "UNCONFIRMED: pending count" if the command
 failed.
 
-## 5. Scan the AI Trading Bot thread
+## 5. No per-project repo scan
 
-The unmerged branch IS the in-flight thread, so a stale fetch reports the wrong one.
-Fetch first — read-only, no merge, no push:
-
-```bash
-git -C ~/dev/AI_Trading_Bot fetch --quiet --all 2>&1 | tail -3
-git -C ~/dev/AI_Trading_Bot branch -a --sort=-committerdate | head -10
-git -C ~/dev/AI_Trading_Bot log --oneline -5 --all
-```
+Retired 2026-10-16: the briefing no longer scans any code repo. "In flight" comes from the vault
+`status.md` files of the *active* projects only. Projects archived under `~/vault/10_archive/` and
+their Notion tasks (Status = Parked) never appear in the plan, even if a vault file still mentions them.
 
 ## 6. Compose the briefing
 
@@ -166,7 +161,7 @@ Structure (the leading `>` line is the day's framing, one sentence, no hedging):
 3. <third>
 
 ## In flight
-- <project> — <state, from status.md / branch scan>
+- <project> — <state, from status.md>
 
 ## Overnight from Praetorium
 - <failed/blocked jobs, new proposals, anything needing Dave>
