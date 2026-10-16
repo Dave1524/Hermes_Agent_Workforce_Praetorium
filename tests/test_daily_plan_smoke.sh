@@ -20,8 +20,8 @@ smoke_suite daily-plan \
 
 echo "--- daily-plan: the port kept the box-specific requirements ---"
 TASK="$REPO_ROOT/profiles/daily_plan_task.md"
-assert "AITB scan fetches first (a stale fetch reports the wrong in-flight branch)" \
-  "grep -q 'git -C ~/dev/AI_Trading_Bot fetch' '$TASK'"
+assert "no archived-project repo scan (AI Trading Bot archived 2026-10-16: no fetch, no branch scan)" \
+  "! grep -qE 'AI_Trading_Bot|sentinel-mvp' '$TASK'"
 assert "Notion goes through notion_daily.py, not hand-rolled curl" \
   "grep -q 'notion_daily.py plan' '$TASK' && ! grep -qE '^[[:space:]]*curl' '$TASK'"
 assert "vault paths are absolute against ~/vault" "grep -q '~/vault/04_operations' '$TASK'"

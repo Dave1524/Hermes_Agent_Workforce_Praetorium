@@ -42,7 +42,6 @@ A daily-cadence freshness window would report every Monday morning as a stopped 
 | `~/agent-workforce/config/fleet-units.tsv` | present and 5-column | **refuse the section**: the profile prints `FATAL: … Unit coverage is UNKNOWN` rather than reporting "nothing scheduled". A 4-column copy matches `NF>=5` nowhere, and `systemctl list-timers` with an empty argument array lists all 44 timers on the box — a silently empty list renders as a full report derived from nothing |
 | `python3 bin/agent_inbox_notion_sync.py --dry-run`, first line | this run's | **proceed and flag** as `UNCONFIRMED: pending count`. The profile forbids deriving the count from `ls` of the inbox worktree: that directory lags the Mac-side promote pass, and on 2026-08-10 a raw file count put "40 pending" in the plan the same morning the correct figure, 25, ran in the morning report ten minutes later |
 | `~/logs/agent-alert.log`, `journalctl -p warning`, `logs/cost.log`, newest `~/logs/overnight/morning-report-*.md` | last night's | proceed; anything FAILED or BLOCKED overnight is a line item, not a footnote |
-| `~/dev/AI_Trading_Bot` refs | fetched at run time — an unmerged branch **is** the in-flight thread, so a stale fetch names the wrong one | proceed; a failed fetch is reported rather than silently answered from the old ref list |
 | `profiles/daily_plan_task.md` (deployed copy) | readable | wrapper exits 1 with the path named (`run_daily_rhythm_cc.sh:31`) |
 | `~/agent-workforce/skills/marcus/.claude-plugin/plugin.json` | readable | wrapper exits 1 with the path named. A `--plugin-dir` that does not exist is **silent** — exit 0, no diagnostic, no skills — so this guard is the only thing that would ever say so (T3.1) |
 
@@ -107,10 +106,6 @@ the whole reason both are written down.
   to `logs/last-attempt/daily-plan.log`, and a cost line to `cost.log`.
 - Takes `${AGENT_PROPOSE_LOCK:-/tmp/agent_propose.lock}`.
 - Appends one line to `~/logs/delivery-receipts.jsonl` (`bin/deliver.sh:136`).
-- **`git -C ~/dev/AI_Trading_Bot fetch --quiet --all` — the one write outside this job's own
-  paths.** It updates remote-tracking refs in a repo the job otherwise only reads. It is in
-  contract because a job that says it is read-only and is not would fail a write-boundary
-  audit for a reason nobody would find; no merge, no push, no working-tree change.
 
 Nothing else. No inbox worktree and no proposal commit — `AGENT_RUN_MODE=ops`. The task
 never writes `~/vault`, `~/dev/*` or `07_daily/logs/` on any branch.
